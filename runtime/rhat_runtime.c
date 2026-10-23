@@ -21,7 +21,7 @@ typedef struct {
   unsigned char *data;
   uint64_t len, capacity;
 } RhArray;
-#define RH_REGION_BYTES (UINT64_C(64) * 1024 * 1024)
+#define RH_REGION_BYTES (UINT64_C(1024) * 1024 * 1024)
 static _Noreturn void rh_panic(const char *why, int32_t line) {
   fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, why);
   exit(1);
@@ -218,6 +218,50 @@ uint8_t rh_f8_encode(float value) {
     encoded = ((unsigned)(e + 7) << 3) | (q - 8);
   }
   return (uint8_t)(sign | (encoded > 126 ? 127u : encoded));
+}
+/* Convert binary64 directly: passing through float would double-round values
+ * just to either side of an E4M3FN midpoint. */
+uint8_t rh_f8_encode_f64(double value) {
+  uint64_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  unsigned sign = (unsigned)((bits >> 56) & 128u);
+  unsigned exponent = (unsigned)((bits >> 52) & 2047u);
+  if (exponent == 2047)
+    return (uint8_t)(sign | 127u);
+  if (!exponent)
+    return (uint8_t)sign;
+  int e = (int)exponent - 1023;
+  if (e > 8)
+    return (uint8_t)(sign | 127u);
+  if (e < -10)
+    return (uint8_t)sign;
+  unsigned shift = e < -6 ? (unsigned)(43 - e) : 49u;
+  uint64_t significand = (bits & UINT64_C(0xfffffffffffff)) | (UINT64_C(1) << 52);
+  unsigned q = (unsigned)(significand >> shift);
+  uint64_t rest = significand & ((UINT64_C(1) << shift) - 1);
+  uint64_t halfway = UINT64_C(1) << (shift - 1);
+  q += rest > halfway || (rest == halfway && (q & 1));
+  unsigned encoded;
+  if (e < -6)
+    encoded = q;
+  else {
+    if (q == 16) {
+      q = 8;
+      e++;
+    }
+    encoded = e > 8 ? 127u : ((unsigned)(e + 7) << 3) | (q - 8);
+  }
+  return (uint8_t)(sign | (encoded > 126 ? 127u : encoded));
+}
+void rh_check_float_cast(double value, int32_t bits, int32_t uns, int32_t line) {
+  double upper = 1.0;
+  for (int32_t j = 0; j < bits - (uns ? 0 : 1); j++)
+    upper *= 2.0;
+  double lower = uns ? 0.0 : -upper;
+  /* Ordered comparisons also reject NaNs and infinities before LLVM's
+   * non-saturating conversion could produce poison. */
+  if (!(value >= lower && value < upper))
+    rh_panic("floating value out of integer range", line);
 }
 #define RH_DIVISION(T, NAME, MINIMUM)                                          \
   T rh_div_##NAME(T a, T b, int32_t line) {                                    \

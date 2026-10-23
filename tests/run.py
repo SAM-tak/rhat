@@ -103,6 +103,83 @@ def factorial_ir(ir, ll):
 
 
 positive("empty_program", "", "")
+
+# Exercise all integer widths against Python's unbounded integer oracle.
+integer_types = [(f"{sign}{bits}^", bits, sign == "u")
+                 for sign in ("i", "u") for bits in (8, 16, 32, 64, 128)]
+bit_code, bit_output = [], []
+for name, bits, unsigned in integer_types:
+    mask = (1 << bits) - 1
+    value = mask if unsigned else -1
+    bit_code.append(f"{{ let^ x:{name}={value}; print(bitnot^ x, x bitand^ 3, x bitor^ 3, x bitxor^ 3) }}")
+    bit_output.append(f"0 3 {value} {mask - 3 if unsigned else -4}")
+    for count in (0, 1, -1, bits - 1, 1 - bits, bits, -bits, 2147483647, -2147483648):
+        result = 0 if abs(count) >= bits else ((mask << count) & mask if count >= 0 else mask >> -count)
+        if not unsigned and result >= 1 << (bits - 1):
+            result -= 1 << bits
+        bit_code.append(f"{{ let^ x:{name}={value}; print(x bitshift^ {count}) }}")
+        bit_output.append(str(result))
+    for count in ("u128^(340282366920938463463374607431768211455)",
+                  "i128^(-170141183460469231731687303715884105728)"):
+        # A typed literal is used below; conversion operands otherwise infer i32.
+        literal = count.split("(", 1)[1][:-1]
+        typ = count.split("(", 1)[0]
+        bit_code.append(f"{{ let^ x:{name}={value}; let^ n:{typ}={literal}; print(x bitshift^ n) }}")
+        bit_output.append("0")
+positive("integer_bits", "\n".join("(p^ {" + s + "})();" for s in bit_code), "\n".join(bit_output) + "\n")
+
+conversion_code, conversion_output = [], []
+for src, src_bits, src_unsigned in integer_types:
+    values = (0, (1 << src_bits) - 1) if src_unsigned else (-1, -(1 << (src_bits - 1)), (1 << (src_bits - 1)) - 1)
+    for v in values:
+        for dst, dst_bits, dst_unsigned in integer_types:
+            result = v & ((1 << dst_bits) - 1)
+            if not dst_unsigned and result >= 1 << (dst_bits - 1):
+                result -= 1 << dst_bits
+            conversion_code.append(f"{{ let^ x:{src}={v}; print({dst}(x)) }}")
+            conversion_output.append(str(result))
+positive("integer_conversions", "\n".join("(p^ {" + s + "})();" for s in conversion_code), "\n".join(conversion_output) + "\n")
+
+positive("float_conversions", '''
+let^ inferred = f^ x:f64^ { i32^(x) }
+print(inferred(-12.75), u8^(255.75), i8^(-128.0))
+let^ a:i128^=-170141183460469231731687303715884105728
+let^ b:u128^=340282366920938463463374607431768211455
+print(f64^(a), f64^(b))
+''', "-12 255 -128\n-1.7014118346046923e+38 3.4028236692093846e+38\n")
+float_code = []
+for src in ("f8^", "f16^", "f32^", "f64^"):
+    for dst in ("f8^", "f16^", "f32^", "f64^"):
+        float_code.append(f"{{ let^ x:{src}=1.5; print({dst}(x)) }}")
+    for dst, _, _ in integer_types:
+        float_code.append(f"{{ let^ x:{src}=12.0; print({dst}(x)) }}")
+for src, _, unsigned in integer_types:
+    for dst in ("f8^", "f16^", "f32^", "f64^"):
+        float_code.append(f"{{ let^ x:{src}={12 if unsigned else -12}; print({dst}(x)) }}")
+positive("numeric_conversion_matrix", "\n".join("(p^ {" + s + "})();" for s in float_code),
+         ("1.5\n" * 4 + "12\n" * 10) * 4 + "-12\n" * 20 + "12\n" * 20)
+positive("f8_direct_conversion", '''
+print(f8^(1.0625000000000002), f8^(1.0624999999999998))
+print(f8^(0.0009765625000000002), f8^(0.0009765624999999998))
+''', "1.125 1\n0.001953125 0\n")
+positive("bitwise_precedence", "print(2 + 3 bitand^ 1, bitnot^ 0 bitand^ 3, 8 bitshift^ -1 bitxor^ 3)", "3 3 7\n")
+positive("numeric_side_effects_and_inference", '''
+let^ bump=p^ x:&i32^ -> i32^ { *x := *x+1; return^ *x }
+let^ amount=f^ { let^ n:i128^=-1; return^ n }
+let^ shift=template^f^ x,n { x bitshift^ n }
+var^ x:i32^=0
+print(i64^(bump(&x)), x, shift(8,amount()))
+print(8 bitshift^ amount())
+''', "1 1 4\n4\n")
+negative("bits_on_float", "print(1.0 bitxor^ 2.0)", "bitwise operands must be integers")
+negative("bitnot_on_bool", "print(bitnot^ true^)", "invalid unary operand")
+negative("conversion_arity", "print(i32^())", "numeric conversion expects one argument")
+negative("conversion_string", 'print(i32^("12"))', "numeric conversion requires a number")
+negative("conversion_result_mismatch", "let^ x:i64^=i32^(1)", "conversion result")
+for name, value in (("negative_unsigned", "u8^(-0.5)"), ("too_large", "i8^(128.0)"),
+                    ("too_negative", "i8^(-129.0)"), ("nan", "i32^(f8^(1000.0))"),
+                    ("infinity", "i64^(1.0 / 0.0)"), ("wide_upper", "u128^(340282366920938463463374607431768211456.0)")):
+    runtime_failure("float_cast_" + name, "print(" + value + ")", "floating value out of integer range")
 if os.name == "nt":
     for opt in ("-O0", "-O2"):
         exe = work / ("runtime_regions_" + opt[1:] + ".exe")
@@ -288,6 +365,14 @@ def fp8_nearest(value):
     return sign | code
 
 
+midpoints = [(a+b)/2 for a, b in zip(fp8_positive, fp8_positive[1:])] + [464.0]
+cast_values = [0.0, -0.0, math.inf, -math.inf, math.nan]
+for middle in midpoints:
+    for x in (math.nextafter(middle, -math.inf), middle, math.nextafter(middle, math.inf)):
+        cast_values.extend((x, -x))
+cast_bits = [struct.unpack("<Q", struct.pack("<d", x))[0] for x in cast_values]
+cast_expected = [fp8_nearest(x) for x in cast_values]
+
 expected = []
 for operation in range(4):
     for a in fp8_values:
@@ -303,9 +388,21 @@ c_path.write_text("""
 #include <string.h>
 float rh_f8_decode(uint8_t);
 uint8_t rh_f8_encode(float);
+uint8_t rh_f8_encode_f64(double);
 static const uint32_t decoded[256]={""" + ",".join(map(str, decode_bits)) + "};\n"
-    "static const unsigned char expected[]={" + ",".join(map(str, expected)) + "};\n" + """
+    "static const unsigned char expected[]={" + ",".join(map(str, expected)) + "};\n"
+    "static const uint64_t cast_bits[]={" + ",".join(f"UINT64_C({x})" for x in cast_bits) + "};\n"
+    "static const unsigned char cast_expected[]={" + ",".join(map(str, cast_expected)) + "};\n" + """
 int main(void) {
+    for (unsigned j=0;j<sizeof(cast_expected);j++) {
+        double value;
+        memcpy(&value,&cast_bits[j],8);
+        unsigned actual=rh_f8_encode_f64(value),want=cast_expected[j];
+        if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
+            fprintf(stderr,"FP8 cast mismatch j=%u actual=%u expected=%u",j,actual,want);
+            return 1;
+        }
+    }
     for (unsigned a=0;a<256;a++) {
         float value=rh_f8_decode((uint8_t)a);
         uint32_t bits;
@@ -330,6 +427,16 @@ for opt in ("-O0", "-O2"):
     run([str(exe)])
 passed += 1
 print("PASS fp8_exhaustive_262144_operations", flush=True)
+
+# Keep the new ports executable at both optimization levels in the main suite.
+sys.path.insert(0, str(repo / "bench"))
+from run_workloads import WORKLOADS, oracle as workload_oracle
+for workload, spec in WORKLOADS.items():
+    text = (repo / f"bench/rhat/{workload}.rh").read_text(encoding="utf-8")
+    text, hits = re.subn(r"(?m)(=.*?)(\d+)(\s*# BENCH_N)$",
+                        lambda m: m[1] + str(spec["smoke"]) + m[3], text)
+    assert hits == 1
+    positive("bench_" + workload, text, workload_oracle(workload, spec["smoke"]) + "\n")
 positive("declarations_only", "let^ unused=p^ { print(99) } def^ Empty {}", "")
 positive("ordinary_main", "let^ main=p^ { print(99) } print(1)", "1\n")
 positive("explicit_main", "let^ main=f^ n:i32^ -> i32^ { return^ n+1 } print(main(41))", "42\n")

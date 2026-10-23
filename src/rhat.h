@@ -179,7 +179,8 @@ enum {
   I_REGION,
   I_RELEASE,
   I_PUSH,
-  I_LENGTH
+  I_LENGTH,
+  I_CONVERT
 };
 typedef struct {
   int op;

@@ -1,0 +1,48 @@
+# Port of aardappel/goose bench/goose/particles.goose, Apache-2.0.
+# Scalar AoS variant; six binary32 fields, 24 bytes per particle.
+def^ Particle {
+    self^{ x:f32^, y:f32^, z:f32^, vx:f32^, vy:f32^, vz:f32^ }
+}
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r = x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ n:i64^=100000 # BENCH_N
+var^ ps:Particle[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < n {
+    r := next(r)
+    ps.push(Particle{
+        x=f32^(r % 1024),
+        y=f32^((r bitshift^ -12) % 1024),
+        z=f32^((r bitshift^ -24) % 1024),
+        vx=f32^(i64^((r bitshift^ -36) % 256)-128)/16.0,
+        vy=f32^(i64^((r bitshift^ -44) % 256)-128)/16.0,
+        vz=f32^(i64^((r bitshift^ -52) % 256)-128)/16.0
+    })
+    i := i+1
+}
+var^ step:i32^=0
+while^ step < 200 {
+    i := 0
+    while^ i < n {
+        let^ p=&ps[i]
+        p.vy := p.vy - 0.0625
+        p.x := p.x + p.vx
+        p.y := p.y + p.vy
+        p.z := p.z + p.vz
+        if^ p.y < 0.0 { p.y := -p.y; p.vy := -(p.vy*0.5) }
+        i := i+1
+    }
+    step := step+1
+}
+var^ total:i64^=0
+i := 0
+while^ i < n {
+    total := total+i64^(ps[i].x*16.0)+i64^(ps[i].y*16.0)+i64^(ps[i].z*16.0)
+    i := i+1
+}
+print(n)
+print(total)

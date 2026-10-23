@@ -121,6 +121,17 @@ int main(int argc, char **argv) {
   rh_region_release(&a);
   assert(releases == 4 && a.data == NULL && a.len == 0 && a.capacity == 0);
   assert(queries == 1);
+  /* Cross the old 64 MiB limit through real pushes, retaining stable storage. */
+  RhArray wide;
+  unsigned char chunk[4096] = {42};
+  rh_region_init(&wide);
+  assert(wide.capacity == UINT64_C(1024) * 1024 * 1024);
+  for (unsigned j = 0; j < 16385; j++)
+    rh_array_push(&wide, chunk, sizeof(chunk), 4);
+  assert(wide.len * sizeof(chunk) > UINT64_C(64) * 1024 * 1024);
+  assert(wide.data[0] == 42 && wide.data[UINT64_C(64) * 1024 * 1024] == 42);
+  assert(queries == 1);
+  rh_region_release(&wide);
   puts("page commits verified");
   return 0;
 }

@@ -521,6 +521,28 @@ static Value literal_int(Context *c, Expr *e, Type *expected) {
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
+  if (target->kind == E_NAME) {
+    for (int k = T_U8; k <= T_F64; k++) {
+      if (strcmp(target->text, builtin_name(k)))
+        continue;
+      if (e->args.n != 1)
+        fail(e->loc, "numeric conversion expects one argument");
+      Type *t = type_builtin(p, k);
+      Value v = expression(c, e->args.v[0], NULL);
+      if (!kind_integer(v.type->kind) && !kind_float(v.type->kind))
+        fail(e->loc, "numeric conversion requires a number");
+      if (expected && expected != t)
+        fail(e->loc, "conversion result is '%s', expected '%s'", type_name(t),
+             type_name(expected));
+      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
+                   .type = t};
+      Instr *i = emit(c, I_CONVERT, e->loc);
+      i->dst = out.id;
+      i->a = v.id;
+      i->type = t;
+      return out;
+    }
+  }
   if (target->kind == E_NAME &&
       (!strcmp(target->text, "print") || !strcmp(target->text, "assert"))) {
     bool print = !strcmp(target->text, "print");
@@ -964,7 +986,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       neg.text = fmt("-%s", neg.text);
       return literal_int(c, &neg, expected);
     }
-    Value a = expression(c, e->a, !strcmp(e->text, "-") ? expected : NULL);
+    Value a = expression(c, e->a,
+                         (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
+                             ? expected : NULL);
     if (!strcmp(e->text, "&")) {
       if (!a.addressable)
         fail(e->loc, "cannot borrow a temporary; bind it first");
@@ -984,7 +1008,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
         fail(e->loc, "'*' requires a reference");
       return deref(c, a, e->loc);
     }
-    if ((!strcmp(e->text, "!") && a.type->kind != T_BOOL) ||
+    if ((!strcmp(e->text, "bitnot^") && !kind_integer(a.type->kind)) ||
+        (!strcmp(e->text, "!") && a.type->kind != T_BOOL) ||
         (!strcmp(e->text, "-") &&
          !(kind_float(a.type->kind) ||
            (kind_integer(a.type->kind) && !kind_unsigned(a.type->kind)))))
@@ -1001,6 +1026,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
                  !strcmp(e->text, "&&") || !strcmp(e->text, "||");
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
+    bool shift = !strcmp(e->text, "bitshift^");
+    bool bitwise = !strncmp(e->text, "bit", 3);
     Value a = expression(c, e->a,
                          logic        ? type_builtin(p, T_BOOL)
                          : comparison ? NULL
@@ -1027,8 +1054,10 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return out;
     }
     a = snapshot(c, a, e->loc);
-    Value b = expression(c, e->b, a.type);
-    if (a.type != b.type)
+    Value b = expression(c, e->b, shift ? NULL : a.type);
+    if (bitwise && (!kind_integer(a.type->kind) || !kind_integer(b.type->kind)))
+      fail(e->loc, "bitwise operands must be integers");
+    if (!shift && a.type != b.type)
       fail(e->loc, "binary operands have different types");
     bool cmp = strchr("=!<>", e->text[0]) != NULL;
     if (!kind_integer(a.type->kind) && !kind_float(a.type->kind) &&
@@ -1300,6 +1329,12 @@ static Type *infer_call(Infer *c, Expr *e) {
   if (target->kind == E_FUNCTION) {
     f = target->function;
   } else if (target->kind == E_NAME) {
+    for (int k = T_U8; k <= T_F64; k++)
+      if (!strcmp(target->text, builtin_name(k))) {
+        for (int j = 0; j < e->args.n; j++)
+          infer_expr(c, e->args.v[j], NULL);
+        return type_builtin(c->p, k);
+      }
     if (!strcmp(target->text, "print") || !strcmp(target->text, "assert")) {
       for (int j = 0; j < e->args.n; j++)
         infer_expr(c, e->args.v[j], NULL);
@@ -1411,7 +1446,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                                                                    : NULL;
   }
   case E_UNARY: {
-    Type *a = infer_expr(c, e->a, !strcmp(e->text, "-") ? expected : NULL);
+    Type *a = infer_expr(c, e->a,
+                         (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
+                             ? expected : NULL);
     if (!strcmp(e->text, "!"))
       return type_builtin(c->p, T_BOOL);
     if (!a)
@@ -1433,9 +1470,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                  !strcmp(e->text, "&&") || !strcmp(e->text, "||");
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
     Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
-    Type *b = infer_expr(c, e->b, a);
+    Type *b = infer_expr(c, e->b, !strcmp(e->text, "bitshift^") ? NULL : a);
     if (comparison || logic)
       return type_builtin(c->p, T_BOOL);
+    if (!strcmp(e->text, "bitshift^"))
+      return a;
     return join_types(a, e->a, b, e->b, e->loc);
   }
   default:

@@ -330,7 +330,8 @@ static Expr *primary(Parser *p) {
     e = node(E_RECORD, t->loc);
     entries(p, e, "}", true);
   } else if (!strcmp(t->text, "&") || !strcmp(t->text, "-") ||
-             !strcmp(t->text, "!") || !strcmp(t->text, "*")) {
+             !strcmp(t->text, "!") || !strcmp(t->text, "*") ||
+             !strcmp(t->text, "bitnot^")) {
     e = node(E_UNARY, t->loc);
     e->text = t->text;
     e->a = expr(p, 8);
@@ -391,7 +392,9 @@ static int prec(const char *s) {
     return 3;
   if (!strcmp(s, "+") || !strcmp(s, "-"))
     return 4;
-  if (!strcmp(s, "*") || !strcmp(s, "/") || !strcmp(s, "%"))
+  if (!strcmp(s, "*") || !strcmp(s, "/") || !strcmp(s, "%") ||
+      !strcmp(s, "bitand^") || !strcmp(s, "bitor^") ||
+      !strcmp(s, "bitxor^") || !strcmp(s, "bitshift^"))
     return 5;
   return -1;
 }

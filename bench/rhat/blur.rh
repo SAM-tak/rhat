@@ -1,0 +1,47 @@
+# Port of aardappel/goose bench/goose/blur.goose, Apache-2.0.
+# Flat scalar buffers; borders retain their initial values in each buffer.
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r = x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ blur = p^ src:&u8^[>..], dst:&u8^[>..], w:i64^ {
+    var^ y:i64^=1
+    while^ y < w-1 {
+        var^ x:i64^=1
+        while^ x < w-1 {
+            let^ i=y*w+x
+            let^ s = i32^(src[i-w-1]) + i32^(src[i-w])*2 + i32^(src[i-w+1])
+                   + i32^(src[i-1])*2 + i32^(src[i])*4 + i32^(src[i+1])*2
+                   + i32^(src[i+w-1]) + i32^(src[i+w])*2 + i32^(src[i+w+1])
+            dst[i] := u8^(s bitshift^ -4)
+            x := x+1
+        }
+        y := y+1
+    }
+}
+let^ w:i64^=1024 # BENCH_N
+var^ a:u8^[>..]=[]
+var^ b:u8^[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < w*w {
+    r := next(r)
+    a.push(u8^(r % 256))
+    b.push(0)
+    i := i+1
+}
+var^ pass:i32^=0
+while^ pass < 8 {
+    blur(&a,&b,w)
+    blur(&b,&a,w)
+    pass := pass+1
+}
+var^ total:i64^=0
+i := 0
+while^ i < a.len {
+    total := total+i64^(a[i])
+    i := i+1
+}
+print(w)
+print(total)

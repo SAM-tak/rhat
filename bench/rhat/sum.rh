@@ -1,0 +1,27 @@
+# Port of aardappel/goose bench/goose/sum.goose, Apache-2.0.
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r = x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ n:i64^=1000000 # BENCH_N
+var^ data:i32^[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < n {
+    r := next(r)
+    data.push(i32^(r % 1000))
+    i := i+1
+}
+var^ total:i64^=0
+var^ pass:i64^=0
+while^ pass < 8 {
+    i := 0
+    while^ i < n {
+        total := total + (i64^(data[i]) bitxor^ pass)
+        i := i+1
+    }
+    pass := pass+1
+}
+print(data.len)
+print(total)

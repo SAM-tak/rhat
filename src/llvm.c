@@ -164,6 +164,45 @@ static void instruction(Output *o, Instr *i) {
     a = load(o, i->a);
     b = load(o, i->b);
     r = ++o->tmp;
+    if (!strcmp(i->text, "bitshift^")) {
+      Type *count = slot_type(o, i->b);
+      int wide = b;
+      if (numeric_bits(count->kind) != 128) {
+        wide = ++o->tmp;
+        fprintf(f, "  %%t%d = %s %s %%t%d to i128\n", wide,
+                kind_unsigned(count->kind) ? "zext" : "sext", llvm_type(count), b);
+      }
+      int neg = ++o->tmp, magnitude = ++o->tmp, masked = ++o->tmp, amount = masked;
+      int left = ++o->tmp, right = ++o->tmp, selected = ++o->tmp, large = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp slt i128 %%t%d, 0\n", neg, wide);
+      if (kind_unsigned(count->kind))
+        fprintf(f, "  %%t%d = add i128 %%t%d, 0\n", magnitude, wide);
+      else {
+        int inverse = ++o->tmp;
+        fprintf(f, "  %%t%d = sub i128 0, %%t%d\n", inverse, wide);
+        fprintf(f, "  %%t%d = select i1 %%t%d, i128 %%t%d, i128 %%t%d\n",
+                magnitude, neg, inverse, wide);
+      }
+      /* Mask before shifting, even on the unselected path: LLVM shifts must
+         never receive a count >= the operand width. */
+      fprintf(f, "  %%t%d = and i128 %%t%d, %d\n", masked, magnitude,
+              numeric_bits(t->kind) - 1);
+      if (numeric_bits(t->kind) != 128) {
+        amount = ++o->tmp;
+        fprintf(f, "  %%t%d = trunc i128 %%t%d to %s\n", amount, masked, llvm_type(t));
+      }
+      fprintf(f, "  %%t%d = shl %s %%t%d, %%t%d\n", left, llvm_type(t), a, amount);
+      fprintf(f, "  %%t%d = lshr %s %%t%d, %%t%d\n", right, llvm_type(t), a, amount);
+      fprintf(f, "  %%t%d = select i1 %s, %s %%t%d, %s %%t%d\n", selected,
+              kind_unsigned(count->kind) ? "false" : fmt("%%t%d", neg),
+              llvm_type(t), right, llvm_type(t), left);
+      fprintf(f, "  %%t%d = icmp uge i128 %%t%d, %d\n", large, magnitude,
+              numeric_bits(t->kind));
+      fprintf(f, "  %%t%d = select i1 %%t%d, %s 0, %s %%t%d\n", r, large,
+              llvm_type(t), llvm_type(t), selected);
+      save(o, i->dst, t, fmt("%%t%d", r));
+      break;
+    }
     bool fp = kind_float(t->kind), uns = kind_unsigned(t->kind);
     const char *operand_type = llvm_type(t);
     if (t->kind == T_F8) {
@@ -183,6 +222,12 @@ static void instruction(Output *o, Instr *i) {
       ins = fp ? "fmul" : "mul";
     else if (!strcmp(op, "/") && fp)
       ins = "fdiv";
+    else if (!strcmp(op, "bitand^"))
+      ins = "and";
+    else if (!strcmp(op, "bitor^"))
+      ins = "or";
+    else if (!strcmp(op, "bitxor^"))
+      ins = "xor";
     if (ins)
       fprintf(f, "  %%t%d = %s %s %%t%d, %%t%d\n", r, ins, operand_type, a, b);
     else if (!strcmp(op, "/") || !strcmp(op, "%")) {
@@ -225,6 +270,8 @@ static void instruction(Output *o, Instr *i) {
     r = ++o->tmp;
     if (!strcmp(i->text, "!"))
       fprintf(f, "  %%t%d = xor i1 %%t%d, true\n", r, a);
+    else if (!strcmp(i->text, "bitnot^"))
+      fprintf(f, "  %%t%d = xor %s %%t%d, -1\n", r, llvm_type(t), a);
     else if (t->kind == T_F8)
       fprintf(f, "  %%t%d = xor i8 %%t%d, 128\n", r, a);
     else if (kind_float(t->kind))
@@ -233,6 +280,62 @@ static void instruction(Output *o, Instr *i) {
       fprintf(f, "  %%t%d = sub %s 0, %%t%d\n", r, llvm_type(t), a);
     save(o, i->dst, t, fmt("%%t%d", r));
     break;
+  case I_CONVERT: {
+    Type *source = slot_type(o, i->a);
+    bool src_fp = kind_float(source->kind), dst_fp = kind_float(t->kind);
+    a = load(o, i->a);
+    const char *src_type = llvm_type(source);
+    int src_bits = numeric_bits(source->kind), dst_bits = numeric_bits(t->kind);
+    if (source == t) {
+      save(o, i->dst, t, fmt("%%t%d", a));
+      break;
+    }
+    if (source->kind == T_F8) {
+      b = ++o->tmp;
+      fprintf(f, "  %%t%d = call float @rh_f8_decode(i8 %%t%d)\n", b, a);
+      a = b;
+      src_type = "float";
+      src_bits = 32;
+    }
+    if (t->kind == T_F8) {
+      if (src_bits != 64 || !src_fp) {
+        b = ++o->tmp;
+        fprintf(f, "  %%t%d = %s %s %%t%d to double\n", b,
+                src_fp ? "fpext" : kind_unsigned(source->kind) ? "uitofp" : "sitofp",
+                src_type, a);
+        a = b;
+      }
+      r = ++o->tmp;
+      fprintf(f, "  %%t%d = call i8 @rh_f8_encode_f64(double %%t%d)\n", r, a);
+    } else if (!src_fp && !dst_fp && src_bits == dst_bits) {
+      r = a;
+    } else {
+      const char *op;
+      if (!src_fp && !dst_fp)
+        op = src_bits > dst_bits ? "trunc" : kind_unsigned(source->kind) ? "zext" : "sext";
+      else if (!src_fp)
+        op = kind_unsigned(source->kind) ? "uitofp" : "sitofp";
+      else if (!dst_fp) {
+        int checked = a;
+        if (src_bits != 64) {
+          checked = ++o->tmp;
+          fprintf(f, "  %%t%d = fpext %s %%t%d to double\n", checked, src_type, a);
+        }
+        fprintf(f, "  call void @rh_check_float_cast(double %%t%d, i32 %d, i32 %d, i32 %d)\n",
+                checked, dst_bits, kind_unsigned(t->kind), i->loc.line);
+        op = kind_unsigned(t->kind) ? "fptoui" : "fptosi";
+      } else
+        op = src_bits > dst_bits ? "fptrunc" : "fpext";
+      if (src_fp && dst_fp && src_bits == dst_bits)
+        r = a;
+      else {
+        r = ++o->tmp;
+        fprintf(f, "  %%t%d = %s %s %%t%d to %s\n", r, op, src_type, a, llvm_type(t));
+      }
+    }
+    save(o, i->dst, t, fmt("%%t%d", r));
+    break;
+  }
   case I_CALL:
     fprintf(f, "  call void @%s(", i->callee->symbol);
     if (t->kind != T_VOID)
@@ -352,6 +455,8 @@ void emit_llvm(Program *p, const char *path) {
         "declare i64 @rh_index_integer(ptr, i32, i32, i32)\n"
         "declare float @rh_f8_decode(i8)\ndeclare i8 @rh_f8_encode(float)\n",
         f);
+  fputs("declare i8 @rh_f8_encode_f64(double)\n"
+        "declare void @rh_check_float_cast(double, i32, i32, i32)\n", f);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     fprintf(f, "\n; %s%s%s\ndefine void @%s(", in->self ? in->self->name : "",
@@ -398,7 +503,7 @@ void dump_ir(Program *p, const char *path) {
                          "index.checked",  "call",       "print",
                          "assert",         "label",      "branch",
                          "branch.if",      "return",     "region.construct",
-                         "region.release", "array.push", "length"};
+                         "region.release", "array.push", "length", "numeric.convert"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,

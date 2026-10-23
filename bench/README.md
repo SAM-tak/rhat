@@ -5,10 +5,33 @@ with R^ replacing Goose and freshly measured C++/Rust comparison rows.
 Goose itself is neither built nor measured. Sources are pinned and vendored;
 running the suite requires no network access.
 
-Current coverage is `bintrees` (1/16). See [coverage.md](coverage.md) for
+Current coverage is `bintrees`, `sum`, `blur`, `particles` (4/16). See [coverage.md](coverage.md) for
 the remaining workloads and their missing language/runtime features.
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
+
+The three additional workloads use [run_workloads.py](run_workloads.py) and
+write [workloads_results.md](workloads_results.md) / `workloads_results.json`.
+All C++/Rust comparison rows are freshly measured with R^ in the same session.
+Historical bintrees data remains separate. Original small/medium/large sizes,
+two warm-ups, best of three, checksum checks and alternating order are retained.
+
+```powershell
+. .\scripts\devshell.ps1 -Configuration Release
+python bench/run_workloads.py
+# Quick correctness check against independent Python oracles (not publishable timings):
+python bench/run_workloads.py --sizes smoke --reps 1 --out build/bench-workloads-smoke
+# A selected workload/size, or regenerate the saved report:
+python bench/run_workloads.py --workloads sum --sizes small --out build/bench-sum
+python bench/run_workloads.py --report-only
+```
+
+`sum` uses i32 values and eight scans; `blur` uses two flat u8 buffers and
+16 passes with unchanged borders; `particles` uses 24-byte binary32 AoS
+particles and 200 scalar updates. R^ regions now reserve 1 GiB of virtual
+address space per array; physical pages are committed only as used. This
+allows the original 512 MB large sum input without moving existing elements.
+No shrinking, reusable regions or check-elimination optimization is included.
 
 The original measurements in `results.json` predate the numeric-type
 expansion and mandatory `^` suffix. `rhat/bintrees.rh` now uses the required

@@ -9,6 +9,17 @@ Pinned commit: `94cc64daeabcae6f072dc1fe2b864acda5a001bc`.
 under upstream `bench/`. The upstream Apache-2.0 license is in `LICENSE`.
 The repository had no root NOTICE file at this revision.
 
+Also copied unmodified from this same revision: `cpp/sum.cpp`, `cpp/blur.cpp`,
+`cpp/particles.cpp`, `rust/sum.rs`, `rust/blur_index.rs`, `rust/blur_windows.rs`,
+`rust/particles_scalar.rs`, and `rust/particles.rs`.
+
+`../rhat/sum.rh`, `../rhat/blur.rh`, and `../rhat/particles.rh` are modified
+translations of the corresponding upstream `bench/goose/` workloads.
+Changes: R^ syntax, explicit numeric conversions and pool/width arguments,
+index loops, flat byte buffers for blur and scalar AoS operations for particles.
+RNG sequence, sizes, passes, border behavior and checksums are preserved.
+R^ uses stable OS regions rather than vector reallocations or exact reserve.
+
 `../rhat/bintrees.rh` is a modified translation of upstream
 `bench/goose/bintrees.goose`. Changes: R^ syntax, explicit pool arguments,
 i32 indices instead of nullable relative references, an explicit index

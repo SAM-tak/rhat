@@ -172,12 +172,13 @@ def write_results(data, out, page_update=None):
         lines.append(f"| {row['label']} | {row['best_ms']:.2f} | {row['peak_bytes']/1048576:.2f} |")
     lines += ["", "## Limits", "",
               "The R^ port uses two i32 child indices per node (8 bytes), rather than",
-              "Goose relative references. It reserves/releases a 64 MiB virtual region for",
+              "Goose relative references. These recorded runs reserve/release a 64 MiB virtual region for",
               "each tree; the C++/Rust arena rows reuse their scratch allocation across trees.",
               ("R^ retains runtime bounds checks. Pushes within already committed pages make no OS call."
                if page_update else "Runtime bounds checks and OS-backed array storage are included in these measurements."),
               "There is no R^/MSVC row: MSVC does not consume LLVM IR.",
-              "Other 15 benchmarks are pending; see [coverage.md](coverage.md).",
+              "Three more workloads are now ported; their freshly measured comparisons are in",
+              "[workloads_results.md](workloads_results.md). Twelve workloads remain; see [coverage.md](coverage.md).",
               ("Current R^ samples, sources and hashes are in `page_commit_results.json`; C++/Rust and the original R^ baseline are in `results.json`."
                if page_update else "Raw samples, checksums, source hashes and build commands are in `results.json`."), ""]
     if page_update:
@@ -187,6 +188,7 @@ def write_results(data, out, page_update=None):
                   f"Small: **{before:.2f} ms -> {after:.2f} ms ({before/after:.2f}x faster)**,",
                   "using the same compiler, LLVM IR and Clang flags. See",
                   "[page_commit_results.md](page_commit_results.md) for the full before/after record.", ""]
+    lines[4:4] = ["Additional `sum`, `blur`, `particles` results: [workloads_results.md](workloads_results.md).", ""]
     (out / "results.md").write_text("\n".join(lines), encoding="utf-8")
 
 
