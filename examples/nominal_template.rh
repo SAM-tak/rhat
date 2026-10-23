@@ -14,8 +14,7 @@ def^ File {
 
 let^ nominal = p^ item:Named { item.greet() }
 
-template^
-let^ structural = p^ item { print(item.name()) }
+let^ structural = template^p^ item { print(item.name()) }
 
 var^ person = Person.new()
 let^ file = File.new()

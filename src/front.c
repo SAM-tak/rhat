@@ -252,8 +252,7 @@ static Spec *spec(Parser *p) {
   return s;
 }
 static Expr *expr(Parser *p, int min);
-static Function *function(Parser *p, char *name, Def *owner, bool templ,
-                          bool abstr);
+static Function *function(Parser *p, char *name, Def *owner, bool abstr);
 static Expr *node(int k, Loc l) {
   Expr *e = mem(sizeof(*e));
   e->kind = k;
@@ -334,11 +333,12 @@ static Expr *primary(Parser *p) {
     p->header = header;
     need(p, ":");
     e = if_tail(p, condition, t->loc);
-  } else if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^")) {
+  } else if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^") ||
+             !strcmp(t->text, "template^")) {
     p->at--;
     e = node(E_FUNCTION, t->loc);
     e->function = function(p, fmt("<anonymous@%d:%d>", t->loc.line, t->loc.col),
-                           NULL, false, false);
+                           NULL, false);
   } else if (t->kind == TOK_WORD) {
     e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
     e->text = t->text;
@@ -458,12 +458,12 @@ static void block(Parser *p, List *out) {
   }
   need(p, "}");
 }
-static Function *function(Parser *p, char *name, Def *owner, bool templ,
-                          bool abstr) {
+static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
   Function *f = mem(sizeof(*f));
   f->loc = tok(p)->loc;
   f->name = name;
   f->owner = owner;
+  bool templ = take(p, "template^");
   f->templ = templ;
   f->abstract = abstr;
   if (take(p, "p^"))
@@ -548,23 +548,20 @@ static void definition(Parser *p) {
       }
       continue;
     }
-    bool priv = false, abstr = false, over = false, templ = false;
-    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") ||
-           is(p, "template^")) {
+    bool priv = false, abstr = false, over = false;
+    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^")) {
       if (take(p, "private^"))
         priv = true;
       else if (take(p, "abstract^"))
         abstr = true;
-      else if (take(p, "override^"))
-        over = true;
       else {
         next(p);
-        templ = true;
+        over = true;
       }
     }
     char *name = word(p);
     need(p, abstr ? ":" : "=");
-    Function *f = function(p, name, d, templ, abstr);
+    Function *f = function(p, name, d, abstr);
     f->priv = priv;
     f->override = over;
     add(&d->own_methods, f);
@@ -607,21 +604,19 @@ void parse(Program *p, const char *path) {
                  !strcmp(initializer->text, "p^") ||
                  !strcmp(initializer->text, "template^"));
     }
-    if (!binding && !is(&q, "template^")) {
+    if (!binding) {
       add(&p->entry->body, stmt(&q));
       continue;
     }
     int binding_start = q.at;
-    bool templ = take(&q, "template^");
     need(&q, "let^");
     char *name = word(&q);
     need(&q, "=");
-    templ = take(&q, "template^") || templ;
-    Function *parsed_function = function(&q, name, NULL, templ, false);
+    Function *parsed_function = function(&q, name, NULL, false);
     /* A called literal initializes a value; it does not declare a named
      * function. */
-    if (!templ && (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-                   prec(tok(&q)->text) >= 0)) {
+    if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
+        prec(tok(&q)->text) >= 0) {
       q.at = binding_start;
       add(&p->entry->body, stmt(&q));
       continue;

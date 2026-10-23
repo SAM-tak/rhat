@@ -176,10 +176,39 @@ let^ v=Value.new()
 print(v.read())
 """, "42\n")
 positive("template_inferred_return", """
-template^ let^ sum=f^ n { if^ n=0: 0 el^: n + this^(n-1); }
+let^ sum=template^f^ n { if^ n=0: 0 el^: n + this^(n-1); }
 let^ large:i64=20
 print(sum(10),sum(large))
 """, "55 210\n")
+positive("anonymous_templates", """
+def^ Named { name=f^self^ { "anonymous" } }
+template^p^ item { print(item.name()) }(Named.new())
+print(template^f^ n { if^ n=0: 1 el^: n*this^(n-1); }(5))
+let^ value=template^f^ n { n+1 }(41)
+print(value)
+let^ run=p^ { template^p^ n { print(n) }(7) }
+run()
+""", "anonymous\n120\n42\n7\n")
+positive("template_methods", """
+def^ Printer {
+    show=template^p^ self^,item { print(item.name()) }
+    twice=template^f^ self^,n { n+n }
+}
+def^ Item { name=f^self^ { "method" } }
+var^ printer=Printer.new()
+printer.show(Item.new())
+let^ large:i64=21
+print(printer.twice(large))
+""", "method\n42\n")
+negative("template_old_declaration", """
+template^ let^ use=p^ x {}
+""", "expected 'f^'")
+negative("template_old_method", """
+def^ A { template^ use=p^ self^,x {} }
+""", "expected '='")
+negative("template_requires_function", """
+let^ value=template^42
+""", "expected 'f^'")
 positive("recursive_region_cleanup", """
 let^ sum=f^ n:i32 -> i32 {
     var^ scratch:i32[>..]=[n]
@@ -349,19 +378,19 @@ use(File.new())
 """, "requires nominal 'Named'")
 negative("template_missing_member", """
 def^ Empty {}
-template^ let^ use=p^ x { print(x.name()) }
+let^ use=template^p^ x { print(x.name()) }
 use(Empty.new())
 """, "has no method 'name'")
 negative("template_keeps_nominal", """
 def^ A {}
 def^ B {}
-template^ let^ use=p^ x:A {}
+let^ use=template^p^ x:A {}
 use(B.new())
 """, "requires nominal 'A'")
 negative("private", 'def^ A { self^{ private^ x:i32=1 } }\nprint(A.new().x)', "private member")
 negative("template_private", """
 def^ A { self^{ private^ x:i32=1 } }
-template^ let^ use=p^ a { print(a.x) }
+let^ use=template^p^ a { print(a.x) }
 use(A.new())
 """, "private member")
 negative("derived_private", """
