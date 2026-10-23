@@ -10,6 +10,11 @@ the remaining workloads and their missing language/runtime features.
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
 
+The saved results predate the numeric-type expansion and mandatory `^`
+suffix. `rhat/bintrees.rh` now uses the required suffix; the original source
+is available in commit `0c5eb3f`. The saved measurements and hashes remain
+unchanged. Re-running measures the compiler/runtime currently selected.
+
 From the repository root on Windows x64 with Visual Studio C++/Clang,
 Python 3 and Rust installed:
 

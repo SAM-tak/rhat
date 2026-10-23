@@ -15,7 +15,7 @@ Clang でコンパイル・リンクします。Windows x86-64 で検証して�
 
 ## ビルドと実行
 
-Windows では Visual Studio の C++ ビルド環境、Clang ツール、CMake、Python 3 が必要です。
+Windows では Visual Studio の C++ ビルド環境、Clang ツール（compiler-rt builtins を含む）、CMake、Python 3 が必要です。
 次のスクリプトは PATH または Visual Studio インストール先から Clang を探します。
 
 ```powershell
@@ -69,13 +69,13 @@ rhat run examples/regions.rh
 
 ```lhat
 def^ A {
-    self^{ a : i32 = 0 }
+    self^{ a : i32^ = 0 }
 }
 def^ B {
-    self^{ abstract^ b : i32 }
+    self^{ abstract^ b : i32^ }
 }
 def^ C : A, B {
-    self^{ c : i32 = 12, b : i32 = 42 }
+    self^{ c : i32^ = 12, b : i32^ = 42 }
 }
 
 let^ value = C.new()
@@ -93,6 +93,7 @@ print(value.a, value.b, value.c)
 - [examples/nominal_template.rh](examples/nominal_template.rh): 明示的な公称の適合、デフォルト実装、private、構造によるテンプレート検査。
 - [examples/regions.rh](examples/regions.rh): 呼び出し側への配列構築、伸長後も有効な参照、スコープでの領域回収。
 - [examples/factorial.rh](examples/factorial.rh): 無名関数の即時呼び出し、返り値の推論、`if^` 式、`this^` による再帰。10! を `i64^` で計算します。
+- [examples/numeric.rh](examples/numeric.rh): 組み込み型と同じ通常識別子、128ビット整数、低精度浮動小数点。
 
 ## 実装されている範囲
 
@@ -103,8 +104,11 @@ print(value.a, value.b, value.c)
   合成先の配置を保持して関数を特殊化し、基底型へのポインタキャストは行いません。
 - `let^ name = template^f^ ...` / `template^p^ ...`。`template^` は関数・手続きリテラルの修飾子で、無名のままでも呼び出せます。無注釈引数には呼び出し時の実型を代入し、本体全体を検査します。
   型注釈がある引数はテンプレートでも公称の制約を守ります。
-- `bool`, `u8`, `i32`, `i64`, `f64`, `string^`、固定長配列 `T[N]`、伸長配列 `T[>..]`、参照 `&T`。
-  基本型の末尾の `^` は省略可能です。
+- `bool^`, `string^`, `void^`、符号なし整数 `u8^` / `u16^` / `u32^` / `u64^` / `u128^`、
+  符号付き整数 `i8^` / `i16^` / `i32^` / `i64^` / `i128^`、浮動小数点 `f8^` / `f16^` / `f32^` / `f64^`。
+  組み込み型の末尾の `^` は必須です。通常の `bool` や `u8` はユーザー定義名として使用できます。
+  `f8^` は E4M3FN、`f16^` / `f32^` / `f64^` は IEEE binary16 / binary32 / binary64 です。
+  固定長配列 `T[N]`、伸長配列 `T[>..]`、参照 `&T` にもこれらの型を使えます。
 - `Type.new()`、`Type{ field = expr }`、型の分かる位置の `{ field = expr }`、配列リテラル `[ ... ]`。
 - `let^`, `var^`, `:=`, `return^`, ブロック、`if^ ... { ... } else^ { ... }`, `while^`。
 - `f^`・`p^` の返り値の型推論、式一つの `f^` の暗黙の返却、`if^ condition: value el^: value;`。
@@ -127,6 +131,8 @@ Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
 演算子の多重定義、動的ディスパッチ、任意の C FFI、L^ バインド生成は未実装です。
 再帰の返り値に型を決める根拠がない場合は、明示的な返り値型が必要です。
 `number^` は未実装であり、数値の表現は `i64^` などで指定します。
+`f128^` は binary128 の演算・入出力を含む対応を保留しています。別の精度への置き換えは行いません。
+ビット演算と型付き数値同士の明示的な変換は、引き続き未実装です。
 未対応の操作を動的実行へ逃がすフォールバックはありません。
 
 伸長配列は固定サイズ・参照なしの要素に限定し、縮小・削除・全体への再代入を提供していません。

@@ -1,13 +1,13 @@
 def^ A {
-    self^{ a : i32 = 0 }
+    self^{ a : i32^ = 0 }
 }
 
 def^ B {
-    self^{ abstract^ b : i32 }
+    self^{ abstract^ b : i32^ }
 }
 
 def^ C : A, B {
-    self^{ c : i32 = 12, b : i32 = 42 }
+    self^{ c : i32^ = 12, b : i32^ = 42 }
 }
 
 let^ value = C.new()

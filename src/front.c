@@ -85,6 +85,14 @@ static char *word(Parser *p) {
     fail(t->loc, "expected a name");
   return t->text;
 }
+static char *decl_word(Parser *p) {
+  Loc loc = tok(p)->loc;
+  char *name = word(p);
+  for (int k = 0; k < T_STRUCT; k++)
+    if (!strcmp(name, builtin_name(k)))
+      fail(loc, "built-in type name '%s' cannot be redeclared", name);
+  return name;
+}
 static char *slice(const char *s, size_t n) {
   char *r = mem(n + 1);
   memcpy(r, s, n);
@@ -411,7 +419,7 @@ static Stmt *stmt(Parser *p) {
   if (take(p, "let^") || take(p, "var^")) {
     s->kind = S_BIND;
     s->mut = !strcmp(t->text, "var^");
-    s->name = word(p);
+    s->name = decl_word(p);
     if (take(p, ":"))
       s->spec = spec(p);
     need(p, "=");
@@ -476,7 +484,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
     do {
       Param *a = mem(sizeof(*a));
       a->loc = tok(p)->loc;
-      a->name = word(p);
+      a->name = decl_word(p);
       a->self = !strcmp(a->name, "self^");
       if (a->self && (!owner || f->params.n))
         fail(a->loc, "self^ must be the first parameter of a method");
@@ -507,7 +515,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
 static void definition(Parser *p) {
   Def *d = mem(sizeof(*d));
   d->loc = tok(p)->loc;
-  d->name = word(p);
+  d->name = decl_word(p);
   d->id = p->p->defs.n;
   add(&p->p->defs, d);
   if (take(p, ":")) {
@@ -537,7 +545,7 @@ static void definition(Parser *p) {
             f->abstract = true;
           }
         }
-        f->name = word(p);
+        f->name = decl_word(p);
         need(p, ":");
         f->spec = spec(p);
         if (take(p, "="))
@@ -559,7 +567,7 @@ static void definition(Parser *p) {
         over = true;
       }
     }
-    char *name = word(p);
+    char *name = decl_word(p);
     need(p, abstr ? ":" : "=");
     Function *f = function(p, name, d, abstr);
     f->priv = priv;
@@ -610,13 +618,12 @@ void parse(Program *p, const char *path) {
     }
     int binding_start = q.at;
     need(&q, "let^");
-    char *name = word(&q);
+    char *name = decl_word(&q);
     need(&q, "=");
     Function *parsed_function = function(&q, name, NULL, false);
     /* A called literal initializes a value; it does not declare a named
      * function. */
-    if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-        prec(tok(&q)->text) >= 0) {
+    if (is(&q, "(") || is(&q, ".") || is(&q, "[") || prec(tok(&q)->text) >= 0) {
       q.at = binding_start;
       add(&p->entry->body, stmt(&q));
       continue;

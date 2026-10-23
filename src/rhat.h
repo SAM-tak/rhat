@@ -110,8 +110,18 @@ enum {
   T_VOID,
   T_BOOL,
   T_U8,
+  T_U16,
+  T_U32,
+  T_U64,
+  T_U128,
+  T_I8,
+  T_I16,
   T_I32,
   T_I64,
+  T_I128,
+  T_F8,
+  T_F16,
+  T_F32,
   T_F64,
   T_STRING,
   T_STRUCT,
@@ -138,6 +148,13 @@ Type *type_spec(Program *p, Spec *s);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
 char *type_name(Type *t);
+const char *builtin_name(int kind);
+bool kind_integer(int kind);
+bool kind_unsigned(int kind);
+bool kind_float(int kind);
+int numeric_bits(int kind);
+bool integer_fits(const char *text, int kind);
+char *float_constant(const char *text, int kind, Loc loc);
 bool derives(Def *d, Def *base);
 
 /* The IR contains typed storage and explicit construction/region operations. */

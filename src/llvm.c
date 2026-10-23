@@ -7,11 +7,25 @@ char *llvm_type(Type *t) {
   case T_BOOL:
     return "i1";
   case T_U8:
+  case T_I8:
+  case T_F8:
     return "i8";
+  case T_U16:
+  case T_I16:
+    return "i16";
+  case T_U32:
   case T_I32:
     return "i32";
+  case T_U64:
   case T_I64:
     return "i64";
+  case T_U128:
+  case T_I128:
+    return "i128";
+  case T_F16:
+    return "half";
+  case T_F32:
+    return "float";
   case T_F64:
     return "double";
   case T_STRING:
@@ -46,10 +60,12 @@ static void save(Output *o, int dst, Type *t, const char *operand) {
 static int integer64(Output *o, int id) {
   Type *t = slot_type(o, id);
   int v = load(o, id);
-  if (t->kind != T_I64) {
+  if (numeric_bits(t->kind) != 64) {
     int out = ++o->tmp;
     fprintf(o->f, "  %%t%d = %s %s %%t%d to i64\n", out,
-            t->kind == T_U8 || t->kind == T_BOOL ? "zext" : "sext",
+            numeric_bits(t->kind) > 64                    ? "trunc"
+            : kind_unsigned(t->kind) || t->kind == T_BOOL ? "zext"
+                                                          : "sext",
             llvm_type(t), v);
     return out;
   }
@@ -67,13 +83,7 @@ static void instruction(Output *o, Instr *i) {
   int a, b, r;
   switch (i->op) {
   case I_CONST:
-    if (t->kind == T_F64) {
-      double d = strtod(i->text, NULL);
-      uint64_t bits;
-      memcpy(&bits, &d, sizeof(bits));
-      save(o, i->dst, t, fmt("0x%016llX", (unsigned long long)bits));
-    } else
-      save(o, i->dst, t, i->text);
+    save(o, i->dst, t, i->text);
     break;
   case I_STRING:
     save(o, i->dst, t,
@@ -102,7 +112,17 @@ static void instruction(Output *o, Instr *i) {
               i->dst, llvm_type(t), i->a, i->label);
       break;
     }
-    a = integer64(o, i->b);
+    if (kind_unsigned(slot_type(o, i->b)->kind) ||
+        numeric_bits(slot_type(o, i->b)->kind) > 64) {
+      a = ++o->tmp;
+      Type *index_type = slot_type(o, i->b);
+      fprintf(f,
+              "  %%t%d = call i64 @rh_index_integer(ptr %%p%d, i32 %d, i32 %d, "
+              "i32 %d)\n",
+              a, i->b, numeric_bits(index_type->kind),
+              kind_unsigned(index_type->kind), i->loc.line);
+    } else
+      a = integer64(o, i->b);
     if (t->kind == T_GROW)
       fprintf(f,
               "  %%p%d = call ptr @rh_array_at(ptr %%p%d, i64 %%t%d, i64 %zu, "
@@ -144,7 +164,16 @@ static void instruction(Output *o, Instr *i) {
     a = load(o, i->a);
     b = load(o, i->b);
     r = ++o->tmp;
-    bool fp = t->kind == T_F64, uns = t->kind == T_U8;
+    bool fp = kind_float(t->kind), uns = kind_unsigned(t->kind);
+    const char *operand_type = llvm_type(t);
+    if (t->kind == T_F8) {
+      int x = ++o->tmp, y = ++o->tmp;
+      fprintf(f, "  %%t%d = call float @rh_f8_decode(i8 %%t%d)\n", x, a);
+      fprintf(f, "  %%t%d = call float @rh_f8_decode(i8 %%t%d)\n", y, b);
+      a = x;
+      b = y;
+      operand_type = "float";
+    }
     const char *op = i->text, *ins = NULL;
     if (!strcmp(op, "+"))
       ins = fp ? "fadd" : "add";
@@ -155,11 +184,15 @@ static void instruction(Output *o, Instr *i) {
     else if (!strcmp(op, "/") && fp)
       ins = "fdiv";
     if (ins)
-      fprintf(f, "  %%t%d = %s %s %%t%d, %%t%d\n", r, ins, llvm_type(t), a, b);
+      fprintf(f, "  %%t%d = %s %s %%t%d, %%t%d\n", r, ins, operand_type, a, b);
     else if (!strcmp(op, "/") || !strcmp(op, "%")) {
-      fprintf(f, "  %%t%d = call %s @rh_%s_%s(%s %%t%d, %s %%t%d, i32 %d)\n", r,
-              llvm_type(t), !strcmp(op, "/") ? "div" : "rem", type_name(t),
-              llvm_type(t), a, llvm_type(t), b, i->loc.line);
+      fprintf(f,
+              "  call void @rh_check_division(ptr %%p%d, ptr %%p%d, i32 %d, "
+              "i32 %d, i32 %d, i32 %d)\n",
+              i->a, i->b, numeric_bits(t->kind), uns, !strcmp(op, "%"),
+              i->loc.line);
+      fprintf(f, "  %%t%d = %s%s %s %%t%d, %%t%d\n", r, uns ? "u" : "s",
+              !strcmp(op, "/") ? "div" : "rem", operand_type, a, b);
     } else {
       const char *pred = NULL;
       if (!strcmp(op, "=") || !strcmp(op, "=="))
@@ -177,7 +210,12 @@ static void instruction(Output *o, Instr *i) {
       if (!pred)
         fail(i->loc, "internal: unknown binary operator");
       fprintf(f, "  %%t%d = %s %s %s %%t%d, %%t%d\n", r, fp ? "fcmp" : "icmp",
-              pred, llvm_type(t), a, b);
+              pred, operand_type, a, b);
+    }
+    if (t->kind == T_F8 && slot_type(o, i->dst)->kind != T_BOOL) {
+      int encoded = ++o->tmp;
+      fprintf(f, "  %%t%d = call i8 @rh_f8_encode(float %%t%d)\n", encoded, r);
+      r = encoded;
     }
     save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     break;
@@ -187,8 +225,10 @@ static void instruction(Output *o, Instr *i) {
     r = ++o->tmp;
     if (!strcmp(i->text, "!"))
       fprintf(f, "  %%t%d = xor i1 %%t%d, true\n", r, a);
-    else if (t->kind == T_F64)
-      fprintf(f, "  %%t%d = fneg double %%t%d\n", r, a);
+    else if (t->kind == T_F8)
+      fprintf(f, "  %%t%d = xor i8 %%t%d, 128\n", r, a);
+    else if (kind_float(t->kind))
+      fprintf(f, "  %%t%d = fneg %s %%t%d\n", r, llvm_type(t), a);
     else
       fprintf(f, "  %%t%d = sub %s 0, %%t%d\n", r, llvm_type(t), a);
     save(o, i->dst, t, fmt("%%t%d", r));
@@ -219,15 +259,27 @@ static void instruction(Output *o, Instr *i) {
                 "extractvalue { ptr, i64 } %%t%d, 1\n  call void "
                 "@rh_print_string(ptr %%t%d, i64 %%t%d)\n",
                 b, a, r, a, b, r);
-      } else if (ty->kind == T_F64) {
+      } else if (kind_float(ty->kind)) {
         a = load(o, id);
+        if (ty->kind == T_F8) {
+          int decoded = ++o->tmp;
+          fprintf(f, "  %%t%d = call float @rh_f8_decode(i8 %%t%d)\n", decoded,
+                  a);
+          a = decoded;
+        }
+        if (ty->kind != T_F64) {
+          b = ++o->tmp;
+          fprintf(f, "  %%t%d = fpext %s %%t%d to double\n", b,
+                  ty->kind == T_F16 ? "half" : "float", a);
+          a = b;
+        }
         fprintf(f, "  call void @rh_print_f64(double %%t%d)\n", a);
       } else if (ty->kind == T_BOOL) {
         a = integer64(o, id);
         fprintf(f, "  call void @rh_print_bool(i64 %%t%d)\n", a);
       } else {
-        a = integer64(o, id);
-        fprintf(f, "  call void @rh_print_i64(i64 %%t%d)\n", a);
+        fprintf(f, "  call void @rh_print_integer(ptr %%p%d, i32 %d, i32 %d)\n",
+                id, numeric_bits(ty->kind), kind_unsigned(ty->kind));
       }
     }
     fputs("  call void @rh_print_newline()\n", f);
@@ -295,13 +347,11 @@ void emit_llvm(Program *p, const char *path) {
         "i64)\ndeclare void @rh_print_newline()\ndeclare void "
         "@rh_print_space()\n",
         f);
-  const char *types[] = {"i32", "i64", "u8"};
-  const char *ll[] = {"i32", "i64", "i8"};
-  for (int j = 0; j < 3; j++)
-    fprintf(f,
-            "declare %s @rh_div_%s(%s, %s, i32)\ndeclare %s @rh_rem_%s(%s, %s, "
-            "i32)\n",
-            ll[j], types[j], ll[j], ll[j], ll[j], types[j], ll[j], ll[j]);
+  fputs("declare void @rh_print_integer(ptr, i32, i32)\n"
+        "declare void @rh_check_division(ptr, ptr, i32, i32, i32, i32)\n"
+        "declare i64 @rh_index_integer(ptr, i32, i32, i32)\n"
+        "declare float @rh_f8_decode(i8)\ndeclare i8 @rh_f8_encode(float)\n",
+        f);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     fprintf(f, "\n; %s%s%s\ndefine void @%s(", in->self ? in->self->name : "",

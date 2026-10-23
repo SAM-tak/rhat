@@ -1,9 +1,12 @@
 """End-to-end semantic, provenance, IR, codegen and runtime checks."""
 import argparse
+import bisect
+import math
 import os
 import pathlib
 import re
 import subprocess
+import struct
 import sys
 
 parser = argparse.ArgumentParser()
@@ -71,9 +74,9 @@ def runtime_failure(name, text, diagnostic):
 
 def layout_ir(ir, ll):
     assert "type C size=12 align=4" in ir
-    assert "+0 A.a : i32" in ir
-    assert "+4 B.b : i32" in ir
-    assert "+8 C.c : i32" in ir
+    assert "+0 A.a : i32^" in ir
+    assert "+4 B.b : i32^" in ir
+    assert "+8 C.c : i32^" in ir
     assert "define void @rh_fn_0" in ll
 
 
@@ -92,7 +95,7 @@ def top_cleanup_ir(ir, ll):
 
 
 def factorial_ir(ir, ll):
-    assert "<anonymous@1:7> -> i64" in ir
+    assert "<anonymous@1:7> -> i64^" in ir
     body = ir.split("function rh_fn_1", 1)[1]
     assert "target=rh_fn_1" in body
     assert "branch.if" in body
@@ -100,19 +103,218 @@ def factorial_ir(ir, ll):
 
 
 positive("empty_program", "", "")
+positive("numeric_example", (repo / "examples/numeric.rh").read_text(),
+         "true 42\n-128 340282366920938463463374607431768211455 "
+         "-170141183460469231731687303715884105728\n"
+         "1.125 1.0009765625 1.0000001192092896\n")
+
+# Exercise the generated arithmetic, full-width formatting and compiler-rt's
+# i128 division ABI, including values that cannot travel through i64/double.
+for signed in (False, True):
+    for bits in (8, 16, 32, 64, 128):
+        name = ("i" if signed else "u") + str(bits)
+        kind = name + "^"
+        maximum = 2 ** (bits - int(signed)) - 1
+        minimum = -(2 ** (bits - 1)) if signed else 0
+        wrap = minimum if signed else 0
+        positive("integer_" + name, f"""
+let^ high:{kind}={maximum}
+let^ low:{kind}={minimum}
+let^ one:{kind}=1
+let^ seven:{kind}=7
+let^ two:{kind}=2
+let^ wrapped=high+one
+assert(wrapped={wrap})
+let^ product=high*two
+assert(product={-2 if signed else maximum-1})
+print(low,high,high/seven,high%seven)
+""", f"{minimum} {maximum} {maximum//7} {maximum%7}\n")
+        negative("integer_overflow_" + name, f"let^ n:{kind}={maximum+1}", "does not fit")
+        negative("integer_underflow_" + name, f"let^ n:{kind}={minimum-1}", "does not fit")
+        runtime_failure("division_zero_" + name,
+                        f"let^ n:{kind}=7; let^ z:{kind}=0; print(n/z)", "invalid integer division")
+        if signed:
+            runtime_failure("division_overflow_" + name,
+                            f"let^ n:{kind}={minimum}; let^ d:{kind}=-1; print(n/d)",
+                            "invalid integer division")
+            runtime_failure("remainder_overflow_" + name,
+                            f"let^ n:{kind}={minimum}; let^ d:{kind}=-1; print(n%d)",
+                            "invalid integer remainder")
+
+for name in ("void", "bool", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f8", "f16", "f32", "f64", "string"):
+    negative("no_bare_type_" + name, f"let^ x:{name}=0", "unknown type")
+    negative("reserved_type_" + name, f"def^ {name}^ {{}}", "cannot be redeclared")
+
+positive("plain_type_names_are_user_symbols", """
+def^ bool { self^{ n:i8^=7 } }
+def^ u8 { self^{ n:u16^=8 } }
+def^ string { self^{ text:string^="user" } }
+let^ i32=f^ f64:i32^ { f64+1 }
+let^ f16=41
+print(bool.new().n,u8.new().n,string.new().text,i32(f16))
+""", "7 8 user 42\n")
+positive("mixed_numeric_layout", """
+def^ MixedNumeric {
+    self^{ first:u8^=1, wide:i128^=170141183460469231731687303715884105727,
+           half:f16^=1.5, single:f32^=2.25, counter:u64^=18446744073709551615 }
+}
+var^ rows:MixedNumeric[>..]=[]
+rows.push(MixedNumeric.new())
+rows.push(MixedNumeric{first=2,wide=-170141183460469231731687303715884105728})
+print(rows[0].first,rows[0].wide,rows[0].half,rows[0].single,rows[0].counter)
+print(rows[1].first,rows[1].wide)
+""", "1 170141183460469231731687303715884105727 1.5 2.25 18446744073709551615\n"
+         "2 -170141183460469231731687303715884105728\n",
+         lambda ir, ll: ("type MixedNumeric size=48 align=16" in ir) or
+         (_ for _ in ()).throw(AssertionError(ir)))
+
+for name in ("i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128"):
+    positive("index_" + name, f"let^ a=[10,20]; let^ i:{name}^=1; print(a[i])", "20\n")
+runtime_failure("wide_unsigned_index", "let^ a=[1]; let^ i:u128^=18446744073709551616; print(a[i])", "out of bounds")
+runtime_failure("high_u64_index", "let^ a=[1]; let^ i:u64^=18446744073709551615; print(a[i])", "out of bounds")
+runtime_failure("negative_i128_index", "let^ a=[1]; let^ i:i128^=-1; print(a[i])", "out of bounds")
+
+for kind in ("f8^", "f16^", "f32^", "f64^"):
+    positive("float_ops_" + kind[:-1], f"""
+let^ add=template^f^ a,b {{ a+b }}
+let^ negative=f^ x:{kind} {{ -x }}
+let^ a:{kind}=1.5
+let^ b:{kind}=0.5
+var^ values:{kind}[>..]=[a,b]
+values.push(add(a,b))
+print(a+b,a-b,a*b,a/b,negative(b),values[2])
+assert(a>b and^ b<a and^ a>=a and^ b<=b and^ a!=b)
+let^ zero:{kind}=0.0
+let^ nan=zero/zero
+assert(nan!=nan)
+assert(!(nan=nan))
+""", "2 1 0.75 3 -0.5 2\n")
+
+positive("f8_rounding", """
+let^ even:f8^=1.0625
+let^ above:f8^=1.0625000000000000000000000000000000001
+let^ odd:f8^=1.1875
+let^ tiny:f8^=0.0009765625
+let^ tiny_above:f8^=0.000976562500000000000000000000001
+let^ maximum:f8^=448
+let^ doubled=maximum+maximum
+assert(doubled!=doubled)
+print(even,above,odd,tiny,tiny_above)
+""", "1 1.125 1.25 0 0.001953125\n")
+positive("f16_rounding", """
+let^ even:f16^=1.00048828125
+let^ above:f16^=1.000488281250000000000000000000000001
+let^ odd:f16^=1.00146484375
+let^ tiny:f16^=0.0000000298023223876953125
+let^ tiny_above:f16^=0.0000000298023223876953125000000000001
+print(even,above,odd,tiny,tiny_above)
+""", "1 1.0009765625 1.001953125 0 5.9604644775390625e-08\n")
+positive("f32_rounding", """
+let^ n:f32^=16777217
+let^ x:f32^=1.000000059604644775390625
+let^ y:f32^=1.000000059604644775390625000000001
+print(n,x,y)
+""", "16777216 1 1.0000001192092896\n")
+positive("float_literal_conditional", """
+let^ choose=f^ x:f16^ { if^ x>0: 0.5 el^: x; }
+let^ n:f16^=-2.0
+print(choose(n))
+""", "-2\n")
+negative("f8_literal_overflow", "let^ n:f8^=465.0", "does not fit 'f8^'")
+negative("f16_literal_overflow", "let^ n:f16^=65520.0", "does not fit 'f16^'")
+negative("f32_literal_overflow", "let^ n:f32^=4e38", "does not fit 'f32^'")
+negative("f64_literal_overflow", "let^ n:f64^=1e309", "does not fit 'f64^'")
+negative("f128_pending", "let^ n:f128^=1.0", "f128^ is pending")
+
+# Independent nearest-neighbour FP8 oracle. Compare the software codec and
+# all four operations over every pair of the 256 encodings, including zeros,
+# subnormals and NaNs. The oracle enumerates values instead of using the
+# runtime's exponent/shift/guard-bit algorithm.
+def fp8_value(code):
+    exponent, fraction = (code >> 3) & 15, code & 7
+    value = (fraction / 512 if exponent == 0 else
+             math.ldexp(1 + fraction / 8, exponent - 7))
+    if exponent == 15 and fraction == 7:
+        value = math.nan
+    return -value if code & 128 else value
+
+
+fp8_values = [fp8_value(n) for n in range(256)]
+fp8_positive = fp8_values[:127]
+
+
+def fp8_nearest(value):
+    if not math.isfinite(value) or abs(value) > 464:
+        return 127
+    sign = 128 if math.copysign(1, value) < 0 else 0
+    value = abs(value)
+    hi = bisect.bisect_left(fp8_positive, value)
+    if hi == 0:
+        code = 0
+    elif hi == 127:
+        code = 126
+    else:
+        lo = hi - 1
+        dl, dh = value - fp8_positive[lo], fp8_positive[hi] - value
+        code = lo if dl < dh or (dl == dh and lo % 2 == 0) else hi
+    return sign | code
+
+
+expected = []
+for operation in range(4):
+    for a in fp8_values:
+        for b in fp8_values:
+            value = (a + b if operation == 0 else a - b if operation == 1 else
+                     a * b if operation == 2 else a / b if b != 0 else math.nan)
+            expected.append(fp8_nearest(value))
+decode_bits = [struct.unpack("<I", struct.pack("<f", value))[0] for value in fp8_values]
+c_path = work / "fp8_exhaustive.c"
+c_path.write_text("""
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+float rh_f8_decode(uint8_t);
+uint8_t rh_f8_encode(float);
+static const uint32_t decoded[256]={""" + ",".join(map(str, decode_bits)) + "};\n"
+    "static const unsigned char expected[]={" + ",".join(map(str, expected)) + "};\n" + """
+int main(void) {
+    for (unsigned a=0;a<256;a++) {
+        float value=rh_f8_decode((uint8_t)a);
+        uint32_t bits;
+        memcpy(&bits,&value,4);
+        if (bits!=decoded[a]) return 1;
+    }
+    for (unsigned op=0;op<4;op++) for (unsigned a=0;a<256;a++) for (unsigned b=0;b<256;b++) {
+        volatile float x=rh_f8_decode((uint8_t)a),y=rh_f8_decode((uint8_t)b);
+        float result=op==0?x+y:op==1?x-y:op==2?x*y:x/y;
+        unsigned actual=rh_f8_encode(result), want=expected[op*65536+a*256+b];
+        if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
+            fprintf(stderr,"FP8 mismatch op=%u a=%u b=%u actual=%u expected=%u",op,a,b,actual,want);
+            return 1;
+        }
+    }
+    return 0;
+}
+""", encoding="utf-8")
+for opt in ("-O0", "-O2"):
+    exe = work / ("fp8_exhaustive_" + opt[1:] + ".exe")
+    run([args.clang, "-std=c11", opt, str(c_path), str(repo / "runtime/rhat_runtime.c"), "-o", str(exe)])
+    run([str(exe)])
+passed += 1
+print("PASS fp8_exhaustive_262144_operations", flush=True)
 positive("declarations_only", "let^ unused=p^ { print(99) } def^ Empty {}", "")
 positive("ordinary_main", "let^ main=p^ { print(99) } print(1)", "1\n")
-positive("explicit_main", "let^ main=f^ n:i32 -> i32 { return^ n+1 } print(main(41))", "42\n")
+positive("explicit_main", "let^ main=f^ n:i32^ -> i32^ { return^ n+1 } print(main(41))", "42\n")
 positive("interleaved_declarations", """
 print(1)
 later()
-def^ Value { self^{ n:i32=3 } }
+def^ Value { self^{ n:i32^=3 } }
 let^ value=Value.new()
 let^ later=p^ { print(2) }
 print(value.n)
 """, "1\n2\n3\n")
 positive("top_return", """
-var^ scratch:i32[>..]=[7]
+var^ scratch:i32^[>..]=[7]
 print(scratch[0])
 return^
 let^ unused=p^ { print(99) }
@@ -128,56 +330,56 @@ let^ factorial = f^ n:i64^ { if^ n < 2: 1 el^: n * this^(n - 1); }
 print(factorial(0), factorial(1), factorial(10), factorial(20))
 """, "1 1 3628800 2432902008176640000\n")
 positive("inferred_return", """
-let^ twice=f^ n:i64 { n * 2 }
-let^ wrap=f^ n:i64 { twice(n) }
-let^ explicit=f^ n:i64 { return^ n + 1 }
+let^ twice=f^ n:i64^ { n * 2 }
+let^ wrap=f^ n:i64^ { twice(n) }
+let^ explicit=f^ n:i64^ { return^ n + 1 }
 let^ result=wrap(21)
 print(result,explicit(result))
 """, "42 43\n")
 positive("anonymous_value_binding", """
-let^ a=f^ n:i64 { n*2 }(21)
-let^ b=(f^ n:i64 { n+1 })(a)
+let^ a=f^ n:i64^ { n*2 }(21)
+let^ b=(f^ n:i64^ { n+1 })(a)
 print(a,b)
 """, "42 43\n")
 positive("nested_this", """
-print(f^ n:i64 {
+print(f^ n:i64^ {
     if^ n < 2: 1
-    el^: (f^ m:i64 { if^ m = 0: 0 el^: 1 + this^(m - 1); }(2)) * this^(n - 1);
+    el^: (f^ m:i64^ { if^ m = 0: 0 el^: 1 + this^(m - 1); }(2)) * this^(n - 1);
 }(4))
 """, "8\n")
 positive("mutual_return_inference", """
-let^ even=f^ n:i32 { if^ n=0: true^ el^: odd(n-1); }
-let^ odd=f^ n:i32 { if^ n=0: false^ el^: even(n-1); }
+let^ even=f^ n:i32^ { if^ n=0: true^ el^: odd(n-1); }
+let^ odd=f^ n:i32^ { if^ n=0: false^ el^: even(n-1); }
 print(even(10),odd(10),odd(11))
 """, "true false true\n")
 positive("conditional_chain", """
-let^ sign=f^ n:i64 {
+let^ sign=f^ n:i64^ {
     if^ n < 0: -1 el^ n = 0: 0 el^: 1;
 }
 print(sign(-5),sign(0),sign(7))
 print(if^ true^: if^ false^: 1 el^: 2; el^: 3;)
 """, "-1 0 1\n2\n")
 positive("conditional_lazy", """
-let^ choose=p^ n:i32 -> i32 { print(n); return^ n }
+let^ choose=p^ n:i32^ -> i32^ { print(n); return^ n }
 let^ a=if^ true^: choose(1) el^: choose(2);
 let^ b=if^ false^: choose(3) el^: choose(4);
 print(a,b)
 """, "1\n4\n1 4\n")
 positive("implicit_record_return", """
-def^ Pair { self^{ a:i32=0,b:i32=0 } }
-let^ make=f^ n:i32 { Pair{a=n,b=n+1} }
+def^ Pair { self^{ a:i32^=0,b:i32^=0 } }
+let^ make=f^ n:i32^ { Pair{a=n,b=n+1} }
 let^ p=make(8)
 print(p.a,p.b)
 """, "8 9\n")
 positive("inferred_trait_implementation", """
-def^ Reader { abstract^ read:f^self^ -> i64; }
+def^ Reader { abstract^ read:f^self^ -> i64^; }
 def^ Value:Reader { read=f^self^ { 42 } }
 let^ v=Value.new()
 print(v.read())
 """, "42\n")
 positive("template_inferred_return", """
 let^ sum=template^f^ n { if^ n=0: 0 el^: n + this^(n-1); }
-let^ large:i64=20
+let^ large:i64^=20
 print(sum(10),sum(large))
 """, "55 210\n")
 positive("anonymous_templates", """
@@ -197,7 +399,7 @@ def^ Printer {
 def^ Item { name=f^self^ { "method" } }
 var^ printer=Printer.new()
 printer.show(Item.new())
-let^ large:i64=21
+let^ large:i64^=21
 print(printer.twice(large))
 """, "method\n42\n")
 negative("template_old_declaration", """
@@ -210,64 +412,64 @@ negative("template_requires_function", """
 let^ value=template^42
 """, "expected 'f^'")
 positive("recursive_region_cleanup", """
-let^ sum=f^ n:i32 -> i32 {
-    var^ scratch:i32[>..]=[n]
+let^ sum=f^ n:i32^ -> i32^ {
+    var^ scratch:i32^[>..]=[n]
     if^ n=0 { return^ scratch[0] }
     return^ scratch[0] + this^(n-1)
 }
 print(sum(10))
 """, "55\n")
 positive("recursive_borrow", """
-let^ retain=f^ p:&i32, n:i32 -> &i32 {
+let^ retain=f^ p:&i32^, n:i32^ -> &i32^ {
     if^ n=0 { return^ p }
     return^ this^(p,n-1)
 }
-var^ n:i32=42
+var^ n:i32^=42
 let^ ref=retain(&n,4)
 print(*ref)
 """, "42\n")
 positive("method_this_receiver", """
 def^ Counter {
-    abstract^ unit:f^self^ -> i64;
-    total=f^self^, n:i64 { if^ n=0: 0 el^: self^.unit() + this^(n-1); },
+    abstract^ unit:f^self^ -> i64^;
+    total=f^self^, n:i64^ { if^ n=0: 0 el^: self^.unit() + this^(n-1); },
 }
 def^ Double:Counter { unit=f^self^ { 2 } }
 let^ counter=Double.new()
 print(counter.total(3))
 """, "6\n")
 positive("conditional_owned_destination", """
-let^ make=f^ b:bool -> i32[>..] { if^ b: [1] el^: [2,3]; }
+let^ make=f^ b:bool^ -> i32^[>..] { if^ b: [1] el^: [2,3]; }
 var^ a=make(false^)
 var^ b=make(true^)
 print(a.len,a[0],a[1],b.len,b[0])
 """, "2 2 3 1 1\n")
-negative("recursive_return_unknown", "let^ bad=f^ n:i32 { return^ this^(n) }", "cannot infer return type")
+negative("recursive_return_unknown", "let^ bad=f^ n:i32^ { return^ this^(n) }", "cannot infer return type")
 negative("conditional_missing_else", "print(if^ true^: 1;)", "requires a final el^:")
 negative("conditional_missing_end", "print(if^ true^: 1 el^: 2)", "expected ';'")
 negative("conditional_type_mismatch", 'print(if^ true^: 1 el^: "text";)', "inferred types disagree")
 negative("conditional_nonbool", "print(if^ 1: 2 el^: 3;)", "condition requires bool")
 negative("this_at_top", "this^()", "requires an enclosing function")
-negative("this_arity", "print(f^ n:i32 -> i32 { this^() }(1))", "expects 1 arguments")
-negative("this_argument_type", 'print(f^ n:i32 -> i32 { this^("bad") }(1))', "requires nominal 'i32'")
-negative("anonymous_local_borrow", "let^ ref=f^ -> &i32 { var^ n:i32=1; return^ &n }()", "cannot return a reference")
+negative("this_arity", "print(f^ n:i32^ -> i32^ { this^() }(1))", "expects 1 arguments")
+negative("this_argument_type", 'print(f^ n:i32^ -> i32^ { this^("bad") }(1))', "requires nominal 'i32^'")
+negative("anonymous_local_borrow", "let^ ref=f^ -> &i32^ { var^ n:i32^=1; return^ &n }()", "cannot return a reference")
 negative("recursive_local_borrow", """
-let^ bad=f^ p:&i32, n:i32 -> &i32 {
+let^ bad=f^ p:&i32^, n:i32^ -> &i32^ {
     if^ n=0 { return^ p }
-    var^ local:i32=1
+    var^ local:i32^=1
     return^ this^(&local,n-1)
 }
 """, "cannot return a reference")
-negative("anonymous_capture", "var^ outer:i32=3; print(f^ -> i32 { outer }())", "unknown value 'outer'")
+negative("anonymous_capture", "var^ outer:i32^=3; print(f^ -> i32^ { outer }())", "unknown value 'outer'")
 negative("implicit_void_return", "let^ nothing=f^ {} let^ bad=f^ { nothing() }", "cannot return a value")
-negative("no_implicit_last_statement", "let^ bad=f^ -> i32 { let^ n:i32=1; n+1 }", "only calls can be expression statements")
-negative("no_implicit_procedure_return", "let^ bad=p^ -> i32 { 1 }", "only calls can be expression statements")
+negative("no_implicit_last_statement", "let^ bad=f^ -> i32^ { let^ n:i32^=1; n+1 }", "only calls can be expression statements")
+negative("no_implicit_procedure_return", "let^ bad=p^ -> i32^ { 1 }", "only calls can be expression statements")
 positive("control_arrays", """
-let^ choose = f^ n:i32 -> i32 {
+let^ choose = f^ n:i32^ -> i32^ {
     if^ n < 0 { return^ -1 } else^ { return^ n * 2 }
 }
-var^ xs : i32[3] = [1, 2, 3]
+var^ xs : i32^[3] = [1, 2, 3]
 xs[1] := choose(4)
-var^ i:i64 = 0
+var^ i:i64^ = 0
 while^ i < xs.len { print(xs[i]); i := i + 1 }
 assert(choose(-2) = -1)
 assert((false^ and^ (1 / 0 = 0)) = false^)
@@ -275,42 +477,42 @@ assert(true^ or^ (1 / 0 = 0))
 """, "1\n8\n3\n")
 positive("private_inheritance", """
 def^ A {
-    self^{ private^ secret:i32 = 7 },
-    read = f^self^ -> i32 { return^ self^.secret },
+    self^{ private^ secret:i32^ = 7 },
+    read = f^self^ -> i32^ { return^ self^.secret },
 }
-def^ B : A { self^{ other:i32 = 9 } }
+def^ B : A { self^{ other:i32^ = 9 } }
 let^ b = B.new(); print(b.read())
 """, "7\n")
 positive("return_borrow", """
-let^ identity = f^ x:&i32 -> &i32 { return^ x }
-var^ n:i32 = 9; let^ r=identity(&n); print(*r)
+let^ identity = f^ x:&i32^ -> &i32^ { return^ x }
+var^ n:i32^ = 9; let^ r=identity(&n); print(*r)
 """, "9\n")
 positive("record_return", """
-def^ Pair { self^{ a:i32 = 0, b:i32 = 0 } }
-let^ pair = f^ n:i32 -> Pair { return^ Pair{ a=n, b=n+1 } }
+def^ Pair { self^{ a:i32^ = 0, b:i32^ = 0 } }
+let^ pair = f^ n:i32^ -> Pair { return^ Pair{ a=n, b=n+1 } }
 let^ p=pair(20); print(p.a,p.b)
 """, "20 21\n")
 positive("region_tail", """
-def^ Buffer { self^{ tag:i32 = 7, private^ data:i32[>..] = [1,2] } }
+def^ Buffer { self^{ tag:i32^ = 7, private^ data:i32^[>..] = [1,2] } }
 let^ b=Buffer.new(); print(b.tag)
 """, "7\n")
 positive("early_cleanup", """
-let^ inspect = f^ n:i32 -> i32 {
-    var^ scratch:i32[>..] = [5]
+let^ inspect = f^ n:i32^ -> i32^ {
+    var^ scratch:i32^[>..] = [5]
     if^ n = 0 { return^ scratch[0] }
-    { var^ inner:i32[>..] = [3]; assert(inner[0] = 3) }
+    { var^ inner:i32^[>..] = [3]; assert(inner[0] = 3) }
     return^ 9
 }
 print(inspect(0),inspect(1))
 """, "5 9\n")
 positive("owned_direct_return", """
-let^ make = f^ -> i32[>..] { return^ [3,4] }
-var^ a:i32[>..]=make(); print(a[1])
+let^ make = f^ -> i32^[>..] { return^ [3,4] }
+var^ a:i32^[>..]=make(); print(a[1])
 """, "4\n")
 positive("evaluation_order", """
-let^ change = p^ x:&i32 -> i32 { *x := 99; return^ 2 }
-let^ combine = p^ a:i32, b:i32 { print(a,b) }
-var^ n:i32=1
+let^ change = p^ x:&i32^ -> i32^ { *x := 99; return^ 2 }
+let^ combine = p^ a:i32^, b:i32^ { print(a,b) }
+var^ n:i32^=1
 print(n + change(&n))
 n := 1
 combine(n,change(&n))
@@ -318,46 +520,46 @@ n := 1
 print(n,change(&n))
 """, "3\n1 2\n1 2\n")
 positive("numeric", """
-let^ big:i64=9223372036854775807
-let^ byte:u8=255
+let^ big:i64^=9223372036854775807
+let^ byte:u8^=255
 print(big,byte,1.5 * 2.0,true^)
-let^ low:i32=-2147483648
+let^ low:i32^=-2147483648
 assert(low - 1 = 2147483647)
 print(7 / 2,7 % 2)
 """, "9223372036854775807 255 3 true\n3 1\n")
 positive("paths with spaces", 'print(42)', "42\n")
 positive("reference_mutation", """
-let^ set=p^ p:&i32 { *p := 8 }
-var^ n:i32=1; let^ r=&n; set(r); *r := 9; print(n)
+let^ set=p^ p:&i32^ { *p := 8 }
+var^ n:i32^=1; let^ r=&n; set(r); *r := 9; print(n)
 """, "9\n")
 positive("mutable_receiver", """
 def^ Counter {
-    self^{ n:i32=0 },
-    add=f^mutable^self^ -> i32 { self^.n := self^.n + 1; return^ self^.n },
+    self^{ n:i32^=0 },
+    add=f^mutable^self^ -> i32^ { self^.n := self^.n + 1; return^ self^.n },
 }
 var^ c=Counter.new(); print(c.add(),c.add())
 """, "1 2\n")
 positive("diamond", """
-def^ A { self^{ n:i32=5 } }
+def^ A { self^{ n:i32^=5 } }
 def^ B:A {}
 def^ C:A {}
 def^ D:B,C {}
 let^ d=D.new(); print(d.n)
 """, "5\n")
 positive("explicit_method_conflict", """
-def^ A { n=f^self^ -> i32 { return^ 1 } }
-def^ B { n=f^self^ -> i32 { return^ 2 } }
-def^ C:A,B { override^ n=f^self^ -> i32 { return^ 3 } }
+def^ A { n=f^self^ -> i32^ { return^ 1 } }
+def^ B { n=f^self^ -> i32^ { return^ 2 } }
+def^ C:A,B { override^ n=f^self^ -> i32^ { return^ 3 } }
 let^ c=C.new(); print(c.n())
 """, "3\n")
 positive("trait_implementation", """
 def^ Contract {
-    self^{ abstract^ n:i32 },
-    abstract^ read:f^self^ -> i32;
+    self^{ abstract^ n:i32^ },
+    abstract^ read:f^self^ -> i32^;
 }
 def^ Implementation {
-    self^{ n:i32=42 },
-    read=f^self^ -> i32 { return^ self^.n },
+    self^{ n:i32^=42 },
+    read=f^self^ -> i32^ { return^ self^.n },
 }
 def^ Combined:Contract,Implementation {}
 def^ Reversed:Implementation,Contract {}
@@ -365,10 +567,10 @@ let^ use=p^ v:Contract { print(v.read()) }
 use(Combined.new()); use(Reversed.new())
 """, "42\n42\n")
 positive("mixed_layout", """
-def^ Mixed { self^{ a:u8=3, b:i64=100, c:i32[2]=[7,8] } }
+def^ Mixed { self^{ a:u8^=3, b:i64^=100, c:i32^[2]=[7,8] } }
 let^ m=Mixed.new(); print(m.a,m.b,m.c[1])
 """, "3 100 8\n", lambda ir, ll: (
-    "type Mixed size=24 align=8" in ir and "+8 Mixed.b : i64" in ir
+    "type Mixed size=24 align=8" in ir and "+8 Mixed.b : i64^" in ir
 ) or (_ for _ in ()).throw(AssertionError(ir)))
 negative("nominal_mismatch", """
 def^ Named { abstract^ name:f^self^ -> string^; }
@@ -387,80 +589,80 @@ def^ B {}
 let^ use=template^p^ x:A {}
 use(B.new())
 """, "requires nominal 'A'")
-negative("private", 'def^ A { self^{ private^ x:i32=1 } }\nprint(A.new().x)', "private member")
+negative("private", 'def^ A { self^{ private^ x:i32^=1 } }\nprint(A.new().x)', "private member")
 negative("template_private", """
-def^ A { self^{ private^ x:i32=1 } }
+def^ A { self^{ private^ x:i32^=1 } }
 let^ use=template^p^ a { print(a.x) }
 use(A.new())
 """, "private member")
 negative("derived_private", """
-def^ A { self^{ private^ x:i32=1 } }
-def^ B:A { read=f^self^ -> i32 { return^ self^.x } }
+def^ A { self^{ private^ x:i32^=1 } }
+def^ B:A { read=f^self^ -> i32^ { return^ self^.x } }
 
 """, "private member")
-negative("abstract_instance", 'def^ A { self^{ abstract^ x:i32 } }\nlet^ a=A.new()', "cannot construct abstract")
+negative("abstract_instance", 'def^ A { self^{ abstract^ x:i32^ } }\nlet^ a=A.new()', "cannot construct abstract")
 negative("wrong_abstract_type", """
-def^ A { self^{ abstract^ x:i32 } }
-def^ B:A { self^{ x:i64=0 } }
+def^ A { self^{ abstract^ x:i32^ } }
+def^ B:A { self^{ x:i64^=0 } }
 
 """, "cannot replace its inherited slot")
 negative("wrong_override", """
-def^ A { abstract^ foo:f^self^ -> i32; }
-def^ B:A { foo=f^self^ -> i64 { return^ 1 } }
+def^ A { abstract^ foo:f^self^ -> i32^; }
+def^ B:A { foo=f^self^ -> i64^ { return^ 1 } }
 
 """, "changes its contract")
 negative("composition_cycle", 'def^ A:B {} def^ B:A {}\n', "cyclic def^ composition")
 negative("layout_cycle", 'def^ A { self^{ a:A } }\n', "recursive by-value layout")
-negative("duplicate_field", 'def^ A { self^{ a:i32=1,a:i32=2 } }\n', "duplicate field")
-negative("local_borrow_return", 'let^ bad=f^ -> &i32 { var^ x:i32=1; return^ &x }\n', "cannot return a reference")
+negative("duplicate_field", 'def^ A { self^{ a:i32^=1,a:i32^=2 } }\n', "duplicate field")
+negative("local_borrow_return", 'let^ bad=f^ -> &i32^ { var^ x:i32^=1; return^ &x }\n', "cannot return a reference")
 negative("inner_borrow_escape", """
-var^ outer:i32=1
+var^ outer:i32^=1
 var^ ref=&outer
-{ var^ inner:i32=2; ref := &inner }
+{ var^ inner:i32^=2; ref := &inner }
 print(*ref)
 """, "reference would outlive its owner")
 negative("aggregate_borrow_return", """
-def^ View { self^{ p:&i32 } }
-let^ bad=f^ -> View { var^ x:i32=1; return^ View{p=&x} }
+def^ View { self^{ p:&i32^ } }
+let^ bad=f^ -> View { var^ x:i32^=1; return^ View{p=&x} }
 
 """, "cannot return a reference")
 negative("argument_borrow_escape", """
-let^ id=f^ p:&i32 -> &i32 { return^ p }
-var^ a:i32=1; var^ r=&a
-{ var^ b:i32=2; r := id(&b) }
+let^ id=f^ p:&i32^ -> &i32^ { return^ p }
+var^ a:i32^=1; var^ r=&a
+{ var^ b:i32^=2; r := id(&b) }
 """, "reference would outlive its owner")
 negative("borrowed_store_escape", """
-def^ View { self^{ p:&i32 } }
-let^ bad=p^ v:&View { var^ x:i32=1; v.p := &x }
+def^ View { self^{ p:&i32^ } }
+let^ bad=p^ v:&View { var^ x:i32^=1; v.p := &x }
 
 """, "reference would outlive its owner")
-negative("owned_copy", 'var^ a:i32[>..]=[]; let^ b=a', "owned region values cannot be copied")
-negative("owned_reassign", 'var^ a:i32[>..]=[]; a := [1]', "owned values cannot be reassigned")
-negative("grow_not_tail", 'def^ A { self^{ a:i32[>..], b:i32=1 } }\n', "final field")
-negative("reference_default_array", 'def^ A { self^{ a:&i32[2] } }\nlet^ a=A.new()', "needs an initializer")
-negative("pure_mutation", 'let^ bad=f^ x:&i32 { *x := 2 }\n', "cannot mutate borrowed storage")
+negative("owned_copy", 'var^ a:i32^[>..]=[]; let^ b=a', "owned region values cannot be copied")
+negative("owned_reassign", 'var^ a:i32^[>..]=[]; a := [1]', "owned values cannot be reassigned")
+negative("grow_not_tail", 'def^ A { self^{ a:i32^[>..], b:i32^=1 } }\n', "final field")
+negative("reference_default_array", 'def^ A { self^{ a:&i32^[2] } }\nlet^ a=A.new()', "needs an initializer")
+negative("pure_mutation", 'let^ bad=f^ x:&i32^ { *x := 2 }\n', "cannot mutate borrowed storage")
 negative("pure_procedure", 'let^ bad=f^ { print(1) }\n', "print requires p^")
-negative("missing_return", 'let^ bad=f^ x:i32 -> i32 { if^ x=0 { return^ 1 } }\n', "not all paths return")
-negative("immutable", 'let^ x:i32=1; x := 2', "cannot modify let^")
+negative("missing_return", 'let^ bad=f^ x:i32^ -> i32^ { if^ x=0 { return^ 1 } }\n', "not all paths return")
+negative("immutable", 'let^ x:i32^=1; x := 2', "cannot modify let^")
 negative("closure", '{ let^ f=f^ { return^ 1 } }', "function values")
-negative("literal_overflow", 'let^ x:i32=2147483648', "does not fit")
+negative("literal_overflow", 'let^ x:i32^=2147483648', "does not fit")
 negative("unknown_type", 'let^ x:Missing=1', "unknown type")
-negative("recursive_default", 'def^ A { self^{ n:i32=A.new().n } }\nlet^ a=A.new()', "recursive default construction")
-negative("default_capture", 'def^ A { self^{ n:i32=local } }\nlet^ local:i32=1; let^ a=A.new()', "cannot capture caller locals")
-negative("void_parameter", 'let^ bad=f^ x:void {}\n', "parameter cannot have void")
-negative("false_mutable_self", 'let^ bad=f^mutable^ x:i32 {}\n', "requires an f^ method receiver")
-negative("method_conflict", 'def^ A { n=f^self^ -> i32 { return^ 1 } } def^ B { n=f^self^ -> i32 { return^ 2 } } def^ C:A,B {}\n', "is ambiguous")
-negative("inherited_field_method", 'def^ A { self^{ n:i32=0 } } def^ B { n=f^self^ -> i32 { return^ 2 } } def^ C:A,B {}\n', "field/method name collision")
-negative("private_abstract_field", 'def^ A { self^{ private^ abstract^ n:i32 } }\n', "private abstract fields")
+negative("recursive_default", 'def^ A { self^{ n:i32^=A.new().n } }\nlet^ a=A.new()', "recursive default construction")
+negative("default_capture", 'def^ A { self^{ n:i32^=local } }\nlet^ local:i32^=1; let^ a=A.new()', "cannot capture caller locals")
+negative("void_parameter", 'let^ bad=f^ x:void^ {}\n', "parameter cannot have void")
+negative("false_mutable_self", 'let^ bad=f^mutable^ x:i32^ {}\n', "requires an f^ method receiver")
+negative("method_conflict", 'def^ A { n=f^self^ -> i32^ { return^ 1 } } def^ B { n=f^self^ -> i32^ { return^ 2 } } def^ C:A,B {}\n', "is ambiguous")
+negative("inherited_field_method", 'def^ A { self^{ n:i32^=0 } } def^ B { n=f^self^ -> i32^ { return^ 2 } } def^ C:A,B {}\n', "field/method name collision")
+negative("private_abstract_field", 'def^ A { self^{ private^ abstract^ n:i32^ } }\n', "private abstract fields")
 negative("indirect_borrow_store", """
-def^ View { self^{ p:&i32 } }
-def^ Context { self^{ view:&View, source:&i32 } }
+def^ View { self^{ p:&i32^ } }
+def^ Context { self^{ view:&View, source:&i32^ } }
 let^ bad=p^ c:&Context { c.view.p := c.source }
 
 """, "cannot store nonstatic references through borrowed storage")
 negative("pure_mutable_call", """
 def^ Counter {
-    self^{ n:i32=0 },
+    self^{ n:i32^=0 },
     add=f^mutable^self^ { self^.n := 1 },
 }
 let^ bad=f^ c:&Counter { c.add() }
@@ -470,9 +672,9 @@ negative("syntax", "let^ main=p^ {", "unterminated block")
 runtime_failure("bounds", 'let^ a=[1,2]; print(a[2])', "out of bounds")
 runtime_failure("negative_index", 'let^ a=[1]; print(a[-1])', "out of bounds")
 runtime_failure("division", 'print(1 / 0)', "invalid integer division")
-runtime_failure("division_overflow", 'let^ low:i32=-2147483648; print(low / -1)', "invalid integer division")
+runtime_failure("division_overflow", 'let^ low:i32^=-2147483648; print(low / -1)', "invalid integer division")
 runtime_failure("assertion", 'assert(false^)', "assertion failed")
-runtime_failure("grow_bounds", 'var^ a:i32[>..]=[]; print(a[0])', "out of bounds")
+runtime_failure("grow_bounds", 'var^ a:i32^[>..]=[]; print(a[0])', "out of bounds")
 path = source("preserve_input", '')
 before = path.read_bytes()
 run([compiler, "emit", str(path), "-o", str(path)], 1)

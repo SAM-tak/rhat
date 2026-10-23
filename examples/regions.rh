@@ -1,12 +1,12 @@
-let^ makeNumbers = f^ -> i32[>..] {
-    var^ result : i32[>..] = [10, 20]
+let^ makeNumbers = f^ -> i32^[>..] {
+    var^ result : i32^[>..] = [10, 20]
     result.push(30)
     return^ result
 }
 
-var^ numbers : i32[>..] = makeNumbers()
+var^ numbers : i32^[>..] = makeNumbers()
 let^ first = &numbers[0]
-var^ i : i64 = 0
+var^ i : i64^ = 0
 while^ i < 2000 {
     numbers.push(7)
     i := i + 1
@@ -15,6 +15,6 @@ assert(*first = 10)
 assert(numbers.len = 2003)
 print(*first, numbers.len)
 {
-    var^ scratch : i32[>..] = [100, 200]
+    var^ scratch : i32^[>..] = [100, 200]
     print(scratch[1])
 }

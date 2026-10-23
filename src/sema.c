@@ -22,15 +22,7 @@ Type *type_builtin(Program *p, int k) {
   t->align = 1;
   switch (k) {
   case T_BOOL:
-  case T_U8:
     t->size = 1;
-    break;
-  case T_I32:
-    t->size = t->align = 4;
-    break;
-  case T_I64:
-  case T_F64:
-    t->size = t->align = 8;
     break;
   case T_STRING:
     t->size = 16;
@@ -38,6 +30,8 @@ Type *type_builtin(Program *p, int k) {
     t->refs = true;
     break;
   default:
+    if (kind_integer(k) || kind_float(k))
+      t->size = t->align = (size_t)numeric_bits(k) / 8;
     break;
   }
   add(&p->types, t);
@@ -74,20 +68,19 @@ Type *type_spec(Program *p, Spec *s) {
                      : s->kind == SPEC_GROW ? T_GROW
                                             : T_ARRAY,
                      type_spec(p, s->elem), s->count);
-  const char *names[] = {"void", "bool", "u8", "i32", "i64", "f64", "string"};
-  for (int k = 0; k < 7; k++)
-    if (!strcmp(s->name, names[k]) || !strcmp(s->name, fmt("%s^", names[k])))
+  for (int k = 0; k < T_STRUCT; k++)
+    if (!strcmp(s->name, builtin_name(k)))
       return type_builtin(p, k);
+  if (!strcmp(s->name, "f128^"))
+    fail(s->loc, "f128^ is pending; binary128 is not implemented");
   Def *d = lookup_def(p, s->name);
   if (!d)
     fail(s->loc, "unknown type '%s'", s->name);
   return d->type;
 }
 char *type_name(Type *t) {
-  static const char *names[] = {"void", "bool", "u8",    "i32",
-                                "i64",  "f64",  "string"};
   if (t->kind < T_STRUCT)
-    return (char *)names[t->kind];
+    return (char *)builtin_name(t->kind);
   if (t->kind == T_STRUCT)
     return t->def->name;
   if (t->kind == T_REF)
@@ -506,21 +499,17 @@ static void cleanup(Context *c, int from, Loc l) {
 }
 static Value literal_int(Context *c, Expr *e, Type *expected) {
   Type *t = expected;
-  if (t && t->kind == T_F64) {
+  if (t && kind_float(t->kind)) {
     Value v = value(c, t);
     Instr *i = emit(c, I_CONST, e->loc);
     i->dst = v.id;
     i->type = t;
-    i->text = e->text;
+    i->text = float_constant(e->text, t->kind, e->loc);
     return v;
   }
-  if (!t || !(t->kind == T_I32 || t->kind == T_I64 || t->kind == T_U8))
+  if (!t || !kind_integer(t->kind))
     t = type_builtin(c->p, T_I32);
-  errno = 0;
-  char *end;
-  long long k = strtoll(e->text, &end, 10);
-  if (errno || *end || (t->kind == T_I32 && (k < INT32_MIN || k > INT32_MAX)) ||
-      (t->kind == T_U8 && (k < 0 || k > 255)))
+  if (!integer_fits(e->text, t->kind))
     fail(e->loc, "integer literal does not fit '%s'", type_name(t));
   Value v = value(c, t);
   Instr *i = emit(c, I_CONST, e->loc);
@@ -546,8 +535,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     for (int j = 0; j < e->args.n; j++) {
       Value v =
           expression(c, e->args.v[j], print ? NULL : type_builtin(p, T_BOOL));
-      if (print && v.type->kind != T_I32 && v.type->kind != T_I64 &&
-          v.type->kind != T_U8 && v.type->kind != T_F64 &&
+      if (print && !kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
           v.type->kind != T_STRING && v.type->kind != T_BOOL)
         fail(e->loc, "print does not support '%s'", type_name(v.type));
       if (!print && v.type->kind != T_BOOL)
@@ -902,15 +890,19 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   if (e->kind == E_INT)
     return literal_int(c, e, expected);
   if (e->kind == E_BOOL || e->kind == E_FLOAT || e->kind == E_STRING) {
-    Type *t = type_builtin(p, e->kind == E_BOOL    ? T_BOOL
-                              : e->kind == E_FLOAT ? T_F64
-                                                   : T_STRING);
+    Type *t = type_builtin(
+        p,
+        e->kind == E_BOOL ? T_BOOL
+        : e->kind == E_FLOAT
+            ? (expected && kind_float(expected->kind) ? expected->kind : T_F64)
+            : T_STRING);
     out = value(c, t);
     Instr *i = emit(c, e->kind == E_STRING ? I_STRING : I_CONST, e->loc);
     i->dst = out.id;
     i->type = t;
-    i->text =
-        e->kind == E_BOOL ? (!strcmp(e->text, "true^") ? "1" : "0") : e->text;
+    i->text = e->kind == E_BOOL    ? (!strcmp(e->text, "true^") ? "1" : "0")
+              : e->kind == E_FLOAT ? float_constant(e->text, t->kind, e->loc)
+                                   : e->text;
     return out;
   }
   if (e->kind == E_NAME || e->kind == E_SELF) {
@@ -951,8 +943,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (base.type->kind != T_ARRAY && base.type->kind != T_GROW)
       fail(e->loc, "indexing requires an array");
     Value index = expression(c, e->b, type_builtin(p, T_I64));
-    if (index.type->kind != T_I32 && index.type->kind != T_I64)
-      fail(e->loc, "index must be i32 or i64");
+    if (!kind_integer(index.type->kind))
+      fail(e->loc, "index must be an integer");
     out.type = base.type->elem;
     out.id = slot(c, out.type, true);
     out.storage = base.storage;
@@ -993,8 +985,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return deref(c, a, e->loc);
     }
     if ((!strcmp(e->text, "!") && a.type->kind != T_BOOL) ||
-        (!strcmp(e->text, "-") && a.type->kind != T_I32 &&
-         a.type->kind != T_I64 && a.type->kind != T_F64))
+        (!strcmp(e->text, "-") &&
+         !(kind_float(a.type->kind) ||
+           (kind_integer(a.type->kind) && !kind_unsigned(a.type->kind)))))
       fail(e->loc, "invalid unary operand");
     out = value(c, a.type);
     Instr *i = emit(c, I_UNARY, e->loc);
@@ -1038,12 +1031,11 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (a.type != b.type)
       fail(e->loc, "binary operands have different types");
     bool cmp = strchr("=!<>", e->text[0]) != NULL;
-    if (a.type->kind != T_I32 && a.type->kind != T_I64 &&
-        a.type->kind != T_U8 && a.type->kind != T_F64 &&
+    if (!kind_integer(a.type->kind) && !kind_float(a.type->kind) &&
         !(cmp && a.type->kind == T_BOOL && strchr("=!", e->text[0])))
       fail(e->loc, "operator '%s' is not defined for '%s'", e->text,
            type_name(a.type));
-    if (a.type->kind == T_F64 && !strcmp(e->text, "%"))
+    if (kind_float(a.type->kind) && !strcmp(e->text, "%"))
       fail(e->loc, "floating remainder is not supported");
     out = value(c, cmp ? type_builtin(p, T_BOOL) : a.type);
     Instr *i = emit(c, I_BIN, e->loc);
@@ -1282,8 +1274,7 @@ static bool integer_literal(Expr *e) {
           (e->kind == E_UNARY && !strcmp(e->text, "-") && e->a->kind == E_INT));
 }
 static bool numeric(Type *t) {
-  return t && (t->kind == T_U8 || t->kind == T_I32 || t->kind == T_I64 ||
-               t->kind == T_F64);
+  return t && (kind_integer(t->kind) || kind_float(t->kind));
 }
 static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
   if (!a)
@@ -1293,6 +1284,10 @@ static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
   if (integer_literal(ae) && numeric(b))
     return b;
   if (integer_literal(be) && numeric(a))
+    return a;
+  if (ae && ae->kind == E_FLOAT && b && kind_float(b->kind))
+    return b;
+  if (be && be->kind == E_FLOAT && a && kind_float(a->kind))
     return a;
   fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a),
        type_name(b));
@@ -1363,7 +1358,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   case E_INT:
     return numeric(expected) ? expected : type_builtin(c->p, T_I32);
   case E_FLOAT:
-    return type_builtin(c->p, T_F64);
+    return expected && kind_float(expected->kind) ? expected
+                                                  : type_builtin(c->p, T_F64);
   case E_BOOL:
     return type_builtin(c->p, T_BOOL);
   case E_STRING:

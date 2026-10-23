@@ -182,10 +182,11 @@ int main(int argc, char **argv) {
     return 0;
   }
   emit_llvm(&p, ll);
-  char *args[] = {
-      (char *)clang, "-Wno-override-module", "-std=c11", (char *)opt,
-      (char *)ll,    (char *)runtime,        "-o",       (char *)out,
-      NULL};
+  char *args[] = {(char *)clang,        "-Wno-override-module",
+                  "-std=c11",           (char *)opt,
+                  "-rtlib=compiler-rt", (char *)ll,
+                  (char *)runtime,      "-o",
+                  (char *)out,          NULL};
   int status = spawn(args);
   if (status < 0) {
     int error = errno;
