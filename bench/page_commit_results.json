@@ -1,0 +1,241 @@
+{
+  "started_utc": "2026-10-23T16:09:01.680145+00:00",
+  "before_commit": "9bfaf5f59c3cf330ed88c4b8bd8a6fda3785dec4",
+  "working_commit": "9bfaf5f59c3cf330ed88c4b8bd8a6fda3785dec4",
+  "dirty": "M bench/README.md\n M bench/coverage.md\n M docs/design.md\n M runtime/rhat_runtime.c\n M tests/run.py\n?? bench/compare_page_commits.py\n?? tests/runtime_regions.c",
+  "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+  "os": "Windows-10-10.0.26300-SP0",
+  "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+  "compiler_sha256": "f5b89575647c252612acc835aa30e2c3374fa898efa1e691a3d86b18465e01e9",
+  "benchmark_sha256": "ad9823d6d4883bbb751aa52a271fc7607fe78cde638e9e7d9c03a3b245b8f0f1",
+  "harness_sha256": "1c16c2633cbe2cc58ce5e8a64c8ef8ca0b527e04f7f4dd7302d67847d910ae63",
+  "measurement_helper_sha256": "a9d239b9aba80dd34f494c6f44b695e649ea7addc92d18348ce49fbcc40d0357",
+  "runtime_sources": {
+    "before": "/* R^ runtime: OS-backed stable-address regions; no malloc/free or GC. */\n#if !defined(_WIN32)\n#define _DEFAULT_SOURCE\n#endif\n#include <inttypes.h>\n#include <limits.h>\n#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#if defined(_WIN32)\n#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n#else\n#include <sys/mman.h>\n#endif\n\ntypedef struct {\n  unsigned char *data;\n  uint64_t len, capacity;\n} RhArray;\n#define RH_REGION_BYTES (UINT64_C(64) * 1024 * 1024)\nstatic _Noreturn void rh_panic(const char *why, int32_t line) {\n  fprintf(stderr, \"R^ runtime error at line %\" PRId32 \": %s\\n\", line, why);\n  exit(1);\n}\nvoid rh_region_init(RhArray *a) {\n#if defined(_WIN32)\n  a->data =\n      VirtualAlloc(NULL, (SIZE_T)RH_REGION_BYTES, MEM_RESERVE, PAGE_READWRITE);\n  if (!a->data)\n    rh_panic(\"virtual address reservation failed\", 0);\n#else\n  void *p = mmap(NULL, (size_t)RH_REGION_BYTES, PROT_READ | PROT_WRITE,\n                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);\n  if (p == MAP_FAILED)\n    rh_panic(\"virtual address reservation failed\", 0);\n  a->data = p;\n#endif\n  a->len = 0;\n  a->capacity = RH_REGION_BYTES;\n}\nvoid rh_region_release(RhArray *a) {\n#if defined(_WIN32)\n  if (a->data && !VirtualFree(a->data, 0, MEM_RELEASE))\n    rh_panic(\"region release failed\", 0);\n#else\n  if (a->data && munmap(a->data, (size_t)a->capacity))\n    rh_panic(\"region release failed\", 0);\n#endif\n  a->data = NULL;\n  a->len = a->capacity = 0;\n}\nvoid rh_bounds(int64_t index, uint64_t length, int32_t line) {\n  if (index < 0 || (uint64_t)index >= length)\n    rh_panic(\"array index out of bounds\", line);\n}\nvoid *rh_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {\n  rh_bounds(index, a->len, line);\n  return a->data + (uint64_t)index * size;\n}\nvoid rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {\n  if (!size || size > a->capacity || a->len >= a->capacity / size)\n    rh_panic(\"region capacity exceeded\", line);\n  uint64_t off = a->len * size;\n#if defined(_WIN32)\n  SYSTEM_INFO info;\n  GetSystemInfo(&info);\n  uint64_t page = info.dwPageSize;\n  uint64_t begin = off / page * page,\n           end = (off + size + page - 1) / page * page;\n  if (!VirtualAlloc(a->data + begin, (SIZE_T)(end - begin), MEM_COMMIT,\n                    PAGE_READWRITE))\n    rh_panic(\"region commit failed\", line);\n#endif\n  memcpy(a->data + off, value, (size_t)size);\n  a->len++;\n}\nvoid rh_assert(int64_t condition, int32_t line) {\n  if (!condition)\n    rh_panic(\"assertion failed\", line);\n}\nvoid rh_print_i64(int64_t n) { printf(\"%\" PRId64, n); }\nvoid rh_print_f64(double n) { printf(\"%.17g\", n); }\nvoid rh_print_bool(int64_t b) { fputs(b ? \"true\" : \"false\", stdout); }\nvoid rh_print_string(const char *s, uint64_t n) {\n  fwrite(s, 1, (size_t)n, stdout);\n}\nvoid rh_print_space(void) { fputc(' ', stdout); }\nvoid rh_print_newline(void) { fputc('\\n', stdout); }\n/* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and\n * narrow integers, and do not require a C compiler-specific 128-bit ABI. */\nvoid rh_print_integer(const void *value, int32_t bits, int32_t uns) {\n  unsigned char bytes[16] = {0};\n  int n = bits / 8;\n  memcpy(bytes, value, (size_t)n);\n  if (!uns && (bytes[n - 1] & 128)) {\n    fputc('-', stdout);\n    unsigned carry = 1;\n    for (int j = 0; j < n; j++) {\n      unsigned v = (unsigned)(bytes[j] ^ 255u) + carry;\n      bytes[j] = (unsigned char)v;\n      carry = v >> 8;\n    }\n  }\n  char digits[40];\n  int count = 0;\n  bool nonzero;\n  do {\n    unsigned remainder = 0;\n    nonzero = false;\n    for (int j = n - 1; j >= 0; j--) {\n      unsigned v = remainder * 256 + bytes[j];\n      bytes[j] = (unsigned char)(v / 10);\n      remainder = v % 10;\n      nonzero = nonzero || bytes[j] != 0;\n    }\n    digits[count++] = (char)('0' + remainder);\n  } while (nonzero);\n  while (count)\n    fputc(digits[--count], stdout);\n}\nvoid rh_check_division(const void *lhs, const void *rhs, int32_t bits,\n                       int32_t uns, int32_t remainder, int32_t line) {\n  const unsigned char *a = lhs, *b = rhs;\n  bool zero = true, minus_one = true, minimum = true;\n  int n = bits / 8;\n  for (int j = 0; j < n; j++) {\n    zero = zero && b[j] == 0;\n    minus_one = minus_one && b[j] == 255;\n    minimum = minimum && a[j] == (j == n - 1 ? 128 : 0);\n  }\n  if (zero || (!uns && minimum && minus_one))\n    rh_panic(remainder ? \"invalid integer remainder\"\n                       : \"invalid integer division\",\n             line);\n}\nint64_t rh_index_integer(const void *value, int32_t bits, int32_t uns,\n                         int32_t line) {\n  const unsigned char *bytes = value;\n  int n = bits / 8;\n  if (!uns && (bytes[n - 1] & 128))\n    rh_panic(\"array index out of bounds\", line);\n  uint64_t result = 0;\n  for (int j = 0; j < n; j++) {\n    if (j >= 8) {\n      if (bytes[j])\n        rh_panic(\"array index out of bounds\", line);\n    } else\n      result |= (uint64_t)bytes[j] << (j * 8);\n  }\n  if (result > INT64_MAX)\n    rh_panic(\"array index out of bounds\", line);\n  return (int64_t)result;\n}\nfloat rh_f8_decode(uint8_t value) {\n  uint32_t sign = (uint32_t)(value & 128u) << 24;\n  unsigned exponent = (value >> 3) & 15u, fraction = value & 7u;\n  uint32_t bits = sign;\n  if (exponent == 15 && fraction == 7)\n    bits |= UINT32_C(0x7fc00000);\n  else if (exponent)\n    bits |= ((uint32_t)(exponent + 120) << 23) | (fraction << 20);\n  else if (fraction) {\n    unsigned leading = fraction >= 4 ? 2u : fraction >= 2 ? 1u : 0u;\n    bits |= ((leading + 118) << 23) |\n            ((fraction - (1u << leading)) << (23 - leading));\n  }\n  float result;\n  memcpy(&result, &bits, sizeof(result));\n  return result;\n}\nuint8_t rh_f8_encode(float value) {\n  uint32_t bits;\n  memcpy(&bits, &value, sizeof(bits));\n  unsigned sign = (bits >> 24) & 128u, exponent = (bits >> 23) & 255u;\n  if (exponent == 255)\n    return (uint8_t)(sign | 127u);\n  if (!exponent)\n    return (uint8_t)sign;\n  int e = (int)exponent - 127;\n  unsigned shift = e < -6 ? (unsigned)(14 - e) : 20u;\n  if (shift >= 32)\n    return (uint8_t)sign;\n  uint32_t significand = (bits & UINT32_C(0x7fffff)) | UINT32_C(0x800000);\n  unsigned q = significand >> shift;\n  unsigned rest = significand & ((UINT32_C(1) << shift) - 1);\n  unsigned halfway = UINT32_C(1) << (shift - 1);\n  q += rest > halfway || (rest == halfway && (q & 1));\n  unsigned encoded;\n  if (e < -6)\n    encoded = q;\n  else {\n    if (q == 16) {\n      q = 8;\n      e++;\n    }\n    if (e > 8)\n      return (uint8_t)(sign | 127u);\n    encoded = ((unsigned)(e + 7) << 3) | (q - 8);\n  }\n  return (uint8_t)(sign | (encoded > 126 ? 127u : encoded));\n}\n#define RH_DIVISION(T, NAME, MINIMUM)                                          \\\n  T rh_div_##NAME(T a, T b, int32_t line) {                                    \\\n    if (!b || (a == (MINIMUM) && b == (T) - 1))                                \\\n      rh_panic(\"invalid integer division\", line);                              \\\n    return (T)(a / b);                                                         \\\n  }                                                                            \\\n  T rh_rem_##NAME(T a, T b, int32_t line) {                                    \\\n    if (!b || (a == (MINIMUM) && b == (T) - 1))                                \\\n      rh_panic(\"invalid integer remainder\", line);                             \\\n    return (T)(a % b);                                                         \\\n  }\nRH_DIVISION(int32_t, i32, INT32_MIN)\nRH_DIVISION(int64_t, i64, INT64_MIN)\nuint8_t rh_div_u8(uint8_t a, uint8_t b, int32_t line) {\n  if (!b)\n    rh_panic(\"division by zero\", line);\n  return (uint8_t)(a / b);\n}\nuint8_t rh_rem_u8(uint8_t a, uint8_t b, int32_t line) {\n  if (!b)\n    rh_panic(\"remainder by zero\", line);\n  return (uint8_t)(a % b);\n}\n",
+    "after": "/* R^ runtime: OS-backed stable-address regions; no malloc/free or GC. */\n#if !defined(_WIN32)\n#define _DEFAULT_SOURCE\n#endif\n#include <inttypes.h>\n#include <limits.h>\n#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#if defined(_WIN32)\n#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n#else\n#include <sys/mman.h>\n#endif\n\ntypedef struct {\n  unsigned char *data;\n  uint64_t len, capacity;\n} RhArray;\n#define RH_REGION_BYTES (UINT64_C(64) * 1024 * 1024)\nstatic _Noreturn void rh_panic(const char *why, int32_t line) {\n  fprintf(stderr, \"R^ runtime error at line %\" PRId32 \": %s\\n\", line, why);\n  exit(1);\n}\n#if defined(_WIN32)\nstatic INIT_ONCE rh_page_once = INIT_ONCE_STATIC_INIT;\nstatic uint64_t rh_page_bytes;\nstatic BOOL CALLBACK rh_init_page_size(PINIT_ONCE once, PVOID parameter,\n                                       PVOID *context) {\n  (void)once;\n  (void)parameter;\n  (void)context;\n  SYSTEM_INFO info;\n  GetSystemInfo(&info);\n  rh_page_bytes = info.dwPageSize;\n  return rh_page_bytes != 0;\n}\n#endif\nvoid rh_region_init(RhArray *a) {\n#if defined(_WIN32)\n  if (!InitOnceExecuteOnce(&rh_page_once, rh_init_page_size, NULL, NULL))\n    rh_panic(\"page size query failed\", 0);\n  a->data =\n      VirtualAlloc(NULL, (SIZE_T)RH_REGION_BYTES, MEM_RESERVE, PAGE_READWRITE);\n  if (!a->data)\n    rh_panic(\"virtual address reservation failed\", 0);\n#else\n  void *p = mmap(NULL, (size_t)RH_REGION_BYTES, PROT_READ | PROT_WRITE,\n                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);\n  if (p == MAP_FAILED)\n    rh_panic(\"virtual address reservation failed\", 0);\n  a->data = p;\n#endif\n  a->len = 0;\n  a->capacity = RH_REGION_BYTES;\n}\nvoid rh_region_release(RhArray *a) {\n#if defined(_WIN32)\n  if (a->data && !VirtualFree(a->data, 0, MEM_RELEASE))\n    rh_panic(\"region release failed\", 0);\n#else\n  if (a->data && munmap(a->data, (size_t)a->capacity))\n    rh_panic(\"region release failed\", 0);\n#endif\n  a->data = NULL;\n  a->len = a->capacity = 0;\n}\nvoid rh_bounds(int64_t index, uint64_t length, int32_t line) {\n  if (index < 0 || (uint64_t)index >= length)\n    rh_panic(\"array index out of bounds\", line);\n}\nvoid *rh_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {\n  rh_bounds(index, a->len, line);\n  return a->data + (uint64_t)index * size;\n}\nvoid rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {\n  if (!size || size > a->capacity || a->len >= a->capacity / size)\n    rh_panic(\"region capacity exceeded\", line);\n  uint64_t off = a->len * size;\n#if defined(_WIN32)\n  uint64_t page = rh_page_bytes;\n  /* Fixed-size, append-only elements mean that every page below rounded-up\n   * `off` is already committed. Keep the 24-byte descriptor unchanged. */\n  uint64_t begin = (off + page - 1) / page * page,\n           end = (off + size + page - 1) / page * page;\n  if (end > begin && !VirtualAlloc(a->data + begin, (SIZE_T)(end - begin),\n                                   MEM_COMMIT, PAGE_READWRITE))\n    rh_panic(\"region commit failed\", line);\n#endif\n  memcpy(a->data + off, value, (size_t)size);\n  a->len++;\n}\nvoid rh_assert(int64_t condition, int32_t line) {\n  if (!condition)\n    rh_panic(\"assertion failed\", line);\n}\nvoid rh_print_i64(int64_t n) { printf(\"%\" PRId64, n); }\nvoid rh_print_f64(double n) { printf(\"%.17g\", n); }\nvoid rh_print_bool(int64_t b) { fputs(b ? \"true\" : \"false\", stdout); }\nvoid rh_print_string(const char *s, uint64_t n) {\n  fwrite(s, 1, (size_t)n, stdout);\n}\nvoid rh_print_space(void) { fputc(' ', stdout); }\nvoid rh_print_newline(void) { fputc('\\n', stdout); }\n/* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and\n * narrow integers, and do not require a C compiler-specific 128-bit ABI. */\nvoid rh_print_integer(const void *value, int32_t bits, int32_t uns) {\n  unsigned char bytes[16] = {0};\n  int n = bits / 8;\n  memcpy(bytes, value, (size_t)n);\n  if (!uns && (bytes[n - 1] & 128)) {\n    fputc('-', stdout);\n    unsigned carry = 1;\n    for (int j = 0; j < n; j++) {\n      unsigned v = (unsigned)(bytes[j] ^ 255u) + carry;\n      bytes[j] = (unsigned char)v;\n      carry = v >> 8;\n    }\n  }\n  char digits[40];\n  int count = 0;\n  bool nonzero;\n  do {\n    unsigned remainder = 0;\n    nonzero = false;\n    for (int j = n - 1; j >= 0; j--) {\n      unsigned v = remainder * 256 + bytes[j];\n      bytes[j] = (unsigned char)(v / 10);\n      remainder = v % 10;\n      nonzero = nonzero || bytes[j] != 0;\n    }\n    digits[count++] = (char)('0' + remainder);\n  } while (nonzero);\n  while (count)\n    fputc(digits[--count], stdout);\n}\nvoid rh_check_division(const void *lhs, const void *rhs, int32_t bits,\n                       int32_t uns, int32_t remainder, int32_t line) {\n  const unsigned char *a = lhs, *b = rhs;\n  bool zero = true, minus_one = true, minimum = true;\n  int n = bits / 8;\n  for (int j = 0; j < n; j++) {\n    zero = zero && b[j] == 0;\n    minus_one = minus_one && b[j] == 255;\n    minimum = minimum && a[j] == (j == n - 1 ? 128 : 0);\n  }\n  if (zero || (!uns && minimum && minus_one))\n    rh_panic(remainder ? \"invalid integer remainder\"\n                       : \"invalid integer division\",\n             line);\n}\nint64_t rh_index_integer(const void *value, int32_t bits, int32_t uns,\n                         int32_t line) {\n  const unsigned char *bytes = value;\n  int n = bits / 8;\n  if (!uns && (bytes[n - 1] & 128))\n    rh_panic(\"array index out of bounds\", line);\n  uint64_t result = 0;\n  for (int j = 0; j < n; j++) {\n    if (j >= 8) {\n      if (bytes[j])\n        rh_panic(\"array index out of bounds\", line);\n    } else\n      result |= (uint64_t)bytes[j] << (j * 8);\n  }\n  if (result > INT64_MAX)\n    rh_panic(\"array index out of bounds\", line);\n  return (int64_t)result;\n}\nfloat rh_f8_decode(uint8_t value) {\n  uint32_t sign = (uint32_t)(value & 128u) << 24;\n  unsigned exponent = (value >> 3) & 15u, fraction = value & 7u;\n  uint32_t bits = sign;\n  if (exponent == 15 && fraction == 7)\n    bits |= UINT32_C(0x7fc00000);\n  else if (exponent)\n    bits |= ((uint32_t)(exponent + 120) << 23) | (fraction << 20);\n  else if (fraction) {\n    unsigned leading = fraction >= 4 ? 2u : fraction >= 2 ? 1u : 0u;\n    bits |= ((leading + 118) << 23) |\n            ((fraction - (1u << leading)) << (23 - leading));\n  }\n  float result;\n  memcpy(&result, &bits, sizeof(result));\n  return result;\n}\nuint8_t rh_f8_encode(float value) {\n  uint32_t bits;\n  memcpy(&bits, &value, sizeof(bits));\n  unsigned sign = (bits >> 24) & 128u, exponent = (bits >> 23) & 255u;\n  if (exponent == 255)\n    return (uint8_t)(sign | 127u);\n  if (!exponent)\n    return (uint8_t)sign;\n  int e = (int)exponent - 127;\n  unsigned shift = e < -6 ? (unsigned)(14 - e) : 20u;\n  if (shift >= 32)\n    return (uint8_t)sign;\n  uint32_t significand = (bits & UINT32_C(0x7fffff)) | UINT32_C(0x800000);\n  unsigned q = significand >> shift;\n  unsigned rest = significand & ((UINT32_C(1) << shift) - 1);\n  unsigned halfway = UINT32_C(1) << (shift - 1);\n  q += rest > halfway || (rest == halfway && (q & 1));\n  unsigned encoded;\n  if (e < -6)\n    encoded = q;\n  else {\n    if (q == 16) {\n      q = 8;\n      e++;\n    }\n    if (e > 8)\n      return (uint8_t)(sign | 127u);\n    encoded = ((unsigned)(e + 7) << 3) | (q - 8);\n  }\n  return (uint8_t)(sign | (encoded > 126 ? 127u : encoded));\n}\n#define RH_DIVISION(T, NAME, MINIMUM)                                          \\\n  T rh_div_##NAME(T a, T b, int32_t line) {                                    \\\n    if (!b || (a == (MINIMUM) && b == (T) - 1))                                \\\n      rh_panic(\"invalid integer division\", line);                              \\\n    return (T)(a / b);                                                         \\\n  }                                                                            \\\n  T rh_rem_##NAME(T a, T b, int32_t line) {                                    \\\n    if (!b || (a == (MINIMUM) && b == (T) - 1))                                \\\n      rh_panic(\"invalid integer remainder\", line);                             \\\n    return (T)(a % b);                                                         \\\n  }\nRH_DIVISION(int32_t, i32, INT32_MIN)\nRH_DIVISION(int64_t, i64, INT64_MIN)\nuint8_t rh_div_u8(uint8_t a, uint8_t b, int32_t line) {\n  if (!b)\n    rh_panic(\"division by zero\", line);\n  return (uint8_t)(a / b);\n}\nuint8_t rh_rem_u8(uint8_t a, uint8_t b, int32_t line) {\n  if (!b)\n    rh_panic(\"remainder by zero\", line);\n  return (uint8_t)(a % b);\n}\n"
+  },
+  "runtime_sha256": {
+    "before": "6dcad006298bf502c897ce4dfd5b918892116a7dcca4997926600ab5259edf5b",
+    "after": "4d5b73f312db1c4f790c9bf26ef482eff09e209af31200fc5868ab03a1fdc995"
+  },
+  "reps": 3,
+  "warmups": 2,
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "emit",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small.ll"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\runtime_before.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small_before.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\runtime_after.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_small_after.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "emit",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_medium.ll"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_medium.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\runtime_after.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_medium_after.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "emit",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_large.ll"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_large.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\runtime_after.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\page-commit-bench\\bintrees_large_after.exe"
+    ]
+  ],
+  "rows": [
+    {
+      "size": "small",
+      "runtime": "before",
+      "depth": 15,
+      "best_ms": 9831.6514,
+      "peak_bytes": 4997120,
+      "samples": [
+        {
+          "ms": 10020.3137,
+          "peak_bytes": 4997120,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 9831.6514,
+          "peak_bytes": 4997120,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 10192.8459,
+          "peak_bytes": 4993024,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 10228.7431,
+          "peak_bytes": 5001216,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 9942.6561,
+          "peak_bytes": 4997120,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        }
+      ]
+    },
+    {
+      "size": "small",
+      "runtime": "after",
+      "depth": 15,
+      "best_ms": 768.3446,
+      "peak_bytes": 5001216,
+      "samples": [
+        {
+          "ms": 768.3446,
+          "peak_bytes": 5001216,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 823.1476,
+          "peak_bytes": 4997120,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 974.8446,
+          "peak_bytes": 4997120,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1057.7165,
+          "peak_bytes": 5009408,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        },
+        {
+          "ms": 924.3118,
+          "peak_bytes": 5001216,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535"
+        }
+      ]
+    },
+    {
+      "size": "medium",
+      "runtime": "after",
+      "depth": 17,
+      "best_ms": 2596.4521,
+      "peak_bytes": 8146944,
+      "samples": [
+        {
+          "ms": 2793.3882,
+          "peak_bytes": 8142848,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143"
+        },
+        {
+          "ms": 2596.4521,
+          "peak_bytes": 8142848,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143"
+        },
+        {
+          "ms": 2790.0891,
+          "peak_bytes": 8146944,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2990.3784,
+          "peak_bytes": 8155136,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143"
+        },
+        {
+          "ms": 2895.4495,
+          "peak_bytes": 8146944,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143"
+        }
+      ]
+    },
+    {
+      "size": "large",
+      "runtime": "after",
+      "depth": 19,
+      "best_ms": 10520.9467,
+      "peak_bytes": 20729856,
+      "samples": [
+        {
+          "ms": 10520.9467,
+          "peak_bytes": 20729856,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575"
+        },
+        {
+          "ms": 13261.4031,
+          "peak_bytes": 20729856,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575"
+        },
+        {
+          "ms": 12329.4181,
+          "peak_bytes": 20729856,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 14015.8314,
+          "peak_bytes": 20738048,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575"
+        },
+        {
+          "ms": 13114.6933,
+          "peak_bytes": 20729856,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575"
+        }
+      ]
+    }
+  ],
+  "llvm_sha256": {
+    "small": "7bd088e140e5eb52f259fa4ff9db2a6cc669af55c873f57c5594b919fa51d7c0",
+    "medium": "cc788c06fc1fcf7b27476d1133bdb71721c81f1cab6458c3c68bd75cbf93fb63",
+    "large": "aace8d7d395a5710d11372b655b917aee7602cd40bfb6bc59e7fc1218842b8a2"
+  }
+}

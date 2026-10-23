@@ -4,8 +4,12 @@ Inspected revision: `94cc64daeabcae6f072dc1fe2b864acda5a001bc`.
 The recorded benchmark run deliberately added no R^ language/runtime features.
 The subsequent numeric-type work adds u64^, the other integer widths, f8^,
 f16^ and f32^, and requires ^ on built-in type names. The table below is
-updated for those types; the saved timings still describe the earlier
-compiler/runtime recorded in results.json.
+updated for those types. Original timings remain in results.json; results.md
+uses the newer R^ timings from page_commit_results.json alongside the
+original C++/Rust rows, with the separate measurement sessions identified.
+Windows page commits have also been reduced to newly required pages, with
+the page size cached once per process; see page_commit_results.md for the
+separate controlled comparison.
 
 **1/16 workloads is ported.** `bintrees` is measured at all original sizes.
 There is no suite-wide performance claim. Missing workloads are not assigned
@@ -39,5 +43,5 @@ would change the comparison, so this port does none of those things.
 Priority after this phase: bitwise operations and explicit numeric
 conversions unlock `sum`, then `push` with a documented reference-interface
 choice, `particles` and `blur`. Increasing region
-capacity and avoiding redundant page commits are separate runtime changes
-that should be benchmarked as such, rather than silently folded into a port.
+capacity and reusing regions or shared data stacks remain separate runtime
+changes. Redundant page commits have been addressed and measured separately.

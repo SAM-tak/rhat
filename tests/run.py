@@ -103,6 +103,34 @@ def factorial_ir(ir, ll):
 
 
 positive("empty_program", "", "")
+if os.name == "nt":
+    for opt in ("-O0", "-O2"):
+        exe = work / ("runtime_regions_" + opt[1:] + ".exe")
+        run([args.clang, "-std=c11", opt, str(repo / "tests/runtime_regions.c"), "-o", str(exe)])
+        assert run([str(exe)]).stdout == "page commits verified\n"
+        for mode, diagnostic in (("commit-failure", "region commit failed"),
+                                 ("page-failure", "page size query failed"),
+                                 ("capacity", "region capacity exceeded")):
+            assert diagnostic in run([str(exe), mode], 1).stderr
+    passed += 1
+    print("PASS windows_page_commit_calls_and_failures", flush=True)
+
+positive("page_crossing_elements", """
+def^ Triple { self^{ a:u8^=1,b:u8^=2,c:u8^=3 } }
+var^ a:Triple[>..]=[]
+a.push(Triple.new())
+let^ first=&a[0].a
+var^ i:i32^=1
+while^ i<3000 { a.push(Triple.new()); i:=i+1 }
+a[0].a:=9
+print(*first,a[2999].c,a.len)
+def^ Large { self^{ bytes:u8^[10000], marker:i32^=42 } }
+var^ b:Large[>..]=[]
+b.push(Large.new())
+b.push(Large{marker=99})
+b.push(Large.new())
+print(b[0].marker,b[1].marker,b[2].bytes[9999],b.len)
+""", "9 3 3000\n42 99 0 3\n")
 positive("numeric_example", (repo / "examples/numeric.rh").read_text(),
          "true 42\n-128 340282366920938463463374607431768211455 "
          "-170141183460469231731687303715884105728\n"

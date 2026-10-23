@@ -26,8 +26,24 @@ static _Noreturn void rh_panic(const char *why, int32_t line) {
   fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, why);
   exit(1);
 }
+#if defined(_WIN32)
+static INIT_ONCE rh_page_once = INIT_ONCE_STATIC_INIT;
+static uint64_t rh_page_bytes;
+static BOOL CALLBACK rh_init_page_size(PINIT_ONCE once, PVOID parameter,
+                                       PVOID *context) {
+  (void)once;
+  (void)parameter;
+  (void)context;
+  SYSTEM_INFO info;
+  GetSystemInfo(&info);
+  rh_page_bytes = info.dwPageSize;
+  return rh_page_bytes != 0;
+}
+#endif
 void rh_region_init(RhArray *a) {
 #if defined(_WIN32)
+  if (!InitOnceExecuteOnce(&rh_page_once, rh_init_page_size, NULL, NULL))
+    rh_panic("page size query failed", 0);
   a->data =
       VirtualAlloc(NULL, (SIZE_T)RH_REGION_BYTES, MEM_RESERVE, PAGE_READWRITE);
   if (!a->data)
@@ -66,13 +82,13 @@ void rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
     rh_panic("region capacity exceeded", line);
   uint64_t off = a->len * size;
 #if defined(_WIN32)
-  SYSTEM_INFO info;
-  GetSystemInfo(&info);
-  uint64_t page = info.dwPageSize;
-  uint64_t begin = off / page * page,
+  uint64_t page = rh_page_bytes;
+  /* Fixed-size, append-only elements mean that every page below rounded-up
+   * `off` is already committed. Keep the 24-byte descriptor unchanged. */
+  uint64_t begin = (off + page - 1) / page * page,
            end = (off + size + page - 1) / page * page;
-  if (!VirtualAlloc(a->data + begin, (SIZE_T)(end - begin), MEM_COMMIT,
-                    PAGE_READWRITE))
+  if (end > begin && !VirtualAlloc(a->data + begin, (SIZE_T)(end - begin),
+                                   MEM_COMMIT, PAGE_READWRITE))
     rh_panic("region commit failed", line);
 #endif
   memcpy(a->data + off, value, (size_t)size);

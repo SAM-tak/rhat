@@ -10,10 +10,29 @@ the remaining workloads and their missing language/runtime features.
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
 
-The saved results predate the numeric-type expansion and mandatory `^`
-suffix. `rhat/bintrees.rh` now uses the required suffix; the original source
-is available in commit `0c5eb3f`. The saved measurements and hashes remain
-unchanged. Re-running measures the compiler/runtime currently selected.
+The original measurements in `results.json` predate the numeric-type
+expansion and mandatory `^` suffix. `rhat/bintrees.rh` now uses the required
+suffix; the original source is available in commit `0c5eb3f`. Those raw
+measurements and hashes remain unchanged. `results.md` combines the latest
+R^ measurements with the original C++/Rust rows and identifies both sessions.
+Re-running the full suite measures all implementations with the selected tools.
+
+The subsequent Windows page-commit change is measured separately in
+[page_commit_results.md](page_commit_results.md). Reproduce its controlled
+comparison using identical LLVM IR and the same Clang:
+
+```powershell
+. .\scripts\devshell.ps1 -Configuration Release
+python bench/compare_page_commits.py
+```
+
+This compares the runtime from commit `9bfaf5f` with the current runtime at
+the small size, then measures the current runtime at medium/large. It keeps
+the original raw measurements intact and does not rerun C++/Rust. Raw samples, both
+runtime sources, LLVM hashes and build commands are saved separately.
+Run `python bench/run_bench.py --report-only` afterwards to update `results.md`.
+When newer page-commit data is present, report-only generation uses its R^
+rows and recalculates the comparison ratios; it retains the original JSON.
 
 From the repository root on Windows x64 with Visual Studio C++/Clang,
 Python 3 and Rust installed:
@@ -56,7 +75,9 @@ Sample order alternates forwards/backwards across implementations.
 R^ emits LLVM IR, so its single Clang result is compared with both C++
 backends and rustc. There is no R^/MSVC result. Original C++/Rust sources are
 unchanged, including scratch reuse in their arena variants. R^ currently
-reserves/releases an OS region for every tree and commits memory on every
-push. Those costs remain inside the measurement. Its nodes use two i32
+reserves/releases an OS region for every tree. The original recorded run
+committed memory on every push; the current runtime commits only newly needed
+pages and queries the page size once. These costs remain inside the
+measurement. Its nodes use two i32
 indices (8 bytes), preserving tree shape and checksum without introducing
 unsupported relative-reference or nullable-reference syntax.
