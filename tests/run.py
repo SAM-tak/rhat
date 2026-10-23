@@ -104,6 +104,198 @@ def factorial_ir(ir, ll):
 
 positive("empty_program", "", "")
 
+positive("push_returns_stable_reference", '''
+def^ Item { self^{ key:i32^, val:i32^ } }
+var^ items:Item[>..]=[]
+var^ marks:(&Item)[>..]=[]
+let^ first=items.push(Item{key=7,val=11})
+marks.push(first)
+var^ i:i32^=0
+while^ i < 2000 {
+    let^ item=items.push(Item{key=i,val=i+1})
+    if^ i % 64 = 0 { marks.push(item) }
+    i := i+1
+}
+first.val := 42
+print(items.len,marks.len,marks[0].key,marks[0].val,marks[32].val)
+''', "2001 33 7 42 1985\n")
+positive("reference_array_literals_and_grouped_types", '''
+var^ x:i32^=10
+var^ y:i32^=20
+var^ a:(&i32^)[>..]=[&x,&y]
+let^ b:(&i32^)[2]=[&x,&y]
+let^ alias:&(&i32^)[>..]=&a
+let^ pointer:&&i32^=a.push(&x);
+**pointer := 30
+print(*alias[0],*a[1],*b[0],a.len)
+''', "30 20 30 3\n")
+positive("reference_record_elements", '''
+def^ Mark { self^{ ref:&i32^ } }
+var^ x:i32^=7
+var^ y:i32^=9
+var^ a:Mark[>..]=[Mark{ref=&x}]
+a.push(Mark{ref=&y});
+*a[0].ref := 12
+a[1] := Mark{ref=&x}
+print(x,*a[1].ref)
+''', "12 12\n")
+positive("reference_array_owned_return", '''
+let^ collect=p^ x:&i32^ -> (&i32^)[>..] {
+    var^ refs:(&i32^)[>..]=[]
+    refs.push(x)
+    return^ refs
+}
+let^ literal=p^ x:&i32^ -> (&i32^)[>..] { return^ [x] }
+let^ append=p^ a:&i32^[>..], x:i32^ { return^ a.push(x) }
+var^ x:i32^=42
+var^ refs=collect(&x)
+var^ other=literal(&x)
+var^ data:i32^[>..]=[]
+let^ held=append(&data,7)
+data.push(8)
+print(*refs[0],*other[0],*held)
+''', "42 42 7\n")
+positive("static_string_array", '''
+var^ strings:string^[>..]=["hello"]
+let^ held=strings.push("world")
+print(strings[0],*held,strings.len)
+''', "hello world 2\n")
+positive("reference_slot_mutation_preserves_scalars", '''
+let^ f=p^ -> i32^ {
+    var^ x:i32^=10
+    var^ y:i32^=20
+    var^ refs:(&i32^)[>..]=[&x]
+    let^ slot=refs.push(&x);
+    *slot := &y
+    print(*refs[0],*refs[1])
+    return^ x
+}
+print(f())
+''', "10 20\n10\n")
+negative("reference_slot_mutation_owned_escape", '''
+let^ bad=p^ -> (&i32^)[>..] {
+    var^ x:i32^=10
+    var^ y:i32^=20
+    var^ refs:(&i32^)[>..]=[&x]
+    let^ slot=refs.push(&x);
+    *slot := &y
+    return^ refs
+}
+''', "cannot return a reference")
+negative("push_inner_owner", '''
+var^ marks:(&i32^)[>..]=[]
+{ var^ x:i32^=1; marks.push(&x) }
+''', "reference would outlive its owner")
+negative("push_return_local_element", '''
+let^ bad=p^ -> &i32^ { var^ a:i32^[>..]=[]; return^ a.push(1) }
+''', "cannot return a reference")
+negative("push_return_local_pointer_slot", '''
+let^ bad=p^ x:&i32^ -> &&i32^ {
+    var^ refs:(&i32^)[>..]=[]
+    return^ refs.push(x)
+}
+''', "cannot return a reference")
+negative("push_owned_return_local_references", '''
+let^ bad=p^ -> (&i32^)[>..] {
+    var^ x:i32^=1
+    var^ refs:(&i32^)[>..]=[]
+    refs.push(&x)
+    return^ refs
+}
+''', "cannot return a reference")
+negative("reference_array_literal_return_local", '''
+let^ bad=p^ -> (&i32^)[>..] { var^ x:i32^=1; return^ [&x] }
+''', "cannot return a reference")
+negative("owned_reference_field_return_local", '''
+def^ Box { self^{ refs:(&i32^)[>..] } }
+let^ bad=p^ -> Box {
+    var^ x:i32^=1
+    var^ box=Box{refs=[&x]}
+    return^ box
+}
+''', "cannot return a reference")
+for kind, annotation in (("grow", "(&i32^)[>..]"), ("fixed", "(&i32^)[1]")):
+    negative("reference_array_loop_alias_"+kind, '''
+let^ bad=p^ source:&i32^ -> &i32^ {
+    var^ local:i32^=9
+    var^ refs:TYPE=[source]
+    let^ alias=&refs
+    var^ out=source
+    var^ n:i32^=0
+    while^ n < 2 {
+        out := alias[0]
+        refs[0] := &local
+        n := n+1
+    }
+    return^ out
+}
+'''.replace("TYPE",annotation), "cannot return a reference")
+negative("push_through_borrowed_reference_array", '''
+let^ bad=p^ refs:&(&i32^)[>..], x:&i32^ { refs.push(x) }
+''', "cannot store nonstatic references through borrowed storage")
+negative("push_immutable", "let^ a:i32^[>..]=[]; a.push(1)", "cannot modify let^")
+negative("push_wrong_result", "var^ a:i32^[>..]=[]; let^ x:i32^=a.push(1)", "push returns")
+negative("grow_owned_elements", "var^ a:i32^[>..][>..]=[]", "fixed-size")
+negative("push_loop_carried_reference_return", '''
+let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+    var^ local:i32^=9
+    var^ ref=source
+    var^ marks:(&i32^)[>..]=[]
+    var^ n:i32^=0
+    while^ n < 2 {
+        marks.push(ref)
+        ref := &local
+        n := n+1
+    }
+    return^ marks
+}
+''', "cannot return a reference")
+negative("push_loop_parameter_reference_return", '''
+let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+    var^ local:i32^=9
+    var^ marks:(&i32^)[>..]=[]
+    var^ n:i32^=0
+    while^ n < 2 { marks.push(source); source := &local; n := n+1 }
+    return^ marks
+}
+''', "cannot return a reference")
+negative("push_loop_reference_chain", '''
+let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+    var^ local:i32^=9
+    var^ first=source
+    var^ second=source
+    var^ marks:(&i32^)[>..]=[]
+    var^ n:i32^=0
+    while^ n < 3 {
+        marks.push(first)
+        first := second
+        second := &local
+        n := n+1
+    }
+    return^ marks
+}
+''', "cannot return a reference")
+chain_declarations = "\n".join(f"var^ r{i}=x" for i in range(9))
+chain_assignments = "\n".join(f"r{i} := r{i+1}" for i in range(8))
+positive("reference_loop_fixed_point", '''
+let^ collect=p^ x:&i32^, y:&i32^ -> (&i32^)[>..] {
+    var^ marks:(&i32^)[>..]=[]
+    DECLARATIONS
+    var^ n:i32^=0
+    while^ n < 12 {
+        marks.push(r0)
+        ASSIGNMENTS
+        r8 := y
+        n := n+1
+    }
+    return^ marks
+}
+var^ x:i32^=10
+var^ y:i32^=20
+var^ marks=collect(&x,&y)
+print(marks.len,*marks[0],*marks[8],*marks[9],*marks[11])
+'''.replace("DECLARATIONS",chain_declarations).replace("ASSIGNMENTS",chain_assignments), "12 10 10 20 20\n")
+
 # Exercise all integer widths against Python's unbounded integer oracle.
 integer_types = [(f"{sign}{bits}^", bits, sign == "u")
                  for sign in ("i", "u") for bits in (8, 16, 32, 64, 128)]

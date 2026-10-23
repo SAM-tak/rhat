@@ -11,9 +11,10 @@ Windows page commits have also been reduced to newly required pages, with
 the page size cached once per process; see page_commit_results.md for the
 separate controlled comparison.
 
-**6/16 workloads are ported:** `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph`.
+**7/16 workloads are ported:** `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph`, `push`.
 The new ports preserve the original RNG, sizes, passes and checksums. Their
-comparisons are in workloads_results.md and tree_graph/workloads_results.md,
+comparisons are in workloads_results.md, tree_graph/workloads_results.md
+and push/workloads_results.md,
 with separate measurement sessions identified; historical bintrees
 measurements remain in results.md. No suite-wide performance claim is made.
 
@@ -25,7 +26,7 @@ This retains stable addresses and commits physical pages only as needed.
 | Workload | Original small / medium / large | Additional requirements / representation decisions |
 |---|---|---|
 | sum | N=1M / 16M / 128M | **Ported:** i32 array, xorshift64 input, eight scans; 512 MB large input fits the 1 GiB reservation |
-| push | N=1M / 16M / 64M | To retain the reference interface, push must return a reference and grow arrays must accept rooted references; fixed-size large storage fits the new reservation |
+| push | N=1M / 16M / 64M | **Ported:** 8-byte Items and real references returned by push; every 64th pointer retained across growth in a reference-element array; original four checksums |
 | strlist | N=200K / 2M / 8M | Owned variable-length inline strings in an array; split/append/slices; nested dynamic storage |
 | records | N=500K / 4M / 16M | Tagged unions and dispatch, variable-size payloads, inline owned strings; fixed-union row could precede variable-size representation |
 | tree | depth=16 / 20 / 24 | **Ported:** 12-byte nodes with u32 child indices, zero sentinel excluded from count, eight full traversals; relative references are not claimed |
@@ -43,15 +44,19 @@ This retains stable addresses and commits physical pages only as needed.
 
 Next steps:
 
-1. Add rooted reference elements and reference-returning push for `push`.
-2. Add safe reusable node/buffer APIs for `lru` / `calc`. The ported graph
+1. Add safe reusable node/buffer APIs for `lru` / `calc`. The ported graph
    currently reuses initialized queue storage with its own active-prefix tail;
    a language-level clear operation is not required by that port.
-3. Add owned byte/string views and operations for `words`, `strlist`, `respond`.
-4. Add nominal tagged variants and matching for `records`, `interp`, `sexp`,
+2. Add owned byte/string views and operations for `words`, `strlist`, `respond`.
+3. Add nominal tagged variants and matching for `records`, `interp`, `sexp`,
    and `calc`; then address nested/variable-size storage and explicit errors.
 
 Reusing regions/shared data stacks and removing redundant bounds checks are
 separate performance work. Redundant page commits have been addressed and
 measured separately. The 1 GiB reservation is still a fixed implementation
 limit, not an unbounded container.
+
+Reference-returning push and fixed-size reference-bearing array elements are now
+implemented. Stores obey owner/scope checks; references read from arrays retain
+the container lifetime bound. Loop reference histories reach a fixed point before
+IR is finalized. Borrowed-storage reference writes remain conservatively restricted.

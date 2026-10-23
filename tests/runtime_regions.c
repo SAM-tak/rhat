@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
   /* A page of byte pushes commits exactly once, and the next page stays
    * reserved until its first byte is actually needed. */
   for (SIZE_T i = 0; i < page; i++)
-    rh_array_push(&a, &value, 1, 1);
+    assert(rh_array_push(&a, &value, 1, 1) == a.data + i);
   assert(commits == 1 && queries == 1);
   assert(last_commit == a.data && last_size == page);
   assert(page_state(a.data) == MEM_COMMIT);

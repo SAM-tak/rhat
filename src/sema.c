@@ -55,6 +55,7 @@ Type *type_wrap(Program *p, int k, Type *e, int n) {
     t->size = 24;
     t->align = 8;
     t->owned = true;
+    t->refs = e->refs;
   }
   add(&p->types, t);
   return t;
@@ -86,8 +87,8 @@ char *type_name(Type *t) {
   if (t->kind == T_REF)
     return fmt("&%s", type_name(t->elem));
   if (t->kind == T_GROW)
-    return fmt("%s[>..]", type_name(t->elem));
-  return fmt("%s[%d]", type_name(t->elem), t->count);
+    return fmt(t->elem->kind == T_REF ? "(%s)[>..]" : "%s[>..]", type_name(t->elem));
+  return fmt(t->elem->kind == T_REF ? "(%s)[%d]" : "%s[%d]", type_name(t->elem), t->count);
 }
 bool derives(Def *d, Def *b) {
   if (d == b)
@@ -266,7 +267,14 @@ static void compose(Program *p, Def *d) {
   d->state = 2;
 }
 static void layout(Type *t, Loc l) {
-  if (t->kind < T_STRUCT || t->kind == T_REF || t->kind == T_GROW)
+  if (t->kind == T_GROW) {
+    layout(t->elem, l);
+    if (t->elem->owned || !t->elem->size)
+      fail(l, "growable elements must be nonempty fixed-size values");
+    t->refs = t->elem->refs;
+    return;
+  }
+  if (t->kind < T_STRUCT || t->kind == T_REF)
     return;
   if (t->size == SIZE_MAX)
     fail(l, "recursive by-value layout in '%s'", type_name(t));
@@ -379,7 +387,7 @@ static Var *lookup(Context *c, const char *name) {
   return NULL;
 }
 static Value variable(Var *v) {
-  return (Value){v->slot, v->type, v->deps, v->root, v, true};
+  return (Value){v->slot, v->type, v->type->refs ? v->deps : 0, v->root, v, true};
 }
 static void access_check(Context *c, bool priv, Def *owner, Loc l,
                          const char *name) {
@@ -422,10 +430,10 @@ static void store_check(Context *c, Value dst, Value src, Loc l) {
     }
   for (int n = 0; n < c->vars.n; n++) {
     Var *v = c->vars.v[n];
-    if (v->root & dst.storage)
+    if (v->type->refs && (v->root & dst.storage))
       v->deps |= src.deps;
   }
-  if (dst.var)
+  if (dst.var && dst.var->type->refs)
     dst.var->deps |= src.deps;
 }
 static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
@@ -442,7 +450,7 @@ static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
   i->a = src.id;
   i->type = dst.type;
   dst.deps = src.deps;
-  if (dst.var)
+  if (dst.var && dst.var->type->refs)
     dst.var->deps |= src.deps;
   return dst;
 }
@@ -595,11 +603,17 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (v.type != base.type->elem)
         fail(e->loc, "push element type mismatch");
       store_check(c, base, v, e->loc);
+      Type *t = type_wrap(p, T_REF, base.type->elem, 0);
+      if (expected && expected != t)
+        fail(e->loc, "push returns '%s', expected '%s'", type_name(t), type_name(expected));
+      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
+                   .type = t, .deps = base.storage | base.deps | v.deps};
       Instr *i = emit(c, I_PUSH, e->loc);
+      i->dst = out.id;
       i->a = base.id;
       i->b = v.id;
       i->type = base.type;
-      return (Value){.id = -1, .type = type_builtin(p, T_VOID)};
+      return out;
     }
     if (base.type->kind != T_STRUCT)
       fail(e->loc, "method call requires a structure");
@@ -865,9 +879,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     out.id = dst >= 0 ? dst : slot(c, t, false);
     if (t->kind == T_GROW) {
       layout(t->elem, e->loc);
-      if (t->elem->owned || t->elem->refs || !t->elem->size)
-        fail(e->loc, "growable elements must be fixed-size and contain no "
-                     "references in this version");
+      if (t->elem->owned || !t->elem->size)
+        fail(e->loc, "growable elements must be nonempty fixed-size values");
       Instr *a = emit(c, I_REGION, e->loc);
       a->dst = out.id;
       a->type = t;
@@ -877,6 +890,7 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
         Value v = expression(c, e->args.v[j], t->elem);
         if (v.type != t->elem)
           fail(e->loc, "array element type mismatch");
+        out.deps |= v.deps;
         Instr *a = emit(c, I_PUSH, e->loc);
         a->a = out.id;
         a->b = v.id;
@@ -970,7 +984,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     out.type = base.type->elem;
     out.id = slot(c, out.type, true);
     out.storage = base.storage;
-    out.deps = out.type->refs ? base.deps : 0;
+    /* The container must outlive references loaded from it. This conservative
+       bound also covers aliases and loop-carried updates to element roots. */
+    out.deps = out.type->refs ? base.deps | base.storage : 0;
     out.var = base.var;
     out.addressable = base.addressable;
     Instr *i = emit(c, I_INDEX, e->loc);
@@ -1233,7 +1249,29 @@ static void statements(Context *c, List *body, bool scope) {
       i->other = end;
       i = emit(c, I_LABEL, s->loc);
       i->label = loop;
-      statements(c, &s->body, true);
+      /* Revisit the body until every outer binding's reference history is
+         stable. A reference read before a later assignment may carry that
+         assignment's owner on the next iteration. Discard speculative IR,
+         and reuse root/slot/label identities for each visit. */
+      int code_start = c->in->code.n, slots_start = c->in->slots.n;
+      int labels_start = c->in->labels, roots_start = c->root_count;
+      int bindings = c->vars.n;
+      for (;;) {
+        uint64_t before[64];
+        for (int j = 0; j < bindings; j++)
+          before[j] = ((Var *)c->vars.v[j])->deps;
+        statements(c, &s->body, true);
+        bool changed = false;
+        for (int j = 0; j < bindings; j++)
+          changed |= before[j] != ((Var *)c->vars.v[j])->deps;
+        if (!changed)
+          break;
+        c->in->code.n = code_start;
+        c->in->slots.n = slots_start;
+        c->in->labels = labels_start;
+        c->root_count = roots_start;
+        c->terminated = false;
+      }
       if (!c->terminated) {
         i = emit(c, I_BR, s->loc);
         i->label = test;
@@ -1361,7 +1399,7 @@ static Type *infer_call(Infer *c, Expr *e) {
     if (base && base->kind == T_GROW && !strcmp(target->text, "push")) {
       for (int j = 0; j < e->args.n; j++)
         infer_expr(c, e->args.v[j], base->elem);
-      return type_builtin(c->p, T_VOID);
+      return type_wrap(c->p, T_REF, base->elem, 0);
     }
     if (base && base->kind == T_STRUCT) {
       self = base->def;

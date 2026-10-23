@@ -1,0 +1,37 @@
+# Port of aardappel/goose bench/goose/push.goose, Apache-2.0.
+# Marks are real Item references, retained across subsequent pushes.
+def^ Item { self^{ key:i32^, val:i32^ } }
+
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+
+let^ n:i64^=1000000 # BENCH_N
+var^ items:Item[>..]=[]
+var^ marks:(&Item)[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < n {
+    r := next(r)
+    let^ element=items.push(Item{ key=i32^(r % 1000000), val=i32^(i % 97) })
+    if^ i % 64 = 0 { marks.push(element) }
+    i := i+1
+}
+var^ total:i64^=0
+i := 0
+while^ i < items.len {
+    total := total+i64^(items[i].key)
+    i := i+1
+}
+var^ marked_total:i64^=0
+i := 0
+while^ i < marks.len {
+    marked_total := marked_total+i64^(marks[i].val)
+    i := i+1
+}
+print(items.len)
+print(marks.len)
+print(total)
+print(marked_total)

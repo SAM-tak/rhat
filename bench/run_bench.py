@@ -177,9 +177,9 @@ def write_results(data, out, page_update=None):
               ("R^ retains runtime bounds checks. Pushes within already committed pages make no OS call."
                if page_update else "Runtime bounds checks and OS-backed array storage are included in these measurements."),
               "There is no R^/MSVC row: MSVC does not consume LLVM IR.",
-              "Five more workloads are now ported; their freshly measured comparisons are in",
-              "[workloads_results.md](workloads_results.md) and [tree_graph/workloads_results.md](tree_graph/workloads_results.md).",
-              "Ten workloads remain; see [coverage.md](coverage.md).",
+              "Six more workloads are now ported; their freshly measured comparisons are in",
+              "[workloads_results.md](workloads_results.md), [tree_graph/workloads_results.md](tree_graph/workloads_results.md),",
+              "and [push/workloads_results.md](push/workloads_results.md). Nine workloads remain; see [coverage.md](coverage.md).",
               ("Current R^ samples, sources and hashes are in `page_commit_results.json`; C++/Rust and the original R^ baseline are in `results.json`."
                if page_update else "Raw samples, checksums, source hashes and build commands are in `results.json`."), ""]
     if page_update:
@@ -189,7 +189,7 @@ def write_results(data, out, page_update=None):
                   f"Small: **{before:.2f} ms -> {after:.2f} ms ({before/after:.2f}x faster)**,",
                   "using the same compiler, LLVM IR and Clang flags. See",
                   "[page_commit_results.md](page_commit_results.md) for the full before/after record.", ""]
-    lines[4:4] = ["Additional results: [sum / blur / particles](workloads_results.md), [tree / graph](tree_graph/workloads_results.md).", ""]
+    lines[4:4] = ["Additional results: [sum / blur / particles](workloads_results.md), [tree / graph](tree_graph/workloads_results.md), [push](push/workloads_results.md).", ""]
     (out / "results.md").write_text("\n".join(lines), encoding="utf-8")
 
 

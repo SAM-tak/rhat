@@ -5,7 +5,7 @@ with R^ replacing Goose and freshly measured C++/Rust comparison rows.
 Goose itself is neither built nor measured. Sources are pinned and vendored;
 running the suite requires no network access.
 
-Current coverage is `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph` (6/16). See [coverage.md](coverage.md) for
+Current coverage is `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph`, `push` (7/16). See [coverage.md](coverage.md) for
 the remaining workloads and their missing language/runtime features.
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
@@ -51,6 +51,21 @@ without adding a language-level clear operation, and adds a branch at enqueue.
 All original inputs, traversal/source counts and checksums are retained.
 R^ still checks indices; it does not implement relative-reference or
 check-free vertex types. These representations are identified in the report.
+
+`push` is measured separately in [push/workloads_results.md](push/workloads_results.md):
+
+```powershell
+python bench/run_workloads.py --workloads push --out bench/push --work build/bench-push
+python bench/run_workloads.py --report-only --out bench/push
+```
+
+The R^ port retains real references returned by push, marking every 64th
+8-byte Item across later growth. It uses `(&Item)[>..]`, not an index substitute.
+C++ vector and Rust Vec controls use indices; the C++ deque control retains
+pointers. All original sizes, RNG outputs and four checksum lines are retained.
+The largest Item storage is 512 MB and fits the existing 1 GiB reservation.
+Earlier session data is retained; current push results use the reference-returning
+runtime ABI and compiler lifetime checks identified by their own hashes.
 
 The original measurements in `results.json` predate the numeric-type
 expansion and mandatory `^` suffix. `rhat/bintrees.rh` now uses the required

@@ -142,10 +142,13 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  call void @rh_region_release(ptr %%p%d)\n", i->a);
     break;
   case I_PUSH:
+    r = ++o->tmp;
     fprintf(
         f,
-        "  call void @rh_array_push(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-        i->a, i->b, t->elem->size, i->loc.line);
+        "  %%t%d = call ptr @rh_array_push(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
+        r, i->a, i->b, t->elem->size, i->loc.line);
+    if (i->dst >= 0)
+      save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     break;
   case I_LENGTH:
     if (t->kind == T_ARRAY)
@@ -442,7 +445,7 @@ void emit_llvm(Program *p, const char *path) {
     }
   }
   fputs("\ndeclare void @rh_region_init(ptr)\ndeclare void "
-        "@rh_region_release(ptr)\ndeclare void @rh_array_push(ptr, ptr, i64, "
+        "@rh_region_release(ptr)\ndeclare ptr @rh_array_push(ptr, ptr, i64, "
         "i32)\ndeclare ptr @rh_array_at(ptr, i64, i64, i32)\ndeclare void "
         "@rh_bounds(i64, i64, i32)\ndeclare void @rh_assert(i64, i32)\ndeclare "
         "void @rh_print_i64(i64)\ndeclare void @rh_print_f64(double)\ndeclare "

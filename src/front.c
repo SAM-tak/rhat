@@ -229,13 +229,27 @@ static void lex(Parser *p) {
 static Spec *spec(Parser *p) {
   Spec *s = mem(sizeof(*s));
   s->loc = tok(p)->loc;
+  if (take(p, "&&")) {
+    s->kind = SPEC_REF;
+    Spec *inner = mem(sizeof(*inner));
+    inner->kind = SPEC_REF;
+    inner->loc = s->loc;
+    inner->elem = spec(p);
+    s->elem = inner;
+    return s;
+  }
   if (take(p, "&")) {
     s->kind = SPEC_REF;
     s->elem = spec(p);
     return s;
   }
-  s->kind = SPEC_NAME;
-  s->name = word(p);
+  if (take(p, "(")) {
+    s = spec(p);
+    need(p, ")");
+  } else {
+    s->kind = SPEC_NAME;
+    s->name = word(p);
+  }
   while (take(p, "[")) {
     Spec *w = mem(sizeof(*w));
     w->loc = s->loc;

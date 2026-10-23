@@ -77,7 +77,7 @@ void *rh_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {
   rh_bounds(index, a->len, line);
   return a->data + (uint64_t)index * size;
 }
-void rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
+void *rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
   if (!size || size > a->capacity || a->len >= a->capacity / size)
     rh_panic("region capacity exceeded", line);
   uint64_t off = a->len * size;
@@ -93,6 +93,7 @@ void rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
 #endif
   memcpy(a->data + off, value, (size_t)size);
   a->len++;
+  return a->data + off;
 }
 void rh_assert(int64_t condition, int32_t line) {
   if (!condition)

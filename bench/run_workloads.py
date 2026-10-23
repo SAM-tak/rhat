@@ -10,6 +10,14 @@ import shutil
 from run_bench import HERE, ROOT, UPSTREAM, command, measure, sha, sized
 
 WORKLOADS = {
+    "push": dict(sizes=(1_000_000, 16_000_000, 64_000_000), smoke=1000,
+                 cpp=("vector indices", "reserved vector indices", "deque pointers"), rust=("push",),
+                 rhat_label="R^ stable region / real pointer marks (LLVM/Clang)",
+                 representation="R^ stores 8-byte Items and retains real Item references returned by push, "
+                 "marking every 64th record across all subsequent growth. Each array reserves 1 GiB of virtual "
+                 "address space and commits only used pages; elements never move. The original sizes, RNG, "
+                 "two final scans and checksums are preserved. C++ deque also retains pointers; C++ vector "
+                 "and Rust Vec controls retain indices. No mark is replaced by an index in the R^ port."),
     "sum": dict(sizes=(1_000_000, 16_000_000, 128_000_000), smoke=1000,
                 cpp=("vector", "reserved vector"), rust=("sum",)),
     "blur": dict(sizes=(1024, 2048, 8192), smoke=16,
@@ -44,7 +52,14 @@ def next_random(r):
 def oracle(name, n):
     """Independent, untimed smoke oracle. Larger runs cross-check C++ and Rust."""
     r = 12345
-    if name == "sum":
+    if name == "push":
+        total = 0
+        for _ in range(n):
+            r = next_random(r)
+            total += r % 1_000_000
+        marks = (n+63)//64
+        return f"{n}\n{marks}\n{total}\n{sum(i % 97 for i in range(0,n,64))}"
+    elif name == "sum":
         total = 0
         for _ in range(n):
             r = next_random(r)
