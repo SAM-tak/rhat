@@ -20,6 +20,20 @@ index loops, flat byte buffers for blur and scalar AoS operations for particles.
 RNG sequence, sizes, passes, border behavior and checksums are preserved.
 R^ uses stable OS regions rather than vector reallocations or exact reserve.
 
+Also copied unmodified from the pinned revision: `cpp/tree.cpp`, `cpp/graph.cpp`,
+`rust/tree_box.rs`, `rust/tree_arena.rs`, `rust/graph_nested.rs`,
+`rust/graph_csr.rs`, and `rust/graph_arena.rs`.
+
+`../rhat/tree.rh` and `../rhat/graph.rh` are modified translations of upstream
+`bench/goose/tree.goose` and `bench/goose/graph.goose`, using the fixed-size
+index-pool representation also present in the C++/Rust arena controls.
+The tree adds an index-zero null sentinel, excluded from its printed count.
+The graph retains one head slot per vertex, degree eight and four BFS sources;
+its queue overwrites an initialized prefix and tracks a separate active tail
+instead of clear/push. It does not accumulate an unbounded queue between sources.
+Links, nominal arguments, numeric conversions and loops use R^ syntax.
+No original sizes, RNG outputs, tree shapes, distances or checksums are changed.
+
 `../rhat/bintrees.rh` is a modified translation of upstream
 `bench/goose/bintrees.goose`. Changes: R^ syntax, explicit pool arguments,
 i32 indices instead of nullable relative references, an explicit index

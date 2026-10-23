@@ -431,12 +431,20 @@ print("PASS fp8_exhaustive_262144_operations", flush=True)
 # Keep the new ports executable at both optimization levels in the main suite.
 sys.path.insert(0, str(repo / "bench"))
 from run_workloads import WORKLOADS, oracle as workload_oracle
-for workload, spec in WORKLOADS.items():
+def benchmark_source(workload, n):
     text = (repo / f"bench/rhat/{workload}.rh").read_text(encoding="utf-8")
     text, hits = re.subn(r"(?m)(=.*?)(\d+)(\s*# BENCH_N)$",
-                        lambda m: m[1] + str(spec["smoke"]) + m[3], text)
+                        lambda m: m[1] + str(n) + m[3], text)
     assert hits == 1
+    return text
+
+
+for workload, spec in WORKLOADS.items():
+    text = benchmark_source(workload, spec["smoke"])
     positive("bench_" + workload, text, workload_oracle(workload, spec["smoke"]) + "\n")
+for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17))):
+    for n in sizes:
+        positive(f"bench_{workload}_{n}", benchmark_source(workload, n), workload_oracle(workload, n) + "\n")
 positive("declarations_only", "let^ unused=p^ { print(99) } def^ Empty {}", "")
 positive("ordinary_main", "let^ main=p^ { print(99) } print(1)", "1\n")
 positive("explicit_main", "let^ main=f^ n:i32^ -> i32^ { return^ n+1 } print(main(41))", "42\n")

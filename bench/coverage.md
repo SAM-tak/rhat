@@ -11,9 +11,10 @@ Windows page commits have also been reduced to newly required pages, with
 the page size cached once per process; see page_commit_results.md for the
 separate controlled comparison.
 
-**4/16 workloads are ported:** `bintrees`, `sum`, `blur`, `particles`.
+**6/16 workloads are ported:** `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph`.
 The new ports preserve the original RNG, sizes, passes and checksums. Their
-same-session comparisons are in workloads_results.md; historical bintrees
+comparisons are in workloads_results.md and tree_graph/workloads_results.md,
+with separate measurement sessions identified; historical bintrees
 measurements remain in results.md. No suite-wide performance claim is made.
 
 Implemented shared prerequisites: all-width integer bitwise operations
@@ -27,9 +28,9 @@ This retains stable addresses and commits physical pages only as needed.
 | push | N=1M / 16M / 64M | To retain the reference interface, push must return a reference and grow arrays must accept rooted references; fixed-size large storage fits the new reservation |
 | strlist | N=200K / 2M / 8M | Owned variable-length inline strings in an array; split/append/slices; nested dynamic storage |
 | records | N=500K / 4M / 16M | Tagged unions and dispatch, variable-size payloads, inline owned strings; fixed-union row could precede variable-size representation |
-| tree | depth=16 / 20 / 24 | Pool can initially use indices as bintrees does; original uses relative optional references; large fixed-node pool fits the new reservation |
+| tree | depth=16 / 20 / 24 | **Ported:** 12-byte nodes with u32 child indices, zero sentinel excluded from count, eight full traversals; relative references are not claimed |
 | interp | depth=16 / 20 / 24 | Tagged unions and dispatch; original uses variable-size nodes, varint and relative references; indices/fixed nodes are a distinct representation |
-| graph | V=100K / 500K / 2M | Linked version needs null links/indices; CSR can use fixed-size scalar arrays with the current feature set; original-size arrays fit the new reservation; check-free index types are a later optimization |
+| graph | V=100K / 500K / 2M | **Ported:** 8-byte linked index pool, degree eight, four BFS sources; queue overwrites initialized storage with a separate active tail; no check-free vertex types or relative-reference guarantees |
 | words | N=500K / 4M / 16M | Byte slicing, string generation and comparison, hash-table implementation; dictionary variant additionally needs library support |
 | particles | N=100K / 1M / 4M | **Ported:** scalar AoS, six f32 fields (24 bytes), 200 updates; no vector arithmetic substitution |
 | sexp | N=20K / 100K / 300K | Byte text parsing, tagged unions, variable-size symbols, optional/relative links, error propagation (explicit errors could replace nonlocal return with a documented interface difference) |
@@ -42,11 +43,10 @@ This retains stable addresses and commits physical pages only as needed.
 
 Next steps:
 
-1. Port the index-based `tree` and `graph` variants using the now-available
-   RNG/conversions/capacity. They still need faithful representation decisions
-   and independent correctness checks, rather than more primitive types.
-2. Add rooted reference elements and reference-returning push for `push`, and
-   safe reusable node/buffer APIs for `lru`/`calc`/`graph`.
+1. Add rooted reference elements and reference-returning push for `push`.
+2. Add safe reusable node/buffer APIs for `lru` / `calc`. The ported graph
+   currently reuses initialized queue storage with its own active-prefix tail;
+   a language-level clear operation is not required by that port.
 3. Add owned byte/string views and operations for `words`, `strlist`, `respond`.
 4. Add nominal tagged variants and matching for `records`, `interp`, `sexp`,
    and `calc`; then address nested/variable-size storage and explicit errors.

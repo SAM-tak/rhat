@@ -1,0 +1,42 @@
+# Port of aardappel/goose bench/goose/tree.goose, Apache-2.0.
+# 12-byte fixed nodes; u32 indices, index zero is the null sentinel.
+def^ Node { self^{ v:i32^, l:u32^, r:u32^ } }
+
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+
+let^ make = p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
+    var^ l:u32^=0
+    var^ r:u32^=0
+    if^ depth > 0 {
+        l := this^(pool,depth-1,next(seed))
+        r := this^(pool,depth-1,next(seed+1))
+    }
+    pool.push(Node{ v=i32^(seed % 1000), l=l, r=r })
+    return^ u32^(pool.len-1)
+}
+
+let^ sum_tree = f^ pool:&Node[>..], index:u32^, pass:i64^ -> i64^ {
+    let^ node=pool[index]
+    var^ total=i64^(node.v) bitxor^ pass
+    if^ node.l != 0 { total := total+this^(pool,node.l,pass) }
+    if^ node.r != 0 { total := total+this^(pool,node.r,pass) }
+    return^ total
+}
+
+let^ depth:i64^=16 # BENCH_N
+var^ pool:Node[>..]=[]
+pool.push(Node{ v=0, l=0, r=0 })
+let^ root=make(&pool,depth,12345)
+let^ count=pool.len-1
+var^ total:i64^=0
+var^ pass:i64^=0
+while^ pass < 8 {
+    total := total+sum_tree(&pool,root,pass)
+    pass := pass+1
+}
+print(count)
+print(total)

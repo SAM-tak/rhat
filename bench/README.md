@@ -5,7 +5,7 @@ with R^ replacing Goose and freshly measured C++/Rust comparison rows.
 Goose itself is neither built nor measured. Sources are pinned and vendored;
 running the suite requires no network access.
 
-Current coverage is `bintrees`, `sum`, `blur`, `particles` (4/16). See [coverage.md](coverage.md) for
+Current coverage is `bintrees`, `sum`, `blur`, `particles`, `tree`, `graph` (6/16). See [coverage.md](coverage.md) for
 the remaining workloads and their missing language/runtime features.
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
@@ -32,6 +32,25 @@ particles and 200 scalar updates. R^ regions now reserve 1 GiB of virtual
 address space per array; physical pages are committed only as used. This
 allows the original 512 MB large sum input without moving existing elements.
 No shrinking, reusable regions or check-elimination optimization is included.
+
+`tree` / `graph` have a separate measurement session in
+[tree_graph/workloads_results.md](tree_graph/workloads_results.md), retaining
+the earlier three-workload raw data and timestamps. Reproduce with:
+
+```powershell
+python bench/run_workloads.py --workloads tree graph --out bench/tree_graph --work build/bench-tree-graph
+python bench/run_workloads.py --report-only --out bench/tree_graph
+```
+
+The tree uses 12-byte nodes with u32 indices (zero as null), compared with
+both owning-pointer and index-arena controls. Graph uses an 8-byte linked
+index pool, compared with nested adjacency, CSR and linked arena controls.
+The BFS queue overwrites its initialized prefix between four sources and
+pushes only if its high-water length grows. This preserves reusable storage
+without adding a language-level clear operation, and adds a branch at enqueue.
+All original inputs, traversal/source counts and checksums are retained.
+R^ still checks indices; it does not implement relative-reference or
+check-free vertex types. These representations are identified in the report.
 
 The original measurements in `results.json` predate the numeric-type
 expansion and mandatory `^` suffix. `rhat/bintrees.rh` now uses the required

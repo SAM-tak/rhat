@@ -17,6 +17,20 @@ WORKLOADS = {
     "particles": dict(sizes=(100_000, 1_000_000, 4_000_000), smoke=32,
                       cpp=("scalar AoS", "SoA", "vector AoS"),
                       rust=("particles_scalar", "particles")),
+    "tree": dict(sizes=(16, 20, 24), smoke=6, parameter="depth",
+                 cpp=("unique_ptr", "new/delete", "index arena"), rust=("tree_box", "tree_arena"),
+                 rhat_label="R^ u32-index node pool (LLVM/Clang)",
+                 representation="R^ uses 12-byte nodes (i32 value, two u32 child indices), with index zero as null. "
+                 "It reserves a stable OS region and grows it by push; C++/Rust index arenas reserve exact capacity. "
+                 "Relative references and per-node allocation are not used. Eight full traversals and the original seeds are preserved."),
+    "graph": dict(sizes=(100_000, 500_000, 2_000_000), smoke=64, parameter="vertices",
+                  cpp=("nested vectors", "CSR", "linked index arena"),
+                  rust=("graph_nested", "graph_csr", "graph_arena"),
+                  rhat_label="R^ linked u32-index pool (LLVM/Clang)",
+                  representation="R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. "
+                  "Its queue overwrites an initialized prefix and pushes only when its high-water length grows; "
+                  "a separate tail resets between the four BFS sources. There is no unbounded append across sources. "
+                  "This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged."),
 }
 
 
@@ -62,6 +76,34 @@ def oracle(name, n):
                 if y < 0:
                     y, vy = -y, -(vy*0.5)
             total += int(x*16) + int(y*16) + int(z*16)
+    elif name == "tree":
+        def visit(depth, seed):
+            own = sum((seed % 1000) ^ p for p in range(8))
+            if depth == 0:
+                return own
+            return own + visit(depth-1, next_random(seed)) + visit(depth-1, next_random((seed+1) & ((1 << 64)-1)))
+        return f"{(1 << (n+1))-1}\n{visit(n, r)}"
+    elif name == "graph":
+        # Lists in generation order and Python integers, independent of the
+        # R^ linked pool and its reusable queue representation.
+        adj = [[] for _ in range(n)]
+        for _ in range(n*8):
+            r = next_random(r)
+            adj[r % n].append((r >> 24) % n)
+        total, seed = 0, 999
+        for _ in range(4):
+            seed = next_random(seed)
+            src = seed % n
+            distance = [-1] * n
+            distance[src] = 0
+            queue = [src]
+            for u in queue:
+                total += distance[u]
+                for v in adj[u]:
+                    if distance[v] == -1:
+                        distance[v] = distance[u]+1
+                        queue.append(v)
+        return f"{n*9}\n{total}"
     else:
         raise ValueError(f"no independent oracle for {name}")
     return f"{n}\n{total}"
@@ -83,7 +125,11 @@ def report(data, out):
     if data.get("metadata_corrections"):
         lines += ["", *data["metadata_corrections"]]
     for name in data["workloads"]:
-        lines += ["", "## " + name, "", "| Size / N | Implementation | Best ms | Peak MiB | Comparison / R^ time |",
+        lines += ["", "## " + name, ""]
+        if data.get("representations", {}).get(name):
+            lines += [data["representations"][name], ""]
+        parameter = data.get("parameters", {}).get(name, "N")
+        lines += [f"| Size / {parameter} | Implementation | Best ms | Peak MiB | Comparison / R^ time |",
                   "|---|---|---:|---:|---:|"]
         for row in data["rows"]:
             if row["workload"] != name:
@@ -95,7 +141,8 @@ def report(data, out):
     lines += ["", "Every warm-up/sample checks its checksum. Each size first cross-checks independently built",
               "C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.",
               "Raw samples, checksums, build commands, source/LLVM/compiler/runtime SHA-256 and tool versions",
-              "are saved in workloads_results.json. Historical bintrees measurements are in results.md.", ""]
+              "are saved in workloads_results.json. Historical bintrees measurements are in "
+              f"[results.md]({pathlib.Path(os.path.relpath(HERE / 'results.md', out)).as_posix()}).", ""]
     (out / "workloads_results.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -139,6 +186,8 @@ def main():
     data = dict(started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 environment=env, workloads=args.workloads, warmups=2, reps=args.reps,
                 builds=[], rows=[], controls=[], source_hashes={},
+                representations={name: WORKLOADS[name].get("representation", "") for name in args.workloads},
+                parameters={name: WORKLOADS[name].get("parameter", "N") for name in args.workloads},
                 harness_source=pathlib.Path(__file__).read_bytes().decode("utf-8"))
     for directory in (ROOT / "src", ROOT / "runtime", HERE):
         for path in directory.rglob("*"):
@@ -162,7 +211,7 @@ def main():
                    "--dump-ir", src.with_suffix(".rir")])
             data["source_hashes"][str(src)] = sha(src)
             data["source_hashes"][str(exe) + ".ll"] = sha(pathlib.Path(str(exe) + ".ll"))
-            implementations.append(("R^ LLVM/Clang", "rhat", exe))
+            implementations.append((spec.get("rhat_label", "R^ LLVM/Clang"), "rhat", exe))
             for tc in ("msvc", "clangcl"):
                 for variant, label in enumerate(spec["cpp"]):
                     exe = work / f"{name}_{size}_{tc}_{variant}.exe"

@@ -1,0 +1,3006 @@
+{
+  "started_utc": "2026-10-23T16:57:28.913087+00:00",
+  "upstream_commit": "94cc64daeabcae6f072dc1fe2b864acda5a001bc",
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "commit": "3d7517f124c88d67ec4796bfcad2f2921b4feac7",
+    "dirty": "M README.md\n M bench/README.md\n M bench/coverage.md\n M bench/run_bench.py\n M bench/run_workloads.py\n M bench/upstream/PROVENANCE.md\n M tests/run.py\n?? bench/rhat/graph.rh\n?? bench/rhat/tree.rh\n?? bench/upstream/cpp/graph.cpp\n?? bench/upstream/cpp/tree.cpp\n?? bench/upstream/rust/graph_arena.rs\n?? bench/upstream/rust/graph_csr.rs\n?? bench/upstream/rust/graph_nested.rs\n?? bench/upstream/rust/tree_arena.rs\n?? bench/upstream/rust/tree_box.rs",
+    "compiler_sha256": "683d4d4b34bba0f40134a4496f47b05592760c73144cd9d81c4e1c1971313266",
+    "runtime_sha256": "912a91e011f8eb34438f683fef28ce77d9f3ac1dc95b954dada5ed5c163abf9e",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "clangcl": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "workloads": [
+    "tree",
+    "graph"
+  ],
+  "warmups": 2,
+  "reps": 3,
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\tree.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_arena_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\graph.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_csr_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_arena_large.exe"
+    ]
+  ],
+  "rows": [
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "R^ u32-index node pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 32.2267,
+      "peak_bytes": 5533696,
+      "samples": [
+        {
+          "ms": 32.2267,
+          "peak_bytes": 5533696,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 37.0587,
+          "peak_bytes": 5533696,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 44.4878,
+          "peak_bytes": 5529600,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 163.4008,
+          "peak_bytes": 5541888,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 90.8267,
+          "peak_bytes": 5533696,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ unique_ptr (msvc)",
+      "language": "cpp",
+      "best_ms": 32.8725,
+      "peak_bytes": 8196096,
+      "samples": [
+        {
+          "ms": 35.682,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 33.4279,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 32.8725,
+          "peak_bytes": 8196096,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 30.3492,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 28.346,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "best_ms": 28.5196,
+      "peak_bytes": 8171520,
+      "samples": [
+        {
+          "ms": 28.5196,
+          "peak_bytes": 8167424,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 36.226,
+          "peak_bytes": 8171520,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 35.2708,
+          "peak_bytes": 8163328,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 266.5453,
+          "peak_bytes": 8179712,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 27.9909,
+          "peak_bytes": 8171520,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 19.8412,
+      "peak_bytes": 5525504,
+      "samples": [
+        {
+          "ms": 19.8412,
+          "peak_bytes": 5525504,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 20.6721,
+          "peak_bytes": 5521408,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 21.2728,
+          "peak_bytes": 5521408,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 216.1639,
+          "peak_bytes": 5533696,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 20.5039,
+          "peak_bytes": 5521408,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ unique_ptr (clangcl)",
+      "language": "cpp",
+      "best_ms": 29.156,
+      "peak_bytes": 8196096,
+      "samples": [
+        {
+          "ms": 29.156,
+          "peak_bytes": 8196096,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 29.2405,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 32.5453,
+          "peak_bytes": 8196096,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 112.4968,
+          "peak_bytes": 8208384,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 67.8675,
+          "peak_bytes": 8192000,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "best_ms": 27.6267,
+      "peak_bytes": 8167424,
+      "samples": [
+        {
+          "ms": 27.6751,
+          "peak_bytes": 8167424,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 29.3185,
+          "peak_bytes": 8167424,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 27.6267,
+          "peak_bytes": 8167424,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 163.4603,
+          "peak_bytes": 8175616,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 64.5994,
+          "peak_bytes": 8163328,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "C++ index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 20.619,
+      "peak_bytes": 5537792,
+      "samples": [
+        {
+          "ms": 20.619,
+          "peak_bytes": 5537792,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 21.5353,
+          "peak_bytes": 5537792,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 21.6807,
+          "peak_bytes": 5533696,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 685.4781,
+          "peak_bytes": 5550080,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 357.5959,
+          "peak_bytes": 5537792,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "Rust tree_box",
+      "language": "rust",
+      "best_ms": 29.7128,
+      "peak_bytes": 8654848,
+      "samples": [
+        {
+          "ms": 29.7128,
+          "peak_bytes": 8654848,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 30.2537,
+          "peak_bytes": 8650752,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 30.8997,
+          "peak_bytes": 8646656,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 29.2689,
+          "peak_bytes": 8646656,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 29.0316,
+          "peak_bytes": 8646656,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "label": "Rust tree_arena",
+      "language": "rust",
+      "best_ms": 21.7672,
+      "peak_bytes": 6000640,
+      "samples": [
+        {
+          "ms": 23.838,
+          "peak_bytes": 5996544,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 21.7672,
+          "peak_bytes": 6000640,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 22.8132,
+          "peak_bytes": 5996544,
+          "output": "131071\n522963940"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 247.5943,
+          "peak_bytes": 6004736,
+          "output": "131071\n522963940"
+        },
+        {
+          "ms": 21.6385,
+          "peak_bytes": 5988352,
+          "output": "131071\n522963940"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "R^ u32-index node pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 299.6345,
+      "peak_bytes": 29126656,
+      "samples": [
+        {
+          "ms": 315.5131,
+          "peak_bytes": 29126656,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 309.6073,
+          "peak_bytes": 29122560,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 299.6345,
+          "peak_bytes": 29126656,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2374.3622,
+          "peak_bytes": 29130752,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 368.822,
+          "peak_bytes": 29122560,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ unique_ptr (msvc)",
+      "language": "cpp",
+      "best_ms": 301.0047,
+      "peak_bytes": 71557120,
+      "samples": [
+        {
+          "ms": 303.6116,
+          "peak_bytes": 71553024,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 301.0047,
+          "peak_bytes": 71557120,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 303.9067,
+          "peak_bytes": 71557120,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 309.5561,
+          "peak_bytes": 71561216,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 299.1929,
+          "peak_bytes": 71561216,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "best_ms": 284.9831,
+      "peak_bytes": 71536640,
+      "samples": [
+        {
+          "ms": 291.9504,
+          "peak_bytes": 71536640,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 314.1978,
+          "peak_bytes": 71532544,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 284.9831,
+          "peak_bytes": 71536640,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 537.0564,
+          "peak_bytes": 71544832,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 338.0808,
+          "peak_bytes": 71532544,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 115.0946,
+      "peak_bytes": 29118464,
+      "samples": [
+        {
+          "ms": 123.3718,
+          "peak_bytes": 29118464,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 119.4103,
+          "peak_bytes": 29118464,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 115.0946,
+          "peak_bytes": 29114368,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 386.0731,
+          "peak_bytes": 29130752,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 130.1744,
+          "peak_bytes": 29118464,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ unique_ptr (clangcl)",
+      "language": "cpp",
+      "best_ms": 292.8774,
+      "peak_bytes": 71561216,
+      "samples": [
+        {
+          "ms": 301.9104,
+          "peak_bytes": 71557120,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 297.24,
+          "peak_bytes": 71557120,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 292.8774,
+          "peak_bytes": 71561216,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 374.5307,
+          "peak_bytes": 71573504,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 333.1054,
+          "peak_bytes": 71557120,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "best_ms": 277.9279,
+      "peak_bytes": 71532544,
+      "samples": [
+        {
+          "ms": 277.9279,
+          "peak_bytes": 71532544,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 299.7812,
+          "peak_bytes": 71532544,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 286.3571,
+          "peak_bytes": 71528448,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 371.1469,
+          "peak_bytes": 71540736,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 303.776,
+          "peak_bytes": 71532544,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 114.2305,
+      "peak_bytes": 29130752,
+      "samples": [
+        {
+          "ms": 117.0211,
+          "peak_bytes": 29126656,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 114.2305,
+          "peak_bytes": 29130752,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 119.922,
+          "peak_bytes": 29130752,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 723.5938,
+          "peak_bytes": 29138944,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 404.0562,
+          "peak_bytes": 29130752,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "Rust tree_box",
+      "language": "rust",
+      "best_ms": 299.7789,
+      "peak_bytes": 72024064,
+      "samples": [
+        {
+          "ms": 312.8989,
+          "peak_bytes": 72015872,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 299.7789,
+          "peak_bytes": 72024064,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 316.1605,
+          "peak_bytes": 72007680,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 329.7368,
+          "peak_bytes": 72028160,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 306.1949,
+          "peak_bytes": 72011776,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "label": "Rust tree_arena",
+      "language": "rust",
+      "best_ms": 101.5875,
+      "peak_bytes": 29589504,
+      "samples": [
+        {
+          "ms": 102.4529,
+          "peak_bytes": 29585408,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 101.6123,
+          "peak_bytes": 29581312,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 101.5875,
+          "peak_bytes": 29589504,
+          "output": "2097151\n8377899684"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 509.3219,
+          "peak_bytes": 29593600,
+          "output": "2097151\n8377899684"
+        },
+        {
+          "ms": 103.1352,
+          "peak_bytes": 29589504,
+          "output": "2097151\n8377899684"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "R^ u32-index node pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 4748.0141,
+      "peak_bytes": 406614016,
+      "samples": [
+        {
+          "ms": 4748.0141,
+          "peak_bytes": 406614016,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4814.9134,
+          "peak_bytes": 406614016,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4938.7082,
+          "peak_bytes": 406614016,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5124.8052,
+          "peak_bytes": 406638592,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4818.4256,
+          "peak_bytes": 406609920,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ unique_ptr (msvc)",
+      "language": "cpp",
+      "best_ms": 4728.7767,
+      "peak_bytes": 1085235200,
+      "samples": [
+        {
+          "ms": 4728.7767,
+          "peak_bytes": 1085235200,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4862.1936,
+          "peak_bytes": 1085235200,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 5023.8752,
+          "peak_bytes": 1085231104,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 4924.6006,
+          "peak_bytes": 1085235200,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4824.5053,
+          "peak_bytes": 1085235200,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "best_ms": 4556.8303,
+      "peak_bytes": 1085198336,
+      "samples": [
+        {
+          "ms": 4556.8303,
+          "peak_bytes": 1085198336,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4630.1535,
+          "peak_bytes": 1085194240,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4615.2725,
+          "peak_bytes": 1085194240,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 4869.7642,
+          "peak_bytes": 1085218816,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4621.7911,
+          "peak_bytes": 1085198336,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 1585.297,
+      "peak_bytes": 406605824,
+      "samples": [
+        {
+          "ms": 1585.297,
+          "peak_bytes": 406605824,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1682.786,
+          "peak_bytes": 406605824,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1624.2689,
+          "peak_bytes": 406605824,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1936.5772,
+          "peak_bytes": 406622208,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1601.0027,
+          "peak_bytes": 406605824,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ unique_ptr (clangcl)",
+      "language": "cpp",
+      "best_ms": 4658.7367,
+      "peak_bytes": 1085231104,
+      "samples": [
+        {
+          "ms": 4658.7367,
+          "peak_bytes": 1085227008,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4853.8492,
+          "peak_bytes": 1085231104,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4716.8792,
+          "peak_bytes": 1085231104,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5091.4363,
+          "peak_bytes": 1085255680,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4628.0707,
+          "peak_bytes": 1085227008,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "best_ms": 4461.0495,
+      "peak_bytes": 1085194240,
+      "samples": [
+        {
+          "ms": 4461.0495,
+          "peak_bytes": 1085194240,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4473.418,
+          "peak_bytes": 1085190144,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4490.9698,
+          "peak_bytes": 1085190144,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 4779.8166,
+          "peak_bytes": 1085222912,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4602.1385,
+          "peak_bytes": 1085190144,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "C++ index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 1549.9108,
+      "peak_bytes": 406618112,
+      "samples": [
+        {
+          "ms": 1549.9108,
+          "peak_bytes": 406618112,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1568.3187,
+          "peak_bytes": 406618112,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1556.86,
+          "peak_bytes": 406618112,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2292.5836,
+          "peak_bytes": 406646784,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1928.258,
+          "peak_bytes": 406618112,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "Rust tree_box",
+      "language": "rust",
+      "best_ms": 4671.4782,
+      "peak_bytes": 1085677568,
+      "samples": [
+        {
+          "ms": 4749.3979,
+          "peak_bytes": 1085661184,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4878.4484,
+          "peak_bytes": 1085677568,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 4671.4782,
+          "peak_bytes": 1085677568,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5467.9979,
+          "peak_bytes": 1085673472,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 5083.9326,
+          "peak_bytes": 1085669376,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "label": "Rust tree_arena",
+      "language": "rust",
+      "best_ms": 1317.5644,
+      "peak_bytes": 407076864,
+      "samples": [
+        {
+          "ms": 1395.8685,
+          "peak_bytes": 407072768,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1341.678,
+          "peak_bytes": 407076864,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1317.5644,
+          "peak_bytes": 407076864,
+          "output": "33554431\n134079322148"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1669.6927,
+          "peak_bytes": 407154688,
+          "output": "33554431\n134079322148"
+        },
+        {
+          "ms": 1337.6052,
+          "peak_bytes": 407080960,
+          "output": "33554431\n134079322148"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "R^ linked u32-index pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 277.7608,
+      "peak_bytes": 11972608,
+      "samples": [
+        {
+          "ms": 277.7608,
+          "peak_bytes": 11972608,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 282.012,
+          "peak_bytes": 11964416,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 337.0336,
+          "peak_bytes": 11968512,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 953.9063,
+          "peak_bytes": 11972608,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 359.5088,
+          "peak_bytes": 11968512,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ nested vectors (msvc)",
+      "language": "cpp",
+      "best_ms": 135.1917,
+      "peak_bytes": 14225408,
+      "samples": [
+        {
+          "ms": 135.1917,
+          "peak_bytes": 14225408,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 174.2598,
+          "peak_bytes": 14217216,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 150.0081,
+          "peak_bytes": 14221312,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 139.0965,
+          "peak_bytes": 14221312,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 161.1005,
+          "peak_bytes": 14225408,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ CSR (msvc)",
+      "language": "cpp",
+      "best_ms": 41.64,
+      "peak_bytes": 15171584,
+      "samples": [
+        {
+          "ms": 41.64,
+          "peak_bytes": 15171584,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 42.0863,
+          "peak_bytes": 15171584,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 56.2386,
+          "peak_bytes": 15171584,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 628.5205,
+          "peak_bytes": 15187968,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 49.5295,
+          "peak_bytes": 15171584,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ linked index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 91.1604,
+      "peak_bytes": 11956224,
+      "samples": [
+        {
+          "ms": 105.0464,
+          "peak_bytes": 11956224,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 91.1604,
+          "peak_bytes": 11956224,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 186.6226,
+          "peak_bytes": 11956224,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 459.5162,
+          "peak_bytes": 11972608,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 137.8905,
+          "peak_bytes": 11960320,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ nested vectors (clangcl)",
+      "language": "cpp",
+      "best_ms": 130.3556,
+      "peak_bytes": 14233600,
+      "samples": [
+        {
+          "ms": 135.4117,
+          "peak_bytes": 14229504,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 148.6805,
+          "peak_bytes": 14233600,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 130.3556,
+          "peak_bytes": 14233600,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1236.9801,
+          "peak_bytes": 14249984,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 315.8063,
+          "peak_bytes": 14229504,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ CSR (clangcl)",
+      "language": "cpp",
+      "best_ms": 43.5566,
+      "peak_bytes": 15183872,
+      "samples": [
+        {
+          "ms": 43.5566,
+          "peak_bytes": 15179776,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 53.217,
+          "peak_bytes": 15179776,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 44.7602,
+          "peak_bytes": 15183872,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1757.5046,
+          "peak_bytes": 15196160,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 559.4248,
+          "peak_bytes": 15179776,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "C++ linked index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 98.5292,
+      "peak_bytes": 11964416,
+      "samples": [
+        {
+          "ms": 243.7352,
+          "peak_bytes": 11964416,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 132.7481,
+          "peak_bytes": 11964416,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 98.5292,
+          "peak_bytes": 11964416,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1000.6629,
+          "peak_bytes": 11980800,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 354.0529,
+          "peak_bytes": 11964416,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "Rust graph_nested",
+      "language": "rust",
+      "best_ms": 98.2431,
+      "peak_bytes": 16359424,
+      "samples": [
+        {
+          "ms": 108.0558,
+          "peak_bytes": 16347136,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 98.2431,
+          "peak_bytes": 16351232,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 103.6141,
+          "peak_bytes": 16359424,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 128.0799,
+          "peak_bytes": 16363520,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 105.4732,
+          "peak_bytes": 16367616,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "Rust graph_csr",
+      "language": "rust",
+      "best_ms": 41.5381,
+      "peak_bytes": 15650816,
+      "samples": [
+        {
+          "ms": 45.0404,
+          "peak_bytes": 15646720,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 41.5381,
+          "peak_bytes": 15646720,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 44.9654,
+          "peak_bytes": 15650816,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 914.5725,
+          "peak_bytes": 15650816,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 47.9301,
+          "peak_bytes": 15650816,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "label": "Rust graph_arena",
+      "language": "rust",
+      "best_ms": 115.2787,
+      "peak_bytes": 12443648,
+      "samples": [
+        {
+          "ms": 115.2787,
+          "peak_bytes": 12435456,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 130.9171,
+          "peak_bytes": 12443648,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 131.4619,
+          "peak_bytes": 12443648,
+          "output": "900000\n2296959"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 462.5935,
+          "peak_bytes": 12447744,
+          "output": "900000\n2296959"
+        },
+        {
+          "ms": 218.4471,
+          "peak_bytes": 12435456,
+          "output": "900000\n2296959"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "R^ linked u32-index pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 2403.3473,
+      "peak_bytes": 43974656,
+      "samples": [
+        {
+          "ms": 2403.3473,
+          "peak_bytes": 43974656,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 2578.8273,
+          "peak_bytes": 43970560,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 2461.3474,
+          "peak_bytes": 43974656,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2833.1253,
+          "peak_bytes": 44003328,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 2643.8193,
+          "peak_bytes": 43970560,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ nested vectors (msvc)",
+      "language": "cpp",
+      "best_ms": 1212.2123,
+      "peak_bytes": 54988800,
+      "samples": [
+        {
+          "ms": 1212.2123,
+          "peak_bytes": 54984704,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1223.5293,
+          "peak_bytes": 54984704,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1337.3432,
+          "peak_bytes": 54988800,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1413.785,
+          "peak_bytes": 54984704,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1205.7145,
+          "peak_bytes": 54988800,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ CSR (msvc)",
+      "language": "cpp",
+      "best_ms": 350.4309,
+      "peak_bytes": 59977728,
+      "samples": [
+        {
+          "ms": 350.4309,
+          "peak_bytes": 59973632,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 384.9333,
+          "peak_bytes": 59977728,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 406.0972,
+          "peak_bytes": 59973632,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 461.5358,
+          "peak_bytes": 59990016,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 321.2436,
+          "peak_bytes": 59977728,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ linked index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 1392.2582,
+      "peak_bytes": 43966464,
+      "samples": [
+        {
+          "ms": 1486.1393,
+          "peak_bytes": 43966464,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1434.1566,
+          "peak_bytes": 43962368,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1392.2582,
+          "peak_bytes": 43966464,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1775.929,
+          "peak_bytes": 43991040,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1401.3503,
+          "peak_bytes": 43966464,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ nested vectors (clangcl)",
+      "language": "cpp",
+      "best_ms": 1194.5002,
+      "peak_bytes": 55074816,
+      "samples": [
+        {
+          "ms": 1194.5002,
+          "peak_bytes": 55074816,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1208.1002,
+          "peak_bytes": 55074816,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1221.3315,
+          "peak_bytes": 55066624,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1712.2116,
+          "peak_bytes": 55103488,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1470.3523,
+          "peak_bytes": 55070720,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ CSR (clangcl)",
+      "language": "cpp",
+      "best_ms": 310.1507,
+      "peak_bytes": 59985920,
+      "samples": [
+        {
+          "ms": 321.1986,
+          "peak_bytes": 59981824,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 310.1507,
+          "peak_bytes": 59985920,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 328.2979,
+          "peak_bytes": 59981824,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 758.766,
+          "peak_bytes": 60014592,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 480.6918,
+          "peak_bytes": 59981824,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "C++ linked index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 1233.5712,
+      "peak_bytes": 43974656,
+      "samples": [
+        {
+          "ms": 1233.5712,
+          "peak_bytes": 43974656,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1367.8753,
+          "peak_bytes": 43970560,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1280.909,
+          "peak_bytes": 43974656,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1810.1302,
+          "peak_bytes": 43999232,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1521.8696,
+          "peak_bytes": 43970560,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "Rust graph_nested",
+      "language": "rust",
+      "best_ms": 738.0621,
+      "peak_bytes": 63881216,
+      "samples": [
+        {
+          "ms": 740.3977,
+          "peak_bytes": 63877120,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 761.4382,
+          "peak_bytes": 63877120,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 738.0621,
+          "peak_bytes": 63881216,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 753.3872,
+          "peak_bytes": 63877120,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 779.4211,
+          "peak_bytes": 63885312,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "Rust graph_csr",
+      "language": "rust",
+      "best_ms": 368.0437,
+      "peak_bytes": 60448768,
+      "samples": [
+        {
+          "ms": 392.97,
+          "peak_bytes": 60444672,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 383.4103,
+          "peak_bytes": 60448768,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 368.0437,
+          "peak_bytes": 60448768,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 776.7006,
+          "peak_bytes": 60456960,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 328.8985,
+          "peak_bytes": 60444672,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "label": "Rust graph_arena",
+      "language": "rust",
+      "best_ms": 1362.3056,
+      "peak_bytes": 44437504,
+      "samples": [
+        {
+          "ms": 1365.5948,
+          "peak_bytes": 44437504,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1411.1226,
+          "peak_bytes": 44437504,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1362.3056,
+          "peak_bytes": 44437504,
+          "output": "4500000\n12991077"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1747.4787,
+          "peak_bytes": 44515328,
+          "output": "4500000\n12991077"
+        },
+        {
+          "ms": 1489.9579,
+          "peak_bytes": 44437504,
+          "output": "4500000\n12991077"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "R^ linked u32-index pool (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 11831.7141,
+      "peak_bytes": 163987456,
+      "samples": [
+        {
+          "ms": 12008.1572,
+          "peak_bytes": 163987456,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 11831.7141,
+          "peak_bytes": 163971072,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 11854.8598,
+          "peak_bytes": 163966976,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 12122.605,
+          "peak_bytes": 163995648,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 12109.1648,
+          "peak_bytes": 163971072,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ nested vectors (msvc)",
+      "language": "cpp",
+      "best_ms": 5824.1562,
+      "peak_bytes": 217214976,
+      "samples": [
+        {
+          "ms": 5910.0596,
+          "peak_bytes": 217214976,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5931.1176,
+          "peak_bytes": 217210880,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5824.1562,
+          "peak_bytes": 217210880,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5833.8864,
+          "peak_bytes": 217214976,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5875.6061,
+          "peak_bytes": 217214976,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ CSR (msvc)",
+      "language": "cpp",
+      "best_ms": 2212.796,
+      "peak_bytes": 227979264,
+      "samples": [
+        {
+          "ms": 2212.796,
+          "peak_bytes": 227975168,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2295.2189,
+          "peak_bytes": 227979264,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2351.7026,
+          "peak_bytes": 227971072,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2352.5648,
+          "peak_bytes": 228003840,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2218.0935,
+          "peak_bytes": 227975168,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ linked index arena (msvc)",
+      "language": "cpp",
+      "best_ms": 7357.647,
+      "peak_bytes": 163966976,
+      "samples": [
+        {
+          "ms": 7397.7722,
+          "peak_bytes": 163962880,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 7357.647,
+          "peak_bytes": 163962880,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 7486.8519,
+          "peak_bytes": 163966976,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 7739.4009,
+          "peak_bytes": 163983360,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 7472.3993,
+          "peak_bytes": 163958784,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ nested vectors (clangcl)",
+      "language": "cpp",
+      "best_ms": 5785.6089,
+      "peak_bytes": 217374720,
+      "samples": [
+        {
+          "ms": 5822.8908,
+          "peak_bytes": 217374720,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5900.7354,
+          "peak_bytes": 217370624,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5785.6089,
+          "peak_bytes": 217374720,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 6094.2117,
+          "peak_bytes": 217501696,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 5951.6656,
+          "peak_bytes": 217370624,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ CSR (clangcl)",
+      "language": "cpp",
+      "best_ms": 2110.0391,
+      "peak_bytes": 227987456,
+      "samples": [
+        {
+          "ms": 2169.291,
+          "peak_bytes": 227983360,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2110.0391,
+          "peak_bytes": 227983360,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2300.3502,
+          "peak_bytes": 227987456,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2374.9506,
+          "peak_bytes": 228016128,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2193.4792,
+          "peak_bytes": 227983360,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "C++ linked index arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 6374.6033,
+      "peak_bytes": 163966976,
+      "samples": [
+        {
+          "ms": 6403.2039,
+          "peak_bytes": 163966976,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6588.2556,
+          "peak_bytes": 163966976,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6374.6033,
+          "peak_bytes": 163966976,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 6824.3091,
+          "peak_bytes": 163999744,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6521.3905,
+          "peak_bytes": 163971072,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "Rust graph_nested",
+      "language": "rust",
+      "best_ms": 3843.4207,
+      "peak_bytes": 256851968,
+      "samples": [
+        {
+          "ms": 3857.1938,
+          "peak_bytes": 256843776,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 4169.4572,
+          "peak_bytes": 256835584,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 3843.4207,
+          "peak_bytes": 256851968,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 3804.3356,
+          "peak_bytes": 256843776,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 3880.8989,
+          "peak_bytes": 256843776,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "Rust graph_csr",
+      "language": "rust",
+      "best_ms": 2104.2719,
+      "peak_bytes": 228450304,
+      "samples": [
+        {
+          "ms": 2108.7751,
+          "peak_bytes": 228450304,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2144.7587,
+          "peak_bytes": 228446208,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2104.2719,
+          "peak_bytes": 228450304,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2525.5356,
+          "peak_bytes": 228528128,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 2210.8363,
+          "peak_bytes": 228458496,
+          "output": "18000000\n56916492"
+        }
+      ]
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "label": "Rust graph_arena",
+      "language": "rust",
+      "best_ms": 6882.4912,
+      "peak_bytes": 164433920,
+      "samples": [
+        {
+          "ms": 6904.4195,
+          "peak_bytes": 164425728,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6882.4912,
+          "peak_bytes": 164429824,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6903.6158,
+          "peak_bytes": 164433920,
+          "output": "18000000\n56916492"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 7195.3905,
+          "peak_bytes": 164507648,
+          "output": "18000000\n56916492"
+        },
+        {
+          "ms": 6934.4478,
+          "peak_bytes": 164429824,
+          "output": "18000000\n56916492"
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "output": "131071\n522963940",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_small.exe",
+      "cpp_control": {
+        "ms": 343.3857,
+        "peak_bytes": 8208384,
+        "output": "131071\n522963940"
+      },
+      "rust_control": {
+        "ms": 242.6063,
+        "peak_bytes": 8654848,
+        "output": "131071\n522963940"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "output": "2097151\n8377899684",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_medium.exe",
+      "cpp_control": {
+        "ms": 609.8372,
+        "peak_bytes": 71569408,
+        "output": "2097151\n8377899684"
+      },
+      "rust_control": {
+        "ms": 506.7193,
+        "peak_bytes": 72019968,
+        "output": "2097151\n8377899684"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "output": "33554431\n134079322148",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_box_large.exe",
+      "cpp_control": {
+        "ms": 5172.8139,
+        "peak_bytes": 1085255680,
+        "output": "33554431\n134079322148"
+      },
+      "rust_control": {
+        "ms": 5386.7713,
+        "peak_bytes": 1085771776,
+        "output": "33554431\n134079322148"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "output": "900000\n2296959",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_small.exe",
+      "cpp_control": {
+        "ms": 354.2956,
+        "peak_bytes": 14245888,
+        "output": "900000\n2296959"
+      },
+      "rust_control": {
+        "ms": 643.7074,
+        "peak_bytes": 16437248,
+        "output": "900000\n2296959"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "output": "4500000\n12991077",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_medium.exe",
+      "cpp_control": {
+        "ms": 1761.5355,
+        "peak_bytes": 55087104,
+        "output": "4500000\n12991077"
+      },
+      "rust_control": {
+        "ms": 1139.6684,
+        "peak_bytes": 63959040,
+        "output": "4500000\n12991077"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "output": "18000000\n56916492",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_nested_large.exe",
+      "cpp_control": {
+        "ms": 6137.3453,
+        "peak_bytes": 217485312,
+        "output": "18000000\n56916492"
+      },
+      "rust_control": {
+        "ms": 4115.274,
+        "peak_bytes": 257011712,
+        "output": "18000000\n56916492"
+      },
+      "python_oracle": false
+    }
+  ],
+  "source_hashes": {
+    "src\\front.c": "99488fc75ae0d0401e6b8689c7e5678e265176ee9e39a363c1a0c1bc8329a774",
+    "src\\llvm.c": "1547bdc71be8e8683f88d91206e032452955722792a1daca41ffc3201bfbee9d",
+    "src\\main.c": "8d86db195b47936c02bea126c8a998a46f50495f28377d25cb288090be12b724",
+    "src\\numeric.c": "5140ef98f8907220f5cffaa53eaf43738ab4d0c0ee1fae206b75b04e26a0d4bf",
+    "src\\rhat.h": "23ccdac872368f4375315265d20521bb8e2d97d87e591c225ccd52ed4a4ab650",
+    "src\\sema.c": "098e7c6189f04fea66be64cd0ff7bf3bdc83b55046fb07871492890352d11928",
+    "runtime\\rhat_runtime.c": "912a91e011f8eb34438f683fef28ce77d9f3ac1dc95b954dada5ed5c163abf9e",
+    "bench\\compare_page_commits.py": "1c16c2633cbe2cc58ce5e8a64c8ef8ca0b527e04f7f4dd7302d67847d910ae63",
+    "bench\\run_bench.py": "835618c0abfa800a5f1f606739e3341138b5f9f3b1100e4e0b8b44e35a01a594",
+    "bench\\run_workloads.py": "657726a5d91b0bc2d1086ce41f83318938642504ae794629010fdf0c3f621ede",
+    "bench\\rhat\\bintrees.rh": "ad9823d6d4883bbb751aa52a271fc7607fe78cde638e9e7d9c03a3b245b8f0f1",
+    "bench\\rhat\\blur.rh": "5f83732970bf747ac47ae34448ff94f4b6edaef01eeda2e07810887aaaa2efee",
+    "bench\\rhat\\graph.rh": "d444710d97cfd09afc0c7d4d9f032d9563b2664a356ec4a888ef66a64d4f6d65",
+    "bench\\rhat\\particles.rh": "f2214647128a1dceda92ef558ae3e4c0b39ab0515b9a74ab13512bee9c1f460c",
+    "bench\\rhat\\sum.rh": "97d5b14c6baf6c4d28c16958dcfe603169effc357e1baf425160dd700b42f9fe",
+    "bench\\rhat\\tree.rh": "39bee15effeade9ed0f44ba3667cf929ccaabc07253a58c8327f40d435474f32",
+    "bench\\upstream\\cpp\\bench.h": "405df4b59de8085fccf977ff82b98ce8731b5afe272feeca6cdd99f214d633a4",
+    "bench\\upstream\\cpp\\bintrees.cpp": "bf5313f34b86f245d213e58ddb4cd8f1fb57ce91cbeffd2da7bb23df0057d5c3",
+    "bench\\upstream\\cpp\\blur.cpp": "3598cde41cfd9a9c09224d246a84be6c014681261e8444aa82423b052f4a15ca",
+    "bench\\upstream\\cpp\\graph.cpp": "ddf753527f9c2965200c829c4541e0bd9ffc95ef0f01cc56233ddf4466361c56",
+    "bench\\upstream\\cpp\\particles.cpp": "cdf5498a29cdb38769a07848f2ae754d75945d0f1958fe6c93177a9b7bbd4f0e",
+    "bench\\upstream\\cpp\\sum.cpp": "3aabd8c5f54744cd2c4d87f36c52939511d65922874d583ae5d9a6d769d17b04",
+    "bench\\upstream\\cpp\\tree.cpp": "d72799ee3e0a4f4e8f9d34f9ad814e1c5e9858961ec38b9332d02eb067336889",
+    "bench\\upstream\\rust\\bench.rs": "887dffd1c4c7b858b0072a8feb86ad0c72a93bc83ab8ce482444b8a830c5b09c",
+    "bench\\upstream\\rust\\bintrees_arena.rs": "4c660c2fe5c7189a5c90dd851ef56a0ab683d657c79011218977f89bcde8999b",
+    "bench\\upstream\\rust\\bintrees_box.rs": "c182cadf2b1ee716a03298e863a258e9a01922d175194278d45efa215fc5bee8",
+    "bench\\upstream\\rust\\blur_index.rs": "86af9f09c4b8cfcffc522922c0c209d493e33239335fba06501e8d732c9f6e1a",
+    "bench\\upstream\\rust\\blur_windows.rs": "d0388773956676b324c3f48eb39044c91a009af50424ca950b8e02fb42953888",
+    "bench\\upstream\\rust\\graph_arena.rs": "dfe9583c5b7710cb8a4b50665c9fa79f444f484263d519ebb4f5e772a10480f9",
+    "bench\\upstream\\rust\\graph_csr.rs": "ed559a92eb24d89b68010dc507dd12c667bb0cc65e1aa29902ac361651cd0852",
+    "bench\\upstream\\rust\\graph_nested.rs": "c08cdd160cefac652385fd22f20c06d14f57d2aa57a86d73a4776ac974da862c",
+    "bench\\upstream\\rust\\particles.rs": "96dbbcbf74729cc068f0a9ea0430948b486dcebe884386f6403118d0b57df483",
+    "bench\\upstream\\rust\\particles_scalar.rs": "befe47b4b99f9009dd6bea13129c8c901a5570140dfee5779692a8f09b889772",
+    "bench\\upstream\\rust\\sum.rs": "e33515996c08472d7c0fe59759a87c535b9dceaebfe0f9530775a6dc2fe9ff4d",
+    "bench\\upstream\\rust\\tree_arena.rs": "3826ae6a73c28b05fec87da3059919356dcf275d2c6ce608be9b88669364fcc3",
+    "bench\\upstream\\rust\\tree_box.rs": "3448f2785d9a003622a47a089d0a39d5d591988d30633b6579a36b254ccd051c",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small.rh": "87ceaa9ca707763ed2476c1db31f979c2e94a4c84190a6942985a72760f1ca71",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_small.exe.ll": "174427c9233f30278d93621cb360d4a63026265dbf1623ce0bf35d25e46b0063",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium.rh": "d89f58fae3b2c0cff7d2dc4aba9f7729ae11cbef44233ba92333f84bc07257b7",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_medium.exe.ll": "f33aa2d2f05da57e09867f6d38c5138debfa2b18cc65a860004017852cb5ea91",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large.rh": "0920cdf84a0a4b588638a2f4f078141026b59128e5b7880e4529b227d360f24d",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\tree_large.exe.ll": "12c3d9c495a130bd2c5e0b322e0893a3bcb87b55be28509c2ac1d6643cb6690f",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small.rh": "dd7601f3f04891083cf04b19ff3b358292b00ae329acb1decba6c8269409c75d",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_small.exe.ll": "c21abee3299b9271fc9096bcfe5ad28b57733a28d9757efc2ee6bda539020457",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium.rh": "6ca42500daddb7838e77162c6f7ef1a5762ee28f04c4cbd248b0a5551971572d",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_medium.exe.ll": "ff87e160c1dcec49a414365b58bdfb582c5437772bc579852407d34ef00ae967",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large.rh": "ba11a81b5869b1d83a330a430cb4d26f0c02c8f3521c3a0f223d758914315a41",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-tree-graph\\graph_large.exe.ll": "6ef7c87cc9245d3b4144dd9a20c29d0ba66aebb2b5a4fd9cf6e40d0e288c8b59"
+  },
+  "representations": {
+    "tree": "R^ uses 12-byte nodes (i32 value, two u32 child indices), with index zero as null. It reserves a stable OS region and grows it by push; C++/Rust index arenas reserve exact capacity. Relative references and per-node allocation are not used. Eight full traversals and the original seeds are preserved.",
+    "graph": "R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. Its queue overwrites an initialized prefix and pushes only when its high-water length grows; a separate tail resets between the four BFS sources. There is no unbounded append across sources. This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged."
+  },
+  "parameters": {
+    "tree": "depth",
+    "graph": "vertices"
+  },
+  "harness_source": "\"\"\"Measure newly ported workloads, keeping historical bintrees data intact.\"\"\"\nimport argparse\nfrom datetime import datetime, timezone\nimport json\nimport os\nimport pathlib\nimport platform\nimport shutil\n\nfrom run_bench import HERE, ROOT, UPSTREAM, command, measure, sha, sized\n\nWORKLOADS = {\n    \"sum\": dict(sizes=(1_000_000, 16_000_000, 128_000_000), smoke=1000,\n                cpp=(\"vector\", \"reserved vector\"), rust=(\"sum\",)),\n    \"blur\": dict(sizes=(1024, 2048, 8192), smoke=16,\n                 cpp=(\"flat\", \"row pointers\"), rust=(\"blur_index\", \"blur_windows\")),\n    \"particles\": dict(sizes=(100_000, 1_000_000, 4_000_000), smoke=32,\n                      cpp=(\"scalar AoS\", \"SoA\", \"vector AoS\"),\n                      rust=(\"particles_scalar\", \"particles\")),\n    \"tree\": dict(sizes=(16, 20, 24), smoke=6, parameter=\"depth\",\n                 cpp=(\"unique_ptr\", \"new/delete\", \"index arena\"), rust=(\"tree_box\", \"tree_arena\"),\n                 rhat_label=\"R^ u32-index node pool (LLVM/Clang)\",\n                 representation=\"R^ uses 12-byte nodes (i32 value, two u32 child indices), with index zero as null. \"\n                 \"It reserves a stable OS region and grows it by push; C++/Rust index arenas reserve exact capacity. \"\n                 \"Relative references and per-node allocation are not used. Eight full traversals and the original seeds are preserved.\"),\n    \"graph\": dict(sizes=(100_000, 500_000, 2_000_000), smoke=64, parameter=\"vertices\",\n                  cpp=(\"nested vectors\", \"CSR\", \"linked index arena\"),\n                  rust=(\"graph_nested\", \"graph_csr\", \"graph_arena\"),\n                  rhat_label=\"R^ linked u32-index pool (LLVM/Clang)\",\n                  representation=\"R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. \"\n                  \"Its queue overwrites an initialized prefix and pushes only when its high-water length grows; \"\n                  \"a separate tail resets between the four BFS sources. There is no unbounded append across sources. \"\n                  \"This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged.\"),\n}\n\n\ndef next_random(r):\n    mask = (1 << 64) - 1\n    r ^= (r << 13) & mask\n    r ^= r >> 7\n    return (r ^ (r << 17)) & mask\n\n\ndef oracle(name, n):\n    \"\"\"Independent, untimed smoke oracle. Larger runs cross-check C++ and Rust.\"\"\"\n    r = 12345\n    if name == \"sum\":\n        total = 0\n        for _ in range(n):\n            r = next_random(r)\n            total += sum((r % 1000) ^ p for p in range(8))\n    elif name == \"blur\":\n        a, b = [], [0] * (n*n)\n        for _ in range(n*n):\n            r = next_random(r)\n            a.append(r % 256)\n        for _ in range(16):\n            for y in range(1, n-1):\n                for x in range(1, n-1):\n                    i = y*n+x\n                    b[i] = (a[i-n-1] + 2*a[i-n] + a[i-n+1]\n                            + 2*a[i-1] + 4*a[i] + 2*a[i+1]\n                            + a[i+n-1] + 2*a[i+n] + a[i+n+1]) >> 4\n            a, b = b, a\n        total = sum(a)\n    elif name == \"particles\":\n        total = 0\n        for _ in range(n):\n            r = next_random(r)\n            x, y, z = (float((r >> shift) % 1024) for shift in (0, 12, 24))\n            vx, vy, vz = (((r >> shift) % 256 - 128) / 16.0 for shift in (36, 44, 52))\n            # All these dyadic values are exactly representable in binary32.\n            for _ in range(200):\n                vy -= 0.0625\n                x, y, z = x+vx, y+vy, z+vz\n                if y < 0:\n                    y, vy = -y, -(vy*0.5)\n            total += int(x*16) + int(y*16) + int(z*16)\n    elif name == \"tree\":\n        def visit(depth, seed):\n            own = sum((seed % 1000) ^ p for p in range(8))\n            if depth == 0:\n                return own\n            return own + visit(depth-1, next_random(seed)) + visit(depth-1, next_random((seed+1) & ((1 << 64)-1)))\n        return f\"{(1 << (n+1))-1}\\n{visit(n, r)}\"\n    elif name == \"graph\":\n        # Lists in generation order and Python integers, independent of the\n        # R^ linked pool and its reusable queue representation.\n        adj = [[] for _ in range(n)]\n        for _ in range(n*8):\n            r = next_random(r)\n            adj[r % n].append((r >> 24) % n)\n        total, seed = 0, 999\n        for _ in range(4):\n            seed = next_random(seed)\n            src = seed % n\n            distance = [-1] * n\n            distance[src] = 0\n            queue = [src]\n            for u in queue:\n                total += distance[u]\n                for v in adj[u]:\n                    if distance[v] == -1:\n                        distance[v] = distance[u]+1\n                        queue.append(v)\n        return f\"{n*9}\\n{total}\"\n    else:\n        raise ValueError(f\"no independent oracle for {name}\")\n    return f\"{n}\\n{total}\"\n\n\ndef report(data, out):\n    out.mkdir(parents=True, exist_ok=True)\n    (out / \"workloads_results.json\").write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")\n    lines = [\"# Additional R^ workloads\", \"\", f\"Measured: {data['started_utc']} (UTC).\", \"\",\n             \"R^ replaces Goose. All comparison implementations were built and measured in this session.\", \"\",\n             f\"Whole-process wall time, two warm-ups, best of {data['reps']} timed samples; peak resident working set.\",\n             \"R^ retains bounds/range checks and OS-backed, stable-address arrays. No affinity is set.\", \"\",\n             \"Comparison / R^ time: above 1 means R^ is faster. No suite-wide average is claimed.\", \"\",\n             \"Smoke sizes are correctness checks and are not performance evidence.\", \"\",\n             \"## Environment\", \"\", \"| Item | Value |\", \"|---|---|\"]\n    for key, value in data[\"environment\"].items():\n        text = str(value).replace(\"|\", \"/\").replace(\"\\n\", \"; \")\n        lines.append(f\"| {key} | {text} |\")\n    if data.get(\"metadata_corrections\"):\n        lines += [\"\", *data[\"metadata_corrections\"]]\n    for name in data[\"workloads\"]:\n        lines += [\"\", \"## \" + name, \"\"]\n        if data.get(\"representations\", {}).get(name):\n            lines += [data[\"representations\"][name], \"\"]\n        parameter = data.get(\"parameters\", {}).get(name, \"N\")\n        lines += [f\"| Size / {parameter} | Implementation | Best ms | Peak MiB | Comparison / R^ time |\",\n                  \"|---|---|---:|---:|---:|\"]\n        for row in data[\"rows\"]:\n            if row[\"workload\"] != name:\n                continue\n            rhat = next(r for r in data[\"rows\"] if r[\"workload\"] == name\n                        and r[\"size\"] == row[\"size\"] and r[\"language\"] == \"rhat\")\n            lines.append(f\"| {row['size']} / {row['n']} | {row['label']} | {row['best_ms']:.2f} | \"\n                         f\"{row['peak_bytes']/1048576:.2f} | {row['best_ms']/rhat['best_ms']:.3f}x |\")\n    lines += [\"\", \"Every warm-up/sample checks its checksum. Each size first cross-checks independently built\",\n              \"C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.\",\n              \"Raw samples, checksums, build commands, source/LLVM/compiler/runtime SHA-256 and tool versions\",\n              \"are saved in workloads_results.json. Historical bintrees measurements are in \"\n              f\"[results.md]({pathlib.Path(os.path.relpath(HERE / 'results.md', out)).as_posix()}).\", \"\"]\n    (out / \"workloads_results.md\").write_text(\"\\n\".join(lines), encoding=\"utf-8\")\n\n\ndef main():\n    parser = argparse.ArgumentParser(description=__doc__)\n    parser.add_argument(\"--workloads\", nargs=\"+\", choices=WORKLOADS, default=list(WORKLOADS))\n    parser.add_argument(\"--sizes\", nargs=\"+\", choices=(\"smoke\", \"small\", \"medium\", \"large\"), default=[\"small\", \"medium\", \"large\"])\n    parser.add_argument(\"--reps\", type=int, default=3)\n    parser.add_argument(\"--timeout\", type=int, default=1800)\n    parser.add_argument(\"--compiler\", type=pathlib.Path, default=ROOT / \"build/Release/rhat.exe\")\n    parser.add_argument(\"--work\", type=pathlib.Path, default=ROOT / \"build/bench-workloads\")\n    parser.add_argument(\"--out\", type=pathlib.Path, default=HERE)\n    parser.add_argument(\"--report-only\", action=\"store_true\")\n    args = parser.parse_args()\n    if args.report_only:\n        report(json.loads((args.out / \"workloads_results.json\").read_text(encoding=\"utf-8\")), args.out)\n        return\n    if os.name != \"nt\" or args.reps < 1 or args.timeout < 1:\n        parser.error(\"Windows and positive --reps/--timeout required\")\n    tools = {name: shutil.which(exe) for name, exe in\n             ((\"clang\", \"clang\"), (\"msvc\", \"cl\"), (\"clangcl\", \"clang-cl\"), (\"rustc\", \"rustc\"))}\n    if not all(tools.values()):\n        parser.error(\"load scripts/devshell.ps1; Clang, MSVC, Rust required\")\n    compiler, work = args.compiler.resolve(), args.work.resolve()\n    work.mkdir(parents=True, exist_ok=True)\n    import winreg\n    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r\"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0\") as key:\n        cpu = winreg.QueryValueEx(key, \"ProcessorNameString\")[0].strip()\n    env = dict(cpu=cpu, os=platform.platform(), commit=command([\"git\", \"rev-parse\", \"HEAD\"], cwd=ROOT),\n               dirty=command([\"git\", \"status\", \"--porcelain\"], cwd=ROOT),\n               compiler_sha256=sha(compiler), runtime_sha256=sha(ROOT / \"runtime/rhat_runtime.c\"))\n    for key, exe in tools.items():\n        banner = command([exe, \"/Bv\", \"/?\"] if key == \"msvc\" else [exe, \"--version\"])\n        if key == \"msvc\":\n            env[key] = next((line.strip() for line in banner.splitlines()\n                             if \"Compiler Version\" in line or \"\u30b3\u30f3\u30d1\u30a4\u30e9 \u30d0\u30fc\u30b8\u30e7\u30f3\" in line), None)\n            if not env[key]:\n                raise RuntimeError(\"could not identify MSVC version\")\n        else:\n            env[key] = banner.splitlines()[0]\n    data = dict(started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,\n                environment=env, workloads=args.workloads, warmups=2, reps=args.reps,\n                builds=[], rows=[], controls=[], source_hashes={},\n                representations={name: WORKLOADS[name].get(\"representation\", \"\") for name in args.workloads},\n                parameters={name: WORKLOADS[name].get(\"parameter\", \"N\") for name in args.workloads},\n                harness_source=pathlib.Path(__file__).read_bytes().decode(\"utf-8\"))\n    for directory in (ROOT / \"src\", ROOT / \"runtime\", HERE):\n        for path in directory.rglob(\"*\"):\n            if path.is_file() and path.suffix in (\".c\", \".h\", \".rh\", \".rs\", \".cpp\", \".py\"):\n                data[\"source_hashes\"][str(path.relative_to(ROOT))] = sha(path)\n\n    def build(argv):\n        data[\"builds\"].append(list(map(str, argv)))\n        command(argv, cwd=work)\n\n    shutil.copyfile(HERE / \"upstream/rust/bench.rs\", work / \"bench.rs\")\n    for name in args.workloads:\n        spec = WORKLOADS[name]\n        for size in args.sizes:\n            n = spec[\"smoke\"] if size == \"smoke\" else spec[\"sizes\"][(\"small\", \"medium\", \"large\").index(size)]\n            implementations = []\n            src = work / f\"{name}_{size}.rh\"\n            sized(HERE / f\"rhat/{name}.rh\", src, n)\n            exe = src.with_suffix(\".exe\")\n            build([compiler, \"build\", src, \"-o\", exe, \"-O2\", \"--clang\", tools[\"clang\"],\n                   \"--dump-ir\", src.with_suffix(\".rir\")])\n            data[\"source_hashes\"][str(src)] = sha(src)\n            data[\"source_hashes\"][str(exe) + \".ll\"] = sha(pathlib.Path(str(exe) + \".ll\"))\n            implementations.append((spec.get(\"rhat_label\", \"R^ LLVM/Clang\"), \"rhat\", exe))\n            for tc in (\"msvc\", \"clangcl\"):\n                for variant, label in enumerate(spec[\"cpp\"]):\n                    exe = work / f\"{name}_{size}_{tc}_{variant}.exe\"\n                    build([tools[tc], \"/nologo\", \"/O2\", \"/EHsc\", \"/std:c++20\", f\"/DBENCH_N={n}\",\n                           f\"/DVARIANT={variant}\", HERE / f\"upstream/cpp/{name}.cpp\",\n                           \"/Fe\" + str(exe), \"/Fo\" + str(exe.with_suffix(\".obj\"))])\n                    implementations.append((f\"C++ {label} ({tc})\", \"cpp\", exe))\n            for rust in spec[\"rust\"]:\n                src = work / f\"{rust}_{size}.rs\"\n                sized(HERE / f\"upstream/rust/{rust}.rs\", src, n)\n                exe = src.with_suffix(\".exe\")\n                build([tools[\"rustc\"], \"-O\", \"-C\", \"codegen-units=1\", src, \"-o\", exe])\n                implementations.append((f\"Rust {rust}\", \"rust\", exe))\n            # Establish the result from two independent controls before timing.\n            cpp = next(exe for _, lang, exe in implementations if lang == \"cpp\")\n            rust = next(exe for _, lang, exe in implementations if lang == \"rust\")\n            cpp_control, rust_control = measure(cpp, args.timeout), measure(rust, args.timeout)\n            expected = cpp_control[\"output\"]\n            if rust_control[\"output\"] != expected:\n                raise RuntimeError(f\"{name}/{size}: C++/Rust control mismatch\")\n            if size == \"smoke\" and expected != oracle(name, n):\n                raise RuntimeError(f\"{name}: Python oracle mismatch\")\n            data[\"controls\"].append(dict(workload=name, size=size, n=n, output=expected,\n                                         cpp=str(cpp), rust=str(rust), cpp_control=cpp_control,\n                                         rust_control=rust_control, python_oracle=size == \"smoke\"))\n            samples = {label: [] for label, _, _ in implementations}\n            warmups = {label: [] for label, _, _ in implementations}\n            for iteration in range(2 + args.reps):\n                ordered = implementations if iteration % 2 == 0 else list(reversed(implementations))\n                for label, _, exe in ordered:\n                    result = measure(exe, args.timeout)\n                    if result[\"output\"] != expected:\n                        raise RuntimeError(f\"{name}/{size} {label}: checksum {result['output']} != {expected}\")\n                    (warmups if iteration < 2 else samples)[label].append(result)\n                    print(f\"{name}/{size} {label} round {iteration+1}: {result['ms']:.2f} ms verified\", flush=True)\n            for label, language, _ in implementations:\n                data[\"rows\"].append(dict(workload=name, size=size, n=n, label=label, language=language,\n                                         best_ms=min(s[\"ms\"] for s in samples[label]),\n                                         peak_bytes=max(s[\"peak_bytes\"] for s in samples[label]),\n                                         samples=samples[label], warmups=warmups[label]))\n            report(data, args.out)\n\n\nif __name__ == \"__main__\":\n    main()\n"
+}

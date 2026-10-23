@@ -125,8 +125,8 @@ print(value.a, value.b, value.c)
 詳しい規則・検査・制約は [docs/design.md](docs/design.md) にあります。
 
 Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
-[bench/README.md](bench/README.md) にあります。現在は `bintrees`・`sum`・`blur`・`particles` を移植し、
-残り12種に必要な機能を一覧化しています。
+[bench/README.md](bench/README.md) にあります。現在は `bintrees`・`sum`・`blur`・`particles`・`tree`・`graph` を移植し、
+残り10種に必要な機能を一覧化しています。
 
 ## 現在の制約
 
