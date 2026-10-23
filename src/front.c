@@ -252,6 +252,8 @@ static Spec *spec(Parser *p) {
   return s;
 }
 static Expr *expr(Parser *p, int min);
+static Function *function(Parser *p, char *name, Def *owner, bool templ,
+                          bool abstr);
 static Expr *node(int k, Loc l) {
   Expr *e = mem(sizeof(*e));
   e->kind = k;
@@ -280,6 +282,25 @@ static bool type_constructor(Parser *p, const char *name) {
   }
   return false;
 }
+static Expr *if_tail(Parser *p, Expr *condition, Loc loc) {
+  Expr *e = node(E_IF, loc);
+  e->a = condition;
+  e->b = expr(p, 0);
+  if (!take(p, "el^") && !take(p, "else^"))
+    fail(tok(p)->loc, "if^ expression requires a final el^: branch");
+  if (take(p, ":")) {
+    e->c = expr(p, 0);
+    need(p, ";");
+  } else {
+    bool header = p->header;
+    p->header = true;
+    Expr *next_condition = expr(p, 0);
+    p->header = header;
+    need(p, ":");
+    e->c = if_tail(p, next_condition, next_condition->loc);
+  }
+  return e;
+}
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
@@ -306,10 +327,19 @@ static Expr *primary(Parser *p) {
     e = node(E_UNARY, t->loc);
     e->text = t->text;
     e->a = expr(p, 8);
+  } else if (!strcmp(t->text, "if^")) {
+    bool header = p->header;
+    p->header = true;
+    Expr *condition = expr(p, 0);
+    p->header = header;
+    need(p, ":");
+    e = if_tail(p, condition, t->loc);
+  } else if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^")) {
+    p->at--;
+    e = node(E_FUNCTION, t->loc);
+    e->function = function(p, fmt("<anonymous@%d:%d>", t->loc.line, t->loc.col),
+                           NULL, false, false);
   } else if (t->kind == TOK_WORD) {
-    if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^"))
-      fail(t->loc,
-           "function values and closures are not supported in this version");
     e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
     e->text = t->text;
   } else
@@ -395,6 +425,11 @@ static Stmt *stmt(Parser *p) {
     p->header = true;
     s->a = expr(p, 0);
     p->header = false;
+    if (s->kind == S_IF && take(p, ":")) {
+      s->kind = S_EXPR;
+      s->a = if_tail(p, s->a, t->loc);
+      return s;
+    }
     block(p, &s->body);
     if (s->kind == S_IF && (take(p, "else^") || take(p, "el^")))
       block(p, &s->other);
@@ -459,8 +494,14 @@ static Function *function(Parser *p, char *name, Def *owner, bool templ,
     f->result = spec(p);
   if (abstr)
     need(p, ";");
-  else
+  else {
     block(p, &f->body);
+    if (!f->procedure && f->body.n == 1) {
+      Stmt *only = f->body.v[0];
+      if (only->kind == S_EXPR)
+        only->kind = S_RETURN;
+    }
+  }
   return f;
 }
 static void definition(Parser *p) {
@@ -570,12 +611,22 @@ void parse(Program *p, const char *path) {
       add(&p->entry->body, stmt(&q));
       continue;
     }
+    int binding_start = q.at;
     bool templ = take(&q, "template^");
     need(&q, "let^");
     char *name = word(&q);
     need(&q, "=");
     templ = take(&q, "template^") || templ;
-    add(&p->functions, function(&q, name, NULL, templ, false));
+    Function *parsed_function = function(&q, name, NULL, templ, false);
+    /* A called literal initializes a value; it does not declare a named
+     * function. */
+    if (!templ && (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
+                   prec(tok(&q)->text) >= 0)) {
+      q.at = binding_start;
+      add(&p->entry->body, stmt(&q));
+      continue;
+    }
+    add(&p->functions, parsed_function);
     take(&q, ";");
   }
 }

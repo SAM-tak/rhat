@@ -50,13 +50,16 @@ enum {
   E_MEMBER,
   E_INDEX,
   E_RECORD,
-  E_ARRAY
+  E_ARRAY,
+  E_FUNCTION,
+  E_IF
 };
 struct Expr {
   int kind;
   Loc loc;
   char *text;
-  Expr *a, *b;
+  Expr *a, *b, *c;
+  Function *function;
   List args, names;
 };
 enum { S_BIND, S_ASSIGN, S_EXPR, S_RETURN, S_IF, S_WHILE, S_BLOCK };
@@ -81,6 +84,7 @@ struct Function {
   Def *owner;
   List params, body;
   Spec *result;
+  Type *required_result;
   bool procedure, templ, abstract, priv, override, mutable_self;
 };
 struct Field {

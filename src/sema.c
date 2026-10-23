@@ -121,10 +121,20 @@ static Function *method(Def *d, const char *n) {
   return NULL;
 }
 static void compatible(Program *p, Function *a, Function *b) {
+  Type *ar = a->result ? type_spec(p, a->result) : a->required_result;
+  Type *br = b->result ? type_spec(p, b->result) : b->required_result;
+  if (a->abstract && !ar)
+    ar = type_builtin(p, T_VOID);
+  if (b->abstract && !br)
+    br = type_builtin(p, T_VOID);
   if (a->params.n != b->params.n || a->procedure != b->procedure ||
       a->mutable_self != b->mutable_self || a->templ != b->templ ||
-      type_spec(p, a->result) != type_spec(p, b->result))
+      (ar && br && ar != br))
     fail(b->loc, "override of '%s' changes its contract", a->name);
+  if (ar && !br)
+    b->required_result = ar;
+  if (br && !ar)
+    a->required_result = br;
   for (int i = 0; i < a->params.n; i++) {
     Param *x = a->params.v[i], *y = b->params.v[i];
     if (x->self != y->self || ((x->spec || y->spec) &&
@@ -330,6 +340,10 @@ typedef struct {
 } Context;
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
                              Loc at);
+static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
+                              Loc at);
+static void infer_results(Program *p);
+static Type *expression_type(Context *c, Expr *e, Type *expected);
 static void statements(Context *c, List *body, bool scope);
 static Value expression(Context *c, Expr *e, Type *expected);
 static Value construct(Context *c, Expr *e, Type *t, int dst);
@@ -492,6 +506,14 @@ static void cleanup(Context *c, int from, Loc l) {
 }
 static Value literal_int(Context *c, Expr *e, Type *expected) {
   Type *t = expected;
+  if (t && t->kind == T_F64) {
+    Value v = value(c, t);
+    Instr *i = emit(c, I_CONST, e->loc);
+    i->dst = v.id;
+    i->type = t;
+    i->text = e->text;
+    return v;
+  }
   if (!t || !(t->kind == T_I32 || t->kind == T_I64 || t->kind == T_U8))
     t = type_builtin(c->p, T_I32);
   errno = 0;
@@ -590,6 +612,21 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     *saved = ref;
     add(&values, saved);
     add(&actual, ref.type);
+  } else if (target->kind == E_FUNCTION) {
+    f = target->function;
+  } else if (target->kind == E_NAME && !strcmp(target->text, "this^")) {
+    if (c->in->fn == p->entry)
+      fail(e->loc, "this^ requires an enclosing function or procedure");
+    f = c->in->fn;
+    self = c->in->self;
+    if (self) {
+      Var *receiver = lookup(c, "self^");
+      Value ref = snapshot(c, variable(receiver), e->loc);
+      Value *saved = mem(sizeof(*saved));
+      *saved = ref;
+      add(&values, saved);
+      add(&actual, ref.type);
+    }
   } else if (target->kind == E_NAME) {
     for (int j = 0; j < p->functions.n; j++) {
       Function *candidate = p->functions.v[j];
@@ -668,6 +705,37 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
 static Value construct(Context *c, Expr *e, Type *t, int dst) {
   if (e->kind == E_CALL)
     return call(c, e, t, dst);
+  if (e->kind == E_IF) {
+    if (!t)
+      t = expression_type(c, e, NULL);
+    if (!t || t->kind == T_VOID)
+      fail(e->loc, "if^ expression must produce a value on every branch");
+    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+    if (t->owned && dst < 0)
+      fail(e->loc, "owned conditional requires a construction destination");
+    Value condition = expression(c, e->a, type_builtin(c->p, T_BOOL));
+    if (condition.type->kind != T_BOOL)
+      fail(e->loc, "condition requires bool");
+    int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
+    Instr *i = emit(c, I_CBR, e->loc);
+    i->a = condition.id;
+    i->label = yes;
+    i->other = no;
+    i = emit(c, I_LABEL, e->loc);
+    i->label = yes;
+    Value a = construct(c, e->b, t, out.id);
+    i = emit(c, I_BR, e->loc);
+    i->label = end;
+    i = emit(c, I_LABEL, e->loc);
+    i->label = no;
+    Value b = construct(c, e->c, t, out.id);
+    i = emit(c, I_BR, e->loc);
+    i->label = end;
+    i = emit(c, I_LABEL, e->loc);
+    i->label = end;
+    out.deps = a.deps | b.deps;
+    return out;
+  }
   if (e->kind == E_RECORD) {
     if (e->text) {
       Def *d = lookup_def(c->p, e->text);
@@ -829,6 +897,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
 static Value expression(Context *c, Expr *e, Type *expected) {
   Program *p = c->p;
   Value out = {0};
+  if (e->kind == E_FUNCTION)
+    fail(e->loc, "function values cannot escape; invoke the literal directly");
   if (e->kind == E_INT)
     return literal_int(c, e, expected);
   if (e->kind == E_BOOL || e->kind == E_FLOAT || e->kind == E_STRING) {
@@ -855,7 +925,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_CALL)
     return call(c, e, expected, -1);
-  if (e->kind == E_RECORD || e->kind == E_ARRAY)
+  if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF)
     return construct(c, e, expected, -1);
   if (e->kind == E_MEMBER) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
@@ -1013,28 +1083,8 @@ static void statements(Context *c, List *body, bool scope) {
           fail(s->loc, "duplicate binding '%s'", s->name);
       }
       Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
-      /* Known constructors/results can build directly into an inferred binding.
-       */
-      if (!t && s->a->kind == E_RECORD && s->a->text) {
-        Def *d = lookup_def(c->p, s->a->text);
-        if (d)
-          t = d->type;
-      }
-      if (!t && s->a->kind == E_CALL) {
-        Expr *target = s->a->a;
-        if (target->kind == E_NAME) {
-          for (int k = 0; k < c->p->functions.n; k++) {
-            Function *f = c->p->functions.v[k];
-            if (!strcmp(f->name, target->text) && f->result)
-              t = type_spec(c->p, f->result);
-          }
-        } else if (target->kind == E_MEMBER && target->a->kind == E_NAME &&
-                   !strcmp(target->text, "new")) {
-          Def *d = lookup_def(c->p, target->a->text);
-          if (d)
-            t = d->type;
-        }
-      }
+      if (!t)
+        t = expression_type(c, s->a, NULL);
       Value v = {0};
       bool alias_result = c->in->result_local &&
                           !strcmp(c->in->result_local, s->name) &&
@@ -1089,8 +1139,10 @@ static void statements(Context *c, List *body, bool scope) {
       Type *t = c->in->result;
       Value v = {.id = -1, .type = type_builtin(c->p, T_VOID)};
       if (s->a) {
-        if (t->kind == T_VOID)
+        if (t->kind == T_VOID) {
+          expression(c, s->a, NULL);
           fail(s->loc, "procedure or void function cannot return a value");
+        }
         if (t->owned && c->in->result_local) {
           if (s->a->kind != E_NAME || strcmp(s->a->text, c->in->result_local))
             fail(
@@ -1195,8 +1247,278 @@ static void return_names(List *body, char **name, bool *valid) {
     return_names(&s->other, name, valid);
   }
 }
-static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
-                             Loc at) {
+/* Return inference is a fixed point over concrete call instances. Unknown
+   results stay unknown across back edges until a return or operation seeds
+   them. */
+typedef struct {
+  Program *p;
+  Instance *in;
+  List vars;
+  Type *returned;
+  Expr *return_expr;
+  bool value_return;
+} Infer;
+
+static Function *lookup_function(Program *p, const char *name) {
+  for (int j = 0; j < p->functions.n; j++) {
+    Function *f = p->functions.v[j];
+    if (!strcmp(f->name, name))
+      return f;
+  }
+  return NULL;
+}
+static Type *infer_expr(Infer *c, Expr *e, Type *expected);
+static Type *infer_lookup(Infer *c, const char *name) {
+  for (int j = c->vars.n - 1; j >= 0; j--) {
+    Var *v = c->vars.v[j];
+    if (!strcmp(v->name, name))
+      return v->type;
+  }
+  return NULL;
+}
+static bool integer_literal(Expr *e) {
+  return e &&
+         (e->kind == E_INT ||
+          (e->kind == E_UNARY && !strcmp(e->text, "-") && e->a->kind == E_INT));
+}
+static bool numeric(Type *t) {
+  return t && (t->kind == T_U8 || t->kind == T_I32 || t->kind == T_I64 ||
+               t->kind == T_F64);
+}
+static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
+  if (!a)
+    return b;
+  if (!b || a == b)
+    return a;
+  if (integer_literal(ae) && numeric(b))
+    return b;
+  if (integer_literal(be) && numeric(a))
+    return a;
+  fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a),
+       type_name(b));
+}
+static Type *infer_call(Infer *c, Expr *e) {
+  Expr *target = e->a;
+  Function *f = NULL;
+  Def *self = NULL;
+  List actual = {0};
+  if (target->kind == E_FUNCTION) {
+    f = target->function;
+  } else if (target->kind == E_NAME) {
+    if (!strcmp(target->text, "print") || !strcmp(target->text, "assert")) {
+      for (int j = 0; j < e->args.n; j++)
+        infer_expr(c, e->args.v[j], NULL);
+      return type_builtin(c->p, T_VOID);
+    }
+    if (!strcmp(target->text, "this^")) {
+      if (c->in->fn == c->p->entry)
+        fail(e->loc, "this^ requires an enclosing function or procedure");
+      f = c->in->fn;
+      self = c->in->self;
+      if (self)
+        add(&actual, infer_lookup(c, "self^"));
+    } else
+      f = lookup_function(c->p, target->text);
+  } else if (target->kind == E_MEMBER) {
+    if (target->a->kind == E_NAME && !strcmp(target->text, "new")) {
+      Def *d = lookup_def(c->p, target->a->text);
+      if (d)
+        return d->type;
+    }
+    Type *base = infer_expr(c, target->a, NULL);
+    if (base && base->kind == T_REF)
+      base = base->elem;
+    if (base && base->kind == T_GROW && !strcmp(target->text, "push")) {
+      for (int j = 0; j < e->args.n; j++)
+        infer_expr(c, e->args.v[j], base->elem);
+      return type_builtin(c->p, T_VOID);
+    }
+    if (base && base->kind == T_STRUCT) {
+      self = base->def;
+      f = method(self, target->text);
+      add(&actual, type_wrap(c->p, T_REF, base, 0));
+    }
+  }
+  if (!f)
+    return NULL;
+  int offset = actual.n;
+  bool known = true;
+  for (int j = 0; j < e->args.n; j++) {
+    Param *param = j + offset < f->params.n ? f->params.v[j + offset] : NULL;
+    Type *t =
+        infer_expr(c, e->args.v[j],
+                   param && param->spec ? type_spec(c->p, param->spec) : NULL);
+    if (!t)
+      known = false;
+    add(&actual, t);
+  }
+  if (!known || actual.n != f->params.n)
+    return f->result ? type_spec(c->p, f->result) : f->required_result;
+  return instance_for(c->p, f, self, &actual, e->loc)->result;
+}
+static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
+  if (!e)
+    return type_builtin(c->p, T_VOID);
+  switch (e->kind) {
+  case E_INT:
+    return numeric(expected) ? expected : type_builtin(c->p, T_I32);
+  case E_FLOAT:
+    return type_builtin(c->p, T_F64);
+  case E_BOOL:
+    return type_builtin(c->p, T_BOOL);
+  case E_STRING:
+    return type_builtin(c->p, T_STRING);
+  case E_NAME:
+  case E_SELF:
+    return infer_lookup(c, e->text);
+  case E_FUNCTION:
+    fail(e->loc, "function values cannot escape; invoke the literal directly");
+  case E_CALL:
+    return infer_call(c, e);
+  case E_RECORD: {
+    if (e->text) {
+      Def *d = lookup_def(c->p, e->text);
+      return d ? d->type : NULL;
+    }
+    return expected;
+  }
+  case E_ARRAY: {
+    if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW)) {
+      for (int j = 0; j < e->args.n; j++)
+        infer_expr(c, e->args.v[j], expected->elem);
+      return expected;
+    }
+    Type *elem = e->args.n ? infer_expr(c, e->args.v[0], NULL) : NULL;
+    for (int j = 1; j < e->args.n; j++)
+      infer_expr(c, e->args.v[j], elem);
+    return elem ? type_wrap(c->p, T_ARRAY, elem, e->args.n) : NULL;
+  }
+  case E_MEMBER: {
+    Type *base = infer_expr(c, e->a, NULL);
+    if (base && base->kind == T_REF)
+      base = base->elem;
+    if (!base)
+      return NULL;
+    if ((base->kind == T_ARRAY || base->kind == T_GROW ||
+         base->kind == T_STRING) &&
+        !strcmp(e->text, "len"))
+      return type_builtin(c->p, T_I64);
+    Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
+    return f ? f->type : NULL;
+  }
+  case E_INDEX: {
+    Type *base = infer_expr(c, e->a, NULL);
+    if (base && base->kind == T_REF)
+      base = base->elem;
+    infer_expr(c, e->b, type_builtin(c->p, T_I64));
+    return base && (base->kind == T_ARRAY || base->kind == T_GROW) ? base->elem
+                                                                   : NULL;
+  }
+  case E_UNARY: {
+    Type *a = infer_expr(c, e->a, !strcmp(e->text, "-") ? expected : NULL);
+    if (!strcmp(e->text, "!"))
+      return type_builtin(c->p, T_BOOL);
+    if (!a)
+      return NULL;
+    if (!strcmp(e->text, "&"))
+      return type_wrap(c->p, T_REF, a, 0);
+    if (!strcmp(e->text, "*"))
+      return a->kind == T_REF ? a->elem : NULL;
+    return a;
+  }
+  case E_IF: {
+    infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
+    Type *a = infer_expr(c, e->b, expected);
+    Type *b = infer_expr(c, e->c, expected);
+    return join_types(a, e->b, b, e->c, e->loc);
+  }
+  case E_BIN: {
+    bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
+                 !strcmp(e->text, "&&") || !strcmp(e->text, "||");
+    bool comparison = strchr("=!<>", e->text[0]) != NULL;
+    Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
+    Type *b = infer_expr(c, e->b, a);
+    if (comparison || logic)
+      return type_builtin(c->p, T_BOOL);
+    return join_types(a, e->a, b, e->b, e->loc);
+  }
+  default:
+    return NULL;
+  }
+}
+static void infer_statements(Infer *c, List *body, bool scoped) {
+  int mark = c->vars.n;
+  for (int j = 0; j < body->n; j++) {
+    Stmt *s = body->v[j];
+    if (s->kind == S_BIND) {
+      Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
+      Type *actual = infer_expr(c, s->a, t);
+      Var *v = mem(sizeof(*v));
+      v->name = s->name;
+      v->type = t ? t : actual;
+      add(&c->vars, v);
+    } else if (s->kind == S_RETURN) {
+      Type *hint = c->in->fn->result ? type_spec(c->p, c->in->fn->result)
+                                     : c->in->fn->required_result;
+      Type *t = infer_expr(c, s->a, hint);
+      c->value_return |= s->a != NULL;
+      c->returned = join_types(c->returned, c->return_expr, t, s->a, s->loc);
+      if (!c->return_expr || !integer_literal(s->a))
+        c->return_expr = s->a;
+    } else if (s->kind == S_IF || s->kind == S_WHILE) {
+      infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      infer_statements(c, &s->body, true);
+      infer_statements(c, &s->other, true);
+    } else if (s->kind == S_BLOCK)
+      infer_statements(c, &s->body, true);
+    else {
+      infer_expr(c, s->a, NULL);
+      if (s->b)
+        infer_expr(c, s->b, NULL);
+    }
+  }
+  if (scoped)
+    c->vars.n = mark;
+}
+static void infer_results(Program *p) {
+  for (int round = 0; round < 1024; round++) {
+    bool changed = false;
+    int count = p->instances.n;
+    for (int j = 0; j < p->instances.n; j++) {
+      Instance *in = p->instances.v[j];
+      Infer c = {.p = p, .in = in};
+      for (int k = 0; k < in->fn->params.n; k++) {
+        Param *param = in->fn->params.v[k];
+        Var *v = mem(sizeof(*v));
+        v->name = param->name;
+        v->type = in->params.v[k];
+        add(&c.vars, v);
+      }
+      infer_statements(&c, &in->fn->body, false);
+      Type *result = c.returned;
+      if (!result && !c.value_return)
+        result = type_builtin(p, T_VOID);
+      if (!in->fn->result && !in->fn->required_result && result &&
+          result != in->result) {
+        if (in->state)
+          fail(in->fn->loc, "return inference changed after code generation");
+        in->result = result;
+        changed = true;
+      }
+    }
+    if (count != p->instances.n)
+      changed = true;
+    if (!changed)
+      return;
+  }
+  fail((Loc){p->path, 1, 1}, "return type inference did not converge");
+}
+static Type *expression_type(Context *c, Expr *e, Type *expected) {
+  Infer inference = {.p = c->p, .in = c->in, .vars = c->vars};
+  return infer_expr(&inference, e, expected);
+}
+static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
+                              Loc at) {
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     if (in->fn != f || in->self != self || in->params.n != actual->n)
@@ -1205,12 +1527,8 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     for (int k = 0; k < actual->n; k++)
       if (in->params.v[k] != actual->v[k])
         same = false;
-    if (same) {
-      if (in->state == 1)
-        fail(at,
-             "recursive calls are not supported in the initial region model");
+    if (same)
       return in;
-    }
   }
   if (p->instances.n >= 512)
     fail(at, "template specialization limit exceeded");
@@ -1218,13 +1536,26 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
   in->fn = f;
   in->self = self;
   in->params = *actual;
-  in->result = type_spec(p, f->result);
-  layout(in->result, f->loc);
+  in->result = f->result ? type_spec(p, f->result) : f->required_result;
   in->id = p->instances.n;
   in->symbol = fmt("rh_fn_%d", in->id);
-  in->state = 1;
   in->result_slot = -1;
   add(&p->instances, in);
+  return in;
+}
+static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
+                             Loc at) {
+  Instance *in = instance_for(p, f, self, actual, at);
+  if (in->state)
+    return in;
+  infer_results(p);
+  if (!in->result)
+    fail(f->loc,
+         "cannot infer return type of '%s'; add a grounded return or an "
+         "explicit result type",
+         f->name);
+  layout(in->result, f->loc);
+  in->state = 1;
   Context c = {0};
   c.p = p;
   c.in = in;
@@ -1303,6 +1634,7 @@ void analyze(Program *p) {
         fail(f->loc, "duplicate function '%s'", f->name);
   }
   List none = {0};
+  p->entry->required_result = type_builtin(p, T_VOID);
   instantiate(p, p->entry, NULL, &none, p->entry->loc);
   /* Abstract nominal parameters require a concrete call-site specialization. */
   for (int j = 0; j < p->functions.n; j++) {

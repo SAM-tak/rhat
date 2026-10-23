@@ -91,6 +91,14 @@ def top_cleanup_ir(ir, ll):
     assert "@rh_region_release" in ll
 
 
+def factorial_ir(ir, ll):
+    assert "<anonymous@1:7> -> i64" in ir
+    body = ir.split("function rh_fn_1", 1)[1]
+    assert "target=rh_fn_1" in body
+    assert "branch.if" in body
+    assert "call void @rh_fn_1" in ll
+
+
 positive("empty_program", "", "")
 positive("declarations_only", "let^ unused=p^ { print(99) } def^ Empty {}", "")
 positive("ordinary_main", "let^ main=p^ { print(99) } print(1)", "1\n")
@@ -114,6 +122,116 @@ positive("layout", (repo / "examples/layout.rh").read_text(), "0 42 12\n", layou
 positive("nominal_template", (repo / "examples/nominal_template.rh").read_text(),
          "R^ Person\nR^ Person\nfile.rh\n")
 positive("regions", (repo / "examples/regions.rh").read_text(), "10 2003\n200\n", region_ir)
+positive("factorial", (repo / "examples/factorial.rh").read_text(), "3628800\n", factorial_ir)
+positive("factorial_boundaries", """
+let^ factorial = f^ n:i64^ { if^ n < 2: 1 el^: n * this^(n - 1); }
+print(factorial(0), factorial(1), factorial(10), factorial(20))
+""", "1 1 3628800 2432902008176640000\n")
+positive("inferred_return", """
+let^ twice=f^ n:i64 { n * 2 }
+let^ wrap=f^ n:i64 { twice(n) }
+let^ explicit=f^ n:i64 { return^ n + 1 }
+let^ result=wrap(21)
+print(result,explicit(result))
+""", "42 43\n")
+positive("anonymous_value_binding", """
+let^ a=f^ n:i64 { n*2 }(21)
+let^ b=(f^ n:i64 { n+1 })(a)
+print(a,b)
+""", "42 43\n")
+positive("nested_this", """
+print(f^ n:i64 {
+    if^ n < 2: 1
+    el^: (f^ m:i64 { if^ m = 0: 0 el^: 1 + this^(m - 1); }(2)) * this^(n - 1);
+}(4))
+""", "8\n")
+positive("mutual_return_inference", """
+let^ even=f^ n:i32 { if^ n=0: true^ el^: odd(n-1); }
+let^ odd=f^ n:i32 { if^ n=0: false^ el^: even(n-1); }
+print(even(10),odd(10),odd(11))
+""", "true false true\n")
+positive("conditional_chain", """
+let^ sign=f^ n:i64 {
+    if^ n < 0: -1 el^ n = 0: 0 el^: 1;
+}
+print(sign(-5),sign(0),sign(7))
+print(if^ true^: if^ false^: 1 el^: 2; el^: 3;)
+""", "-1 0 1\n2\n")
+positive("conditional_lazy", """
+let^ choose=p^ n:i32 -> i32 { print(n); return^ n }
+let^ a=if^ true^: choose(1) el^: choose(2);
+let^ b=if^ false^: choose(3) el^: choose(4);
+print(a,b)
+""", "1\n4\n1 4\n")
+positive("implicit_record_return", """
+def^ Pair { self^{ a:i32=0,b:i32=0 } }
+let^ make=f^ n:i32 { Pair{a=n,b=n+1} }
+let^ p=make(8)
+print(p.a,p.b)
+""", "8 9\n")
+positive("inferred_trait_implementation", """
+def^ Reader { abstract^ read:f^self^ -> i64; }
+def^ Value:Reader { read=f^self^ { 42 } }
+let^ v=Value.new()
+print(v.read())
+""", "42\n")
+positive("template_inferred_return", """
+template^ let^ sum=f^ n { if^ n=0: 0 el^: n + this^(n-1); }
+let^ large:i64=20
+print(sum(10),sum(large))
+""", "55 210\n")
+positive("recursive_region_cleanup", """
+let^ sum=f^ n:i32 -> i32 {
+    var^ scratch:i32[>..]=[n]
+    if^ n=0 { return^ scratch[0] }
+    return^ scratch[0] + this^(n-1)
+}
+print(sum(10))
+""", "55\n")
+positive("recursive_borrow", """
+let^ retain=f^ p:&i32, n:i32 -> &i32 {
+    if^ n=0 { return^ p }
+    return^ this^(p,n-1)
+}
+var^ n:i32=42
+let^ ref=retain(&n,4)
+print(*ref)
+""", "42\n")
+positive("method_this_receiver", """
+def^ Counter {
+    abstract^ unit:f^self^ -> i64;
+    total=f^self^, n:i64 { if^ n=0: 0 el^: self^.unit() + this^(n-1); },
+}
+def^ Double:Counter { unit=f^self^ { 2 } }
+let^ counter=Double.new()
+print(counter.total(3))
+""", "6\n")
+positive("conditional_owned_destination", """
+let^ make=f^ b:bool -> i32[>..] { if^ b: [1] el^: [2,3]; }
+var^ a=make(false^)
+var^ b=make(true^)
+print(a.len,a[0],a[1],b.len,b[0])
+""", "2 2 3 1 1\n")
+negative("recursive_return_unknown", "let^ bad=f^ n:i32 { return^ this^(n) }", "cannot infer return type")
+negative("conditional_missing_else", "print(if^ true^: 1;)", "requires a final el^:")
+negative("conditional_missing_end", "print(if^ true^: 1 el^: 2)", "expected ';'")
+negative("conditional_type_mismatch", 'print(if^ true^: 1 el^: "text";)', "inferred types disagree")
+negative("conditional_nonbool", "print(if^ 1: 2 el^: 3;)", "condition requires bool")
+negative("this_at_top", "this^()", "requires an enclosing function")
+negative("this_arity", "print(f^ n:i32 -> i32 { this^() }(1))", "expects 1 arguments")
+negative("this_argument_type", 'print(f^ n:i32 -> i32 { this^("bad") }(1))', "requires nominal 'i32'")
+negative("anonymous_local_borrow", "let^ ref=f^ -> &i32 { var^ n:i32=1; return^ &n }()", "cannot return a reference")
+negative("recursive_local_borrow", """
+let^ bad=f^ p:&i32, n:i32 -> &i32 {
+    if^ n=0 { return^ p }
+    var^ local:i32=1
+    return^ this^(&local,n-1)
+}
+""", "cannot return a reference")
+negative("anonymous_capture", "var^ outer:i32=3; print(f^ -> i32 { outer }())", "unknown value 'outer'")
+negative("implicit_void_return", "let^ nothing=f^ {} let^ bad=f^ { nothing() }", "cannot return a value")
+negative("no_implicit_last_statement", "let^ bad=f^ -> i32 { let^ n:i32=1; n+1 }", "only calls can be expression statements")
+negative("no_implicit_procedure_return", "let^ bad=p^ -> i32 { 1 }", "only calls can be expression statements")
 positive("control_arrays", """
 let^ choose = f^ n:i32 -> i32 {
     if^ n < 0 { return^ -1 } else^ { return^ n * 2 }
@@ -294,7 +412,6 @@ negative("reference_default_array", 'def^ A { self^{ a:&i32[2] } }\nlet^ a=A.new
 negative("pure_mutation", 'let^ bad=f^ x:&i32 { *x := 2 }\n', "cannot mutate borrowed storage")
 negative("pure_procedure", 'let^ bad=f^ { print(1) }\n', "print requires p^")
 negative("missing_return", 'let^ bad=f^ x:i32 -> i32 { if^ x=0 { return^ 1 } }\n', "not all paths return")
-negative("recursive", 'let^ bad=f^ x:i32 -> i32 { return^ bad(x) }\n', "recursive calls are not supported")
 negative("immutable", 'let^ x:i32=1; x := 2', "cannot modify let^")
 negative("closure", '{ let^ f=f^ { return^ 1 } }', "function values")
 negative("literal_overflow", 'let^ x:i32=2147483648', "does not fit")
