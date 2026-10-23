@@ -1,0 +1,187 @@
+#ifndef RHAT_H
+#define RHAT_H
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+  void **v;
+  int n, cap;
+} List;
+void *mem(size_t n);
+char *str(const char *s);
+char *fmt(const char *s, ...);
+void add(List *a, void *v);
+typedef struct {
+  const char *file;
+  int line, col;
+} Loc;
+_Noreturn void fail(Loc l, const char *s, ...);
+typedef struct Expr Expr;
+typedef struct Stmt Stmt;
+typedef struct Def Def;
+typedef struct Function Function;
+typedef struct Type Type;
+typedef struct Spec Spec;
+typedef struct Instance Instance;
+typedef struct Field Field;
+
+struct Spec {
+  Loc loc;
+  char *name;
+  Spec *elem;
+  int kind, count;
+};
+enum { SPEC_NAME, SPEC_REF, SPEC_ARRAY, SPEC_GROW };
+enum {
+  E_INT,
+  E_FLOAT,
+  E_STRING,
+  E_BOOL,
+  E_NAME,
+  E_SELF,
+  E_BIN,
+  E_UNARY,
+  E_CALL,
+  E_MEMBER,
+  E_INDEX,
+  E_RECORD,
+  E_ARRAY
+};
+struct Expr {
+  int kind;
+  Loc loc;
+  char *text;
+  Expr *a, *b;
+  List args, names;
+};
+enum { S_BIND, S_ASSIGN, S_EXPR, S_RETURN, S_IF, S_WHILE, S_BLOCK };
+struct Stmt {
+  int kind;
+  Loc loc;
+  char *name;
+  bool mut;
+  Spec *spec;
+  Expr *a, *b;
+  List body, other;
+};
+typedef struct {
+  Loc loc;
+  char *name;
+  Spec *spec;
+  bool self;
+} Param;
+struct Function {
+  Loc loc;
+  char *name;
+  Def *owner;
+  List params, body;
+  Spec *result;
+  bool procedure, templ, abstract, priv, override, mutable_self;
+};
+struct Field {
+  Loc loc;
+  char *name;
+  Spec *spec;
+  Type *type;
+  Expr *init;
+  Def *owner, *initializer_owner;
+  bool abstract, priv;
+  int index;
+};
+struct Def {
+  Loc loc;
+  char *name;
+  List base_names, bases, own_fields, own_methods;
+  List fields, methods;
+  int state, id;
+  bool abstract;
+  Type *type;
+};
+enum {
+  T_VOID,
+  T_BOOL,
+  T_U8,
+  T_I32,
+  T_I64,
+  T_F64,
+  T_STRING,
+  T_STRUCT,
+  T_REF,
+  T_ARRAY,
+  T_GROW
+};
+struct Type {
+  int kind, id, count;
+  Type *elem;
+  Def *def;
+  size_t size, align;
+  bool refs, owned;
+};
+typedef struct {
+  List defs, functions, types, instances, strings;
+  char *source;
+  const char *path;
+} Program;
+void parse(Program *p, const char *path);
+void analyze(Program *p);
+Type *type_spec(Program *p, Spec *s);
+Type *type_builtin(Program *p, int kind);
+Type *type_wrap(Program *p, int kind, Type *elem, int count);
+char *type_name(Type *t);
+bool derives(Def *d, Def *base);
+
+/* The IR contains typed storage and explicit construction/region operations. */
+enum {
+  I_CONST,
+  I_STRING,
+  I_COPY,
+  I_ZERO,
+  I_BIN,
+  I_UNARY,
+  I_ADDR,
+  I_DEREF,
+  I_FIELD,
+  I_INDEX,
+  I_CALL,
+  I_PRINT,
+  I_ASSERT,
+  I_LABEL,
+  I_BR,
+  I_CBR,
+  I_RETURN,
+  I_REGION,
+  I_RELEASE,
+  I_PUSH,
+  I_LENGTH
+};
+typedef struct {
+  int op;
+  Loc loc;
+  int dst, a, b, label, other;
+  char *text;
+  Type *type;
+  Instance *callee;
+  List args;
+} Instr;
+typedef struct {
+  Type *type;
+  bool alias;
+} Slot;
+struct Instance {
+  Function *fn;
+  Def *self;
+  List params, slots, code;
+  Type *result;
+  char *symbol;
+  int id, state, labels, result_slot;
+  char *result_local;
+};
+void emit_llvm(Program *p, const char *path);
+void dump_ir(Program *p, const char *path);
+char *llvm_type(Type *t);
+#endif

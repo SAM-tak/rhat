@@ -1,0 +1,7 @@
+/build/
+*.ll
+*.rir
+*.exe
+*.obj
+*.o
+__pycache__/
