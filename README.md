@@ -1,6 +1,6 @@
-# R^ / rhat
+# The Programming Language R^
 
-R^ は L^ の構文を基にした、GC を使わないシステム言語の実装です。
+R^ `(rhat)` は L^ の構文を基にした、GC を使わないシステム言語の実装です。
 
 [Goose(プログラミング言語)](https://github.com/aardappel/goose)の強い影響を受けて誕生しました。
 無注釈型安全を実現するアイデアはほぼ `Goose` からの借用です。
@@ -115,6 +115,10 @@ print(value.a, value.b, value.c)
 - ファイル・行・列を含むコンパイル診断と、行番号付きの実行時検査。
 
 詳しい規則・検査・制約は [docs/design.md](docs/design.md) にあります。
+
+Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
+[bench/README.md](bench/README.md) にあります。現在は `bintrees` を移植し、
+残り15種に必要な機能を一覧化しています。
 
 ## 現在の制約
 
