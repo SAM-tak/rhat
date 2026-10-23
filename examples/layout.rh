@@ -10,10 +10,8 @@ def^ C : A, B {
     self^{ c : i32 = 12, b : i32 = 42 }
 }
 
-let^ main = p^ {
-    let^ value = C.new()
-    assert(value.a = 0)
-    assert(value.b = 42)
-    assert(value.c = 12)
-    print(value.a, value.b, value.c)
-}
+let^ value = C.new()
+assert(value.a = 0)
+assert(value.b = 42)
+assert(value.c = 12)
+print(value.a, value.b, value.c)

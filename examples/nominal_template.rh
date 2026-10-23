@@ -17,10 +17,8 @@ let^ nominal = p^ item:Named { item.greet() }
 template^
 let^ structural = p^ item { print(item.name()) }
 
-let^ main = p^ {
-    var^ person = Person.new()
-    let^ file = File.new()
-    nominal(person)
-    structural(person)
-    structural(file)
-}
+var^ person = Person.new()
+let^ file = File.new()
+nominal(person)
+structural(person)
+structural(file)

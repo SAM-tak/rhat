@@ -124,6 +124,7 @@ struct Type {
 };
 typedef struct {
   List defs, functions, types, instances, strings;
+  Function *entry;
   char *source;
   const char *path;
 } Program;

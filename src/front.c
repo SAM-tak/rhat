@@ -546,11 +546,28 @@ void parse(Program *p, const char *path) {
   Parser q = {0};
   q.p = p;
   lex(&q);
+  p->entry = mem(sizeof(*p->entry));
+  p->entry->loc = (Loc){path, 1, 1};
+  p->entry->name = "<top-level>";
+  p->entry->procedure = true;
   while (tok(&q)->kind != TOK_EOF) {
     if (take(&q, ";"))
       continue;
     if (take(&q, "def^")) {
       definition(&q);
+      continue;
+    }
+    bool binding = false;
+    if (is(&q, "let^") && q.at + 3 < q.tokens.n) {
+      Token *equal = q.tokens.v[q.at + 2];
+      Token *initializer = q.tokens.v[q.at + 3];
+      binding = !strcmp(equal->text, "=") &&
+                (!strcmp(initializer->text, "f^") ||
+                 !strcmp(initializer->text, "p^") ||
+                 !strcmp(initializer->text, "template^"));
+    }
+    if (!binding && !is(&q, "template^")) {
+      add(&p->entry->body, stmt(&q));
       continue;
     }
     bool templ = take(&q, "template^");

@@ -1,6 +1,8 @@
 # R^ / rhat
 
 R^ は L^ の構文を基にした、GC を使わないシステム言語の実装です。
+[Goose(プログラミング言語)](https://github.com/aardappel/goose)の強い影響を受けて誕生しました。
+無注釈型安全を実現するアイデアはほぼ `Goose` からの借用です。
 現在は **0.1 の実行可能な言語サブセット**です。構文木の表示だけではなく、
 名前解決、公称型、合成、テンプレート具体化、寿命検査、中間表現、テキスト LLVM IR、
 Clang によるネイティブ実行ファイル生成まで実装しています。
@@ -21,8 +23,21 @@ cd C:\Users\Owner\source\repos\rhat
 .\build\Debug\rhat.exe run examples/regions.rh
 ```
 
-スクリプトは現在の PowerShell プロセスに `RHAT_CLANG` を設定します。
-別のターミナルで使う場合は Clang を PATH に置くか、`--clang` に実行ファイルを指定します。
+新しいターミナルでは、L^ と同様に開発環境を読み込めます。
+このスクリプトは現在のセッションの PATH に R^・Clang・MSVC を追加し、`INCLUDE`・`LIB` も設定します。
+システムの永続的な環境変数は変更しません。`build.ps1` からも同じ設定を読み込みます。
+
+```powershell
+. .\scripts\devshell.ps1
+rhat build examples/layout.rh -o build/layout.exe -O2
+.\build\layout.exe
+```
+
+Release 版には `-Configuration Release`、Clang の指定には `-Clang PATH` を使えます。
+
+ビルド時に見つけた Clang のパスを実行ファイルに記録するので、別のターミナルでもそのまま使えます。
+Clang の選択順は `--clang`、`RHAT_CLANG`、ビルド時に検出したパスです。
+ビルド時に見つからなかった場合は PATH の `clang` を利用します。
 
 一般的な CMake の手順も利用できます。単一構成ジェネレーターでは実行ファイルは
 `build/rhat` に生成されます。POSIX 用ランタイムもありますが、この環境では未検証です。
@@ -43,6 +58,7 @@ rhat run examples/regions.rh
 ```
 
 `build` / `run` は既定で `<実行ファイル名>.ll` を保持します。
+同じ出力先への再ビルドでは上書きするため、実行ファイルや `.ll` を手動で消す必要はありません。
 `--emit-llvm PATH` で保存先を変更できます。`--dump-ir PATH` は R^ 中間表現と配置を出力します。
 `--clang PATH` / `RHAT_CLANG` は Clang、`--runtime PATH` / `RHAT_RUNTIME` はランタイムの指定です。
 通常の開発ビルドはソースツリーのランタイムを使用します。配布時はランタイムも同梱してください。
@@ -60,14 +76,16 @@ def^ C : A, B {
     self^{ c : i32 = 12, b : i32 = 42 }
 }
 
-let^ main = p^ {
-    let^ value = C.new()
-    print(value.a, value.b, value.c)
-}
+let^ value = C.new()
+print(value.a, value.b, value.c)
 ```
 
 出力は `0 42 12`。`C` のフィールド配置は `A.a @0`, `B.b @4`, `C.c @8` です。
 抽象フィールドの席は最初の宣言で確定し、実装を与えても移動しません。
+
+`main` 関数の宣言は不要です。トップレベルの文を記述順に実行します。
+空のファイルや定義だけのファイルも有効です。`main` という名前の関数を定義しても
+自動では呼び出さず、通常の関数として扱います。
 
 - [examples/layout.rh](examples/layout.rh): 抽象フィールドを含む合成と配置。
 - [examples/nominal_template.rh](examples/nominal_template.rh): 明示的な公称の適合、デフォルト実装、private、構造によるテンプレート検査。
@@ -87,7 +105,7 @@ let^ main = p^ {
 - `Type.new()`、`Type{ field = expr }`、型の分かる位置の `{ field = expr }`、配列リテラル `[ ... ]`。
 - `let^`, `var^`, `:=`, `return^`, ブロック、`if^ ... { ... } else^ { ... }`, `while^`。
 - 型の一致を要求する算術・比較、短絡評価する `and^` / `or^`、`&value`, `*ref`、メンバと添字。
-- `print`, `assert`, 配列の `.len`, 伸長配列の `.push^()`。
+- `print`, `assert`, 配列の `.len`, 伸長配列の `.push()`。組み込みメンバの名前に `^` は付けません。
 - ファイル・行・列を含むコンパイル診断と、行番号付きの実行時検査。
 
 詳しい規則・検査・制約は [docs/design.md](docs/design.md) にあります。

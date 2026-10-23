@@ -12,6 +12,9 @@
 #ifndef RH_RUNTIME_PATH
 #define RH_RUNTIME_PATH "runtime/rhat_runtime.c"
 #endif
+#ifndef RH_DEFAULT_CLANG
+#define RH_DEFAULT_CLANG "clang"
+#endif
 #if defined(_WIN32)
 /* The CRT spawn API joins arguments into a command line without quoting. */
 static char *windows_argument(const char *arg) {
@@ -110,8 +113,8 @@ int main(int argc, char **argv) {
   const char *source = argv[2], *out = NULL, *ll = NULL, *rir = NULL,
              *clang = getenv("RHAT_CLANG"), *runtime = getenv("RHAT_RUNTIME"),
              *opt = "-O0";
-  if (!clang)
-    clang = "clang";
+  if (!clang || !*clang)
+    clang = RH_DEFAULT_CLANG;
   if (!runtime)
     runtime = RH_RUNTIME_PATH;
   for (int j = 3; j < argc; j++) {
@@ -184,6 +187,15 @@ int main(int argc, char **argv) {
       (char *)ll,    (char *)runtime,        "-o",       (char *)out,
       NULL};
   int status = spawn(args);
+  if (status < 0) {
+    int error = errno;
+    fprintf(stderr,
+            "could not start Clang '%s': %s\n"
+            "Use --clang PATH or set RHAT_CLANG to the Clang executable.\n"
+            "LLVM IR retained at %s\n",
+            clang, strerror(error), ll);
+    return 1;
+  }
   if (status) {
     fprintf(stderr, "Clang failed (%d); LLVM IR retained at %s\n", status, ll);
     return 1;

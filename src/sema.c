@@ -556,13 +556,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   if (target->kind == E_MEMBER) {
     Value receiver = expression(c, target->a, NULL);
     Value base = deref(c, receiver, e->loc);
-    if (base.type->kind == T_GROW &&
-        (!strcmp(target->text, "push^") || !strcmp(target->text, "push"))) {
+    if (base.type->kind == T_GROW && !strcmp(target->text, "push")) {
       if (e->args.n != 1)
-        fail(e->loc, "push^ expects one element");
+        fail(e->loc, "push expects one element");
       Value v = expression(c, e->args.v[0], base.type->elem);
       if (v.type != base.type->elem)
-        fail(e->loc, "push^ element type mismatch");
+        fail(e->loc, "push element type mismatch");
       store_check(c, base, v, e->loc);
       Instr *i = emit(c, I_PUSH, e->loc);
       i->a = base.id;
@@ -862,7 +861,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
     if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
          base.type->kind == T_STRING) &&
-        (!strcmp(e->text, "len") || !strcmp(e->text, "len^"))) {
+        !strcmp(e->text, "len")) {
       out = value(c, type_builtin(p, T_I64));
       Instr *i = emit(c, I_LENGTH, e->loc);
       i->dst = out.id;
@@ -996,6 +995,16 @@ static void statements(Context *c, List *body, bool scope) {
     if (c->terminated)
       fail(s->loc, "unreachable statement");
     if (s->kind == S_BIND) {
+      if (c->in->fn == c->p->entry && c->depth == 1) {
+        if (lookup_def(c->p, s->name))
+          fail(s->loc, "top-level binding conflicts with def^ '%s'", s->name);
+        for (int j = 0; j < c->p->functions.n; j++) {
+          Function *f = c->p->functions.v[j];
+          if (!strcmp(s->name, f->name))
+            fail(s->loc, "top-level binding conflicts with function '%s'",
+                 s->name);
+        }
+      }
       for (int j = c->vars.n - 1; j >= 0; j--) {
         Var *v = c->vars.v[j];
         if (v->depth < c->depth)
@@ -1285,7 +1294,6 @@ void analyze(Program *p) {
     Def *d = p->defs.v[j];
     layout(d->type, d->loc);
   }
-  Function *mainfn = NULL;
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
     if (lookup_def(p, f->name))
@@ -1293,16 +1301,9 @@ void analyze(Program *p) {
     for (int k = 0; k < j; k++)
       if (!strcmp(f->name, ((Function *)p->functions.v[k])->name))
         fail(f->loc, "duplicate function '%s'", f->name);
-    if (!strcmp(f->name, "main"))
-      mainfn = f;
   }
-  if (!mainfn)
-    fail((Loc){p->path, 1, 1}, "missing 'let^ main = p^ { ... }'");
-  if (mainfn->params.n || mainfn->result || mainfn->templ || !mainfn->procedure)
-    fail(mainfn->loc,
-         "main must be a non-template p^ with no parameters or result");
   List none = {0};
-  instantiate(p, mainfn, NULL, &none, mainfn->loc);
+  instantiate(p, p->entry, NULL, &none, p->entry->loc);
   /* Abstract nominal parameters require a concrete call-site specialization. */
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
