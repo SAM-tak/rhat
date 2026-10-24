@@ -1,0 +1,95 @@
+# Port of aardappel/goose bench/goose/scene.goose, Apache-2.0.
+# C++ expert / Rust arena representation: 120-byte nodes, four u32 child slots.
+def^ F3 { self^{ x:f32^, y:f32^, z:f32^ } }
+def^ Xf { self^{ m:f32^[9], t:F3 } }
+def^ Node { self^{ id:i32^, local:Xf, world:Xf, kids:u32^[4], nkids:u8^ } }
+let^ next=f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ identity=f^ -> Xf {
+    return^ Xf{m=[1,0,0,0,1,0,0,0,1],t=F3{x=0,y=0,z=0}}
+}
+let^ rotation=f^ seed:u64^ -> f32^[9] {
+    let^ axis=seed % 3
+    let^ quarter=(seed bitshift^ -8) % 4
+    var^ c:f32^=1
+    var^ s:f32^=0
+    if^ quarter = 1 { c := 0; s := 1 }
+    else^ { if^ quarter = 2 { c := -1; s := 0 }
+            else^ { if^ quarter = 3 { c := 0; s := -1 } } }
+    if^ axis = 0 { return^ [1,0,0,0,c,-s,0,s,c] }
+    if^ axis = 1 { return^ [c,0,s,0,1,0,-s,0,c] }
+    return^ [c,-s,0,s,c,0,0,0,1]
+}
+let^ compose=p^ p:&Xf, l:&Xf, w:&Xf {
+    var^ i:i32^=0
+    while^ i < 3 {
+        var^ j:i32^=0
+        while^ j < 3 {
+            var^ s:f32^=0
+            var^ k:i32^=0
+            while^ k < 3 { s := s+p.m[i*3+k]*l.m[k*3+j]; k := k+1 }
+            w.m[i*3+j] := s
+            j := j+1
+        }
+        i := i+1
+    }
+    w.t.x := p.m[0]*l.t.x+p.m[1]*l.t.y+p.m[2]*l.t.z+p.t.x
+    w.t.y := p.m[3]*l.t.x+p.m[4]*l.t.y+p.m[5]*l.t.z+p.t.y
+    w.t.z := p.m[6]*l.t.x+p.m[7]*l.t.y+p.m[8]*l.t.z+p.t.z
+}
+let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
+    let^ r=next(seed)
+    let^ self=u32^(pool.len)
+    pool.push(Node{id=i32^(self),local=Xf{m=rotation(r),
+        t=F3{x=f32^((r bitshift^ -16) % 9),y=f32^((r bitshift^ -24) % 9),z=f32^((r bitshift^ -32) % 9)}},
+        world=identity(),kids=[0,0,0,0],nkids=0})
+    if^ depth = 0 { return^ self }
+    let^ n=1+(r bitshift^ -40) % 4
+    var^ i:u64^=0
+    while^ i < n {
+        let^ child=this^(pool,depth-1,next(r+i))
+        let^ k=pool[self].nkids
+        pool[self].kids[k] := child
+        pool[self].nkids := k+1
+        i := i+1
+    }
+    return^ self
+}
+let^ update=p^ pool:&Node[>..], index:u32^, parent:&Xf {
+    let^ nd=&pool[index]
+    compose(parent,&nd.local,&nd.world)
+    var^ k:u8^=0
+    while^ k < nd.nkids {
+        this^(pool,nd.kids[k],&nd.world)
+        k := k+1
+    }
+}
+let^ depth:i64^=12 # BENCH_N
+var^ pool:Node[>..]=[]
+let^ root=make(&pool,depth,12345)
+var^ ident=identity()
+var^ total:i64^=0
+var^ frame:i64^=0
+while^ frame < 16 {
+    let^ phase=i32^(frame % 7)
+    let^ step=f32^(frame % 5)
+    var^ i:i64^=0
+    while^ i < pool.len {
+        let^ nd=&pool[i]
+        if^ nd.id % 7 = phase { nd.local.t.x := step; nd.local.t.z := 8-step }
+        i := i+1
+    }
+    update(&pool,root,&ident)
+    i := 0
+    while^ i < pool.len {
+        let^ t=pool[i].world.t
+        total := total+i64^(t.x+t.y+t.z)
+        i := i+1
+    }
+    frame := frame+1
+}
+print(pool.len)
+print(total)

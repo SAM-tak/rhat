@@ -1,0 +1,144 @@
+# Port of aardappel/goose bench/goose/sexp.goose, Apache-2.0.
+# Nominal node/result unions, u32 child/sibling indices and copied symbol bytes.
+def^ Sym { self^{ start:u32^, len:u32^, next:u32^ } }
+def^ Num { self^{ value:i64^, next:u32^ } }
+def^ List { self^{ first:u32^, next:u32^ } }
+def^ Node = Sym | Num | List
+def^ Parsed { self^{ index:u32^ } }
+def^ ParseError { self^{ code:i32^ } }
+def^ ParseResult = Parsed | ParseError
+def^ Cursor { self^{ pos:i64^=0 } }
+def^ Digits { self^{ bytes:u8^[24] } }
+let^ next=f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ emit_num=p^ text:&u8^[>..], v:u64^ {
+    if^ v = 0 { text.push(48); return^ }
+    var^ tmp=Digits{}
+    var^ d=v
+    var^ count:i64^=0
+    while^ d > 0 { tmp.bytes[count] := u8^(d % 10)+48; count := count+1; d := d/10 }
+    while^ count > 0 { count := count-1; text.push(tmp.bytes[count]) }
+}
+let^ emit_sym=p^ text:&u8^[>..], seed:u64^ {
+    var^ r=seed
+    let^ n=i64^(r % 12)+3
+    var^ i:i64^=0
+    while^ i < n { r := next(r); text.push(u8^(r % 26)+97); i := i+1 }
+}
+let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
+    var^ r=next(seed)
+    if^ depth = 0 or^ r % 4 = 0 {
+        if^ (r bitshift^ -8) % 2 = 0 { emit_sym(text,r) }
+        else^ { emit_num(text,(r bitshift^ -16) % 100000) }
+        text.push(32)
+        return^ r
+    }
+    text.push(40)
+    let^ kids=i64^((r bitshift^ -24) % 4)+2
+    var^ i:i64^=0
+    while^ i < kids { r := this^(text,depth-1,r); i := i+1 }
+    text.push(41)
+    text.push(32)
+    return^ r
+}
+let^ skip_space=p^ text:u8^[:], c:&Cursor {
+    while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
+}
+let^ parse_node=p^ text:u8^[:], c:&Cursor, pool:&Node[>..], symbols:&u8^[>..], prev:u32^ -> ParseResult {
+    skip_space(text,c)
+    if^ c.pos >= text.len { return^ ParseError{code=1} }
+    let^ ch=text[c.pos]
+    if^ ch = 40 {
+        c.pos := c.pos+1
+        var^ chain:u32^=0
+        while^ true^ {
+            skip_space(text,c)
+            if^ c.pos >= text.len { return^ ParseError{code=2} }
+            if^ text[c.pos] = 41 {
+                c.pos := c.pos+1
+                pool.push(List{first=chain,next=prev})
+                return^ Parsed{index=u32^(pool.len-1)}
+            }
+            let^ child=this^(text,c,pool,symbols,chain)
+            if^ child.is(ParseError) { return^ child }
+            chain := child.get(Parsed).index
+        }
+    }
+    let^ start=c.pos
+    if^ ch >= 48 and^ ch <= 57 {
+        var^ value:i64^=0
+        while^ c.pos < text.len and^ text[c.pos] >= 48 and^ text[c.pos] <= 57 {
+            value := value*10+i64^(text[c.pos])-48
+            c.pos := c.pos+1
+        }
+        pool.push(Num{value=value,next=prev})
+        return^ Parsed{index=u32^(pool.len-1)}
+    }
+    while^ c.pos < text.len and^ text[c.pos] != 32 and^ text[c.pos] != 40 and^ text[c.pos] != 41 {
+        c.pos := c.pos+1
+    }
+    if^ c.pos = start { return^ ParseError{code=3} }
+    let^ offset=symbols.len
+    let^ len=c.pos-start
+    symbols.append(text.slice(start,len))
+    pool.push(Sym{start=u32^(offset),len=u32^(len),next=prev})
+    return^ Parsed{index=u32^(pool.len-1)}
+}
+let^ parse_all=p^ text:u8^[:], pool:&Node[>..], symbols:&u8^[>..], roots:&u32^[>..] -> i64^ {
+    var^ c=Cursor{}
+    while^ true^ {
+        skip_space(text,&c)
+        if^ c.pos >= text.len { return^ 0 }
+        let^ result=parse_node(text,&c,pool,symbols,0)
+        if^ result.is(ParseError) {
+            let^ code=result.get(ParseError).code
+            if^ code = 1 { return^ 3 }
+            if^ code = 2 { return^ 8 }
+            return^ 5
+        }
+        roots.push(result.get(Parsed).index)
+    }
+    return^ 0
+}
+let^ nextof=f^ node:Node -> u32^ {
+    if^ node.is(Sym) { return^ node.get(Sym).next }
+    if^ node.is(Num) { return^ node.get(Num).next }
+    return^ node.get(List).next
+}
+let^ walk=f^ pool:&Node[>..], symbols:&u8^[>..], index:u32^, pass:i64^ -> i64^ {
+    let^ node=pool[index]
+    if^ node.is(Sym) {
+        let^ s=node.get(Sym)
+        return^ i64^(s.len)+i64^(symbols[s.start])+pass
+    }
+    if^ node.is(Num) { return^ i64^(node.get(Num).value) bitxor^ pass }
+    return^ 1+walk_chain(pool,symbols,node.get(List).first,pass)
+}
+let^ walk_chain=f^ pool:&Node[>..], symbols:&u8^[>..], index:u32^, pass:i64^ -> i64^ {
+    if^ index = 0 { return^ 0 }
+    return^ walk(pool,symbols,index,pass)+this^(pool,symbols,nextof(pool[index]),pass)
+}
+let^ n:i64^=20000 # BENCH_N
+var^ text:u8^[>..]=[]
+var^ seed:u64^=12345
+var^ i:i64^=0
+while^ i < n { seed := gen(&text,4,seed); i := i+1 }
+var^ pool:Node[>..]=[Num{value=0,next=0}]
+var^ symbols:u8^[>..]=[]
+var^ roots:u32^[>..]=[]
+let^ err=parse_all(text.slice(0,text.len),&pool,&symbols,&roots)
+print(text.len)
+print(pool.len-1)
+print(roots.len)
+print(err)
+var^ total:i64^=0
+var^ pass:i64^=0
+while^ pass < 4 {
+    i := 0
+    while^ i < roots.len { total := total+walk(&pool,&symbols,roots[i],pass); i := i+1 }
+    pass := pass+1
+}
+print(total)

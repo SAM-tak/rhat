@@ -61,7 +61,9 @@ typedef struct {
   bool header;
 } Parser;
 static Token *tok(Parser *p) { return p->tokens.v[p->at]; }
-static bool is(Parser *p, const char *s) { return !strcmp(tok(p)->text, s); }
+static bool is(Parser *p, const char *s) {
+  return tok(p)->kind != TOK_STRING && !strcmp(tok(p)->text, s);
+}
 static bool take(Parser *p, const char *s) {
   if (is(p, s)) {
     p->at++;
@@ -257,6 +259,8 @@ static Spec *spec(Parser *p) {
     if (take(p, ">")) {
       need(p, "..");
       w->kind = SPEC_GROW;
+    } else if (take(p, ":")) {
+      w->kind = SPEC_SLICE;
     } else {
       Token *n = next(p);
       if (n->kind != TOK_INT)
@@ -416,7 +420,7 @@ static Expr *expr(Parser *p, int min) {
   Expr *e = primary(p);
   for (;;) {
     Token *t = tok(p);
-    int pr = prec(t->text);
+    int pr = t->kind == TOK_STRING ? -1 : prec(t->text);
     if (pr < min)
       break;
     next(p);
@@ -535,6 +539,11 @@ static void definition(Parser *p) {
   d->name = decl_word(p);
   d->id = p->p->defs.n;
   add(&p->p->defs, d);
+  if (take(p, "=")) {
+    do { add(&d->union_names, word(p)); } while (take(p, "|"));
+    take(p, ";");
+    return;
+  }
   if (take(p, ":")) {
     do {
       add(&d->base_names, word(p));
@@ -624,7 +633,7 @@ void parse(Program *p, const char *path) {
     if (is(&q, "let^") && q.at + 3 < q.tokens.n) {
       Token *equal = q.tokens.v[q.at + 2];
       Token *initializer = q.tokens.v[q.at + 3];
-      binding = !strcmp(equal->text, "=") &&
+      binding = !strcmp(equal->text, "=") && initializer->kind == TOK_WORD &&
                 (!strcmp(initializer->text, "f^") ||
                  !strcmp(initializer->text, "p^") ||
                  !strcmp(initializer->text, "template^"));
@@ -640,7 +649,7 @@ void parse(Program *p, const char *path) {
     Function *parsed_function = function(&q, name, NULL, false);
     /* A called literal initializes a value; it does not declare a named
      * function. */
-    if (is(&q, "(") || is(&q, ".") || is(&q, "[") || prec(tok(&q)->text) >= 0) {
+    if (is(&q, "(") || is(&q, ".") || is(&q, "[") || (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
       q.at = binding_start;
       add(&p->entry->body, stmt(&q));
       continue;

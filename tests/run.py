@@ -104,6 +104,296 @@ def factorial_ir(ir, ll):
 
 positive("empty_program", "", "")
 
+positive("string_tokens_remain_literals", 'print("(",")","[","]","{","}",",",";") let^ f="f^"; let^ p="p^"; let^ t="template^"; print(f,p,t,"true^","def^","+")', "( ) [ ] { } , ;\nf^ p^ template^ true^ def^ +\n")
+layout_chain="def^ Large0 { self^{bytes:u8^[1000000]} }\n"+"\n".join(
+    f"def^ Large{i} {{ self^{{left:Large{i-1},right:Large{i-1}}} }}" for i in range(1,46))
+negative("checked_structure_layout",layout_chain,"layout overflows")
+
+positive("truncate_retains_slots", """
+var^ a:i32^[>..]=[10,20,30]
+let^ held=&a[2]
+let^ view=a.slice(0,3)
+a.truncate(1)
+print(a.len,*held,view[2])
+a.push(99)
+a.push(42)
+print(*held,view[2])
+a.truncate(a.len)
+a.truncate(0)
+print(a.len,*held)
+""", "1 30 30\n42 42\n0 42\n")
+runtime_failure("truncate_negative", "var^ a:i32^[>..]=[1]; a.truncate(-1)", "truncate length out of bounds")
+runtime_failure("truncate_growth", "var^ a:i32^[>..]=[1]; a.truncate(2)", "truncate length out of bounds")
+negative("truncate_immutable", "let^ a:i32^[>..]=[1]; a.truncate(0)", "cannot modify let^")
+negative("truncate_pure_borrow", "let^ bad=f^ a:&i32^[>..] { a.truncate(0) }", "cannot mutate borrowed storage")
+negative("truncate_arity", "var^ a:i32^[>..]=[1]; a.truncate()", "expects one new length")
+negative("truncate_type", "var^ a:i32^[>..]=[1]; let^ n:i32^=0; a.truncate(n)", "must be i64^")
+negative("truncate_retains_history", """
+let^ bad=p^ -> (&i32^)[>..] {
+    var^ x:i32^=1
+    var^ refs:(&i32^)[>..]=[&x]
+    refs.truncate(0)
+    return^ refs
+}
+""", "cannot return a reference")
+
+union_types="""
+def^ Num { self^{ value:i32^ } }
+def^ Pair { self^{ a:u32^, b:u32^ } }
+def^ Expr = Num | Pair
+"""
+positive("nominal_union", union_types+"""
+let^ get=f^ value:Expr {
+    if^ value.is(Num) { return^ value.get(Num).value }
+    let^ pair=value.get(Pair)
+    return^ i32^(pair.a+pair.b)
+}
+let^ choose=f^ n:i32^ -> Expr {
+    if^ n > 0 { return^ Num{value=n} }
+    return^ Pair{a=3,b=4}
+}
+let^ branch=f^ yes:bool^ -> Expr { return^ if^ yes: Num{value=9} el^: Pair{a=5,b=6}; }
+var^ values:Expr[>..]=[Num{value=42}]
+values.push(choose(0))
+values.push(branch(true^))
+print(get(values[0]),get(values[1]),get(values[2]),get(Num{value=5}),get(branch(false^)))
+values[0] := Pair{a=7,b=8}
+let^ view=values.slice(0,1)
+print(get(view[0]),values[0].is(Num))
+""", "42 7 9 5 11\n15 false\n",
+         lambda ir,ll: ("type Expr size=12 align=4" in ir and "union.get.checked" in ir
+                        and "payload=+4 bytes=8" in ir and "[2 x i32]" in ll)
+         or (_ for _ in ()).throw(AssertionError("union IR layout")))
+positive("union_bool_byte_payload", """
+def^ Bool { self^{ value:bool^ } }
+def^ Byte { self^{ value:u8^ } }
+def^ Value = Bool | Byte
+let^ identity=f^ v:Value { return^ v }
+var^ values:Value[>..]=[Byte{value=255},Bool{value=true^},Byte{value=128}]
+let^ a=identity(values[0])
+print(a.get(Byte).value,values[1].get(Bool).value,values[2].get(Byte).value)
+""", "255 true 128\n")
+positive("union_high_alignment", """
+def^ Small { self^{ value:u8^ } }
+def^ Wide { self^{ value:u128^ } }
+def^ Value = Small | Wide
+def^ Holder { self^{ tag:u8^, value:Value, tail:u8^ } }
+let^ identity=f^ v:Value { return^ v }
+let^ fixed:Value[2]=[Wide{value=340282366920938463463374607431768211455},Small{value=255}]
+var^ a:Value[>..]=[]
+a.append(fixed.slice(0,2))
+let^ copy=identity(a[0])
+var^ h=Holder{tag=7,value=copy,tail=9}
+print(copy.get(Wide).value,a[1].get(Small).value,h.tag,h.tail)
+""", "340282366920938463463374607431768211455 255 7 9\n",
+         lambda ir,ll: ("type Value size=32 align=16" in ir and "payload=+16 bytes=16" in ir)
+         or (_ for _ in ()).throw(AssertionError("wide union layout")))
+positive("union_reference_return", """
+def^ Ref { self^{ value:&i32^ } }
+def^ Empty {}
+def^ Value = Ref | Empty
+let^ make=f^ x:&i32^ -> Value { return^ Ref{value=x} }
+let^ get=f^ value:Value { return^ value.get(Ref).value }
+var^ x:i32^=42
+let^ value=make(&x)
+let^ out=get(value);
+*out := 77
+print(x)
+""", "77\n")
+positive("union_nested_and_defaults", """
+def^ A { self^{ value:i32^=7 } }
+def^ B {}
+def^ Inner = A | B
+def^ Outer = Inner | B
+def^ Box { self^{ value:Inner=A{} } }
+let^ inner:Inner=A{}
+let^ outer:Outer=inner
+let^ box=Box{}
+print(outer.get(Inner).get(A).value,box.value.get(A).value)
+""", "7 7\n")
+runtime_failure("union_wrong_alternative", union_types+"let^ value:Expr=Num{value=1}; print(value.get(Pair).a)", "union alternative mismatch")
+negative("union_similar_is_nominal", union_types+"def^ Other { self^{value:i32^} } let^ value:Expr=Other{value=1}", "not an alternative")
+negative("union_get_unlisted", union_types+"def^ Other {} let^ value:Expr=Num{value=1}; value.get(Other)", "not an alternative")
+negative("union_is_value_argument", union_types+"let^ value:Expr=Num{value=1}; value.is(Num{})", "alternative type name")
+negative("union_duplicate", "def^ A {} def^ Value = A | A", "duplicate union alternative")
+negative("union_unknown", "def^ A {} def^ Value = A | Missing", "unknown union alternative")
+negative("union_cycle", "def^ A = B def^ B = A", "cyclic")
+negative("union_owned", "def^ A { self^{data:u8^[>..]} } def^ B {} def^ Value = A | B", "non-owning fixed-size")
+negative("union_abstract", "def^ A { self^{abstract^x:i32^} } def^ B {} def^ Value = A | B", "must be concrete")
+negative("union_composition", union_types+"def^ Bad : Expr {}", "composition base must be a structure")
+negative("union_direct_constructor", union_types+"let^ value=Expr{}", "construct union")
+negative("union_missing_initializer", union_types+"def^ Box { self^{value:Expr} } let^ b=Box{}", "needs an initializer")
+negative("union_distinct_nominal_sum", union_types+"def^ Other = Num | Pair let^ a:Expr=Num{value=1}; let^ b:Other=a", "not an alternative")
+negative("union_private_access", "def^ A { self^{private^x:i32^=7} } def^ B {} def^ Value = A | B let^ v:Value=A{}; print(v.get(A).x)", "private member")
+negative("union_local_reference_escape", """
+def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
+let^ bad=p^ -> Value { var^ x:i32^=1; return^ Ref{value=&x} }
+""", "cannot return a reference")
+negative("union_reference_storage_escape", """
+def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
+var^ v:Value=Empty{}
+{ var^ x:i32^=1; v := Ref{value=&x} }
+""", "reference would outlive its owner")
+
+positive("slice_fixed_grow_string", """
+let^ a:i32^[4]=[10,20,30,40]
+let^ middle=a.slice(1,2)
+var^ b:i32^[>..]=[1]
+b.append(middle)
+let^ live=b.slice(1,2)
+b[1] := 42
+b.clear()
+b.append(live)
+print(middle.len,middle[0],live[0],b[0],b[1])
+var^ bytes:u8^[>..]=[]
+bytes.append("hello")
+bytes.append("world".slice(1,3))
+print(bytes.len,bytes[5],"hello"[4],"abc".slice(3,0).len)
+""", "2 20 30 42 30\n8 111 111 0\n")
+positive("slice_nested_return", """
+let^ sub=f^ a:i32^[:] {
+    let^ local=a.slice(1,2)
+    return^ local.slice(1,1)
+}
+let^ borrowed=f^ a:&i32^[>..] { return^ a.slice(0,a.len) }
+var^ a:i32^[>..]=[1,2,3,4]
+let^ view=sub(borrowed(&a))
+a.push(5)
+print(view.len,view[0])
+let^ literal=f^ { return^ "hello".slice(1,3) }
+print(literal()[0])
+""", "1 3\n101\n")
+positive("slice_record_copy", """
+def^ Item { self^{ value:i32^ } }
+var^ a:Item[>..]=[Item{value=7}]
+let^ view=a.slice(0,1)
+var^ item=view[0]
+item.value := 42
+print(a[0].value,item.value)
+""", "7 42\n")
+positive("slice_reference_and_view_elements", """
+var^ x:i32^=7
+var^ refs:(&i32^)[>..]=[&x]
+let^ view=refs.slice(0,1);
+*view[0] := 42
+var^ other:(&i32^)[>..]=[]
+other.append(view)
+var^ views:i32^[:][>..]=[]
+let^ values:i32^[2]=[10,20]
+views.push(values.slice(0,2))
+print(x,*other[0],views[0][1])
+""", "42 42 20\n")
+positive("slice_overlap_append", """
+var^ a:u8^[>..]=[1,2,3,4]
+let^ tail=a.slice(2,2)
+a.clear()
+a.append(tail)
+a.append(a.slice(0,2))
+a.append(a.slice(a.len,0))
+print(a.len,a[0],a[1],a[2],a[3])
+""", "4 3 4 3 4\n")
+for name,text in (
+    ("negative_start", "a.slice(-1,0)"),
+    ("negative_count", "a.slice(0,-1)"),
+    ("past_start", "a.slice(3,0)"),
+    ("past_count", "a.slice(1,2)"),
+    ("overflow_range", "a.slice(1,9223372036854775807)"),
+):
+    runtime_failure("slice_"+name, "var^ a:i32^[>..]=[1,2]; "+text, "slice range out of bounds")
+runtime_failure("slice_index_bounds", "let^ a:i32^[2]=[1,2]; let^ v=a.slice(0,1); print(v[1])", "array index out of bounds")
+runtime_failure("string_index_bounds", 'print("abc"[3])', "array index out of bounds")
+negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a.slice(0,2) }", "cannot return a reference")
+negative("slice_outer_escape", "var^ v=\"abc\".slice(0,0); { var^ a:u8^[>..]=[1]; v := a.slice(0,1) }", "reference would outlive its owner")
+negative("slice_write", "var^ a:i32^[>..]=[1]; var^ v=a.slice(0,1); v[0] := 2", "not addressable")
+negative("slice_borrow_element", "var^ a:i32^[>..]=[1]; let^ v=a.slice(0,1); let^ p=&v[0]", "cannot borrow a temporary")
+negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[>..]=[Item{x=1}]; a.slice(0,1)[0].x := 2", "not addressable")
+negative("slice_temporary", "let^ v=[1,2].slice(0,2)", "slice source needs a binding")
+negative("slice_arity", "let^ a:i32^[1]=[1]; a.slice(0)", "slice expects start and count")
+negative("slice_index_type", "let^ a:i32^[1]=[1]; let^ n:i32^=0; a.slice(n,1)", "must be i64^")
+negative("slice_initializer", "def^ Box { self^{ view:i32^[:] } } let^ b=Box{}", "needs an initializer")
+negative("append_mismatch", 'var^ a:i32^[>..]=[]; a.append("hello")', "same element type")
+negative("append_immutable", 'let^ a:u8^[>..]=[]; a.append("hello")', "cannot modify let^")
+negative("append_pure_borrow", 'let^ bad=f^ a:&u8^[>..] { a.append("hello") }', "cannot mutate borrowed storage")
+negative("append_inner_owner", "var^ a:(&i32^)[>..]=[]; { var^ x:i32^=1; var^ b:(&i32^)[>..]=[&x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
+negative("append_borrowed_references", "let^ bad=p^ a:&(&i32^)[>..], b:(&i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
+
+positive("pop_clear_slot_reuse", """
+def^ Item { self^{ key:i32^, val:i64^ } }
+let^ take=p^ a:&Item[>..] { return^ a.pop() }
+var^ a:Item[>..]=[]
+a.clear()
+let^ held=a.push(Item{key=1,val=42})
+a.push(Item{key=2,val=99})
+let^ last=take(&a)
+print(a.len,last.key,last.val)
+a.clear()
+print(a.len,held.key,held.val)
+a.push(Item{key=3,val=77})
+print(held.key,held.val,last.key,last.val)
+let^ same=a.pop()
+print(a.len,same.key,held.val)
+""", "1 2 99\n0 1 42\n3 77 2 99\n0 3 77\n")
+positive("push_reuses_aliased_slot", """
+var^ a:i32^[>..]=[42]
+let^ held=&a[0]
+a.clear()
+a.push(*held)
+print(*held,a[0])
+""", "42 42\n")
+positive("pop_reference_elements", """
+var^ x:i32^=10
+var^ y:i32^=20
+var^ refs:(&i32^)[>..]=[&x,&y]
+let^ last=refs.pop();
+*last := 30
+refs.clear()
+refs.push(&x)
+print(y,*refs[0],refs.len)
+""", "30 10 1\n")
+positive("pure_local_array_pop_clear", """
+let^ local=f^ {
+    var^ a:i32^[>..]=[1,2]
+    let^ result=a.pop()
+    a.clear()
+    return^ result
+}
+print(local())
+""", "2\n")
+positive("array_descriptor_field_abi", """
+def^ Box { self^{ tag:i64^, items:i32^[>..] } }
+let^ make=p^ -> Box { var^ b=Box{tag=7,items=[1,2,3]}; return^ b }
+var^ box=make()
+print(box.tag,box.items.pop(),box.items.len)
+box.items.clear()
+box.items.push(42)
+print(box.items[0])
+""", "7 3 2\n42\n", lambda ir,ll: (
+    "type Box size=40 align=8" in ir and "+8 Box.items" in ir
+    and "{ ptr, i64, i64, i64 }" in ll
+) or (_ for _ in ()).throw(AssertionError("array descriptor layout")))
+runtime_failure("empty_pop", "var^ a:i32^[>..]=[]; a.pop()", "line 1: pop from empty array")
+runtime_failure("pop_bounds", "var^ a:i32^[>..]=[1]; a.pop(); print(a[0])", "array index out of bounds")
+runtime_failure("clear_bounds", "var^ a:i32^[>..]=[1]; a.clear(); print(a[0])", "array index out of bounds")
+for method in ("pop", "clear"):
+    negative(method+"_immutable", f"let^ a:i32^[>..]=[1]; a.{method}()", "cannot modify let^")
+    negative(method+"_pure_borrow", f"let^ bad=f^ a:&i32^[>..] {{ a.{method}() }}", "cannot mutate borrowed storage")
+    negative(method+"_arity", f"var^ a:i32^[>..]=[1]; a.{method}(1)", "expects no arguments")
+    negative(method+"_retains_reference_history", """
+let^ bad=p^ -> (&i32^)[>..] {
+    var^ x:i32^=1
+    var^ a:(&i32^)[>..]=[&x]
+    a.METHOD()
+    return^ a
+}
+""".replace("METHOD", method), "cannot return a reference")
+negative("pop_wrong_result", "var^ a:i32^[>..]=[1]; let^ x:i64^=a.pop()", "pop returns")
+negative("pop_local_reference_escape", """
+let^ bad=p^ source:&i32^ -> &i32^ {
+    var^ a:(&i32^)[>..]=[source]
+    return^ a.pop()
+}
+""", "cannot return a reference")
+
 positive("push_returns_stable_reference", '''
 def^ Item { self^{ key:i32^, val:i32^ } }
 var^ items:Item[>..]=[]
@@ -379,7 +669,9 @@ if os.name == "nt":
         assert run([str(exe)]).stdout == "page commits verified\n"
         for mode, diagnostic in (("commit-failure", "region commit failed"),
                                  ("page-failure", "page size query failed"),
-                                 ("capacity", "region capacity exceeded")):
+                                 ("capacity", "region capacity exceeded"),
+                                 ("append-capacity", "region capacity exceeded"),
+                                 ("truncate-growth", "truncate length out of bounds")):
             assert diagnostic in run([str(exe), mode], 1).stderr
     passed += 1
     print("PASS windows_page_commit_calls_and_failures", flush=True)
@@ -631,12 +923,114 @@ def benchmark_source(workload, n):
     return text
 
 
+from artifacts import Executables, overwritten_rhat_rows
+registry=Executables()
+fixture=work/"binary-identity-fixture.exe"
+fixture.write_bytes(b"original Rhat artifact")
+registry.add(fixture)
+try:
+    registry.add(fixture)
+except RuntimeError as error:
+    assert "duplicate benchmark executable path" in str(error)
+else:
+    raise AssertionError("duplicate benchmark artifact was accepted")
+fixture.write_bytes(b"replacement Rust artifact")
+called=[]
+try:
+    registry.measure(fixture,lambda path: called.append(path))
+except RuntimeError as error:
+    assert "changed after build" in str(error)
+else:
+    raise AssertionError("replaced benchmark artifact was executed")
+assert not called
+fixture.write_bytes(b"original Rhat artifact")
+def change_during_run(path):
+    path.write_bytes(b"replacement during execution")
+    return {"output":"same checksum"}
+try:
+    registry.measure(fixture,change_during_run)
+except RuntimeError as error:
+    assert "changed during execution" in str(error)
+else:
+    raise AssertionError("artifact replacement during a run was accepted")
+old_run={"builds":[["rhat.exe","build","push_small.rh","-o","push_small.exe"],
+                   ["rustc.exe","push_small.rs","-o","push_small.exe"]],
+         "rows":[{"workload":"push","size":"small","language":"rhat"}]}
+assert overwritten_rhat_rows(old_run)=={("push","small")}
+passed+=1
+print("PASS benchmark_executable_identity_and_collision_detection",flush=True)
+
 for workload, spec in WORKLOADS.items():
     text = benchmark_source(workload, spec["smoke"])
     positive("bench_" + workload, text, workload_oracle(workload, spec["smoke"]) + "\n")
-for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17))):
+for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17)), ("lru", (8, 16, 64, 128)), ("scene", (0, 1, 2, 5)), ("strlist", (0, 1, 17)), ("words", (0, 1, 17)), ("respond", (0, 1, 17)), ("records", (0, 1, 17)), ("interp", (0, 1, 2, 5)), ("sexp", (0, 1, 3)), ("calc", (0, 1, 17))):
     for n in sizes:
         positive(f"bench_{workload}_{n}", benchmark_source(workload, n), workload_oracle(workload, n) + "\n")
+calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^ n:i64^",1)[0]
+positive("calc_errors_and_precedence",calc_helpers+"""
+let^ check=p^ text:string^, pool:&Expr[>..] {
+    pool.clear()
+    let^ result=run(text.slice(0,text.len),pool)
+    if^ result.is(Ok) { print(result.get(Ok).value) }
+    else^ { print(0-result.get(Failure).code) }
+}
+var^ pool:Expr[>..]=[]
+check("",&pool)
+check("(",&pool)
+check("(1",&pool)
+check("1)",&pool)
+check("#1",&pool)
+check("1+",&pool)
+check("1/(2-2)",&pool)
+check("-1",&pool)
+check("1+2*3",&pool)
+check("(1+2)*3",&pool)
+check("8/3",&pool)
+check("1-2-3",&pool)
+check("18/3/2",&pool)
+check("1/0 + (",&pool)
+check("1/0 #",&pool)
+check("4294967296",&pool)
+pool.clear()
+let^ failed=run("1+(2*".slice(0,5),&pool)
+print(failed.get(Failure).code,pool.len)
+""", "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
+sexp_helpers=(repo/"bench/rhat/sexp.rh").read_text().split("let^ n:i64^",1)[0]
+positive("sexp_copies_symbols_and_errors",sexp_helpers+"""
+var^ text:u8^[>..]=[]
+text.append("(abc 4294967296 ()) ")
+var^ pool:Node[>..]=[Num{value=0,next=0}]
+var^ symbols:u8^[>..]=[]
+var^ roots:u32^[>..]=[]
+print(parse_all(text.slice(0,text.len),&pool,&symbols,&roots))
+text.clear()
+text.append("xxxxxxxxxxxxxxxxxxx")
+print(pool.len-1,roots.len,walk(&pool,&symbols,roots[0],0))
+roots.clear()
+print(parse_all("(".slice(0,1),&pool,&symbols,&roots),roots.len)
+print(parse_all(")".slice(0,1),&pool,&symbols,&roots),roots.len)
+""", "0\n4 1 4294967398\n8 0\n5 0\n")
+packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^ n:i64^",1)[0]
+positive("packed_words_own_copies", packed_word_helpers+"""
+var^ text:u8^[>..]=[]
+text.append(" a  bc ")
+var^ words=split(text.slice(0,text.len))
+text.clear()
+text.append("xxxxxxx")
+print(words.count,words.data.len,words.data[0],words.data[1],words.data[2],words.data[3],words.data[4])
+""", "2 5 1 97 2 98 99\n")
+response_helpers=(repo/"bench/rhat/respond.rh").read_text().split("let^ n:i64^",1)[0]
+positive("response_integer_format", response_helpers+"""
+var^ out:u8^[>..]=[]
+emit_int(&out,0)
+emit_int(&out,18446744073709551615)
+print(out.len,out[0],out[1],out[2],out[20])
+""", "21 48 49 56 53\n")
+positive("scene_layout", benchmark_source("scene", 0), workload_oracle("scene", 0)+"\n",
+         lambda ir,ll: ("type Node size=120 align=4" in ir
+                        and "+100 Node.kids : u32^[4]" in ir
+                        and "+116 Node.nkids : u8^" in ir)
+         or (_ for _ in ()).throw(AssertionError("scene node layout")))
 positive("declarations_only", "let^ unused=p^ { print(99) } def^ Empty {}", "")
 positive("ordinary_main", "let^ main=p^ { print(99) } print(1)", "1\n")
 positive("explicit_main", "let^ main=f^ n:i32^ -> i32^ { return^ n+1 } print(main(41))", "42\n")

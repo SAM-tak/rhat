@@ -1,0 +1,138 @@
+# Port of aardappel/goose bench/goose/lru.goose, Apache-2.0.
+# Bounded index arena + free list, open addressing with backward-shift deletion.
+# Node/Slot layouts and operations match the original C++ expert / Rust open table.
+def^ Node { self^{ key:i32^, val:i32^, prev:u32^, next:u32^ } }
+def^ Slot { self^{ key:i32^, idx:i32^ } }
+def^ Stats { self^{ count:i64^=0, hits:i64^=0, misses:i64^=0, removes:i64^=0 } }
+
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ home = f^ key:i32^, mask:i64^ -> i64^ {
+    return^ i64^((u64^(key)*11400714819323198485 bitshift^ -24) bitand^ u64^(mask))
+}
+let^ find = f^ slots:&Slot[>..], key:i32^, mask:i64^ -> i64^ {
+    var^ i=home(key,mask)
+    while^ slots[i].idx >= 0 and^ slots[i].key != key { i := (i+1) bitand^ mask }
+    return^ i
+}
+let^ remove = p^ slots:&Slot[>..], at:i64^, mask:i64^ {
+    var^ i=at
+    var^ j=at
+    while^ true^ {
+        j := (j+1) bitand^ mask
+        let^ s=slots[j]
+        if^ s.idx < 0 { slots[i].idx := -1; return^ }
+        let^ h=home(s.key,mask)
+        if^ (i < j and^ (h <= i or^ h > j)) or^ (i > j and^ h <= i and^ h > j) {
+            slots[i] := s
+            i := j
+        }
+    }
+}
+let^ alloc = p^ pool:&Node[>..], free:&u32^[>..], key:i32^, val:i32^ -> u32^ {
+    if^ free.len > 0 {
+        let^ k=free.pop()
+        pool[k].key := key
+        pool[k].val := val
+        return^ k
+    }
+    pool.push(Node{key=key,val=val,prev=0,next=0})
+    return^ u32^(pool.len-1)
+}
+let^ unlink = p^ pool:&Node[>..], n:u32^ {
+    let^ p=pool[n].prev
+    let^ q=pool[n].next
+    pool[p].next := q
+    pool[q].prev := p
+}
+let^ link_front = p^ pool:&Node[>..], n:u32^ {
+    let^ q=pool[0].next
+    pool[n].prev := 0
+    pool[n].next := q
+    pool[q].prev := n
+    pool[0].next := n
+}
+let^ step = p^ pool:&Node[>..], free:&u32^[>..], slots:&Slot[>..], stats:&Stats,
+                  cap:i64^, keys:u64^, mask:i64^, r:u64^ {
+    let^ a=r % keys
+    let^ key=i32^(a*a/keys)
+    let^ at=find(slots,key,mask)
+    let^ fi=slots[at].idx
+    if^ (r bitshift^ -40) % 16 = 0 {
+        if^ fi >= 0 {
+            unlink(pool,u32^(fi))
+            remove(slots,at,mask)
+            free.push(u32^(fi))
+            stats.count := stats.count-1
+            stats.removes := stats.removes+1
+        }
+        return^
+    }
+    if^ fi >= 0 {
+        pool[fi].val := pool[fi].val+1
+        unlink(pool,u32^(fi))
+        link_front(pool,u32^(fi))
+        stats.hits := stats.hits+1
+        return^
+    }
+    stats.misses := stats.misses+1
+    var^ ins=at
+    if^ stats.count = cap {
+        let^ lru=pool[1].prev
+        unlink(pool,lru)
+        let^ lat=find(slots,pool[lru].key,mask)
+        let^ li=slots[lat].idx
+        remove(slots,lat,mask)
+        free.push(u32^(li))
+        stats.count := stats.count-1
+        ins := find(slots,key,mask)
+    }
+    let^ ni=alloc(pool,free,key,key % 1000)
+    slots[ins] := Slot{key=key,idx=i32^(ni)}
+    link_front(pool,ni)
+    stats.count := stats.count+1
+}
+
+let^ n:i64^=2000000 # BENCH_N
+let^ cap=n/8
+let^ keys=u64^(cap*2)
+assert(cap > 0)
+var^ nslots:i64^=16
+while^ nslots < cap*2 { nslots := nslots*2 }
+let^ mask=nslots-1
+var^ slots:Slot[>..]=[]
+var^ pool:Node[>..]=[]
+var^ free:u32^[>..]=[]
+var^ i:i64^=0
+while^ i < nslots { slots.push(Slot{key=0,idx=-1}); i := i+1 }
+let^ hi=alloc(&pool,&free,-1,0)
+let^ ti=alloc(&pool,&free,-1,0)
+pool[hi].next := ti
+pool[ti].prev := hi
+var^ stats=Stats{}
+var^ r:u64^=12345
+i := 0
+while^ i < n {
+    r := next(r)
+    step(&pool,&free,&slots,&stats,cap,keys,mask,r)
+    i := i+1
+}
+assert(pool.len <= cap+2)
+assert(stats.count+free.len = pool.len-2)
+var^ hash:u64^=0
+var^ vals:i64^=0
+var^ cur=pool[hi].next
+while^ pool[cur].key >= 0 {
+    hash := hash*31+u64^(pool[cur].key)
+    vals := vals+i64^(pool[cur].val)
+    cur := pool[cur].next
+}
+print(stats.hits)
+print(stats.misses)
+print(stats.removes)
+print(stats.count)
+print(hash)
+print(vals)

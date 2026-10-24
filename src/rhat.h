@@ -36,7 +36,7 @@ struct Spec {
   Spec *elem;
   int kind, count;
 };
-enum { SPEC_NAME, SPEC_REF, SPEC_ARRAY, SPEC_GROW };
+enum { SPEC_NAME, SPEC_REF, SPEC_ARRAY, SPEC_GROW, SPEC_SLICE };
 enum {
   E_INT,
   E_FLOAT,
@@ -101,6 +101,7 @@ struct Def {
   Loc loc;
   char *name;
   List base_names, bases, own_fields, own_methods;
+  List union_names, alternatives;
   List fields, methods;
   int state, id;
   bool abstract;
@@ -127,13 +128,16 @@ enum {
   T_STRUCT,
   T_REF,
   T_ARRAY,
-  T_GROW
+  T_GROW,
+  T_SLICE,
+  T_UNION
 };
 struct Type {
   int kind, id, count;
   Type *elem;
   Def *def;
   size_t size, align;
+  size_t payload_align, payload_bytes, payload_offset;
   bool refs, owned;
 };
 typedef struct {
@@ -180,7 +184,15 @@ enum {
   I_RELEASE,
   I_PUSH,
   I_LENGTH,
-  I_CONVERT
+  I_CONVERT,
+  I_POP,
+  I_CLEAR,
+  I_SLICE,
+  I_APPEND,
+  I_UNION,
+  I_CASE_IS,
+  I_CASE_GET,
+  I_TRUNCATE
 };
 typedef struct {
   int op;

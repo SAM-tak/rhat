@@ -1,0 +1,1174 @@
+{
+  "started_utc": "2026-10-23T19:14:47.473015+00:00",
+  "upstream_commit": "94cc64daeabcae6f072dc1fe2b864acda5a001bc",
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "commit": "555c77b2b33232521f985c722825a47145b8e30d",
+    "dirty": "M README.md\n M bench/README.md\n M bench/coverage.md\n M bench/run_bench.py\n M bench/run_workloads.py\n M bench/upstream/PROVENANCE.md\n M docs/design.md\n M runtime/rhat_runtime.c\n M src/llvm.c\n M src/rhat.h\n M src/sema.c\n M tests/run.py\n M tests/runtime_regions.c\n?? bench/rhat/lru.rh\n?? bench/upstream/cpp/lru.cpp\n?? bench/upstream/rust/lru_hashmap.rs\n?? bench/upstream/rust/lru_open.rs",
+    "compiler_sha256": "9995d1e1d7249d226b8cc30f8c774d13f82cdafe247575ee1c361fd267027cd8",
+    "runtime_sha256": "a21ec55ba155c8a0893afe6f2b48a701da3c431377c5739c90d9662764e66483",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "clangcl": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "workloads": [
+    "lru"
+  ],
+  "warmups": 2,
+  "reps": 3,
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=2000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=8000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=8000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=8000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=8000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=32000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=32000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=32000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=32000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\lru.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_open_large.exe"
+    ]
+  ],
+  "rows": [
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "R^ reusable index arena / open table (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 542.4839,
+      "peak_bytes": 12197888,
+      "samples": [
+        {
+          "ms": 542.4839,
+          "peak_bytes": 12193792,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 552.6801,
+          "peak_bytes": 12193792,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 565.5185,
+          "peak_bytes": 12197888,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 700.3461,
+          "peak_bytes": 12181504,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 542.9559,
+          "peak_bytes": 12197888,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "C++ list / unordered_map (msvc)",
+      "language": "cpp",
+      "best_ms": 691.0111,
+      "peak_bytes": 28467200,
+      "samples": [
+        {
+          "ms": 691.0111,
+          "peak_bytes": 28463104,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 701.2894,
+          "peak_bytes": 28467200,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 815.9732,
+          "peak_bytes": 28467200,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 627.569,
+          "peak_bytes": 28467200,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 656.5776,
+          "peak_bytes": 28463104,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "C++ index arena / open table (msvc)",
+      "language": "cpp",
+      "best_ms": 170.814,
+      "peak_bytes": 16424960,
+      "samples": [
+        {
+          "ms": 176.8407,
+          "peak_bytes": 16420864,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 170.814,
+          "peak_bytes": 16424960,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 175.5799,
+          "peak_bytes": 16424960,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 536.8893,
+          "peak_bytes": 16969728,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 131.296,
+          "peak_bytes": 16420864,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "C++ list / unordered_map (clangcl)",
+      "language": "cpp",
+      "best_ms": 627.5202,
+      "peak_bytes": 28377088,
+      "samples": [
+        {
+          "ms": 627.5202,
+          "peak_bytes": 28372992,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 663.5213,
+          "peak_bytes": 28377088,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 746.8994,
+          "peak_bytes": 28372992,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1129.0187,
+          "peak_bytes": 28401664,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 857.0995,
+          "peak_bytes": 28377088,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "C++ index arena / open table (clangcl)",
+      "language": "cpp",
+      "best_ms": 120.4874,
+      "peak_bytes": 16953344,
+      "samples": [
+        {
+          "ms": 169.6509,
+          "peak_bytes": 16953344,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 130.5777,
+          "peak_bytes": 16953344,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 120.4874,
+          "peak_bytes": 16953344,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1019.1195,
+          "peak_bytes": 16961536,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 578.3473,
+          "peak_bytes": 16953344,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "Rust lru_hashmap",
+      "language": "rust",
+      "best_ms": 182.7721,
+      "peak_bytes": 17014784,
+      "samples": [
+        {
+          "ms": 232.966,
+          "peak_bytes": 17014784,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 212.952,
+          "peak_bytes": 16977920,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 182.7721,
+          "peak_bytes": 16420864,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 233.7738,
+          "peak_bytes": 16969728,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 190.1369,
+          "peak_bytes": 16977920,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "label": "Rust lru_open",
+      "language": "rust",
+      "best_ms": 147.6911,
+      "peak_bytes": 13819904,
+      "samples": [
+        {
+          "ms": 160.2122,
+          "peak_bytes": 13799424,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 191.0296,
+          "peak_bytes": 13787136,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 147.6911,
+          "peak_bytes": 13819904,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 563.3921,
+          "peak_bytes": 13795328,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        },
+        {
+          "ms": 183.7412,
+          "peak_bytes": 13795328,
+          "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "R^ reusable index arena / open table (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 3020.6857,
+      "peak_bytes": 36782080,
+      "samples": [
+        {
+          "ms": 3049.2664,
+          "peak_bytes": 36777984,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3040.9937,
+          "peak_bytes": 36782080,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3020.6857,
+          "peak_bytes": 36777984,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 3178.6464,
+          "peak_bytes": 36765696,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3060.4596,
+          "peak_bytes": 36777984,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "C++ list / unordered_map (msvc)",
+      "language": "cpp",
+      "best_ms": 3197.7938,
+      "peak_bytes": 101412864,
+      "samples": [
+        {
+          "ms": 3237.5529,
+          "peak_bytes": 101412864,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3197.7938,
+          "peak_bytes": 101412864,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3404.0884,
+          "peak_bytes": 101412864,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 3274.3926,
+          "peak_bytes": 101412864,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3162.9842,
+          "peak_bytes": 101412864,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "C++ index arena / open table (msvc)",
+      "language": "cpp",
+      "best_ms": 952.1864,
+      "peak_bytes": 43126784,
+      "samples": [
+        {
+          "ms": 1104.0169,
+          "peak_bytes": 43126784,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1036.7928,
+          "peak_bytes": 43126784,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 952.1864,
+          "peak_bytes": 43122688,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1490.1694,
+          "peak_bytes": 45297664,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1008.7036,
+          "peak_bytes": 43122688,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "C++ list / unordered_map (clangcl)",
+      "language": "cpp",
+      "best_ms": 3013.2692,
+      "peak_bytes": 101326848,
+      "samples": [
+        {
+          "ms": 3127.4528,
+          "peak_bytes": 101322752,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3162.7371,
+          "peak_bytes": 101326848,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3013.2692,
+          "peak_bytes": 101326848,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 3486.2497,
+          "peak_bytes": 101351424,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 3321.6244,
+          "peak_bytes": 101322752,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "C++ index arena / open table (clangcl)",
+      "language": "cpp",
+      "best_ms": 800.5918,
+      "peak_bytes": 44261376,
+      "samples": [
+        {
+          "ms": 865.3072,
+          "peak_bytes": 44261376,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 800.5918,
+          "peak_bytes": 44261376,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1040.3004,
+          "peak_bytes": 44257280,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1848.3956,
+          "peak_bytes": 44290048,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1198.9071,
+          "peak_bytes": 44257280,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "Rust lru_hashmap",
+      "language": "rust",
+      "best_ms": 1328.8753,
+      "peak_bytes": 49192960,
+      "samples": [
+        {
+          "ms": 1405.6556,
+          "peak_bytes": 48619520,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1451.4701,
+          "peak_bytes": 49192960,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1328.8753,
+          "peak_bytes": 48615424,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1664.5022,
+          "peak_bytes": 49172480,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1434.5149,
+          "peak_bytes": 49180672,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "label": "Rust lru_open",
+      "language": "rust",
+      "best_ms": 993.3884,
+      "peak_bytes": 39014400,
+      "samples": [
+        {
+          "ms": 1053.7718,
+          "peak_bytes": 38989824,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1051.4439,
+          "peak_bytes": 38989824,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 993.3884,
+          "peak_bytes": 39014400,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1503.2391,
+          "peak_bytes": 38928384,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        },
+        {
+          "ms": 1027.9312,
+          "peak_bytes": 38993920,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "R^ reusable index arena / open table (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 13080.3388,
+      "peak_bytes": 135114752,
+      "samples": [
+        {
+          "ms": 13505.2479,
+          "peak_bytes": 135106560,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13281.2644,
+          "peak_bytes": 135114752,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13080.3388,
+          "peak_bytes": 135114752,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 13324.1978,
+          "peak_bytes": 135098368,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13122.7863,
+          "peak_bytes": 135114752,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "C++ list / unordered_map (msvc)",
+      "language": "cpp",
+      "best_ms": 13761.892,
+      "peak_bytes": 436269056,
+      "samples": [
+        {
+          "ms": 13855.2361,
+          "peak_bytes": 436269056,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13811.9444,
+          "peak_bytes": 436269056,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13761.892,
+          "peak_bytes": 436269056,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 13731.512,
+          "peak_bytes": 436264960,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13492.1984,
+          "peak_bytes": 436264960,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "C++ index arena / open table (msvc)",
+      "language": "cpp",
+      "best_ms": 4910.791,
+      "peak_bytes": 184442880,
+      "samples": [
+        {
+          "ms": 4910.791,
+          "peak_bytes": 184442880,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 5103.2802,
+          "peak_bytes": 184442880,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4970.0283,
+          "peak_bytes": 184442880,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5106.2532,
+          "peak_bytes": 184459264,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 5008.0735,
+          "peak_bytes": 184442880,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "C++ list / unordered_map (clangcl)",
+      "language": "cpp",
+      "best_ms": 12931.5236,
+      "peak_bytes": 436469760,
+      "samples": [
+        {
+          "ms": 12931.5236,
+          "peak_bytes": 436465664,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13136.4206,
+          "peak_bytes": 436465664,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13058.1145,
+          "peak_bytes": 436469760,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 13397.7456,
+          "peak_bytes": 436420608,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 13369.8811,
+          "peak_bytes": 436469760,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "C++ index arena / open table (clangcl)",
+      "language": "cpp",
+      "best_ms": 4049.9749,
+      "peak_bytes": 184434688,
+      "samples": [
+        {
+          "ms": 4049.9749,
+          "peak_bytes": 184430592,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4354.9003,
+          "peak_bytes": 184434688,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4182.893,
+          "peak_bytes": 184430592,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 4393.3426,
+          "peak_bytes": 184467456,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4330.4122,
+          "peak_bytes": 184430592,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "Rust lru_hashmap",
+      "language": "rust",
+      "best_ms": 7656.5604,
+      "peak_bytes": 177987584,
+      "samples": [
+        {
+          "ms": 7656.5604,
+          "peak_bytes": 177401856,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 7664.4971,
+          "peak_bytes": 177987584,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 7742.9109,
+          "peak_bytes": 177418240,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 7618.7574,
+          "peak_bytes": 177975296,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 7467.4986,
+          "peak_bytes": 177971200,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "label": "Rust lru_open",
+      "language": "rust",
+      "best_ms": 4753.537,
+      "peak_bytes": 139677696,
+      "samples": [
+        {
+          "ms": 5132.7669,
+          "peak_bytes": 139677696,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4753.537,
+          "peak_bytes": 139649024,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4770.3575,
+          "peak_bytes": 139620352,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 5220.876,
+          "peak_bytes": 139579392,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        },
+        {
+          "ms": 4745.7736,
+          "peak_bytes": 139681792,
+          "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_small.exe",
+      "cpp_control": {
+        "ms": 992.4095,
+        "peak_bytes": 28393472,
+        "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+      },
+      "rust_control": {
+        "ms": 257.7194,
+        "peak_bytes": 17014784,
+        "output": "1232608\n641958\n82565\n250000\n16746048090193918132\n125422431"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_medium.exe",
+      "cpp_control": {
+        "ms": 3561.3727,
+        "peak_bytes": 101351424,
+        "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+      },
+      "rust_control": {
+        "ms": 1381.6395,
+        "peak_bytes": 48652288,
+        "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_hashmap_large.exe",
+      "cpp_control": {
+        "ms": 14415.6939,
+        "peak_bytes": 436416512,
+        "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+      },
+      "rust_control": {
+        "ms": 7868.809,
+        "peak_bytes": 177504256,
+        "output": "19745198\n10252790\n1316534\n4000000\n10422696209916603086\n2007848176"
+      },
+      "python_oracle": false
+    }
+  ],
+  "source_hashes": {
+    "src\\front.c": "e047d822a99bf73135f28e593aa78ef2d29b2d8ef80156a38e69c9998e53e736",
+    "src\\llvm.c": "e59f12140b97fe3b09379c456c64dc5589ef6b112bb7dab17f036157afc1e35f",
+    "src\\main.c": "8d86db195b47936c02bea126c8a998a46f50495f28377d25cb288090be12b724",
+    "src\\numeric.c": "5140ef98f8907220f5cffaa53eaf43738ab4d0c0ee1fae206b75b04e26a0d4bf",
+    "src\\rhat.h": "da00ba0abc4b19f6bd972861009e76eab8bac585b1677019cda15b1fb5c0a1a3",
+    "src\\sema.c": "56ed18a51b3fdf9af1d61e4f6dd6a61de65cfad23388a45b3ec7ae9cf88cc29f",
+    "runtime\\rhat_runtime.c": "a21ec55ba155c8a0893afe6f2b48a701da3c431377c5739c90d9662764e66483",
+    "bench\\compare_page_commits.py": "1c16c2633cbe2cc58ce5e8a64c8ef8ca0b527e04f7f4dd7302d67847d910ae63",
+    "bench\\run_bench.py": "c46ed01949d47c36a494517137372fdcd391c16b7dce12775a18d132a1a95915",
+    "bench\\run_workloads.py": "577a015f689bf1cca00813bcee20c90ba12501911f44a79ab568beecc8025a92",
+    "bench\\rhat\\bintrees.rh": "ad9823d6d4883bbb751aa52a271fc7607fe78cde638e9e7d9c03a3b245b8f0f1",
+    "bench\\rhat\\blur.rh": "5f83732970bf747ac47ae34448ff94f4b6edaef01eeda2e07810887aaaa2efee",
+    "bench\\rhat\\graph.rh": "d444710d97cfd09afc0c7d4d9f032d9563b2664a356ec4a888ef66a64d4f6d65",
+    "bench\\rhat\\lru.rh": "00e5df502baaac4fcfd7e1c15afab242ecc63278708dd8bb7560dfbeb98b6989",
+    "bench\\rhat\\particles.rh": "f2214647128a1dceda92ef558ae3e4c0b39ab0515b9a74ab13512bee9c1f460c",
+    "bench\\rhat\\push.rh": "527a133752842f9c76216de73b74ed0deaca9e3cac5f6b9847df841aad7944bb",
+    "bench\\rhat\\sum.rh": "97d5b14c6baf6c4d28c16958dcfe603169effc357e1baf425160dd700b42f9fe",
+    "bench\\rhat\\tree.rh": "39bee15effeade9ed0f44ba3667cf929ccaabc07253a58c8327f40d435474f32",
+    "bench\\upstream\\cpp\\bench.h": "405df4b59de8085fccf977ff82b98ce8731b5afe272feeca6cdd99f214d633a4",
+    "bench\\upstream\\cpp\\bintrees.cpp": "bf5313f34b86f245d213e58ddb4cd8f1fb57ce91cbeffd2da7bb23df0057d5c3",
+    "bench\\upstream\\cpp\\blur.cpp": "3598cde41cfd9a9c09224d246a84be6c014681261e8444aa82423b052f4a15ca",
+    "bench\\upstream\\cpp\\graph.cpp": "ddf753527f9c2965200c829c4541e0bd9ffc95ef0f01cc56233ddf4466361c56",
+    "bench\\upstream\\cpp\\lru.cpp": "1213c324fcfcd383237cccd359c98049dcab74fb24ce99a12157213774417d44",
+    "bench\\upstream\\cpp\\particles.cpp": "cdf5498a29cdb38769a07848f2ae754d75945d0f1958fe6c93177a9b7bbd4f0e",
+    "bench\\upstream\\cpp\\push.cpp": "becf691faac98b878e8506015e35d5f1724ee0b07d36f7279bb00051d5c60a32",
+    "bench\\upstream\\cpp\\sum.cpp": "3aabd8c5f54744cd2c4d87f36c52939511d65922874d583ae5d9a6d769d17b04",
+    "bench\\upstream\\cpp\\tree.cpp": "d72799ee3e0a4f4e8f9d34f9ad814e1c5e9858961ec38b9332d02eb067336889",
+    "bench\\upstream\\rust\\bench.rs": "887dffd1c4c7b858b0072a8feb86ad0c72a93bc83ab8ce482444b8a830c5b09c",
+    "bench\\upstream\\rust\\bintrees_arena.rs": "4c660c2fe5c7189a5c90dd851ef56a0ab683d657c79011218977f89bcde8999b",
+    "bench\\upstream\\rust\\bintrees_box.rs": "c182cadf2b1ee716a03298e863a258e9a01922d175194278d45efa215fc5bee8",
+    "bench\\upstream\\rust\\blur_index.rs": "86af9f09c4b8cfcffc522922c0c209d493e33239335fba06501e8d732c9f6e1a",
+    "bench\\upstream\\rust\\blur_windows.rs": "d0388773956676b324c3f48eb39044c91a009af50424ca950b8e02fb42953888",
+    "bench\\upstream\\rust\\graph_arena.rs": "dfe9583c5b7710cb8a4b50665c9fa79f444f484263d519ebb4f5e772a10480f9",
+    "bench\\upstream\\rust\\graph_csr.rs": "ed559a92eb24d89b68010dc507dd12c667bb0cc65e1aa29902ac361651cd0852",
+    "bench\\upstream\\rust\\graph_nested.rs": "c08cdd160cefac652385fd22f20c06d14f57d2aa57a86d73a4776ac974da862c",
+    "bench\\upstream\\rust\\lru_hashmap.rs": "dd48aee7cf41bd1ae6fb35730fd1e9bf6f07b13cd20d74461a368eb561703563",
+    "bench\\upstream\\rust\\lru_open.rs": "6b81987d74039cfe5e6a004ddfc37d3dca467e21302485b30b3b1d5ad8f73308",
+    "bench\\upstream\\rust\\particles.rs": "96dbbcbf74729cc068f0a9ea0430948b486dcebe884386f6403118d0b57df483",
+    "bench\\upstream\\rust\\particles_scalar.rs": "befe47b4b99f9009dd6bea13129c8c901a5570140dfee5779692a8f09b889772",
+    "bench\\upstream\\rust\\push.rs": "75cb251b7b8ba469b68f4b75e9a08b723f8e6860df3b18aad7481914f90f4505",
+    "bench\\upstream\\rust\\sum.rs": "e33515996c08472d7c0fe59759a87c535b9dceaebfe0f9530775a6dc2fe9ff4d",
+    "bench\\upstream\\rust\\tree_arena.rs": "3826ae6a73c28b05fec87da3059919356dcf275d2c6ce608be9b88669364fcc3",
+    "bench\\upstream\\rust\\tree_box.rs": "3448f2785d9a003622a47a089d0a39d5d591988d30633b6579a36b254ccd051c",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small.rh": "1fd9ebb7b6b31ba2cf35963db5a7e1f7f9f89412e9d76ecc15ab620506035aa8",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_small.exe.ll": "408e8e357625acf7e7edb7414e5069dcd5f23c08e003d0284bea7fddd10c5555",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium.rh": "a22fd0f92fc6ab468710afe5e1405443cb5e403945c6954d23844e9e74e04a8e",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_medium.exe.ll": "d9bc3a22329ba93a34043f499c370abe0e15c42a0952f2335868ad5e136dbdb1",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large.rh": "c269341b050d933b45f501cfa62ec0ea6455f663cd4ede276d661e03572ca533",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-lru\\lru_large.exe.ll": "b1d8eb94307c82af16b613a1be236e8aad200a3ef2048d45a66cfdbc1b2e682d"
+  },
+  "representations": {
+    "lru": "R^ uses 16-byte nodes, 8-byte hash slots, two sentinel nodes and a u32 free list. Pop reuses freed node indices; backward-shift deletion preserves open-addressing probes. The pool never exceeds capacity + 2 nodes. This matches the original C++ expert / Rust open-table representation, including hash, eviction, explicit removal and recency walk. Original sizes, seed and all six checksum lines are preserved. Indices are ordinary integers, without Goose's pool-bound relative-reference guarantees or generation checks. Arrays reserve stable 1 GiB regions and retain committed pages when their logical length decreases."
+  },
+  "parameters": {
+    "lru": "N"
+  },
+  "harness_source": "\"\"\"Measure newly ported workloads, keeping historical bintrees data intact.\"\"\"\r\nimport argparse\r\nfrom datetime import datetime, timezone\r\nimport json\r\nimport os\r\nimport pathlib\r\nimport platform\r\nimport shutil\r\n\r\nfrom run_bench import HERE, ROOT, UPSTREAM, command, measure, sha, sized\r\n\r\nWORKLOADS = {\r\n    \"lru\": dict(sizes=(2_000_000, 8_000_000, 32_000_000), smoke=2048,\r\n                cpp=(\"list / unordered_map\", \"index arena / open table\"),\r\n                rust=(\"lru_hashmap\", \"lru_open\"),\r\n                rhat_label=\"R^ reusable index arena / open table (LLVM/Clang)\",\r\n                representation=\"R^ uses 16-byte nodes, 8-byte hash slots, two sentinel nodes and a u32 free list. \"\r\n                \"Pop reuses freed node indices; backward-shift deletion preserves open-addressing probes. \"\r\n                \"The pool never exceeds capacity + 2 nodes. This matches the original C++ expert / Rust open-table \"\r\n                \"representation, including hash, eviction, explicit removal and recency walk. Original sizes, \"\r\n                \"seed and all six checksum lines are preserved. Indices are ordinary integers, without \"\r\n                \"Goose's pool-bound relative-reference guarantees or generation checks. Arrays reserve stable \"\r\n                \"1 GiB regions and retain committed pages when their logical length decreases.\"),\r\n    \"push\": dict(sizes=(1_000_000, 16_000_000, 64_000_000), smoke=1000,\r\n                 cpp=(\"vector indices\", \"reserved vector indices\", \"deque pointers\"), rust=(\"push\",),\r\n                 rhat_label=\"R^ stable region / real pointer marks (LLVM/Clang)\",\r\n                 representation=\"R^ stores 8-byte Items and retains real Item references returned by push, \"\r\n                 \"marking every 64th record across all subsequent growth. Each array reserves 1 GiB of virtual \"\r\n                 \"address space and commits only used pages; elements never move. The original sizes, RNG, \"\r\n                 \"two final scans and checksums are preserved. C++ deque also retains pointers; C++ vector \"\r\n                 \"and Rust Vec controls retain indices. No mark is replaced by an index in the R^ port.\"),\r\n    \"sum\": dict(sizes=(1_000_000, 16_000_000, 128_000_000), smoke=1000,\r\n                cpp=(\"vector\", \"reserved vector\"), rust=(\"sum\",)),\r\n    \"blur\": dict(sizes=(1024, 2048, 8192), smoke=16,\r\n                 cpp=(\"flat\", \"row pointers\"), rust=(\"blur_index\", \"blur_windows\")),\r\n    \"particles\": dict(sizes=(100_000, 1_000_000, 4_000_000), smoke=32,\r\n                      cpp=(\"scalar AoS\", \"SoA\", \"vector AoS\"),\r\n                      rust=(\"particles_scalar\", \"particles\")),\r\n    \"tree\": dict(sizes=(16, 20, 24), smoke=6, parameter=\"depth\",\r\n                 cpp=(\"unique_ptr\", \"new/delete\", \"index arena\"), rust=(\"tree_box\", \"tree_arena\"),\r\n                 rhat_label=\"R^ u32-index node pool (LLVM/Clang)\",\r\n                 representation=\"R^ uses 12-byte nodes (i32 value, two u32 child indices), with index zero as null. \"\r\n                 \"It reserves a stable OS region and grows it by push; C++/Rust index arenas reserve exact capacity. \"\r\n                 \"Relative references and per-node allocation are not used. Eight full traversals and the original seeds are preserved.\"),\r\n    \"graph\": dict(sizes=(100_000, 500_000, 2_000_000), smoke=64, parameter=\"vertices\",\r\n                  cpp=(\"nested vectors\", \"CSR\", \"linked index arena\"),\r\n                  rust=(\"graph_nested\", \"graph_csr\", \"graph_arena\"),\r\n                  rhat_label=\"R^ linked u32-index pool (LLVM/Clang)\",\r\n                  representation=\"R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. \"\r\n                  \"Its queue overwrites an initialized prefix and pushes only when its high-water length grows; \"\r\n                  \"a separate tail resets between the four BFS sources. There is no unbounded append across sources. \"\r\n                  \"This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged.\"),\r\n}\r\n\r\n\r\ndef next_random(r):\r\n    mask = (1 << 64) - 1\r\n    r ^= (r << 13) & mask\r\n    r ^= r >> 7\r\n    return (r ^ (r << 17)) & mask\r\n\r\n\r\ndef oracle(name, n):\r\n    \"\"\"Independent, untimed smoke oracle. Larger runs cross-check C++ and Rust.\"\"\"\r\n    r = 12345\r\n    if name == \"lru\":\r\n        from collections import OrderedDict\r\n        cache = OrderedDict()\r\n        cap = n//8\r\n        keys = cap*2\r\n        hits = misses = removes = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            a = r % keys\r\n            key = a*a//keys\r\n            if (r >> 40) % 16 == 0:\r\n                if key in cache:\r\n                    del cache[key]\r\n                    removes += 1\r\n            elif key in cache:\r\n                hits += 1\r\n                cache[key] += 1\r\n                cache.move_to_end(key, last=False)\r\n            else:\r\n                misses += 1\r\n                if len(cache) == cap:\r\n                    cache.popitem()\r\n                cache[key] = key % 1000\r\n                cache.move_to_end(key, last=False)\r\n        walk = 0\r\n        for key in cache:\r\n            walk = (walk*31+key) & ((1 << 64)-1)\r\n        return f\"{hits}\\n{misses}\\n{removes}\\n{len(cache)}\\n{walk}\\n{sum(cache.values())}\"\r\n    elif name == \"push\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            total += r % 1_000_000\r\n        marks = (n+63)//64\r\n        return f\"{n}\\n{marks}\\n{total}\\n{sum(i % 97 for i in range(0,n,64))}\"\r\n    elif name == \"sum\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            total += sum((r % 1000) ^ p for p in range(8))\r\n    elif name == \"blur\":\r\n        a, b = [], [0] * (n*n)\r\n        for _ in range(n*n):\r\n            r = next_random(r)\r\n            a.append(r % 256)\r\n        for _ in range(16):\r\n            for y in range(1, n-1):\r\n                for x in range(1, n-1):\r\n                    i = y*n+x\r\n                    b[i] = (a[i-n-1] + 2*a[i-n] + a[i-n+1]\r\n                            + 2*a[i-1] + 4*a[i] + 2*a[i+1]\r\n                            + a[i+n-1] + 2*a[i+n] + a[i+n+1]) >> 4\r\n            a, b = b, a\r\n        total = sum(a)\r\n    elif name == \"particles\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            x, y, z = (float((r >> shift) % 1024) for shift in (0, 12, 24))\r\n            vx, vy, vz = (((r >> shift) % 256 - 128) / 16.0 for shift in (36, 44, 52))\r\n            # All these dyadic values are exactly representable in binary32.\r\n            for _ in range(200):\r\n                vy -= 0.0625\r\n                x, y, z = x+vx, y+vy, z+vz\r\n                if y < 0:\r\n                    y, vy = -y, -(vy*0.5)\r\n            total += int(x*16) + int(y*16) + int(z*16)\r\n    elif name == \"tree\":\r\n        def visit(depth, seed):\r\n            own = sum((seed % 1000) ^ p for p in range(8))\r\n            if depth == 0:\r\n                return own\r\n            return own + visit(depth-1, next_random(seed)) + visit(depth-1, next_random((seed+1) & ((1 << 64)-1)))\r\n        return f\"{(1 << (n+1))-1}\\n{visit(n, r)}\"\r\n    elif name == \"graph\":\r\n        # Lists in generation order and Python integers, independent of the\r\n        # R^ linked pool and its reusable queue representation.\r\n        adj = [[] for _ in range(n)]\r\n        for _ in range(n*8):\r\n            r = next_random(r)\r\n            adj[r % n].append((r >> 24) % n)\r\n        total, seed = 0, 999\r\n        for _ in range(4):\r\n            seed = next_random(seed)\r\n            src = seed % n\r\n            distance = [-1] * n\r\n            distance[src] = 0\r\n            queue = [src]\r\n            for u in queue:\r\n                total += distance[u]\r\n                for v in adj[u]:\r\n                    if distance[v] == -1:\r\n                        distance[v] = distance[u]+1\r\n                        queue.append(v)\r\n        return f\"{n*9}\\n{total}\"\r\n    else:\r\n        raise ValueError(f\"no independent oracle for {name}\")\r\n    return f\"{n}\\n{total}\"\r\n\r\n\r\ndef report(data, out):\r\n    out.mkdir(parents=True, exist_ok=True)\r\n    (out / \"workloads_results.json\").write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")\r\n    lines = [\"# Additional R^ workloads\", \"\", f\"Measured: {data['started_utc']} (UTC).\", \"\",\r\n             \"R^ replaces Goose. All comparison implementations were built and measured in this session.\", \"\",\r\n             f\"Whole-process wall time, two warm-ups, best of {data['reps']} timed samples; peak resident working set.\",\r\n             \"R^ retains bounds/range checks and OS-backed, stable-address arrays. No affinity is set.\", \"\",\r\n             \"Comparison / R^ time: above 1 means R^ is faster. No suite-wide average is claimed.\", \"\",\r\n             \"Smoke sizes are correctness checks and are not performance evidence.\", \"\",\r\n             \"## Environment\", \"\", \"| Item | Value |\", \"|---|---|\"]\r\n    for key, value in data[\"environment\"].items():\r\n        text = str(value).replace(\"|\", \"/\").replace(\"\\n\", \"; \")\r\n        lines.append(f\"| {key} | {text} |\")\r\n    if data.get(\"metadata_corrections\"):\r\n        lines += [\"\", *data[\"metadata_corrections\"]]\r\n    for name in data[\"workloads\"]:\r\n        lines += [\"\", \"## \" + name, \"\"]\r\n        if data.get(\"representations\", {}).get(name):\r\n            lines += [data[\"representations\"][name], \"\"]\r\n        parameter = data.get(\"parameters\", {}).get(name, \"N\")\r\n        lines += [f\"| Size / {parameter} | Implementation | Best ms | Peak MiB | Comparison / R^ time |\",\r\n                  \"|---|---|---:|---:|---:|\"]\r\n        for row in data[\"rows\"]:\r\n            if row[\"workload\"] != name:\r\n                continue\r\n            rhat = next(r for r in data[\"rows\"] if r[\"workload\"] == name\r\n                        and r[\"size\"] == row[\"size\"] and r[\"language\"] == \"rhat\")\r\n            lines.append(f\"| {row['size']} / {row['n']} | {row['label']} | {row['best_ms']:.2f} | \"\r\n                         f\"{row['peak_bytes']/1048576:.2f} | {row['best_ms']/rhat['best_ms']:.3f}x |\")\r\n    lines += [\"\", \"Every warm-up/sample checks its checksum. Each size first cross-checks independently built\",\r\n              \"C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.\",\r\n              \"Raw samples, checksums, build commands, source/LLVM/compiler/runtime SHA-256 and tool versions\",\r\n              \"are saved in workloads_results.json. Historical bintrees measurements are in \"\r\n              f\"[results.md]({pathlib.Path(os.path.relpath(HERE / 'results.md', out)).as_posix()}).\", \"\"]\r\n    (out / \"workloads_results.md\").write_text(\"\\n\".join(lines), encoding=\"utf-8\")\r\n\r\n\r\ndef main():\r\n    parser = argparse.ArgumentParser(description=__doc__)\r\n    parser.add_argument(\"--workloads\", nargs=\"+\", choices=WORKLOADS, default=list(WORKLOADS))\r\n    parser.add_argument(\"--sizes\", nargs=\"+\", choices=(\"smoke\", \"small\", \"medium\", \"large\"), default=[\"small\", \"medium\", \"large\"])\r\n    parser.add_argument(\"--reps\", type=int, default=3)\r\n    parser.add_argument(\"--timeout\", type=int, default=1800)\r\n    parser.add_argument(\"--compiler\", type=pathlib.Path, default=ROOT / \"build/Release/rhat.exe\")\r\n    parser.add_argument(\"--work\", type=pathlib.Path, default=ROOT / \"build/bench-workloads\")\r\n    parser.add_argument(\"--out\", type=pathlib.Path, default=HERE)\r\n    parser.add_argument(\"--report-only\", action=\"store_true\")\r\n    args = parser.parse_args()\r\n    if args.report_only:\r\n        report(json.loads((args.out / \"workloads_results.json\").read_text(encoding=\"utf-8\")), args.out)\r\n        return\r\n    if os.name != \"nt\" or args.reps < 1 or args.timeout < 1:\r\n        parser.error(\"Windows and positive --reps/--timeout required\")\r\n    tools = {name: shutil.which(exe) for name, exe in\r\n             ((\"clang\", \"clang\"), (\"msvc\", \"cl\"), (\"clangcl\", \"clang-cl\"), (\"rustc\", \"rustc\"))}\r\n    if not all(tools.values()):\r\n        parser.error(\"load scripts/devshell.ps1; Clang, MSVC, Rust required\")\r\n    compiler, work = args.compiler.resolve(), args.work.resolve()\r\n    work.mkdir(parents=True, exist_ok=True)\r\n    import winreg\r\n    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r\"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0\") as key:\r\n        cpu = winreg.QueryValueEx(key, \"ProcessorNameString\")[0].strip()\r\n    env = dict(cpu=cpu, os=platform.platform(), commit=command([\"git\", \"rev-parse\", \"HEAD\"], cwd=ROOT),\r\n               dirty=command([\"git\", \"status\", \"--porcelain\"], cwd=ROOT),\r\n               compiler_sha256=sha(compiler), runtime_sha256=sha(ROOT / \"runtime/rhat_runtime.c\"))\r\n    for key, exe in tools.items():\r\n        banner = command([exe, \"/Bv\", \"/?\"] if key == \"msvc\" else [exe, \"--version\"])\r\n        if key == \"msvc\":\r\n            env[key] = next((line.strip() for line in banner.splitlines()\r\n                             if \"Compiler Version\" in line or \"\u30b3\u30f3\u30d1\u30a4\u30e9 \u30d0\u30fc\u30b8\u30e7\u30f3\" in line), None)\r\n            if not env[key]:\r\n                raise RuntimeError(\"could not identify MSVC version\")\r\n        else:\r\n            env[key] = banner.splitlines()[0]\r\n    data = dict(started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,\r\n                environment=env, workloads=args.workloads, warmups=2, reps=args.reps,\r\n                builds=[], rows=[], controls=[], source_hashes={},\r\n                representations={name: WORKLOADS[name].get(\"representation\", \"\") for name in args.workloads},\r\n                parameters={name: WORKLOADS[name].get(\"parameter\", \"N\") for name in args.workloads},\r\n                harness_source=pathlib.Path(__file__).read_bytes().decode(\"utf-8\"))\r\n    for directory in (ROOT / \"src\", ROOT / \"runtime\", HERE):\r\n        for path in directory.rglob(\"*\"):\r\n            if path.is_file() and path.suffix in (\".c\", \".h\", \".rh\", \".rs\", \".cpp\", \".py\"):\r\n                data[\"source_hashes\"][str(path.relative_to(ROOT))] = sha(path)\r\n\r\n    def build(argv):\r\n        data[\"builds\"].append(list(map(str, argv)))\r\n        command(argv, cwd=work)\r\n\r\n    shutil.copyfile(HERE / \"upstream/rust/bench.rs\", work / \"bench.rs\")\r\n    for name in args.workloads:\r\n        spec = WORKLOADS[name]\r\n        for size in args.sizes:\r\n            n = spec[\"smoke\"] if size == \"smoke\" else spec[\"sizes\"][(\"small\", \"medium\", \"large\").index(size)]\r\n            implementations = []\r\n            src = work / f\"{name}_{size}.rh\"\r\n            sized(HERE / f\"rhat/{name}.rh\", src, n)\r\n            exe = src.with_suffix(\".exe\")\r\n            build([compiler, \"build\", src, \"-o\", exe, \"-O2\", \"--clang\", tools[\"clang\"],\r\n                   \"--dump-ir\", src.with_suffix(\".rir\")])\r\n            data[\"source_hashes\"][str(src)] = sha(src)\r\n            data[\"source_hashes\"][str(exe) + \".ll\"] = sha(pathlib.Path(str(exe) + \".ll\"))\r\n            implementations.append((spec.get(\"rhat_label\", \"R^ LLVM/Clang\"), \"rhat\", exe))\r\n            for tc in (\"msvc\", \"clangcl\"):\r\n                for variant, label in enumerate(spec[\"cpp\"]):\r\n                    exe = work / f\"{name}_{size}_{tc}_{variant}.exe\"\r\n                    build([tools[tc], \"/nologo\", \"/O2\", \"/EHsc\", \"/std:c++20\", f\"/DBENCH_N={n}\",\r\n                           f\"/DVARIANT={variant}\", HERE / f\"upstream/cpp/{name}.cpp\",\r\n                           \"/Fe\" + str(exe), \"/Fo\" + str(exe.with_suffix(\".obj\"))])\r\n                    implementations.append((f\"C++ {label} ({tc})\", \"cpp\", exe))\r\n            for rust in spec[\"rust\"]:\r\n                src = work / f\"{rust}_{size}.rs\"\r\n                sized(HERE / f\"upstream/rust/{rust}.rs\", src, n)\r\n                exe = src.with_suffix(\".exe\")\r\n                build([tools[\"rustc\"], \"-O\", \"-C\", \"codegen-units=1\", src, \"-o\", exe])\r\n                implementations.append((f\"Rust {rust}\", \"rust\", exe))\r\n            # Establish the result from two independent controls before timing.\r\n            cpp = next(exe for _, lang, exe in implementations if lang == \"cpp\")\r\n            rust = next(exe for _, lang, exe in implementations if lang == \"rust\")\r\n            cpp_control, rust_control = measure(cpp, args.timeout), measure(rust, args.timeout)\r\n            expected = cpp_control[\"output\"]\r\n            if rust_control[\"output\"] != expected:\r\n                raise RuntimeError(f\"{name}/{size}: C++/Rust control mismatch\")\r\n            if size == \"smoke\" and expected != oracle(name, n):\r\n                raise RuntimeError(f\"{name}: Python oracle mismatch\")\r\n            data[\"controls\"].append(dict(workload=name, size=size, n=n, output=expected,\r\n                                         cpp=str(cpp), rust=str(rust), cpp_control=cpp_control,\r\n                                         rust_control=rust_control, python_oracle=size == \"smoke\"))\r\n            samples = {label: [] for label, _, _ in implementations}\r\n            warmups = {label: [] for label, _, _ in implementations}\r\n            for iteration in range(2 + args.reps):\r\n                ordered = implementations if iteration % 2 == 0 else list(reversed(implementations))\r\n                for label, _, exe in ordered:\r\n                    result = measure(exe, args.timeout)\r\n                    if result[\"output\"] != expected:\r\n                        raise RuntimeError(f\"{name}/{size} {label}: checksum {result['output']} != {expected}\")\r\n                    (warmups if iteration < 2 else samples)[label].append(result)\r\n                    print(f\"{name}/{size} {label} round {iteration+1}: {result['ms']:.2f} ms verified\", flush=True)\r\n            for label, language, _ in implementations:\r\n                data[\"rows\"].append(dict(workload=name, size=size, n=n, label=label, language=language,\r\n                                         best_ms=min(s[\"ms\"] for s in samples[label]),\r\n                                         peak_bytes=max(s[\"peak_bytes\"] for s in samples[label]),\r\n                                         samples=samples[label], warmups=warmups[label]))\r\n            report(data, args.out)\r\n\r\n\r\nif __name__ == \"__main__\":\r\n    main()\r\n"
+}

@@ -1,0 +1,3498 @@
+{
+  "started_utc": "2026-10-23T20:37:40.834571+00:00",
+  "upstream_commit": "94cc64daeabcae6f072dc1fe2b864acda5a001bc",
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "commit": "555c77b2b33232521f985c722825a47145b8e30d",
+    "dirty": "M README.md\n M bench/README.md\n M bench/coverage.md\n M bench/results.md\n M bench/run_bench.py\n M bench/run_workloads.py\n M bench/upstream/PROVENANCE.md\n M docs/design.md\n M runtime/rhat_runtime.c\n M src/front.c\n M src/llvm.c\n M src/rhat.h\n M src/sema.c\n M tests/run.py\n M tests/runtime_regions.c\n?? bench/lru/\n?? bench/rhat/calc.rh\n?? bench/rhat/interp.rh\n?? bench/rhat/lru.rh\n?? bench/rhat/records.rh\n?? bench/rhat/respond.rh\n?? bench/rhat/scene.rh\n?? bench/rhat/sexp.rh\n?? bench/rhat/strlist.rh\n?? bench/rhat/words.rh\n?? bench/scene/\n?? bench/text/\n?? bench/upstream/cpp/calc.cpp\n?? bench/upstream/cpp/interp.cpp\n?? bench/upstream/cpp/lru.cpp\n?? bench/upstream/cpp/records.cpp\n?? bench/upstream/cpp/respond.cpp\n?? bench/upstream/cpp/scene.cpp\n?? bench/upstream/cpp/sexp.cpp\n?? bench/upstream/cpp/strlist.cpp\n?? bench/upstream/cpp/words.cpp\n?? bench/upstream/rust/calc_arena.rs\n?? bench/upstream/rust/calc_box.rs\n?? bench/upstream/rust/interp_arena.rs\n?? bench/upstream/rust/interp_box.rs\n?? bench/upstream/rust/lru_hashmap.rs\n?? bench/upstream/rust/lru_open.rs\n?? bench/upstream/rust/records.rs\n?? bench/upstream/rust/respond_dto.rs\n?? bench/upstream/rust/respond_stream.rs\n?? bench/upstream/rust/scene_arena.rs\n?? bench/upstream/rust/scene_box.rs\n?? bench/upstream/rust/sexp_arena.rs\n?? bench/upstream/rust/sexp_box.rs\n?? bench/upstream/rust/strlist_borrowed.rs\n?? bench/upstream/rust/strlist_owned.rs\n?? bench/upstream/rust/words_hashmap.rs\n?? bench/upstream/rust/words_open.rs",
+    "compiler_sha256": "0d5be2d1de7705f476440990257e52d7dc67328af099a3ecc38c88355e5113af",
+    "runtime_sha256": "c0dfdca54088c8e0aec92cef0348f864651c75ba08a1c8391619bcc2088339e7",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "clangcl": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "workloads": [
+    "records",
+    "interp",
+    "sexp",
+    "calc"
+  ],
+  "warmups": 2,
+  "reps": 3,
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=500000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=4000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16000000",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\records.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=16",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_2.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=24",
+      "/DVARIANT=2",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\interp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_2.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_clangcl_2.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_large.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_arena_large.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=20000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_arena_small.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_arena_small.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=100000",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\sexp.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_medium.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_arena_medium.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_arena_medium.exe"
+    ]
+  ],
+  "rows": [
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "R^ native nominal union / inline text (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 65.6773,
+      "peak_bytes": 23748608,
+      "samples": [
+        {
+          "ms": 66.3093,
+          "peak_bytes": 23748608,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 69.2423,
+          "peak_bytes": 23699456,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 65.6773,
+          "peak_bytes": 23728128,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 65.6947,
+          "peak_bytes": 23719936,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 65.5135,
+          "peak_bytes": 23728128,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ virtual objects (msvc)",
+      "language": "cpp",
+      "best_ms": 94.7552,
+      "peak_bytes": 29405184,
+      "samples": [
+        {
+          "ms": 94.7552,
+          "peak_bytes": 29401088,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 99.8635,
+          "peak_bytes": 29405184,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 96.928,
+          "peak_bytes": 29401088,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 96.8373,
+          "peak_bytes": 29405184,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 99.3841,
+          "peak_bytes": 29405184,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ variant / owned string (msvc)",
+      "language": "cpp",
+      "best_ms": 83.1194,
+      "peak_bytes": 51007488,
+      "samples": [
+        {
+          "ms": 83.1194,
+          "peak_bytes": 51007488,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 88.6794,
+          "peak_bytes": 51003392,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 83.7137,
+          "peak_bytes": 51003392,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 364.7773,
+          "peak_bytes": 51011584,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 87.5059,
+          "peak_bytes": 50999296,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ variant / inline text (msvc)",
+      "language": "cpp",
+      "best_ms": 56.3411,
+      "peak_bytes": 27267072,
+      "samples": [
+        {
+          "ms": 57.1448,
+          "peak_bytes": 27262976,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 56.3411,
+          "peak_bytes": 27267072,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 75.8829,
+          "peak_bytes": 27267072,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 264.4266,
+          "peak_bytes": 27271168,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 51.5437,
+          "peak_bytes": 27267072,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ virtual objects (clangcl)",
+      "language": "cpp",
+      "best_ms": 109.8623,
+      "peak_bytes": 29413376,
+      "samples": [
+        {
+          "ms": 130.1573,
+          "peak_bytes": 29413376,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 120.5637,
+          "peak_bytes": 29413376,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 109.8623,
+          "peak_bytes": 29413376,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 191.5167,
+          "peak_bytes": 29429760,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 129.9798,
+          "peak_bytes": 29413376,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ variant / owned string (clangcl)",
+      "language": "cpp",
+      "best_ms": 75.7422,
+      "peak_bytes": 51019776,
+      "samples": [
+        {
+          "ms": 83.4039,
+          "peak_bytes": 51019776,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 75.7422,
+          "peak_bytes": 51011584,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 76.9114,
+          "peak_bytes": 51015680,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 737.2938,
+          "peak_bytes": 51027968,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 387.0134,
+          "peak_bytes": 51015680,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "C++ variant / inline text (clangcl)",
+      "language": "cpp",
+      "best_ms": 49.4027,
+      "peak_bytes": 27275264,
+      "samples": [
+        {
+          "ms": 49.4027,
+          "peak_bytes": 27275264,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 52.2481,
+          "peak_bytes": 27271168,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 50.9736,
+          "peak_bytes": 27275264,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 705.0628,
+          "peak_bytes": 27279360,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 350.5694,
+          "peak_bytes": 27275264,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "label": "Rust records",
+      "language": "rust",
+      "best_ms": 65.0304,
+      "peak_bytes": 23736320,
+      "samples": [
+        {
+          "ms": 66.9151,
+          "peak_bytes": 23736320,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 67.2406,
+          "peak_bytes": 23711744,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 65.0304,
+          "peak_bytes": 23711744,
+          "output": "500000\n87531239268"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 69.8321,
+          "peak_bytes": 23687168,
+          "output": "500000\n87531239268"
+        },
+        {
+          "ms": 68.0698,
+          "peak_bytes": 23732224,
+          "output": "500000\n87531239268"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "R^ native nominal union / inline text (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 393.7664,
+      "peak_bytes": 158003200,
+      "samples": [
+        {
+          "ms": 394.7792,
+          "peak_bytes": 157982720,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 393.7664,
+          "peak_bytes": 157995008,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 408.3269,
+          "peak_bytes": 158003200,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 403.3984,
+          "peak_bytes": 158040064,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 397.598,
+          "peak_bytes": 157986816,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ virtual objects (msvc)",
+      "language": "cpp",
+      "best_ms": 649.0171,
+      "peak_bytes": 196128768,
+      "samples": [
+        {
+          "ms": 682.7566,
+          "peak_bytes": 196124672,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 649.0171,
+          "peak_bytes": 196124672,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 693.3178,
+          "peak_bytes": 196128768,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 668.8227,
+          "peak_bytes": 196124672,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 642.7672,
+          "peak_bytes": 196124672,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ variant / owned string (msvc)",
+      "language": "cpp",
+      "best_ms": 534.2977,
+      "peak_bytes": 346411008,
+      "samples": [
+        {
+          "ms": 583.285,
+          "peak_bytes": 346411008,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 541.7991,
+          "peak_bytes": 346411008,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 534.2977,
+          "peak_bytes": 346411008,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 867.6498,
+          "peak_bytes": 346423296,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 548.5095,
+          "peak_bytes": 346406912,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ variant / inline text (msvc)",
+      "language": "cpp",
+      "best_ms": 260.1059,
+      "peak_bytes": 174977024,
+      "samples": [
+        {
+          "ms": 266.8189,
+          "peak_bytes": 174977024,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 280.2248,
+          "peak_bytes": 174972928,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 260.1059,
+          "peak_bytes": 174977024,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 565.8728,
+          "peak_bytes": 174989312,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 278.6627,
+          "peak_bytes": 174981120,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ virtual objects (clangcl)",
+      "language": "cpp",
+      "best_ms": 617.2847,
+      "peak_bytes": 196149248,
+      "samples": [
+        {
+          "ms": 617.2847,
+          "peak_bytes": 196149248,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 632.1094,
+          "peak_bytes": 196145152,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 619.2252,
+          "peak_bytes": 196145152,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 734.0997,
+          "peak_bytes": 196161536,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 673.9085,
+          "peak_bytes": 196149248,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ variant / owned string (clangcl)",
+      "language": "cpp",
+      "best_ms": 473.0092,
+      "peak_bytes": 346423296,
+      "samples": [
+        {
+          "ms": 473.0092,
+          "peak_bytes": 346423296,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 478.4065,
+          "peak_bytes": 346419200,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 510.2221,
+          "peak_bytes": 346419200,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1043.2804,
+          "peak_bytes": 346451968,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 747.6891,
+          "peak_bytes": 346423296,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "C++ variant / inline text (clangcl)",
+      "language": "cpp",
+      "best_ms": 269.5671,
+      "peak_bytes": 174989312,
+      "samples": [
+        {
+          "ms": 269.5671,
+          "peak_bytes": 174985216,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 270.7352,
+          "peak_bytes": 174985216,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 282.0007,
+          "peak_bytes": 174989312,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 936.6062,
+          "peak_bytes": 175001600,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 565.3751,
+          "peak_bytes": 174985216,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "label": "Rust records",
+      "language": "rust",
+      "best_ms": 396.6863,
+      "peak_bytes": 158040064,
+      "samples": [
+        {
+          "ms": 430.0653,
+          "peak_bytes": 158040064,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 396.6863,
+          "peak_bytes": 158040064,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 408.4726,
+          "peak_bytes": 158015488,
+          "output": "4000000\n701055136604"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 409.0395,
+          "peak_bytes": 158007296,
+          "output": "4000000\n701055136604"
+        },
+        {
+          "ms": 411.5464,
+          "peak_bytes": 158023680,
+          "output": "4000000\n701055136604"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "R^ native nominal union / inline text (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 1536.7344,
+      "peak_bytes": 618704896,
+      "samples": [
+        {
+          "ms": 1554.3493,
+          "peak_bytes": 618704896,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1536.7344,
+          "peak_bytes": 618659840,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1544.3734,
+          "peak_bytes": 618618880,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1554.3529,
+          "peak_bytes": 618676224,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1555.1447,
+          "peak_bytes": 618598400,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ virtual objects (msvc)",
+      "language": "cpp",
+      "best_ms": 2573.7391,
+      "peak_bytes": 743706624,
+      "samples": [
+        {
+          "ms": 2573.7391,
+          "peak_bytes": 743706624,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2713.1582,
+          "peak_bytes": 743661568,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2611.7169,
+          "peak_bytes": 743690240,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2552.3152,
+          "peak_bytes": 743718912,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2605.1362,
+          "peak_bytes": 743677952,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ variant / owned string (msvc)",
+      "language": "cpp",
+      "best_ms": 1984.2774,
+      "peak_bytes": 1154244608,
+      "samples": [
+        {
+          "ms": 1984.2774,
+          "peak_bytes": 1154244608,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1998.1706,
+          "peak_bytes": 1154240512,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1997.5684,
+          "peak_bytes": 1154240512,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2336.8483,
+          "peak_bytes": 1154265088,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1907.7233,
+          "peak_bytes": 1154236416,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ variant / inline text (msvc)",
+      "language": "cpp",
+      "best_ms": 1005.443,
+      "peak_bytes": 578883584,
+      "samples": [
+        {
+          "ms": 1007.7368,
+          "peak_bytes": 578883584,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1005.443,
+          "peak_bytes": 578883584,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1025.0199,
+          "peak_bytes": 578879488,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1204.9896,
+          "peak_bytes": 578887680,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 994.0273,
+          "peak_bytes": 578883584,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ virtual objects (clangcl)",
+      "language": "cpp",
+      "best_ms": 2467.3852,
+      "peak_bytes": 743677952,
+      "samples": [
+        {
+          "ms": 2467.3852,
+          "peak_bytes": 743653376,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2495.433,
+          "peak_bytes": 743669760,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2549.5686,
+          "peak_bytes": 743677952,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2559.4441,
+          "peak_bytes": 743698432,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2604.5121,
+          "peak_bytes": 743657472,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ variant / owned string (clangcl)",
+      "language": "cpp",
+      "best_ms": 1674.8973,
+      "peak_bytes": 1154256896,
+      "samples": [
+        {
+          "ms": 1674.8973,
+          "peak_bytes": 1154248704,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1775.2033,
+          "peak_bytes": 1154256896,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1677.6997,
+          "peak_bytes": 1154248704,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2433.7632,
+          "peak_bytes": 1154281472,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 2073.4195,
+          "peak_bytes": 1154248704,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "C++ variant / inline text (clangcl)",
+      "language": "cpp",
+      "best_ms": 999.4194,
+      "peak_bytes": 578891776,
+      "samples": [
+        {
+          "ms": 1000.9507,
+          "peak_bytes": 578887680,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1100.2241,
+          "peak_bytes": 578887680,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 999.4194,
+          "peak_bytes": 578891776,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1689.5012,
+          "peak_bytes": 578916352,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1394.868,
+          "peak_bytes": 578887680,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "label": "Rust records",
+      "language": "rust",
+      "best_ms": 1544.0063,
+      "peak_bytes": 618708992,
+      "samples": [
+        {
+          "ms": 1558.8868,
+          "peak_bytes": 618672128,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1568.9758,
+          "peak_bytes": 618590208,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1544.0063,
+          "peak_bytes": 618708992,
+          "output": "16000000\n2803538906112"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1573.3441,
+          "peak_bytes": 618672128,
+          "output": "16000000\n2803538906112"
+        },
+        {
+          "ms": 1557.7272,
+          "peak_bytes": 618688512,
+          "output": "16000000\n2803538906112"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "R^ native nominal union / u32 arena (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 28.0127,
+      "peak_bytes": 4395008,
+      "samples": [
+        {
+          "ms": 28.7593,
+          "peak_bytes": 4395008,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 28.0127,
+          "peak_bytes": 4395008,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 28.56,
+          "peak_bytes": 4395008,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 123.363,
+          "peak_bytes": 4407296,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 33.3335,
+          "peak_bytes": 4390912,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ virtual owning tree (msvc)",
+      "language": "cpp",
+      "best_ms": 20.6019,
+      "peak_bytes": 5120000,
+      "samples": [
+        {
+          "ms": 24.9678,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 20.6019,
+          "peak_bytes": 5120000,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 23.0925,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 37.0994,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 26.1291,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ variant arena (msvc)",
+      "language": "cpp",
+      "best_ms": 19.4364,
+      "peak_bytes": 5206016,
+      "samples": [
+        {
+          "ms": 23.6744,
+          "peak_bytes": 5201920,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 19.4364,
+          "peak_bytes": 5197824,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 21.0132,
+          "peak_bytes": 5206016,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 182.3451,
+          "peak_bytes": 5210112,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 19.9396,
+          "peak_bytes": 5201920,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ switch arena (msvc)",
+      "language": "cpp",
+      "best_ms": 19.7438,
+      "peak_bytes": 5206016,
+      "samples": [
+        {
+          "ms": 25.3852,
+          "peak_bytes": 5206016,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 19.7438,
+          "peak_bytes": 5201920,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 20.7734,
+          "peak_bytes": 5197824,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 174.9692,
+          "peak_bytes": 5214208,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 20.1609,
+          "peak_bytes": 5197824,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ virtual owning tree (clangcl)",
+      "language": "cpp",
+      "best_ms": 25.8496,
+      "peak_bytes": 5115904,
+      "samples": [
+        {
+          "ms": 26.4048,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 25.8496,
+          "peak_bytes": 5111808,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 29.6396,
+          "peak_bytes": 5111808,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 103.3282,
+          "peak_bytes": 5124096,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 21.6604,
+          "peak_bytes": 5115904,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ variant arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 21.285,
+      "peak_bytes": 4972544,
+      "samples": [
+        {
+          "ms": 24.6014,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 21.285,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 21.8374,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 203.3209,
+          "peak_bytes": 4976640,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 23.0734,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "C++ switch arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 20.7799,
+      "peak_bytes": 4972544,
+      "samples": [
+        {
+          "ms": 23.6004,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 20.7799,
+          "peak_bytes": 4968448,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 24.0441,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 187.5887,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 25.8884,
+          "peak_bytes": 4972544,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "Rust interp_box",
+      "language": "rust",
+      "best_ms": 27.6037,
+      "peak_bytes": 5566464,
+      "samples": [
+        {
+          "ms": 30.463,
+          "peak_bytes": 5562368,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 27.6037,
+          "peak_bytes": 5562368,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 32.4992,
+          "peak_bytes": 5566464,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 39.1552,
+          "peak_bytes": 5550080,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 37.2705,
+          "peak_bytes": 5566464,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "label": "Rust interp_arena",
+      "language": "rust",
+      "best_ms": 23.1013,
+      "peak_bytes": 5644288,
+      "samples": [
+        {
+          "ms": 24.8426,
+          "peak_bytes": 5599232,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 23.1013,
+          "peak_bytes": 5586944,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 28.0594,
+          "peak_bytes": 5644288,
+          "output": "36407\n675881"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 90.4847,
+          "peak_bytes": 5857280,
+          "output": "36407\n675881"
+        },
+        {
+          "ms": 22.2543,
+          "peak_bytes": 5595136,
+          "output": "36407\n675881"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "R^ native nominal union / u32 arena (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 99.5898,
+      "peak_bytes": 7499776,
+      "samples": [
+        {
+          "ms": 99.5898,
+          "peak_bytes": 7499776,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 105.4333,
+          "peak_bytes": 7499776,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 100.2534,
+          "peak_bytes": 7495680,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 347.6391,
+          "peak_bytes": 7507968,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 154.9815,
+          "peak_bytes": 7495680,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ virtual owning tree (msvc)",
+      "language": "cpp",
+      "best_ms": 65.7348,
+      "peak_bytes": 13496320,
+      "samples": [
+        {
+          "ms": 72.2436,
+          "peak_bytes": 13492224,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 65.7348,
+          "peak_bytes": 13496320,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 90.7363,
+          "peak_bytes": 13496320,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 63.677,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 67.0103,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ variant arena (msvc)",
+      "language": "cpp",
+      "best_ms": 29.9235,
+      "peak_bytes": 10686464,
+      "samples": [
+        {
+          "ms": 32.2453,
+          "peak_bytes": 10686464,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 29.9235,
+          "peak_bytes": 10682368,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 44.0309,
+          "peak_bytes": 10686464,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 288.2457,
+          "peak_bytes": 10694656,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 32.2152,
+          "peak_bytes": 10686464,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ switch arena (msvc)",
+      "language": "cpp",
+      "best_ms": 30.2813,
+      "peak_bytes": 10690560,
+      "samples": [
+        {
+          "ms": 34.5724,
+          "peak_bytes": 10686464,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 30.6595,
+          "peak_bytes": 10690560,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 30.2813,
+          "peak_bytes": 10690560,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 283.2928,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 30.6201,
+          "peak_bytes": 10690560,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ virtual owning tree (clangcl)",
+      "language": "cpp",
+      "best_ms": 67.9095,
+      "peak_bytes": 13500416,
+      "samples": [
+        {
+          "ms": 69.1542,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 73.9404,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 67.9095,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 238.2386,
+          "peak_bytes": 13500416,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 120.3351,
+          "peak_bytes": 13496320,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ variant arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 34.6874,
+      "peak_bytes": 10698752,
+      "samples": [
+        {
+          "ms": 46.875,
+          "peak_bytes": 10694656,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 36.0058,
+          "peak_bytes": 10694656,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 34.6874,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 684.9144,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 344.0205,
+          "peak_bytes": 10690560,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "C++ switch arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 30.84,
+      "peak_bytes": 10698752,
+      "samples": [
+        {
+          "ms": 38.2953,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 33.8426,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 30.84,
+          "peak_bytes": 10694656,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 592.41,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 301.0666,
+          "peak_bytes": 10698752,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "Rust interp_box",
+      "language": "rust",
+      "best_ms": 75.9412,
+      "peak_bytes": 13959168,
+      "samples": [
+        {
+          "ms": 82.6888,
+          "peak_bytes": 13946880,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 84.4932,
+          "peak_bytes": 13959168,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 75.9412,
+          "peak_bytes": 13950976,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 78.5343,
+          "peak_bytes": 13955072,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 75.5702,
+          "peak_bytes": 13959168,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "label": "Rust interp_arena",
+      "language": "rust",
+      "best_ms": 32.3249,
+      "peak_bytes": 12230656,
+      "samples": [
+        {
+          "ms": 39.0846,
+          "peak_bytes": 12177408,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 37.2758,
+          "peak_bytes": 12218368,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 32.3249,
+          "peak_bytes": 12230656,
+          "output": "294997\n950682"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 82.6632,
+          "peak_bytes": 12193792,
+          "output": "294997\n950682"
+        },
+        {
+          "ms": 33.1907,
+          "peak_bytes": 12214272,
+          "output": "294997\n950682"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "R^ native nominal union / u32 arena (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 915.0536,
+      "peak_bytes": 41189376,
+      "samples": [
+        {
+          "ms": 916.9142,
+          "peak_bytes": 41189376,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 926.0827,
+          "peak_bytes": 41189376,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 915.0536,
+          "peak_bytes": 41185280,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 968.6144,
+          "peak_bytes": 41218048,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 1012.7223,
+          "peak_bytes": 41189376,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ virtual owning tree (msvc)",
+      "language": "cpp",
+      "best_ms": 526.3142,
+      "peak_bytes": 103968768,
+      "samples": [
+        {
+          "ms": 550.8821,
+          "peak_bytes": 103968768,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 526.3142,
+          "peak_bytes": 103968768,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 532.0441,
+          "peak_bytes": 103968768,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 577.7311,
+          "peak_bytes": 103972864,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 532.9643,
+          "peak_bytes": 103968768,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ variant arena (msvc)",
+      "language": "cpp",
+      "best_ms": 209.8545,
+      "peak_bytes": 62402560,
+      "samples": [
+        {
+          "ms": 212.2841,
+          "peak_bytes": 62398464,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 209.8545,
+          "peak_bytes": 62402560,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 215.8998,
+          "peak_bytes": 62402560,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 595.1554,
+          "peak_bytes": 62406656,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 213.5581,
+          "peak_bytes": 62402560,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ switch arena (msvc)",
+      "language": "cpp",
+      "best_ms": 188.7575,
+      "peak_bytes": 62402560,
+      "samples": [
+        {
+          "ms": 188.7575,
+          "peak_bytes": 62402560,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 193.1221,
+          "peak_bytes": 62402560,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 207.1277,
+          "peak_bytes": 62398464,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 494.8623,
+          "peak_bytes": 62406656,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 197.3269,
+          "peak_bytes": 62406656,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ virtual owning tree (clangcl)",
+      "language": "cpp",
+      "best_ms": 564.1455,
+      "peak_bytes": 103981056,
+      "samples": [
+        {
+          "ms": 572.1445,
+          "peak_bytes": 103981056,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 639.7508,
+          "peak_bytes": 103981056,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 564.1455,
+          "peak_bytes": 103976960,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 693.5399,
+          "peak_bytes": 104009728,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 640.8054,
+          "peak_bytes": 103976960,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ variant arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 240.4997,
+      "peak_bytes": 62414848,
+      "samples": [
+        {
+          "ms": 241.5571,
+          "peak_bytes": 62410752,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 240.4997,
+          "peak_bytes": 62410752,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 254.3831,
+          "peak_bytes": 62414848,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 724.8316,
+          "peak_bytes": 62418944,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 233.4082,
+          "peak_bytes": 62410752,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "C++ switch arena (clangcl)",
+      "language": "cpp",
+      "best_ms": 206.0905,
+      "peak_bytes": 62414848,
+      "samples": [
+        {
+          "ms": 206.0905,
+          "peak_bytes": 62414848,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 215.9794,
+          "peak_bytes": 62414848,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 213.8085,
+          "peak_bytes": 62410752,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 739.6923,
+          "peak_bytes": 62414848,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 210.8607,
+          "peak_bytes": 62414848,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "Rust interp_box",
+      "language": "rust",
+      "best_ms": 661.6376,
+      "peak_bytes": 104419328,
+      "samples": [
+        {
+          "ms": 669.8559,
+          "peak_bytes": 104419328,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 661.6376,
+          "peak_bytes": 104415232,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 681.1845,
+          "peak_bytes": 104415232,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 653.2374,
+          "peak_bytes": 104419328,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 647.7445,
+          "peak_bytes": 104419328,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "label": "Rust interp_arena",
+      "language": "rust",
+      "best_ms": 215.4272,
+      "peak_bytes": 56266752,
+      "samples": [
+        {
+          "ms": 216.3301,
+          "peak_bytes": 56266752,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 234.4097,
+          "peak_bytes": 56266752,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 215.4272,
+          "peak_bytes": 56225792,
+          "output": "3102543\n293458"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 271.1506,
+          "peak_bytes": 56270848,
+          "output": "3102543\n293458"
+        },
+        {
+          "ms": 219.4055,
+          "peak_bytes": 56238080,
+          "output": "3102543\n293458"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "R^ nominal union / copied-symbol arenas (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 721.4888,
+      "peak_bytes": 54747136,
+      "samples": [
+        {
+          "ms": 729.6904,
+          "peak_bytes": 54747136,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 721.4888,
+          "peak_bytes": 54743040,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 729.4505,
+          "peak_bytes": 54747136,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1199.7124,
+          "peak_bytes": 54771712,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 908.0906,
+          "peak_bytes": 54743040,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "C++ owning-pointer / owned symbols (msvc)",
+      "language": "cpp",
+      "best_ms": 464.7748,
+      "peak_bytes": 136318976,
+      "samples": [
+        {
+          "ms": 464.7748,
+          "peak_bytes": 136318976,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 466.5771,
+          "peak_bytes": 136298496,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 471.7212,
+          "peak_bytes": 136314880,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 468.0164,
+          "peak_bytes": 136314880,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 479.4043,
+          "peak_bytes": 136302592,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "C++ index arena / borrowed symbols (msvc)",
+      "language": "cpp",
+      "best_ms": 211.8716,
+      "peak_bytes": 64012288,
+      "samples": [
+        {
+          "ms": 211.8716,
+          "peak_bytes": 64008192,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 214.9865,
+          "peak_bytes": 64012288,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 223.5581,
+          "peak_bytes": 63987712,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 475.0098,
+          "peak_bytes": 64020480,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 215.9568,
+          "peak_bytes": 64012288,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "C++ owning-pointer / owned symbols (clangcl)",
+      "language": "cpp",
+      "best_ms": 382.0484,
+      "peak_bytes": 136306688,
+      "samples": [
+        {
+          "ms": 382.0484,
+          "peak_bytes": 136290304,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 385.1186,
+          "peak_bytes": 136306688,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 395.0263,
+          "peak_bytes": 136286208,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 811.4405,
+          "peak_bytes": 136306688,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 597.7376,
+          "peak_bytes": 136286208,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "C++ index arena / borrowed symbols (clangcl)",
+      "language": "cpp",
+      "best_ms": 178.7166,
+      "peak_bytes": 64008192,
+      "samples": [
+        {
+          "ms": 178.8685,
+          "peak_bytes": 63991808,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 178.7166,
+          "peak_bytes": 64008192,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 214.4348,
+          "peak_bytes": 64008192,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 652.5192,
+          "peak_bytes": 64036864,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 383.7664,
+          "peak_bytes": 64008192,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "Rust sexp_box",
+      "language": "rust",
+      "best_ms": 392.2343,
+      "peak_bytes": 100913152,
+      "samples": [
+        {
+          "ms": 429.9768,
+          "peak_bytes": 100892672,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 392.2343,
+          "peak_bytes": 100876288,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 460.5582,
+          "peak_bytes": 100913152,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 399.9706,
+          "peak_bytes": 100864000,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 389.6518,
+          "peak_bytes": 100933632,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "label": "Rust sexp_arena",
+      "language": "rust",
+      "best_ms": 167.9551,
+      "peak_bytes": 65540096,
+      "samples": [
+        {
+          "ms": 176.7195,
+          "peak_bytes": 64389120,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 175.454,
+          "peak_bytes": 65527808,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 167.9551,
+          "peak_bytes": 65540096,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 230.6093,
+          "peak_bytes": 64405504,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        },
+        {
+          "ms": 166.1881,
+          "peak_bytes": 65597440,
+          "output": "9594225\n1523168\n20000\n0\n109567807650"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "R^ nominal union / copied-symbol arenas (LLVM/Clang)",
+      "language": "rhat",
+      "best_ms": 3635.7347,
+      "peak_bytes": 257626112,
+      "samples": [
+        {
+          "ms": 3635.7347,
+          "peak_bytes": 257626112,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 3705.2586,
+          "peak_bytes": 257626112,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 3665.0415,
+          "peak_bytes": 257626112,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 4035.4973,
+          "peak_bytes": 257654784,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 3923.5493,
+          "peak_bytes": 257630208,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "C++ owning-pointer / owned symbols (msvc)",
+      "language": "cpp",
+      "best_ms": 2296.4796,
+      "peak_bytes": 664322048,
+      "samples": [
+        {
+          "ms": 2296.4796,
+          "peak_bytes": 664301568,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 2316.7838,
+          "peak_bytes": 664322048,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 2304.8267,
+          "peak_bytes": 664305664,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2341.273,
+          "peak_bytes": 664334336,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 2452.3123,
+          "peak_bytes": 664264704,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "C++ index arena / borrowed symbols (msvc)",
+      "language": "cpp",
+      "best_ms": 1030.5403,
+      "peak_bytes": 307773440,
+      "samples": [
+        {
+          "ms": 1030.5403,
+          "peak_bytes": 307761152,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1049.7697,
+          "peak_bytes": 307769344,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1033.5267,
+          "peak_bytes": 307773440,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1268.0677,
+          "peak_bytes": 307777536,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1039.3868,
+          "peak_bytes": 307757056,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "C++ owning-pointer / owned symbols (clangcl)",
+      "language": "cpp",
+      "best_ms": 1883.8656,
+      "peak_bytes": 664313856,
+      "samples": [
+        {
+          "ms": 1903.1506,
+          "peak_bytes": 664256512,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1895.5057,
+          "peak_bytes": 664264704,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1883.8656,
+          "peak_bytes": 664313856,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2341.6993,
+          "peak_bytes": 664293376,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 2139.5666,
+          "peak_bytes": 664317952,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "C++ index arena / borrowed symbols (clangcl)",
+      "language": "cpp",
+      "best_ms": 818.6319,
+      "peak_bytes": 308051968,
+      "samples": [
+        {
+          "ms": 818.6319,
+          "peak_bytes": 308051968,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 888.6994,
+          "peak_bytes": 308051968,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 827.4086,
+          "peak_bytes": 308006912,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1229.7475,
+          "peak_bytes": 308072448,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1049.9715,
+          "peak_bytes": 308064256,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "Rust sexp_box",
+      "language": "rust",
+      "best_ms": 1910.2596,
+      "peak_bytes": 485748736,
+      "samples": [
+        {
+          "ms": 1922.5775,
+          "peak_bytes": 485695488,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1948.1956,
+          "peak_bytes": 485748736,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1910.2596,
+          "peak_bytes": 485666816,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1927.0109,
+          "peak_bytes": 485711872,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 1962.3712,
+          "peak_bytes": 485662720,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "label": "Rust sexp_arena",
+      "language": "rust",
+      "best_ms": 752.1349,
+      "peak_bytes": 254902272,
+      "samples": [
+        {
+          "ms": 752.1349,
+          "peak_bytes": 253898752,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 762.6002,
+          "peak_bytes": 253947904,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 753.169,
+          "peak_bytes": 254902272,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 873.8962,
+          "peak_bytes": 253935616,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        },
+        {
+          "ms": 765.1512,
+          "peak_bytes": 254853120,
+          "output": "47939902\n7609503\n100000\n0\n547350405826"
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "output": "500000\n87531239268",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.exe",
+      "cpp_control": {
+        "ms": 301.4005,
+        "peak_bytes": 29409280,
+        "output": "500000\n87531239268"
+      },
+      "rust_control": {
+        "ms": 157.8404,
+        "peak_bytes": 23752704,
+        "output": "500000\n87531239268"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "output": "4000000\n701055136604",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.exe",
+      "cpp_control": {
+        "ms": 854.6413,
+        "peak_bytes": 196145152,
+        "output": "4000000\n701055136604"
+      },
+      "rust_control": {
+        "ms": 485.6595,
+        "peak_bytes": 158011392,
+        "output": "4000000\n701055136604"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "output": "16000000\n2803538906112",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.exe",
+      "cpp_control": {
+        "ms": 2861.207,
+        "peak_bytes": 743706624,
+        "output": "16000000\n2803538906112"
+      },
+      "rust_control": {
+        "ms": 1779.2374,
+        "peak_bytes": 618770432,
+        "output": "16000000\n2803538906112"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "output": "36407\n675881",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_small.exe",
+      "cpp_control": {
+        "ms": 442.8612,
+        "peak_bytes": 5124096,
+        "output": "36407\n675881"
+      },
+      "rust_control": {
+        "ms": 481.0301,
+        "peak_bytes": 5570560,
+        "output": "36407\n675881"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "output": "294997\n950682",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_medium.exe",
+      "cpp_control": {
+        "ms": 410.1539,
+        "peak_bytes": 13512704,
+        "output": "294997\n950682"
+      },
+      "rust_control": {
+        "ms": 454.0739,
+        "peak_bytes": 13959168,
+        "output": "294997\n950682"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "output": "3102543\n293458",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_box_large.exe",
+      "cpp_control": {
+        "ms": 916.461,
+        "peak_bytes": 103985152,
+        "output": "3102543\n293458"
+      },
+      "rust_control": {
+        "ms": 986.7618,
+        "peak_bytes": 104493056,
+        "output": "3102543\n293458"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "output": "9594225\n1523168\n20000\n0\n109567807650",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_small.exe",
+      "cpp_control": {
+        "ms": 707.0936,
+        "peak_bytes": 136298496,
+        "output": "9594225\n1523168\n20000\n0\n109567807650"
+      },
+      "rust_control": {
+        "ms": 986.4477,
+        "peak_bytes": 100921344,
+        "output": "9594225\n1523168\n20000\n0\n109567807650"
+      },
+      "python_oracle": false
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "output": "47939902\n7609503\n100000\n0\n547350405826",
+      "cpp": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium_msvc_0.exe",
+      "rust": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_box_medium.exe",
+      "cpp_control": {
+        "ms": 2582.5082,
+        "peak_bytes": 664326144,
+        "output": "47939902\n7609503\n100000\n0\n547350405826"
+      },
+      "rust_control": {
+        "ms": 2256.6845,
+        "peak_bytes": 485728256,
+        "output": "47939902\n7609503\n100000\n0\n547350405826"
+      },
+      "python_oracle": false
+    }
+  ],
+  "source_hashes": {
+    "src\\front.c": "db76f36de658336aa8366305163a5cf0d189c5aaba99f2f3e911f6ac2e0520fc",
+    "src\\llvm.c": "7db397fb2579bce9c73e3a713e480c56ec2da07570af03f3c3b915c1851b8a7b",
+    "src\\main.c": "8d86db195b47936c02bea126c8a998a46f50495f28377d25cb288090be12b724",
+    "src\\numeric.c": "5140ef98f8907220f5cffaa53eaf43738ab4d0c0ee1fae206b75b04e26a0d4bf",
+    "src\\rhat.h": "fc6ce909b8ca660c39cc76842855ddd5b30ea905643f0b40ef7a99c763510c8b",
+    "src\\sema.c": "2355a77746dfb5ed9e22a726627cc78cfb88b9db1dbad2caec97f72c919188dc",
+    "runtime\\rhat_runtime.c": "c0dfdca54088c8e0aec92cef0348f864651c75ba08a1c8391619bcc2088339e7",
+    "bench\\compare_page_commits.py": "1c16c2633cbe2cc58ce5e8a64c8ef8ca0b527e04f7f4dd7302d67847d910ae63",
+    "bench\\run_bench.py": "08435bef8cf70e2b7aeece9848204693d8ac50afb7f490152643aa6e539846b5",
+    "bench\\run_workloads.py": "f2835b1c1e6da9cab377181379e132bbe6172246a925136513866c5359cee657",
+    "bench\\rhat\\bintrees.rh": "ad9823d6d4883bbb751aa52a271fc7607fe78cde638e9e7d9c03a3b245b8f0f1",
+    "bench\\rhat\\blur.rh": "5f83732970bf747ac47ae34448ff94f4b6edaef01eeda2e07810887aaaa2efee",
+    "bench\\rhat\\calc.rh": "0fa825e0d4602a7d767b534f99af5edfe9640496156c01d7d7c8ad62573ada52",
+    "bench\\rhat\\graph.rh": "d444710d97cfd09afc0c7d4d9f032d9563b2664a356ec4a888ef66a64d4f6d65",
+    "bench\\rhat\\interp.rh": "cf1d1dd9ca8f7f19af0b1f9855bf9ff369e3d0695a1b35af5ad5792360e503f3",
+    "bench\\rhat\\lru.rh": "00e5df502baaac4fcfd7e1c15afab242ecc63278708dd8bb7560dfbeb98b6989",
+    "bench\\rhat\\particles.rh": "f2214647128a1dceda92ef558ae3e4c0b39ab0515b9a74ab13512bee9c1f460c",
+    "bench\\rhat\\push.rh": "527a133752842f9c76216de73b74ed0deaca9e3cac5f6b9847df841aad7944bb",
+    "bench\\rhat\\records.rh": "6044da0ca4b50818472579e3dbebe28f4b0a2b369518b192f49cd55785b53f65",
+    "bench\\rhat\\respond.rh": "93d9f820f6e42e8a1b4b859f07deac287836b3395d7f5f31aede2bbe2206ab74",
+    "bench\\rhat\\scene.rh": "e86d6a2a178b81753975faa0cb5f38ba8a86e73a02a4ba6fc893dd5e68d5d48e",
+    "bench\\rhat\\sexp.rh": "d9c61191f52050220c168765f0eb9c934f44a9e272fc0afc5f163c94f9dcb536",
+    "bench\\rhat\\strlist.rh": "bf6f57d85874234701db0e9d2141457652f00e74133fe09b6dc96af8407378c0",
+    "bench\\rhat\\sum.rh": "97d5b14c6baf6c4d28c16958dcfe603169effc357e1baf425160dd700b42f9fe",
+    "bench\\rhat\\tree.rh": "39bee15effeade9ed0f44ba3667cf929ccaabc07253a58c8327f40d435474f32",
+    "bench\\rhat\\words.rh": "42c065a8a9305b57eff7154725ab7ac1126de4496f5de91a45c3046afc6820b9",
+    "bench\\upstream\\cpp\\bench.h": "405df4b59de8085fccf977ff82b98ce8731b5afe272feeca6cdd99f214d633a4",
+    "bench\\upstream\\cpp\\bintrees.cpp": "bf5313f34b86f245d213e58ddb4cd8f1fb57ce91cbeffd2da7bb23df0057d5c3",
+    "bench\\upstream\\cpp\\blur.cpp": "3598cde41cfd9a9c09224d246a84be6c014681261e8444aa82423b052f4a15ca",
+    "bench\\upstream\\cpp\\calc.cpp": "ec7b9b8ea472841d6951ee6c41adf029e898406a8126b274bfb9c1ca7424efc4",
+    "bench\\upstream\\cpp\\graph.cpp": "ddf753527f9c2965200c829c4541e0bd9ffc95ef0f01cc56233ddf4466361c56",
+    "bench\\upstream\\cpp\\interp.cpp": "ad9d0be4160934a70a8f8bf0edadc8a4dd31329781dc474c89e4b357530352f5",
+    "bench\\upstream\\cpp\\lru.cpp": "1213c324fcfcd383237cccd359c98049dcab74fb24ce99a12157213774417d44",
+    "bench\\upstream\\cpp\\particles.cpp": "cdf5498a29cdb38769a07848f2ae754d75945d0f1958fe6c93177a9b7bbd4f0e",
+    "bench\\upstream\\cpp\\push.cpp": "becf691faac98b878e8506015e35d5f1724ee0b07d36f7279bb00051d5c60a32",
+    "bench\\upstream\\cpp\\records.cpp": "973861e38ebccdbc0a9296128273a6bd61039ff7f2bbe67c8eb42ac28d717416",
+    "bench\\upstream\\cpp\\respond.cpp": "e28cdc91efcd0bec50733ab877cafb0fb4c9e09d2fac395a9a845a7d70e6b853",
+    "bench\\upstream\\cpp\\scene.cpp": "2f6c27097060afb1e8dcb69c4fbf6c5cea1325d768c178b57c48529b28e4c4e7",
+    "bench\\upstream\\cpp\\sexp.cpp": "e70a33a5420041a0feeec2505835edee33ccec951ed9daa5cc5213960a6019b9",
+    "bench\\upstream\\cpp\\strlist.cpp": "2bba2b908031cee299736033b514c32b6cce12871c52866ae736d3123e1a5359",
+    "bench\\upstream\\cpp\\sum.cpp": "3aabd8c5f54744cd2c4d87f36c52939511d65922874d583ae5d9a6d769d17b04",
+    "bench\\upstream\\cpp\\tree.cpp": "d72799ee3e0a4f4e8f9d34f9ad814e1c5e9858961ec38b9332d02eb067336889",
+    "bench\\upstream\\cpp\\words.cpp": "9b0ed0b48714ad73c3497aa45a3d938b6d1aec8ebf1b063b95e896686a1dae66",
+    "bench\\upstream\\rust\\bench.rs": "887dffd1c4c7b858b0072a8feb86ad0c72a93bc83ab8ce482444b8a830c5b09c",
+    "bench\\upstream\\rust\\bintrees_arena.rs": "4c660c2fe5c7189a5c90dd851ef56a0ab683d657c79011218977f89bcde8999b",
+    "bench\\upstream\\rust\\bintrees_box.rs": "c182cadf2b1ee716a03298e863a258e9a01922d175194278d45efa215fc5bee8",
+    "bench\\upstream\\rust\\blur_index.rs": "86af9f09c4b8cfcffc522922c0c209d493e33239335fba06501e8d732c9f6e1a",
+    "bench\\upstream\\rust\\blur_windows.rs": "d0388773956676b324c3f48eb39044c91a009af50424ca950b8e02fb42953888",
+    "bench\\upstream\\rust\\calc_arena.rs": "a5c0303e431401e4369a248485542b4ec795e0bb9ca3fb4d8cbcccf10c21c5ee",
+    "bench\\upstream\\rust\\calc_box.rs": "f0e0d7e400d55860fbdaf350ab8e9aeb9ca1d4eda261e493868631bb859e3333",
+    "bench\\upstream\\rust\\graph_arena.rs": "dfe9583c5b7710cb8a4b50665c9fa79f444f484263d519ebb4f5e772a10480f9",
+    "bench\\upstream\\rust\\graph_csr.rs": "ed559a92eb24d89b68010dc507dd12c667bb0cc65e1aa29902ac361651cd0852",
+    "bench\\upstream\\rust\\graph_nested.rs": "c08cdd160cefac652385fd22f20c06d14f57d2aa57a86d73a4776ac974da862c",
+    "bench\\upstream\\rust\\interp_arena.rs": "8f8a82c8a26465c5a3ec0f7f7534413a44fd654c32ec72264932fa63e38bcedc",
+    "bench\\upstream\\rust\\interp_box.rs": "00bde123e0c01e72210ffdf0d2be1c99072fc9ed1e0886cbe1f52f67eb2004de",
+    "bench\\upstream\\rust\\lru_hashmap.rs": "dd48aee7cf41bd1ae6fb35730fd1e9bf6f07b13cd20d74461a368eb561703563",
+    "bench\\upstream\\rust\\lru_open.rs": "6b81987d74039cfe5e6a004ddfc37d3dca467e21302485b30b3b1d5ad8f73308",
+    "bench\\upstream\\rust\\particles.rs": "96dbbcbf74729cc068f0a9ea0430948b486dcebe884386f6403118d0b57df483",
+    "bench\\upstream\\rust\\particles_scalar.rs": "befe47b4b99f9009dd6bea13129c8c901a5570140dfee5779692a8f09b889772",
+    "bench\\upstream\\rust\\push.rs": "75cb251b7b8ba469b68f4b75e9a08b723f8e6860df3b18aad7481914f90f4505",
+    "bench\\upstream\\rust\\records.rs": "43b64d86c6ee051b9fc386b0a3ce6a83fba8ababe448993f55ac46454573410a",
+    "bench\\upstream\\rust\\respond_dto.rs": "871e93c8b5b34146e4c561ca148dac7145b5795db31d378a7174ea09b199527b",
+    "bench\\upstream\\rust\\respond_stream.rs": "d261c101f5ef5df31c2474d352c7ad44b65983f94da6bb9cb6d689869dc043b0",
+    "bench\\upstream\\rust\\scene_arena.rs": "643993b50109ae33a5642c0f4320e5322e150a69ad329b9753c9b205bdb87e97",
+    "bench\\upstream\\rust\\scene_box.rs": "93d141e3be3cdfa63dde769e328de2ee7544e11d3ea573089c9067e82ac30010",
+    "bench\\upstream\\rust\\sexp_arena.rs": "94181898a4a4770a6814252136ae80f11a0a661620a6a669813d40d5a3cc6208",
+    "bench\\upstream\\rust\\sexp_box.rs": "2928e3660d5804da0c0b994c2d19ca2e9a804f670bdc9d8105b25dfcac8d08a7",
+    "bench\\upstream\\rust\\strlist_borrowed.rs": "ac9caaa9b2ae6911e29fdd9b8115531d8a14a4542e809822aa8f85773ed993fc",
+    "bench\\upstream\\rust\\strlist_owned.rs": "7dee8def2a9c4638fe2d020173622471e33e7bed12132dd2b862eba491a2c586",
+    "bench\\upstream\\rust\\sum.rs": "e33515996c08472d7c0fe59759a87c535b9dceaebfe0f9530775a6dc2fe9ff4d",
+    "bench\\upstream\\rust\\tree_arena.rs": "3826ae6a73c28b05fec87da3059919356dcf275d2c6ce608be9b88669364fcc3",
+    "bench\\upstream\\rust\\tree_box.rs": "3448f2785d9a003622a47a089d0a39d5d591988d30633b6579a36b254ccd051c",
+    "bench\\upstream\\rust\\words_hashmap.rs": "ab34623457aa1898f4c14fed8caab670fd511246bf9d40030203ab113ae2b9ce",
+    "bench\\upstream\\rust\\words_open.rs": "6969d235f018cba322091d730124583dc8a389d2a71a8d390a343c3efb86b127",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.rh": "bfd453e1c9bb44dc6b245c8ed1dd36a165c523f388a830ab4cbdfa96a6d8cd6b",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_small.exe.ll": "1445115dc2dbbdade7195742e77a6f27d8629642af9892dd645824ca698891a0",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.rh": "494cce5ae029022f3a41679faa1af117d1a637348c170ec70fd0317507e9b598",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_medium.exe.ll": "0a7b720141367f6904031f22c50623199aa16f0554f842da4a70a630bc50fad3",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.rh": "e16856b092942d9717e3be06095f8ce6e195440d6c11eb9620014df599d4d200",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\records_large.exe.ll": "e1ff320057ebe333136dd12aded31cb779f15c04a235d14fcb6ec8b2c37d4497",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small.rh": "be52575c898effe05dbc94914f4deef35078b82319721828c9a51e60acc7533b",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_small.exe.ll": "547025af488cabe4d53eb7df7ba2f48fb23623f05bfdbb85966f0851e80f2387",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium.rh": "29370a74c2e61ca5c813a13ccc98c8bd6d0a19b4fff3e986ce5dcc905d25e322",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_medium.exe.ll": "294fb850654dac990e6892fa2018cdd73a916aa1c2d04122110c011e69e3a0a5",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large.rh": "d8beb92db2fdbefc2142cf83045180b088b8fb70de5bb069301ed7c74e0c83ad",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\interp_large.exe.ll": "c213905aeb8ccc828aa5c5d7ae824758ec9c8daff9a03b90965af6320e0bc2e3",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small.rh": "db65f23080bae0613ef8d3fc8699ee7b0e852ac12f44062a490cfb3df06a6f63",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_small.exe.ll": "0d92e9e54772714ec85bd5560c8343db467eaf3b870d864aebf1e673543915ee",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium.rh": "36bd3002ecb77467e5d422abd022be106a072868795d3457b66f3d2c869a2e35",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-variants-parsers\\sexp_medium.exe.ll": "06f8ee7ec84ad4c3c4bec0a08c0830d86b3444bcc948a9df1d15ce3c94c4e6c9"
+  },
+  "representations": {
+    "records": "R^ ports records_fixed.goose with a native nominal Event union, 24-byte records and a 15-byte inline text capacity. Tag tests and checked payload extraction are generated from types; no manually synchronized kind/payload struct is used. Original sizes, RNG consumption, all four alternatives, actual per-Say word generation and four scans are preserved. This is the original fixed-mode variant; variable-size ADTs and separately owned string payloads are not claimed.",
+    "interp": "R^ uses a native nominal Expr union with 12-byte fixed nodes and u32 child indices, matching the C++ switch / Rust arena representation. The generated tag tests and checked payload extraction dispatch Num/Add/Mul/Neg. Original tree shape, postorder construction, seeds, depths and eight pass-dependent evaluations modulo 1000003 are preserved. Goose's variable-size nodes and relative references are not claimed.",
+    "sexp": "R^ generates the original text, parses it into 24-byte nominal union nodes linked by u32 first-child/previous-sibling indices, and copies symbol bytes into a separate owned stable region. Symbols retain u32 offsets/lengths, not borrowed input views. Index zero is a sentinel excluded from the count. EOF/unclosed-list errors explicitly propagate through a nominal ParseResult union; no nonlocal return or variable-size ADT is claimed. Original sizes, depth four, RNG, parse, reverse sibling order, four pass-dependent walks and all five checksum lines are preserved.",
+    "calc": "R^ generates and damages the original arithmetic inputs, parses every input with the original precedence into 24-byte nominal AST nodes and evaluates wrapping u64. ParseResult/EvalResult unions explicitly propagate EOF, missing-parenthesis, token and division-by-zero failures. All partially built nodes count toward the total. Text and node regions clear/truncate and reuse storage like C++/Rust arenas; no unbounded append or per-node heap allocation is used. Links are u32 indices; Goose's u16 relative links, variable-size nodes and nonlocal return are not claimed. Original sizes, depth choices, RNG, corruption, parse/evaluation order and all eight checksum lines are preserved."
+  },
+  "parameters": {
+    "records": "N",
+    "interp": "depth",
+    "sexp": "N",
+    "calc": "N"
+  },
+  "harness_source": "\"\"\"Measure newly ported workloads, keeping historical bintrees data intact.\"\"\"\r\nimport argparse\r\nfrom datetime import datetime, timezone\r\nimport json\r\nimport os\r\nimport pathlib\r\nimport platform\r\nimport shutil\r\n\r\nfrom run_bench import HERE, ROOT, UPSTREAM, command, measure, sha, sized\r\n\r\nWORKLOADS = {\r\n    \"sexp\": dict(sizes=(20_000,100_000,300_000), smoke=8,\r\n                 cpp=(\"owning-pointer / owned symbols\", \"index arena / borrowed symbols\"),\r\n                 rust=(\"sexp_box\",\"sexp_arena\"),\r\n                 rhat_label=\"R^ nominal union / copied-symbol arenas (LLVM/Clang)\",\r\n                 representation=\"R^ generates the original text, parses it into 24-byte nominal union nodes \"\r\n                 \"linked by u32 first-child/previous-sibling indices, and copies symbol bytes into a separate \"\r\n                 \"owned stable region. Symbols retain u32 offsets/lengths, not borrowed input views. Index \"\r\n                 \"zero is a sentinel excluded from the count. EOF/unclosed-list errors explicitly propagate \"\r\n                 \"through a nominal ParseResult union; no nonlocal return or variable-size ADT is claimed. \"\r\n                 \"Original sizes, depth four, RNG, parse, reverse sibling order, four pass-dependent walks \"\r\n                 \"and all five checksum lines are preserved.\"),\r\n    \"calc\": dict(sizes=(100_000,400_000,1_600_000), smoke=128,\r\n                 cpp=(\"owning AST / exceptions\", \"index arena / error codes\"), rust=(\"calc_box\",\"calc_arena\"),\r\n                 rhat_label=\"R^ nominal AST / explicit result unions (LLVM/Clang)\",\r\n                 representation=\"R^ generates and damages the original arithmetic inputs, parses every input \"\r\n                 \"with the original precedence into 24-byte nominal AST nodes and evaluates wrapping u64. \"\r\n                 \"ParseResult/EvalResult unions explicitly propagate EOF, missing-parenthesis, token and \"\r\n                 \"division-by-zero failures. All partially built nodes count toward the total. Text and node \"\r\n                 \"regions clear/truncate and reuse storage like C++/Rust arenas; no unbounded append or \"\r\n                 \"per-node heap allocation is used. Links are u32 indices; Goose's u16 relative links, \"\r\n                 \"variable-size nodes and nonlocal return are not claimed. Original sizes, depth choices, \"\r\n                 \"RNG, corruption, parse/evaluation order and all eight checksum lines are preserved.\"),\r\n    \"records\": dict(sizes=(500_000, 4_000_000, 16_000_000), smoke=256,\r\n                    cpp=(\"virtual objects\", \"variant / owned string\", \"variant / inline text\"), rust=(\"records\",),\r\n                    rhat_label=\"R^ native nominal union / inline text (LLVM/Clang)\",\r\n                    representation=\"R^ ports records_fixed.goose with a native nominal Event union, 24-byte \"\r\n                    \"records and a 15-byte inline text capacity. Tag tests and checked payload extraction are \"\r\n                    \"generated from types; no manually synchronized kind/payload struct is used. Original \"\r\n                    \"sizes, RNG consumption, all four alternatives, actual per-Say word generation and four \"\r\n                    \"scans are preserved. This is the original fixed-mode variant; variable-size ADTs and \"\r\n                    \"separately owned string payloads are not claimed.\"),\r\n    \"interp\": dict(sizes=(16,20,24), smoke=6, parameter=\"depth\",\r\n                   cpp=(\"virtual owning tree\", \"variant arena\", \"switch arena\"), rust=(\"interp_box\",\"interp_arena\"),\r\n                   rhat_label=\"R^ native nominal union / u32 arena (LLVM/Clang)\",\r\n                   representation=\"R^ uses a native nominal Expr union with 12-byte fixed nodes and u32 \"\r\n                   \"child indices, matching the C++ switch / Rust arena representation. The generated tag \"\r\n                   \"tests and checked payload extraction dispatch Num/Add/Mul/Neg. Original tree shape, \"\r\n                   \"postorder construction, seeds, depths and eight pass-dependent evaluations modulo \"\r\n                   \"1000003 are preserved. Goose's variable-size nodes and relative references are not claimed.\"),\r\n    \"respond\": dict(sizes=(100_000, 400_000, 1_600_000), smoke=64,\r\n                    cpp=(\"response DTO\", \"streaming JSON\"), rust=(\"respond_dto\", \"respond_stream\"),\r\n                    rhat_label=\"R^ streaming JSON / reused byte region (LLVM/Clang)\",\r\n                    representation=\"R^ ports the original respond_stream.goose variant, generating the same \"\r\n                    \"requests and JSON bytes, including real quote/backslash escaping. The output byte region \"\r\n                    \"is cleared and reused per request, as in the C++/Rust streaming controls. Decimal digits \"\r\n                    \"use a 24-byte inline scratch array. FNV-1a, original request counts, RNG consumption, \"\r\n                    \"item counts, quantities, prices and all three checksums are preserved. The DTO-building \"\r\n                    \"Goose variant and general nested owned strings/arrays are not implemented by this port.\"),\r\n    \"words\": dict(sizes=(500_000, 4_000_000, 16_000_000), smoke=1024,\r\n                  cpp=(\"owned-key unordered_map\", \"borrowed-key unordered_map\", \"open table\"),\r\n                  rust=(\"words_hashmap\", \"words_open\"),\r\n                  rhat_label=\"R^ packed words / borrowed-key open table (LLVM/Clang)\",\r\n                  representation=\"R^ stores vocabulary entries as 21-byte fixed-capacity words and copies \"\r\n                  \"split words into one owned packed byte region (one-byte varint lengths). The open-addressed \"\r\n                  \"table holds borrowed u8 slices into that stable packed region and i32 counts (24-byte slots). \"\r\n                  \"Keys are never copied into the table. FNV-1a, linear probing, original vocabulary sizes, \"\r\n                  \"skewed word selection, RNG sequence, text construction, split and all three checksums \"\r\n                  \"are preserved. Packed strings are a library representation; general variable-size array \"\r\n                  \"elements and a built-in dictionary are not claimed.\"),\r\n    \"strlist\": dict(sizes=(200_000, 2_000_000, 8_000_000), smoke=128,\r\n                    cpp=(\"owned strings\", \"borrowed string views\", \"flat offsets\"),\r\n                    rust=(\"strlist_owned\", \"strlist_borrowed\"),\r\n                    rhat_label=\"R^ owned packed word list (LLVM/Clang)\",\r\n                    representation=\"R^ copies each split word into a single owned byte region, prefixed by \"\r\n                    \"its one-byte varint length (original generated lengths are 3..20). The original text \"\r\n                    \"and copied word list coexist; scans decode the packed lengths four times. A WordList \"\r\n                    \"library struct holds the count and owned data region. This does not claim general \"\r\n                    \"variable-size array elements or nested owned strings in the language. No word is \"\r\n                    \"replaced by a borrowed view or offset pair. All original sizes, seed sequence, text \"\r\n                    \"splitting, copies, passes and two checksum lines are preserved.\"),\r\n    \"scene\": dict(sizes=(12, 14, 16), smoke=4, parameter=\"depth\",\r\n                  cpp=(\"owning-pointer tree\", \"index arena\"), rust=(\"scene_box\", \"scene_arena\"),\r\n                  rhat_label=\"R^ inline u32-child arena (LLVM/Clang)\",\r\n                  representation=\"R^ uses 120-byte nodes with inline local/world transforms, four u32 child \"\r\n                  \"indices and a u8 child count, matching the C++ expert / Rust arena layout. Preorder node \"\r\n                  \"creation, xorshift64 seeds, all original depths, 16 animation/update/gather frames and \"\r\n                  \"f32 matrix/translation arithmetic are preserved. Composition writes through references \"\r\n                  \"to disjoint fields in the node. R^ retains bounds checks and stable OS-backed array \"\r\n                  \"storage; Goose's 117-byte limited-array/relative-reference layout is not claimed.\"),\r\n    \"lru\": dict(sizes=(2_000_000, 8_000_000, 32_000_000), smoke=2048,\r\n                cpp=(\"list / unordered_map\", \"index arena / open table\"),\r\n                rust=(\"lru_hashmap\", \"lru_open\"),\r\n                rhat_label=\"R^ reusable index arena / open table (LLVM/Clang)\",\r\n                representation=\"R^ uses 16-byte nodes, 8-byte hash slots, two sentinel nodes and a u32 free list. \"\r\n                \"Pop reuses freed node indices; backward-shift deletion preserves open-addressing probes. \"\r\n                \"The pool never exceeds capacity + 2 nodes. This matches the original C++ expert / Rust open-table \"\r\n                \"representation, including hash, eviction, explicit removal and recency walk. Original sizes, \"\r\n                \"seed and all six checksum lines are preserved. Indices are ordinary integers, without \"\r\n                \"Goose's pool-bound relative-reference guarantees or generation checks. Arrays reserve stable \"\r\n                \"1 GiB regions and retain committed pages when their logical length decreases.\"),\r\n    \"push\": dict(sizes=(1_000_000, 16_000_000, 64_000_000), smoke=1000,\r\n                 cpp=(\"vector indices\", \"reserved vector indices\", \"deque pointers\"), rust=(\"push\",),\r\n                 rhat_label=\"R^ stable region / real pointer marks (LLVM/Clang)\",\r\n                 representation=\"R^ stores 8-byte Items and retains real Item references returned by push, \"\r\n                 \"marking every 64th record across all subsequent growth. Each array reserves 1 GiB of virtual \"\r\n                 \"address space and commits only used pages; elements never move. The original sizes, RNG, \"\r\n                 \"two final scans and checksums are preserved. C++ deque also retains pointers; C++ vector \"\r\n                 \"and Rust Vec controls retain indices. No mark is replaced by an index in the R^ port.\"),\r\n    \"sum\": dict(sizes=(1_000_000, 16_000_000, 128_000_000), smoke=1000,\r\n                cpp=(\"vector\", \"reserved vector\"), rust=(\"sum\",)),\r\n    \"blur\": dict(sizes=(1024, 2048, 8192), smoke=16,\r\n                 cpp=(\"flat\", \"row pointers\"), rust=(\"blur_index\", \"blur_windows\")),\r\n    \"particles\": dict(sizes=(100_000, 1_000_000, 4_000_000), smoke=32,\r\n                      cpp=(\"scalar AoS\", \"SoA\", \"vector AoS\"),\r\n                      rust=(\"particles_scalar\", \"particles\")),\r\n    \"tree\": dict(sizes=(16, 20, 24), smoke=6, parameter=\"depth\",\r\n                 cpp=(\"unique_ptr\", \"new/delete\", \"index arena\"), rust=(\"tree_box\", \"tree_arena\"),\r\n                 rhat_label=\"R^ u32-index node pool (LLVM/Clang)\",\r\n                 representation=\"R^ uses 12-byte nodes (i32 value, two u32 child indices), with index zero as null. \"\r\n                 \"It reserves a stable OS region and grows it by push; C++/Rust index arenas reserve exact capacity. \"\r\n                 \"Relative references and per-node allocation are not used. Eight full traversals and the original seeds are preserved.\"),\r\n    \"graph\": dict(sizes=(100_000, 500_000, 2_000_000), smoke=64, parameter=\"vertices\",\r\n                  cpp=(\"nested vectors\", \"CSR\", \"linked index arena\"),\r\n                  rust=(\"graph_nested\", \"graph_csr\", \"graph_arena\"),\r\n                  rhat_label=\"R^ linked u32-index pool (LLVM/Clang)\",\r\n                  representation=\"R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. \"\r\n                  \"Its queue overwrites an initialized prefix and pushes only when its high-water length grows; \"\r\n                  \"a separate tail resets between the four BFS sources. There is no unbounded append across sources. \"\r\n                  \"This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged.\"),\r\n}\r\n\r\n\r\ndef next_random(r):\r\n    mask = (1 << 64) - 1\r\n    r ^= (r << 13) & mask\r\n    r ^= r >> 7\r\n    return (r ^ (r << 17)) & mask\r\n\r\n\r\ndef oracle(name, n):\r\n    \"\"\"Independent, untimed smoke oracle. Larger runs cross-check C++ and Rust.\"\"\"\r\n    r = 12345\r\n    if name == \"sexp\":\r\n        # Generate an independent semantic tree, then render it. Expected walks\r\n        # use this tree directly, independently checking the R^ parser/pools.\r\n        def make(depth, seed):\r\n            seed = next_random(seed)\r\n            if depth == 0 or seed % 4 == 0:\r\n                if (seed >> 8) % 2 == 0:\r\n                    sr, word = seed, []\r\n                    for _ in range(3+seed % 12):\r\n                        sr = next_random(sr)\r\n                        word.append(97+sr % 26)\r\n                    return ('sym', bytes(word)), seed\r\n                return ('num', (seed >> 16) % 100000), seed\r\n            children = []\r\n            for _ in range(2+(seed >> 24) % 4):\r\n                child,seed = make(depth-1,seed)\r\n                children.append(child)\r\n            return ('list',children), seed\r\n        def render(node):\r\n            if node[0] == 'sym': return node[1]+b' '\r\n            if node[0] == 'num': return str(node[1]).encode()+b' '\r\n            return b'('+b''.join(render(child) for child in node[1])+b') '\r\n        def count(node):\r\n            return 1+(sum(count(child) for child in node[1]) if node[0] == 'list' else 0)\r\n        def walk(node,p):\r\n            if node[0] == 'sym': return len(node[1])+node[1][0]+p\r\n            if node[0] == 'num': return node[1] ^ p\r\n            return 1+sum(walk(child,p) for child in reversed(node[1]))\r\n        roots = []\r\n        for _ in range(n):\r\n            root,r = make(4,r)\r\n            roots.append(root)\r\n        length = sum(len(render(root)) for root in roots)\r\n        nodes = sum(count(root) for root in roots)\r\n        total = sum(walk(root,p) for p in range(4) for root in roots)\r\n        return f\"{length}\\n{nodes}\\n{n}\\n0\\n{total}\"\r\n    elif name == \"calc\":\r\n        # Immutable string generation + an independent Pratt parser, rather\r\n        # than the benchmark's expr/term/factor recursive-descent functions.\r\n        mask = (1 << 64)-1\r\n        class ParseFailure(Exception):\r\n            def __init__(self,code): self.code=code\r\n        def generate(depth,seed):\r\n            seed=next_random(seed)\r\n            kind=seed % 8\r\n            if depth == 0 or kind == 0: return str(1+(seed >> 8) % 99),seed\r\n            if kind == 1:\r\n                child,seed=generate(depth-1,seed)\r\n                return '-'+child,seed\r\n            if kind == 2:\r\n                child,seed=generate(depth-1,seed)\r\n                return '('+child+')',seed\r\n            left,seed=generate(depth-1,seed)\r\n            op='+-*/'[(seed >> 16) % 4]\r\n            right,seed=generate(depth-1,next_random(seed))\r\n            return left+' '+op+' '+right,seed\r\n        class Pratt:\r\n            def __init__(self,text): self.text,self.pos,self.nodes=text,0,0\r\n            def peek(self):\r\n                while self.pos < len(self.text) and self.text[self.pos] == ' ': self.pos+=1\r\n                return self.text[self.pos] if self.pos < len(self.text) else ''\r\n            def node(self,kind,*args):\r\n                self.nodes+=1\r\n                return (kind,*args)\r\n            def primary(self):\r\n                ch=self.peek()\r\n                if not ch: raise ParseFailure(1)\r\n                if ch.isdigit():\r\n                    start=self.pos\r\n                    while self.pos < len(self.text) and self.text[self.pos].isdigit(): self.pos+=1\r\n                    return self.node('num',int(self.text[start:self.pos]))\r\n                self.pos+=1\r\n                if ch == '-': return self.node('neg',self.primary())\r\n                if ch != '(': raise ParseFailure(3)\r\n                result=self.expr(0)\r\n                if self.peek() != ')': raise ParseFailure(2)\r\n                self.pos+=1\r\n                return self.node('paren',result)\r\n            def expr(self,minimum):\r\n                left=self.primary()\r\n                while True:\r\n                    op=self.peek()\r\n                    precedence={'+':1,'-':1,'*':2,'/':2}.get(op,-1)\r\n                    if precedence < minimum: return left\r\n                    self.pos+=1\r\n                    right=self.expr(precedence+1)\r\n                    left=self.node(op,left,right)\r\n        def evaluate(node):\r\n            kind=node[0]\r\n            if kind == 'num': return node[1] & mask\r\n            a=evaluate(node[1])\r\n            if kind == 'neg': return -a & mask\r\n            if kind == 'paren': return a\r\n            b=evaluate(node[2])\r\n            if kind == '+': return (a+b) & mask\r\n            if kind == '-': return (a-b) & mask\r\n            if kind == '*': return (a*b) & mask\r\n            if b == 0: raise ParseFailure(4)\r\n            return a//b\r\n        chars=nodes=ok=checksum=0\r\n        errors=[0]*5\r\n        for _ in range(n):\r\n            r=next_random(r)\r\n            text,final=generate(3+r % 4,r >> 8)\r\n            kind=final % 16\r\n            if kind == 0:\r\n                index=text.rfind(')')\r\n                index=0 if index < 0 else index\r\n                text=text[:index]+(' ' if text[index] == ')' else '#')+text[index+1:]\r\n            elif kind == 1:\r\n                index=(final >> 8) % len(text)\r\n                text=text[:index]+'#'+text[index+1:]\r\n            elif kind == 2: text=text[:len(text)//2]\r\n            elif kind == 3: text+=' / 0'\r\n            chars+=len(text)\r\n            parser=Pratt(text)\r\n            try:\r\n                tree=parser.expr(0)\r\n                if parser.peek(): raise ParseFailure(3)\r\n                value=evaluate(tree)\r\n            except ParseFailure as failure:\r\n                errors[failure.code]+=1\r\n            else:\r\n                ok+=1\r\n                checksum=(checksum*31+value) & mask\r\n            nodes+=parser.nodes\r\n        return '\\n'.join(map(str,(chars,nodes,ok,*errors[1:],checksum)))\r\n    elif name == \"records\":\r\n        scores = []\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            kind, ident = r % 8, (r >> 3) % 100_000\r\n            if kind < 4:\r\n                score = ident+(r >> 20) % 201-100+(r >> 40) % 201-100\r\n            elif kind < 6:\r\n                word_rng = next_random(r)\r\n                length = 4+word_rng % 12\r\n                word = []\r\n                for _ in range(length):\r\n                    word_rng = next_random(word_rng)\r\n                    word.append(97+word_rng % 26)\r\n                score = ident+len(word)+word[0]\r\n            elif kind < 7:\r\n                score = ident+(r >> 20) % 256\r\n            else:\r\n                score = 1\r\n            scores.append(score)\r\n        return f\"{n}\\n{4*sum(scores)}\"\r\n    elif name == \"interp\":\r\n        count = 0\r\n        def make(depth, seed):\r\n            nonlocal count\r\n            count += 1\r\n            seed = next_random(seed)\r\n            if depth == 0:\r\n                return ('num', seed % 1000)\r\n            kind = seed % 8\r\n            if kind < 1:\r\n                return ('neg', make(depth-1, seed))\r\n            return ('add' if kind < 5 else 'mul', make(depth-1, seed), make(depth-1, next_random(seed)))\r\n        root = make(n, r)\r\n        def evaluate(node, p):\r\n            if node[0] == 'num': return (node[1]+p) % 1_000_003\r\n            if node[0] == 'neg': return (1_000_003-evaluate(node[1],p)) % 1_000_003\r\n            a,b = evaluate(node[1],p),evaluate(node[2],p)\r\n            return (a+b if node[0] == 'add' else a*b) % 1_000_003\r\n        return f\"{count}\\n{sum(evaluate(root,p) for p in range(8)) % 1_000_003}\"\r\n    elif name == \"respond\":\r\n        mask = (1 << 64)-1\r\n        combined = total_bytes = 0\r\n        seed = r\r\n        for index in range(n):\r\n            seed = next_random(seed)\r\n            r0 = next_random(seed)\r\n            nr = next_random(r0 >> 8)\r\n            length, odd = 3+nr % 8, (nr >> 8) % 8 == 0\r\n            name = []\r\n            for i in range(length):\r\n                nr = next_random(nr)\r\n                name.append(('\"' if nr % 2 == 0 else chr(92)) if odd and i == 1 else chr(97+nr % 26))\r\n            items, ir = [], r0 >> 16\r\n            for _ in range(1+r0 % 8):\r\n                ir = next_random(ir)\r\n                sr = next_random(ir)\r\n                sku = chr(65+sr % 26)+chr(65+(sr >> 8) % 26)\r\n                for _ in range(4):\r\n                    sr = next_random(sr)\r\n                    sku += chr(48+sr % 10)\r\n                items.append(dict(sku=sku, qty=1+(ir >> 8) % 5, price=100+(ir >> 16) % 99900))\r\n            response = dict(id=(r0 >> 4) % 1_000_000, user=\"\".join(name), items=items,\r\n                            total=sum(item['qty']*item['price'] for item in items))\r\n            encoded = json.dumps(response, separators=(',', ':')).encode('ascii')\r\n            total_bytes += len(encoded)\r\n            h = 14695981039346656037\r\n            for byte in encoded:\r\n                h = ((h ^ byte)*1099511628211) & mask\r\n            combined ^= (h*31+index) & mask\r\n        return f\"{n}\\n{total_bytes}\\n{combined}\"\r\n    elif name == \"words\":\r\n        from collections import Counter\r\n        vocab = []\r\n        for _ in range(n//10+16):\r\n            r = next_random(r)\r\n            length = 3+r % 12\r\n            word = []\r\n            for _ in range(length):\r\n                r = next_random(r)\r\n                word.append(97+r % 26)\r\n            vocab.append(bytes(word))\r\n        counts = Counter()\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            a = r % len(vocab)\r\n            counts[vocab[a*a//len(vocab)]] += 1\r\n        return f\"{n}\\n{len(counts)}\\n{sum(count*(len(w)+w[0]) for w,count in counts.items())}\"\r\n    elif name == \"strlist\":\r\n        words = []\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            length = 3+r % 18\r\n            word = []\r\n            for _ in range(length):\r\n                r = next_random(r)\r\n                word.append(97+r % 26)\r\n            words.append(bytes(word))\r\n        text = b\" \".join(words)+b\" \"\r\n        parts = [part for part in text.split(b\" \") if part]\r\n        return f\"{len(parts)}\\n{4*sum(len(w)+w[0]+w[-1] for w in parts)}\"\r\n    elif name == \"scene\":\r\n        # Independent integer affine algebra: no packed nodes, child indices,\r\n        # f32 arithmetic or recursive update of a mutable pool.\r\n        nodes = []\r\n        def build(depth, seed, parent):\r\n            seed = next_random(seed)\r\n            axis, quarter = seed % 3, (seed >> 8) % 4\r\n            c, sn = (1, 0, -1, 0)[quarter], (0, 1, 0, -1)[quarter]\r\n            if axis == 0:\r\n                matrix = ((1, 0, 0), (0, c, -sn), (0, sn, c))\r\n            elif axis == 1:\r\n                matrix = ((c, 0, sn), (0, 1, 0), (-sn, 0, c))\r\n            else:\r\n                matrix = ((c, -sn, 0), (sn, c, 0), (0, 0, 1))\r\n            me = len(nodes)\r\n            nodes.append((parent, matrix, [(seed >> k) % 9 for k in (16, 24, 32)]))\r\n            if depth:\r\n                for i in range(1 + ((seed >> 40) % 4)):\r\n                    build(depth-1, next_random((seed+i) & ((1 << 64)-1)), me)\r\n        build(n, r, -1)\r\n        ident = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\r\n        total = 0\r\n        for frame in range(16):\r\n            worlds = []\r\n            for i, (parent, local_m, local_t) in enumerate(nodes):\r\n                if i % 7 == frame % 7:\r\n                    local_t[0], local_t[2] = frame % 5, 8-frame % 5\r\n                pm, pt = (ident, (0, 0, 0)) if parent < 0 else worlds[parent]\r\n                wm = tuple(tuple(sum(a*b for a,b in zip(row,col))\r\n                                 for col in zip(*local_m)) for row in pm)\r\n                wt = tuple(sum(a*b for a,b in zip(row,local_t))+t for row,t in zip(pm,pt))\r\n                worlds.append((wm, wt))\r\n                total += sum(wt)\r\n        return f\"{len(nodes)}\\n{total}\"\r\n    elif name == \"lru\":\r\n        from collections import OrderedDict\r\n        cache = OrderedDict()\r\n        cap = n//8\r\n        keys = cap*2\r\n        hits = misses = removes = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            a = r % keys\r\n            key = a*a//keys\r\n            if (r >> 40) % 16 == 0:\r\n                if key in cache:\r\n                    del cache[key]\r\n                    removes += 1\r\n            elif key in cache:\r\n                hits += 1\r\n                cache[key] += 1\r\n                cache.move_to_end(key, last=False)\r\n            else:\r\n                misses += 1\r\n                if len(cache) == cap:\r\n                    cache.popitem()\r\n                cache[key] = key % 1000\r\n                cache.move_to_end(key, last=False)\r\n        walk = 0\r\n        for key in cache:\r\n            walk = (walk*31+key) & ((1 << 64)-1)\r\n        return f\"{hits}\\n{misses}\\n{removes}\\n{len(cache)}\\n{walk}\\n{sum(cache.values())}\"\r\n    elif name == \"push\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            total += r % 1_000_000\r\n        marks = (n+63)//64\r\n        return f\"{n}\\n{marks}\\n{total}\\n{sum(i % 97 for i in range(0,n,64))}\"\r\n    elif name == \"sum\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            total += sum((r % 1000) ^ p for p in range(8))\r\n    elif name == \"blur\":\r\n        a, b = [], [0] * (n*n)\r\n        for _ in range(n*n):\r\n            r = next_random(r)\r\n            a.append(r % 256)\r\n        for _ in range(16):\r\n            for y in range(1, n-1):\r\n                for x in range(1, n-1):\r\n                    i = y*n+x\r\n                    b[i] = (a[i-n-1] + 2*a[i-n] + a[i-n+1]\r\n                            + 2*a[i-1] + 4*a[i] + 2*a[i+1]\r\n                            + a[i+n-1] + 2*a[i+n] + a[i+n+1]) >> 4\r\n            a, b = b, a\r\n        total = sum(a)\r\n    elif name == \"particles\":\r\n        total = 0\r\n        for _ in range(n):\r\n            r = next_random(r)\r\n            x, y, z = (float((r >> shift) % 1024) for shift in (0, 12, 24))\r\n            vx, vy, vz = (((r >> shift) % 256 - 128) / 16.0 for shift in (36, 44, 52))\r\n            # All these dyadic values are exactly representable in binary32.\r\n            for _ in range(200):\r\n                vy -= 0.0625\r\n                x, y, z = x+vx, y+vy, z+vz\r\n                if y < 0:\r\n                    y, vy = -y, -(vy*0.5)\r\n            total += int(x*16) + int(y*16) + int(z*16)\r\n    elif name == \"tree\":\r\n        def visit(depth, seed):\r\n            own = sum((seed % 1000) ^ p for p in range(8))\r\n            if depth == 0:\r\n                return own\r\n            return own + visit(depth-1, next_random(seed)) + visit(depth-1, next_random((seed+1) & ((1 << 64)-1)))\r\n        return f\"{(1 << (n+1))-1}\\n{visit(n, r)}\"\r\n    elif name == \"graph\":\r\n        # Lists in generation order and Python integers, independent of the\r\n        # R^ linked pool and its reusable queue representation.\r\n        adj = [[] for _ in range(n)]\r\n        for _ in range(n*8):\r\n            r = next_random(r)\r\n            adj[r % n].append((r >> 24) % n)\r\n        total, seed = 0, 999\r\n        for _ in range(4):\r\n            seed = next_random(seed)\r\n            src = seed % n\r\n            distance = [-1] * n\r\n            distance[src] = 0\r\n            queue = [src]\r\n            for u in queue:\r\n                total += distance[u]\r\n                for v in adj[u]:\r\n                    if distance[v] == -1:\r\n                        distance[v] = distance[u]+1\r\n                        queue.append(v)\r\n        return f\"{n*9}\\n{total}\"\r\n    else:\r\n        raise ValueError(f\"no independent oracle for {name}\")\r\n    return f\"{n}\\n{total}\"\r\n\r\n\r\ndef report(data, out):\r\n    out.mkdir(parents=True, exist_ok=True)\r\n    (out / \"workloads_results.json\").write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")\r\n    lines = [\"# Additional R^ workloads\", \"\", f\"Measured: {data['started_utc']} (UTC).\", \"\",\r\n             \"R^ replaces Goose. All comparison implementations were built and measured in this session.\", \"\",\r\n             f\"Whole-process wall time, two warm-ups, best of {data['reps']} timed samples; peak resident working set.\",\r\n             \"R^ retains bounds/range checks and OS-backed, stable-address arrays. No affinity is set.\", \"\",\r\n             \"Comparison / R^ time: above 1 means R^ is faster. No suite-wide average is claimed.\", \"\",\r\n             \"Smoke sizes are correctness checks and are not performance evidence.\", \"\",\r\n             \"## Environment\", \"\", \"| Item | Value |\", \"|---|---|\"]\r\n    for key, value in data[\"environment\"].items():\r\n        text = str(value).replace(\"|\", \"/\").replace(\"\\n\", \"; \")\r\n        lines.append(f\"| {key} | {text} |\")\r\n    if data.get(\"metadata_corrections\"):\r\n        lines += [\"\", *data[\"metadata_corrections\"]]\r\n    for name in data[\"workloads\"]:\r\n        lines += [\"\", \"## \" + name, \"\"]\r\n        if data.get(\"representations\", {}).get(name):\r\n            lines += [data[\"representations\"][name], \"\"]\r\n        parameter = data.get(\"parameters\", {}).get(name, \"N\")\r\n        lines += [f\"| Size / {parameter} | Implementation | Best ms | Peak MiB | Comparison / R^ time |\",\r\n                  \"|---|---|---:|---:|---:|\"]\r\n        for row in data[\"rows\"]:\r\n            if row[\"workload\"] != name:\r\n                continue\r\n            rhat = next(r for r in data[\"rows\"] if r[\"workload\"] == name\r\n                        and r[\"size\"] == row[\"size\"] and r[\"language\"] == \"rhat\")\r\n            lines.append(f\"| {row['size']} / {row['n']} | {row['label']} | {row['best_ms']:.2f} | \"\r\n                         f\"{row['peak_bytes']/1048576:.2f} | {row['best_ms']/rhat['best_ms']:.3f}x |\")\r\n    lines += [\"\", \"Every warm-up/sample checks its checksum. Each size first cross-checks independently built\",\r\n              \"C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.\",\r\n              \"Raw samples, checksums, build commands, source/LLVM/compiler/runtime SHA-256 and tool versions\",\r\n              \"are saved in workloads_results.json. Historical bintrees measurements are in \"\r\n              f\"[results.md]({pathlib.Path(os.path.relpath(HERE / 'results.md', out)).as_posix()}).\", \"\"]\r\n    (out / \"workloads_results.md\").write_text(\"\\n\".join(lines), encoding=\"utf-8\")\r\n\r\n\r\ndef main():\r\n    parser = argparse.ArgumentParser(description=__doc__)\r\n    parser.add_argument(\"--workloads\", nargs=\"+\", choices=WORKLOADS, default=list(WORKLOADS))\r\n    parser.add_argument(\"--sizes\", nargs=\"+\", choices=(\"smoke\", \"small\", \"medium\", \"large\"), default=[\"small\", \"medium\", \"large\"])\r\n    parser.add_argument(\"--reps\", type=int, default=3)\r\n    parser.add_argument(\"--timeout\", type=int, default=1800)\r\n    parser.add_argument(\"--compiler\", type=pathlib.Path, default=ROOT / \"build/Release/rhat.exe\")\r\n    parser.add_argument(\"--work\", type=pathlib.Path, default=ROOT / \"build/bench-workloads\")\r\n    parser.add_argument(\"--out\", type=pathlib.Path, default=HERE)\r\n    parser.add_argument(\"--report-only\", action=\"store_true\")\r\n    args = parser.parse_args()\r\n    if args.report_only:\r\n        report(json.loads((args.out / \"workloads_results.json\").read_text(encoding=\"utf-8\")), args.out)\r\n        return\r\n    if os.name != \"nt\" or args.reps < 1 or args.timeout < 1:\r\n        parser.error(\"Windows and positive --reps/--timeout required\")\r\n    tools = {name: shutil.which(exe) for name, exe in\r\n             ((\"clang\", \"clang\"), (\"msvc\", \"cl\"), (\"clangcl\", \"clang-cl\"), (\"rustc\", \"rustc\"))}\r\n    if not all(tools.values()):\r\n        parser.error(\"load scripts/devshell.ps1; Clang, MSVC, Rust required\")\r\n    compiler, work = args.compiler.resolve(), args.work.resolve()\r\n    work.mkdir(parents=True, exist_ok=True)\r\n    import winreg\r\n    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r\"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0\") as key:\r\n        cpu = winreg.QueryValueEx(key, \"ProcessorNameString\")[0].strip()\r\n    env = dict(cpu=cpu, os=platform.platform(), commit=command([\"git\", \"rev-parse\", \"HEAD\"], cwd=ROOT),\r\n               dirty=command([\"git\", \"status\", \"--porcelain\"], cwd=ROOT),\r\n               compiler_sha256=sha(compiler), runtime_sha256=sha(ROOT / \"runtime/rhat_runtime.c\"))\r\n    for key, exe in tools.items():\r\n        banner = command([exe, \"/Bv\", \"/?\"] if key == \"msvc\" else [exe, \"--version\"])\r\n        if key == \"msvc\":\r\n            env[key] = next((line.strip() for line in banner.splitlines()\r\n                             if \"Compiler Version\" in line or \"\u30b3\u30f3\u30d1\u30a4\u30e9 \u30d0\u30fc\u30b8\u30e7\u30f3\" in line), None)\r\n            if not env[key]:\r\n                raise RuntimeError(\"could not identify MSVC version\")\r\n        else:\r\n            env[key] = banner.splitlines()[0]\r\n    data = dict(started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,\r\n                environment=env, workloads=args.workloads, warmups=2, reps=args.reps,\r\n                builds=[], rows=[], controls=[], source_hashes={},\r\n                representations={name: WORKLOADS[name].get(\"representation\", \"\") for name in args.workloads},\r\n                parameters={name: WORKLOADS[name].get(\"parameter\", \"N\") for name in args.workloads},\r\n                harness_source=pathlib.Path(__file__).read_bytes().decode(\"utf-8\"))\r\n    for directory in (ROOT / \"src\", ROOT / \"runtime\", HERE):\r\n        for path in directory.rglob(\"*\"):\r\n            if path.is_file() and path.suffix in (\".c\", \".h\", \".rh\", \".rs\", \".cpp\", \".py\"):\r\n                data[\"source_hashes\"][str(path.relative_to(ROOT))] = sha(path)\r\n\r\n    def build(argv):\r\n        data[\"builds\"].append(list(map(str, argv)))\r\n        command(argv, cwd=work)\r\n\r\n    shutil.copyfile(HERE / \"upstream/rust/bench.rs\", work / \"bench.rs\")\r\n    for name in args.workloads:\r\n        spec = WORKLOADS[name]\r\n        for size in args.sizes:\r\n            n = spec[\"smoke\"] if size == \"smoke\" else spec[\"sizes\"][(\"small\", \"medium\", \"large\").index(size)]\r\n            implementations = []\r\n            src = work / f\"{name}_{size}.rh\"\r\n            sized(HERE / f\"rhat/{name}.rh\", src, n)\r\n            exe = src.with_suffix(\".exe\")\r\n            build([compiler, \"build\", src, \"-o\", exe, \"-O2\", \"--clang\", tools[\"clang\"],\r\n                   \"--dump-ir\", src.with_suffix(\".rir\")])\r\n            data[\"source_hashes\"][str(src)] = sha(src)\r\n            data[\"source_hashes\"][str(exe) + \".ll\"] = sha(pathlib.Path(str(exe) + \".ll\"))\r\n            implementations.append((spec.get(\"rhat_label\", \"R^ LLVM/Clang\"), \"rhat\", exe))\r\n            for tc in (\"msvc\", \"clangcl\"):\r\n                for variant, label in enumerate(spec[\"cpp\"]):\r\n                    exe = work / f\"{name}_{size}_{tc}_{variant}.exe\"\r\n                    build([tools[tc], \"/nologo\", \"/O2\", \"/EHsc\", \"/std:c++20\", f\"/DBENCH_N={n}\",\r\n                           f\"/DVARIANT={variant}\", HERE / f\"upstream/cpp/{name}.cpp\",\r\n                           \"/Fe\" + str(exe), \"/Fo\" + str(exe.with_suffix(\".obj\"))])\r\n                    implementations.append((f\"C++ {label} ({tc})\", \"cpp\", exe))\r\n            for rust in spec[\"rust\"]:\r\n                src = work / f\"{rust}_{size}.rs\"\r\n                sized(HERE / f\"upstream/rust/{rust}.rs\", src, n)\r\n                exe = src.with_suffix(\".exe\")\r\n                build([tools[\"rustc\"], \"-O\", \"-C\", \"codegen-units=1\", src, \"-o\", exe])\r\n                implementations.append((f\"Rust {rust}\", \"rust\", exe))\r\n            # Establish the result from two independent controls before timing.\r\n            cpp = next(exe for _, lang, exe in implementations if lang == \"cpp\")\r\n            rust = next(exe for _, lang, exe in implementations if lang == \"rust\")\r\n            cpp_control, rust_control = measure(cpp, args.timeout), measure(rust, args.timeout)\r\n            expected = cpp_control[\"output\"]\r\n            if rust_control[\"output\"] != expected:\r\n                raise RuntimeError(f\"{name}/{size}: C++/Rust control mismatch\")\r\n            if size == \"smoke\" and expected != oracle(name, n):\r\n                raise RuntimeError(f\"{name}: Python oracle mismatch\")\r\n            data[\"controls\"].append(dict(workload=name, size=size, n=n, output=expected,\r\n                                         cpp=str(cpp), rust=str(rust), cpp_control=cpp_control,\r\n                                         rust_control=rust_control, python_oracle=size == \"smoke\"))\r\n            samples = {label: [] for label, _, _ in implementations}\r\n            warmups = {label: [] for label, _, _ in implementations}\r\n            for iteration in range(2 + args.reps):\r\n                ordered = implementations if iteration % 2 == 0 else list(reversed(implementations))\r\n                for label, _, exe in ordered:\r\n                    result = measure(exe, args.timeout)\r\n                    if result[\"output\"] != expected:\r\n                        raise RuntimeError(f\"{name}/{size} {label}: checksum {result['output']} != {expected}\")\r\n                    (warmups if iteration < 2 else samples)[label].append(result)\r\n                    print(f\"{name}/{size} {label} round {iteration+1}: {result['ms']:.2f} ms verified\", flush=True)\r\n            for label, language, _ in implementations:\r\n                data[\"rows\"].append(dict(workload=name, size=size, n=n, label=label, language=language,\r\n                                         best_ms=min(s[\"ms\"] for s in samples[label]),\r\n                                         peak_bytes=max(s[\"peak_bytes\"] for s in samples[label]),\r\n                                         samples=samples[label], warmups=warmups[label]))\r\n            report(data, args.out)\r\n\r\n\r\nif __name__ == \"__main__\":\r\n    main()\r\n"
+}

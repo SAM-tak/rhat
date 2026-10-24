@@ -29,13 +29,14 @@ char *llvm_type(Type *t) {
   case T_F64:
     return "double";
   case T_STRING:
+  case T_SLICE:
     return "{ ptr, i64 }";
   case T_REF:
     return "ptr";
   case T_ARRAY:
     return fmt("[%d x %s]", t->count, llvm_type(t->elem));
   case T_GROW:
-    return "{ ptr, i64, i64 }";
+    return "{ ptr, i64, i64, i64 }";
   default:
     return fmt("%%rh_type_%d", t->id);
   }
@@ -128,6 +129,9 @@ static void instruction(Output *o, Instr *i) {
               "  %%p%d = call ptr @rh_array_at(ptr %%p%d, i64 %%t%d, i64 %zu, "
               "i32 %d)\n",
               i->dst, i->a, a, t->elem->size, i->loc.line);
+    else if (t->kind == T_SLICE || t->kind == T_STRING)
+      fprintf(f, "  %%p%d = call ptr @rh_view_at(ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n",
+              i->dst, i->a, a, t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
     else {
       fprintf(f, "  call void @rh_bounds(i64 %%t%d, i64 %d, i32 %d)\n", a,
               t->count, i->loc.line);
@@ -150,6 +154,71 @@ static void instruction(Output *o, Instr *i) {
     if (i->dst >= 0)
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     break;
+  case I_POP:
+    fprintf(f, "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
+            i->a, i->dst, t->elem->size, i->loc.line);
+    break;
+  case I_CLEAR:
+    fprintf(f, "  call void @rh_array_clear(ptr %%p%d)\n", i->a);
+    break;
+  case I_UNION: {
+    Type *arm = slot_type(o, i->a);
+    save(o, i->dst, t, "zeroinitializer");
+    int tag = ++o->tmp, payload = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tag, llvm_type(t), i->dst);
+    fprintf(f, "  store i32 %d, ptr %%t%d\n", i->label, tag);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", payload, llvm_type(t), i->dst);
+    a = load(o, i->a);
+    fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(arm), a, payload);
+    break;
+  }
+  case I_CASE_IS:
+  case I_CASE_GET: {
+    int tagptr = ++o->tmp, tag = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tagptr, llvm_type(t), i->a);
+    fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, tagptr);
+    if (i->op == I_CASE_IS) {
+      r = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", r, tag, i->label);
+      save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
+    } else {
+      fprintf(f, "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n", tag, i->label, i->loc.line);
+      int payload = ++o->tmp;
+      Type *arm = slot_type(o, i->dst);
+      fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", payload, llvm_type(t), i->a);
+      r = ++o->tmp;
+      fprintf(f, "  %%t%d = load %s, ptr %%t%d\n", r, llvm_type(arm), payload);
+      save(o, i->dst, arm, fmt("%%t%d", r));
+    }
+    break;
+  }
+  case I_TRUNCATE:
+    a = load(o, i->b);
+    fprintf(f, "  call void @rh_array_truncate(ptr %%p%d, i64 %%t%d, i32 %d)\n", i->a, a, i->loc.line);
+    break;
+  case I_APPEND:
+    fprintf(f, "  call void @rh_array_append(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
+            i->a, i->b, t->elem->size, i->loc.line);
+    break;
+  case I_SLICE: {
+    char *data, *length;
+    if (t->kind == T_ARRAY) {
+      data = fmt("%%p%d", i->a);
+      length = fmt("%d", t->count);
+    } else {
+      int base = load(o, i->a);
+      int ptr = ++o->tmp, len = ++o->tmp;
+      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 0\n", ptr, llvm_type(t), base);
+      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 1\n", len, llvm_type(t), base);
+      data = fmt("%%t%d", ptr);
+      length = fmt("%%t%d", len);
+    }
+    a = load(o, i->b);
+    b = load(o, i->other);
+    fprintf(f, "  call void @rh_make_slice(ptr %%p%d, ptr %s, i64 %s, i64 %%t%d, i64 %%t%d, i64 %zu, i32 %d)\n",
+            i->dst, data, length, a, b, t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
+    break;
+  }
   case I_LENGTH:
     if (t->kind == T_ARRAY)
       save(o, i->dst, slot_type(o, i->dst), fmt("%d", t->count));
@@ -419,6 +488,12 @@ void emit_llvm(Program *p, const char *path) {
   fputs("; R^ typed, destination-passing LLVM IR.\n", f);
   for (int j = 0; j < p->types.n; j++) {
     Type *t = p->types.v[j];
+    if (t->kind == T_UNION) {
+      fprintf(f, "%s = type { i32, [%zu x i8], [%zu x i%zu] }\n", llvm_type(t),
+              t->payload_offset - 4, (t->payload_bytes + t->payload_align - 1) / t->payload_align,
+              t->payload_align * 8);
+      continue;
+    }
     if (t->kind != T_STRUCT)
       continue;
     fprintf(f, "%s = type { ", llvm_type(t));
@@ -460,6 +535,13 @@ void emit_llvm(Program *p, const char *path) {
         f);
   fputs("declare i8 @rh_f8_encode_f64(double)\n"
         "declare void @rh_check_float_cast(double, i32, i32, i32)\n", f);
+  fputs("declare void @rh_array_truncate(ptr, i64, i32)\n"
+        "declare void @rh_union_tag(i32, i32, i32)\n"
+        "declare void @rh_array_append(ptr, ptr, i64, i32)\n"
+        "declare void @rh_make_slice(ptr, ptr, i64, i64, i64, i64, i32)\n"
+        "declare ptr @rh_view_at(ptr, i64, i64, i32)\n"
+        "declare void @rh_array_pop(ptr, ptr, i64, i32)\n"
+        "declare void @rh_array_clear(ptr)\n", f);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     fprintf(f, "\n; %s%s%s\ndefine void @%s(", in->self ? in->self->name : "",
@@ -506,12 +588,18 @@ void dump_ir(Program *p, const char *path) {
                          "index.checked",  "call",       "print",
                          "assert",         "label",      "branch",
                          "branch.if",      "return",     "region.construct",
-                         "region.release", "array.push", "length", "numeric.convert"};
+                         "region.release", "array.push", "length", "numeric.convert",
+                         "array.pop", "array.clear", "slice.checked", "array.append", "union.construct", "union.is", "union.get.checked", "array.truncate"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,
             d->type->align, d->abstract ? " abstract" : "");
     size_t off = 0;
+    if (d->type->kind == T_UNION) {
+      fprintf(f, "  tag +0 : u32^ payload=+%zu bytes=%zu\n", d->type->payload_offset, d->type->payload_bytes);
+      for (int k = 0; k < d->alternatives.n; k++)
+        fprintf(f, "  case %d : %s\n", k, type_name(d->alternatives.v[k]));
+    }
     for (int k = 0; k < d->fields.n; k++) {
       Field *a = d->fields.v[k];
       off = (off + a->type->align - 1) / a->type->align * a->type->align;
@@ -544,6 +632,10 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " target=%s", i->callee->symbol);
       if (i->op == I_BR || i->op == I_CBR || i->op == I_LABEL)
         fprintf(f, " label=%d other=%d", i->label, i->other);
+      if (i->op == I_UNION || i->op == I_CASE_IS || i->op == I_CASE_GET)
+        fprintf(f, " tag=%d", i->label);
+      if (i->op == I_SLICE)
+        fprintf(f, " count=%%%d", i->other);
       if (i->op == I_FIELD)
         fprintf(f, " field=%d", i->label);
       if (i->args.n) {

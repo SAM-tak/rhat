@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
+from artifacts import Executables
+
 UPSTREAM = "94cc64daeabcae6f072dc1fe2b864acda5a001bc"
 SIZES = {"smoke": 6, "small": 15, "medium": 17, "large": 19}
 
@@ -170,16 +172,16 @@ def write_results(data, out, page_update=None):
         if page_update and row["label"] == "R^ LLVM/Clang":
             continue
         lines.append(f"| {row['label']} | {row['best_ms']:.2f} | {row['peak_bytes']/1048576:.2f} |")
+    current_link = pathlib.Path(os.path.relpath(HERE / "current/workloads_results.md", out)).as_posix()
+    coverage_link = pathlib.Path(os.path.relpath(HERE / "coverage.md", out)).as_posix()
     lines += ["", "## Limits", "",
               "The R^ port uses two i32 child indices per node (8 bytes), rather than",
-              "Goose relative references. These recorded runs reserve/release a 64 MiB virtual region for",
+              f"Goose relative references. These recorded runs reserve/release a {data.get('runtime_region_bytes',64*1024*1024)//1048576} MiB virtual region for",
               "each tree; the C++/Rust arena rows reuse their scratch allocation across trees.",
               ("R^ retains runtime bounds checks. Pushes within already committed pages make no OS call."
                if page_update else "Runtime bounds checks and OS-backed array storage are included in these measurements."),
               "There is no R^/MSVC row: MSVC does not consume LLVM IR.",
-              "Six more workloads are now ported; their freshly measured comparisons are in",
-              "[workloads_results.md](workloads_results.md), [tree_graph/workloads_results.md](tree_graph/workloads_results.md),",
-              "and [push/workloads_results.md](push/workloads_results.md). Nine workloads remain; see [coverage.md](coverage.md).",
+              f"All fifteen other workloads are ported; see [current comparisons]({current_link}) and [coverage]({coverage_link}).",
               ("Current R^ samples, sources and hashes are in `page_commit_results.json`; C++/Rust and the original R^ baseline are in `results.json`."
                if page_update else "Raw samples, checksums, source hashes and build commands are in `results.json`."), ""]
     if page_update:
@@ -189,7 +191,7 @@ def write_results(data, out, page_update=None):
                   f"Small: **{before:.2f} ms -> {after:.2f} ms ({before/after:.2f}x faster)**,",
                   "using the same compiler, LLVM IR and Clang flags. See",
                   "[page_commit_results.md](page_commit_results.md) for the full before/after record.", ""]
-    lines[4:4] = ["Additional results: [sum / blur / particles](workloads_results.md), [tree / graph](tree_graph/workloads_results.md), [push](push/workloads_results.md).", ""]
+    lines[4:4] = [f"Additional results: [all 15 other workloads]({current_link}); [coverage and representation notes]({coverage_link}).", ""]
     (out / "results.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -204,6 +206,10 @@ def main():
     parser.add_argument("--work", type=pathlib.Path, default=ROOT / "build/bench")
     args = parser.parse_args()
     if args.report_only:
+        if args.out.resolve() == HERE.resolve() and (HERE/'current/workloads_results.json').exists() and (HERE/'current_bintrees/results.json').exists():
+            from report_suite import write_suite
+            write_suite()
+            return
         data = json.loads((args.out / "results.json").read_text(encoding="utf-8"))
         page_path = args.out / "page_commit_results.json"
         page_update = json.loads(page_path.read_text(encoding="utf-8")) if page_path.exists() else None
@@ -238,7 +244,8 @@ def main():
                msvc=msvc_version,
                rustc=command([tools["rustc"], "--version"]),
                compiler_sha256=sha(args.compiler), runtime_sha256=sha(ROOT / "runtime/rhat_runtime.c"))
-    data = dict(started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    binaries = Executables()
+    data = dict(runtime_region_bytes=1024*1024*1024, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 reps=args.reps, warmups=2, environment=env, source_hashes={}, rows=[], startup=[], builds=[])
     for path in sorted(HERE.rglob("*")):
         if path.is_file() and path.suffix in (".rh", ".cpp", ".h", ".rs", ".py"):
@@ -249,7 +256,7 @@ def main():
         command(argv, cwd=args.work)
 
     def sample(exe, expected):
-        result = measure(exe, args.timeout)
+        result = binaries.measure(exe, lambda path: measure(path, args.timeout))
         if result["output"] != expected:
             raise RuntimeError(f"checksum mismatch: {exe}\n{result['output']}\nexpected:\n{expected}")
         return result
@@ -271,6 +278,7 @@ def main():
             build([tools[tc], "-O", "-C", "codegen-units=1", src, "-o", exe])
         else:
             cpp_build(src, exe, tc)
+        binaries.add(exe)
         samples = [sample(exe, "") for _ in range(5)]
         data["startup"].append(dict(label=label, best_ms=min(s["ms"] for s in samples),
                                     peak_bytes=max(s["peak_bytes"] for s in samples), samples=samples))
@@ -280,15 +288,19 @@ def main():
         implementations = []
         src = args.work / f"bintrees_{size}.rh"
         sized(HERE / "rhat/bintrees.rh", src, depth)
-        exe = src.with_suffix(".exe")
+        exe = args.work / f"rhat_bintrees_{size}.exe"
         build([args.compiler, "build", src, "-o", exe, "-O2", "--clang", clang,
                "--dump-ir", src.with_suffix(".rir")])
+        binaries.add(exe)
+        data["source_hashes"][str(src)] = sha(src)
+        data["source_hashes"][str(exe)+".ll"] = sha(pathlib.Path(str(exe)+".ll"))
         implementations.append(("R^ i32-index local region (LLVM/Clang)", "rhat", exe))
         for tc in ("msvc", "clangcl"):
             for variant, shape in ((0, "new/delete"), (1, "reused arena")):
                 exe = args.work / f"bintrees_{size}_{tc}_{variant}.exe"
                 cpp_build(HERE / "upstream/cpp/bintrees.cpp", exe, tc,
                           [f"/DBENCH_N={depth}", f"/DVARIANT={variant}"])
+                binaries.add(exe)
                 implementations.append((f"C++ {shape} ({tc})", "cpp", exe))
         shutil.copyfile(HERE / "upstream/rust/bench.rs", args.work / "bench.rs")
         for shape in ("box", "arena"):
@@ -296,6 +308,7 @@ def main():
             sized(HERE / f"upstream/rust/bintrees_{shape}.rs", src, depth)
             exe = src.with_suffix(".exe")
             build([tools["rustc"], "-O", "-C", "codegen-units=1", src, "-o", exe])
+            binaries.add(exe)
             implementations.append((f"Rust {shape}", "rust", exe))
         # Sequential, alternating implementation order between rounds. No concurrent workloads.
         samples = {label: [] for label, _, _ in implementations}
@@ -307,9 +320,9 @@ def main():
                 result = sample(exe, oracle(depth))
                 (warmups if iteration < 2 else samples)[label].append(result)
                 print(f"  {result['ms']:.2f} ms, {result['peak_bytes']/1048576:.2f} MiB; verified", flush=True)
-        for label, language, _ in implementations:
+        for label, language, exe in implementations:
             values = samples[label]
-            data["rows"].append(dict(label=label, language=language, size=size, depth=depth,
+            data["rows"].append(dict(executable=str(exe), executable_sha256=binaries.hashes[binaries.key(exe)], label=label, language=language, size=size, depth=depth,
                                      best_ms=min(s["ms"] for s in values),
                                      peak_bytes=max(s["peak_bytes"] for s in values),
                                      samples=values, warmups=warmups[label]))

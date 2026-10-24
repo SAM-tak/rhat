@@ -53,7 +53,8 @@ static DWORD page_state(const void *address) {
   return info.State;
 }
 int main(int argc, char **argv) {
-  _Static_assert(sizeof(RhArray) == 24, "generated LLVM array ABI");
+  _Static_assert(sizeof(RhArray) == 32, "generated LLVM array ABI");
+  _Static_assert(sizeof(RhSlice) == 16, "generated LLVM slice ABI");
   SYSTEM_INFO info;
   GetSystemInfo(&info);
   SIZE_T page = info.dwPageSize;
@@ -69,6 +70,15 @@ int main(int argc, char **argv) {
       fail_commit = 1;
     if (!strcmp(argv[1], "capacity"))
       a.len = a.capacity;
+    if (!strcmp(argv[1], "truncate-growth")) {
+      rh_array_truncate(&a, 1, 91);
+      return 2;
+    }
+    if (!strcmp(argv[1], "append-capacity")) {
+      RhSlice too_many = {&value, UINT64_MAX};
+      rh_array_append(&a, &too_many, 1, 91);
+      return 2;
+    }
     rh_array_push(&a, &value, 1, 91);
     return 2; /* Every selected failure must terminate inside the runtime. */
   }
@@ -84,6 +94,46 @@ int main(int argc, char **argv) {
   rh_array_push(&a, &value, 1, 1);
   assert(commits == 2 && last_commit == a.data + page && last_size == page);
   assert(first == a.data && *first == 37 && a.data[page] == 37);
+  /* Logical shrinking keeps pages and initialized slots available for reuse. */
+  unsigned char popped = 0;
+  uint64_t water = a.high_water;
+  unsigned saved_commits = commits;
+  rh_array_pop(&a, &popped, 1, 1);
+  assert(popped == 37 && a.len == page && a.high_water == water);
+  assert(rh_array_push(&a, &value, 1, 1) == a.data + page);
+  rh_array_clear(&a);
+  assert(a.len == 0 && a.high_water == water && *first == 37);
+  value = 99;
+  assert(rh_array_push(&a, &value, 1, 1) == first && *first == 99);
+  for (uint64_t j = 1; j < water; j++)
+    rh_array_push(&a, &value, 1, 1);
+  assert(commits == saved_commits);
+  for (uint64_t j = water; j < page * 2 + 1; j++)
+    rh_array_push(&a, &value, 1, 1);
+  assert(commits == saved_commits + 1 && a.high_water == page * 2 + 1);
+
+  /* Bulk copies retain stable slots, allow overlap, and commit a multi-page
+   * extension in one call. An empty append does not touch memory or the OS. */
+  RhSlice kept = {a.data, a.len}, zero = {a.data, 0};
+  water = a.high_water;
+  saved_commits = commits;
+  rh_array_clear(&a);
+  rh_array_append(&a, &zero, 1, 1);
+  assert(a.len == 0 && commits == saved_commits);
+  rh_array_append(&a, &kept, 1, 1);
+  assert(a.len == kept.len && a.high_water == water && commits == saved_commits);
+  rh_array_append(&a, &kept, 1, 1);
+  assert(a.len == kept.len * 2 && a.high_water == water * 2);
+  assert(commits == saved_commits + 1 && last_size == page * 2);
+  assert(a.data[0] == 99 && a.data[a.len - 1] == 99);
+
+  RhSlice rest = {a.data + 1, a.len - 1};
+  water = a.high_water;
+  saved_commits = commits;
+  rh_array_truncate(&a, 1, 1);
+  assert(a.len == 1 && a.high_water == water && *first == 99);
+  rh_array_append(&a, &rest, 1, 1);
+  assert(a.len == rest.len + 1 && a.high_water == water && commits == saved_commits);
 
   /* Three-byte elements cross a page partway through an element. */
   rh_region_init(&triples);
@@ -119,7 +169,8 @@ int main(int argc, char **argv) {
   rh_region_release(&large);
   rh_region_release(&triples);
   rh_region_release(&a);
-  assert(releases == 4 && a.data == NULL && a.len == 0 && a.capacity == 0);
+  assert(releases == 4 && a.data == NULL && a.len == 0 && a.capacity == 0 &&
+         a.high_water == 0);
   assert(queries == 1);
   /* Cross the old 64 MiB limit through real pushes, retaining stable storage. */
   RhArray wide;

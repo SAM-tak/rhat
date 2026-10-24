@@ -1,0 +1,109 @@
+# Port of aardappel/goose bench/goose/words.goose, Apache-2.0.
+# Fixed-capacity vocabulary, copied packed word list and borrowed slice keys.
+def^ WordList { self^{ count:i64^=0, data:u8^[>..] } }
+let^ next=f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ split=p^ text:u8^[:] -> WordList {
+    var^ out=WordList{}
+    var^ i:i64^=0
+    while^ i < text.len {
+        let^ start=i
+        while^ i < text.len and^ text[i] != 32 { i := i+1 }
+        let^ len=i-start
+        if^ len > 0 {
+            assert(len <= 127)
+            out.data.push(u8^(len))
+            out.data.append(text.slice(start,len))
+            out.count := out.count+1
+        }
+        while^ i < text.len and^ text[i] = 32 { i := i+1 }
+    }
+    return^ out
+}
+
+def^ Word { self^{ bytes:u8^[20], len:u8^ } }
+def^ Slot { self^{ key:u8^[:], count:i32^ } }
+let^ hash=f^ key:u8^[:] -> u64^ {
+    var^ h:u64^=14695981039346656037
+    var^ i:i64^=0
+    while^ i < key.len { h := (h bitxor^ u64^(key[i]))*1099511628211; i := i+1 }
+    return^ h
+}
+let^ equal=f^ a:u8^[:], b:u8^[:] -> bool^ {
+    if^ a.len != b.len { return^ false^ }
+    var^ i:i64^=0
+    while^ i < a.len { if^ a[i] != b[i] { return^ false^ }; i := i+1 }
+    return^ true^
+}
+let^ find=f^ slots:&Slot[>..], key:u8^[:], mask:u64^ -> i64^ {
+    var^ i=hash(key) bitand^ mask
+    while^ slots[i].count != 0 {
+        if^ equal(slots[i].key,key) { return^ i64^(i) }
+        i := (i+1) bitand^ mask
+    }
+    return^ i64^(i)
+}
+let^ n:i64^=500000 # BENCH_N
+let^ vocab=n/10+16
+var^ dict:Word[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < vocab {
+    r := next(r)
+    let^ len=3+i64^(r % 12)
+    var^ w=Word{len=u8^(len)}
+    var^ j:i64^=0
+    while^ j < len {
+        r := next(r)
+        w.bytes[j] := u8^(r % 26)+97
+        j := j+1
+    }
+    dict.push(w)
+    i := i+1
+}
+var^ text:u8^[>..]=[]
+i := 0
+while^ i < n {
+    r := next(r)
+    let^ a=r % u64^(vocab)
+    let^ k=a*a/u64^(vocab)
+    text.append(dict[k].bytes.slice(0,i64^(dict[k].len)))
+    text.push(32)
+    i := i+1
+}
+var^ words=split(text.slice(0,text.len))
+var^ nslots:i64^=16
+while^ nslots < vocab*4 { nslots := nslots*2 }
+let^ mask=u64^(nslots-1)
+var^ slots:Slot[>..]=[]
+let^ empty=words.data.slice(0,0)
+i := 0
+while^ i < nslots { slots.push(Slot{key=empty,count=0}); i := i+1 }
+var^ distinct:i64^=0
+var^ at:i64^=0
+while^ at < words.data.len {
+    let^ len=i64^(words.data[at])
+    let^ key=words.data.slice(at+1,len)
+    let^ index=find(&slots,key,mask)
+    if^ slots[index].count = 0 {
+        slots[index].key := key
+        slots[index].count := 1
+        distinct := distinct+1
+    } else^ { slots[index].count := slots[index].count+1 }
+    at := at+len+1
+}
+var^ total:i64^=0
+i := 0
+while^ i < slots.len {
+    if^ slots[i].count > 0 {
+        let^ key=slots[i].key
+        total := total+i64^(slots[i].count)*(key.len+i64^(key[0]))
+    }
+    i := i+1
+}
+print(words.count)
+print(distinct)
+print(total)

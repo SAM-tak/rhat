@@ -1,0 +1,59 @@
+# Port of aardappel/goose bench/goose/strlist.goose, Apache-2.0.
+# Owned packed words: one-byte varint length followed by copied word bytes.
+# All generated lengths are 3..20, so the original varint occupies one byte.
+# This is an R^ library representation over an owned byte region, not a new
+# general variable-size array type. The original text and copied list coexist.
+def^ WordList { self^{ count:i64^=0, data:u8^[>..] } }
+let^ next=f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+let^ split=p^ text:u8^[:] -> WordList {
+    var^ out=WordList{}
+    var^ i:i64^=0
+    while^ i < text.len {
+        let^ start=i
+        while^ i < text.len and^ text[i] != 32 { i := i+1 }
+        let^ len=i-start
+        if^ len > 0 {
+            assert(len <= 127)
+            out.data.push(u8^(len))
+            out.data.append(text.slice(start,len))
+            out.count := out.count+1
+        }
+        while^ i < text.len and^ text[i] = 32 { i := i+1 }
+    }
+    return^ out
+}
+let^ n:i64^=200000 # BENCH_N
+var^ text:u8^[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < n {
+    r := next(r)
+    let^ len=3+i64^(r % 18)
+    var^ j:i64^=0
+    while^ j < len {
+        r := next(r)
+        text.push(u8^(r % 26)+97)
+        j := j+1
+    }
+    text.push(32)
+    i := i+1
+}
+var^ words=split(text.slice(0,text.len))
+var^ total:i64^=0
+var^ pass:i32^=0
+while^ pass < 4 {
+    var^ at:i64^=0
+    while^ at < words.data.len {
+        let^ len=i64^(words.data[at])
+        total := total+len+i64^(words.data[at+1])+i64^(words.data[at+len])
+        at := at+len+1
+    }
+    assert(at = words.data.len)
+    pass := pass+1
+}
+print(words.count)
+print(total)

@@ -19,8 +19,12 @@
 
 typedef struct {
   unsigned char *data;
-  uint64_t len, capacity;
+  uint64_t len, capacity, high_water;
 } RhArray;
+typedef struct {
+  const unsigned char *data;
+  uint64_t len;
+} RhSlice;
 #define RH_REGION_BYTES (UINT64_C(1024) * 1024 * 1024)
 static _Noreturn void rh_panic(const char *why, int32_t line) {
   fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, why);
@@ -57,6 +61,7 @@ void rh_region_init(RhArray *a) {
 #endif
   a->len = 0;
   a->capacity = RH_REGION_BYTES;
+  a->high_water = 0;
 }
 void rh_region_release(RhArray *a) {
 #if defined(_WIN32)
@@ -67,7 +72,7 @@ void rh_region_release(RhArray *a) {
     rh_panic("region release failed", 0);
 #endif
   a->data = NULL;
-  a->len = a->capacity = 0;
+  a->len = a->capacity = a->high_water = 0;
 }
 void rh_bounds(int64_t index, uint64_t length, int32_t line) {
   if (index < 0 || (uint64_t)index >= length)
@@ -77,23 +82,65 @@ void *rh_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {
   rh_bounds(index, a->len, line);
   return a->data + (uint64_t)index * size;
 }
-void *rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
-  if (!size || size > a->capacity || a->len >= a->capacity / size)
+static void *rh_array_write(RhArray *a, const void *value, uint64_t count,
+                            uint64_t size, int32_t line) {
+  if (!size || size > a->capacity || a->len > a->capacity / size ||
+      count > a->capacity / size - a->len)
     rh_panic("region capacity exceeded", line);
-  uint64_t off = a->len * size;
+  uint64_t off = a->len * size, end_bytes = off + count * size;
+  if (!count)
+    return a->data + off;
 #if defined(_WIN32)
   uint64_t page = rh_page_bytes;
-  /* Fixed-size, append-only elements mean that every page below rounded-up
-   * `off` is already committed. Keep the 24-byte descriptor unchanged. */
-  uint64_t begin = (off + page - 1) / page * page,
-           end = (off + size + page - 1) / page * page;
+  /* Pop/clear retain initialized storage and committed pages. */
+  uint64_t begin = (a->high_water + page - 1) / page * page,
+           end = (end_bytes + page - 1) / page * page;
   if (end > begin && !VirtualAlloc(a->data + begin, (SIZE_T)(end - begin),
                                    MEM_COMMIT, PAGE_READWRITE))
     rh_panic("region commit failed", line);
 #endif
-  memcpy(a->data + off, value, (size_t)size);
-  a->len++;
+  memmove(a->data + off, value, (size_t)(count * size));
+  a->len += count;
+  if (end_bytes > a->high_water)
+    a->high_water = end_bytes;
   return a->data + off;
+}
+void *rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
+  return rh_array_write(a, value, 1, size, line);
+}
+void rh_array_append(RhArray *a, const RhSlice *values, uint64_t size, int32_t line) {
+  rh_array_write(a, values->data, values->len, size, line);
+}
+void rh_array_pop(RhArray *a, void *out, uint64_t size, int32_t line) {
+  if (!a->len)
+    rh_panic("pop from empty array", line);
+  memmove(out, a->data + (a->len - 1) * size, (size_t)size);
+  a->len--;
+}
+void rh_array_clear(RhArray *a) {
+  /* Slots and their values remain alive until region release. Existing
+   * references can observe a later push overwriting the same slot. */
+  a->len = 0;
+}
+void rh_array_truncate(RhArray *a, int64_t length, int32_t line) {
+  if (length < 0 || (uint64_t)length > a->len)
+    rh_panic("truncate length out of bounds", line);
+  a->len = (uint64_t)length;
+}
+void rh_make_slice(RhSlice *out, const void *data, uint64_t len,
+                   int64_t start, int64_t count, uint64_t size, int32_t line) {
+  if (start < 0 || count < 0 || (uint64_t)start > len || (uint64_t)count > len - (uint64_t)start)
+    rh_panic("slice range out of bounds", line);
+  out->data = (const unsigned char *)data + (uint64_t)start * size;
+  out->len = (uint64_t)count;
+}
+const void *rh_view_at(const RhSlice *view, int64_t index, uint64_t size, int32_t line) {
+  rh_bounds(index, view->len, line);
+  return view->data + (uint64_t)index * size;
+}
+void rh_union_tag(int32_t actual, int32_t wanted, int32_t line) {
+  if (actual != wanted)
+    rh_panic("union alternative mismatch", line);
 }
 void rh_assert(int64_t condition, int32_t line) {
   if (!condition)
