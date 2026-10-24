@@ -48,9 +48,12 @@ def write_suite():
               'The failure paths retain their runtime diagnostics; checks are not disabled.','',
               'Before these optimizations: [static-data-stack reference](pre_array_fastpaths/README.md).',
               'Same-session before/after check: [paired array comparison](array_codegen_comparison/results.md).','']
-             if additional.get('codegen_model') == 'inline_array_and_arithmetic_checks' else []),
+             if additional.get('codegen_model') in ('inline_array_and_arithmetic_checks', 'direct_scalar_checked_range_loops') else []),
+           *(['Internal functions pass scalar/reference values directly.',
+              'Canonical i64 loops use range guards, stable pointer snapshots and a checked fallback.','']
+             if additional.get('codegen_model') == 'direct_scalar_checked_range_loops' else []),
            f"Additional workloads: {additional['started_utc']} UTC; bintrees: {binary['started_utc']} UTC.",'',
-           'All rows below were measured with the same current R^ compiler/runtime. Goose is not run.',
+           'All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.',
            'Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.',
            'Every run checks its checksum and its executable SHA-256 against the artifact recorded immediately after build.',
            'R^ retains bounds/range checks and OS-backed stable-address arrays; no affinity is set.','',
@@ -64,6 +67,13 @@ def write_suite():
            'The C++ and Rust columns select the fastest measured variant/backend for each size. Ratios are comparison / R^; above 1 means R^ is faster. Peak memory is the maximum measured R^ resident working set.','',
            '| Workload | Size / parameter | R^ ms | Best C++ ms | Best Rust ms | C++ / R^ | Rust / R^ | R^ peak MiB |',
            '|---|---|---:|---:|---:|---:|---:|---:|']
+    focused=HERE/'abi_ranges/results.json'
+    if focused.exists():
+        newer=json.loads(focused.read_text(encoding='utf-8'))
+        if len(newer.get('rows',[]))==42 and newer['compiler_sha256'] != env['compiler_sha256']:
+            lines[4:4]=['**Subsequent internal-call and checked-loop optimizations:** [focused paired measurements](abi_ranges/results.md).',
+                        'The complete matrix below retains the preceding full-suite session; the focused report labels reused C++/Rust reference timings explicitly.',
+                        'Implementation limits and the sum control repeat are in [the validation notes](abi_ranges/README.md).','']
     for name in NAMES:
         for size in ('small','medium','large'):
             selected=[r for r in groups[name] if r['size']==size]

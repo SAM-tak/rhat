@@ -520,7 +520,9 @@ def report(data, out):
              *( ["Executable paths are unique per language; every run verifies its build-time SHA-256 before and after execution.", ""] if data.get("executable_hashes") else []),
              *(["Index bounds and address calculations are emitted inline, including full-width 128-bit checks.",
                 "Push checks remaining bytes without division; proven append-only paths update the top directly.", ""]
-               if data.get("codegen_model") == "inline_array_and_arithmetic_checks" else []),
+               if data.get("codegen_model") in ("inline_array_and_arithmetic_checks", "direct_scalar_checked_range_loops") else []),
+             *(["Internal functions pass scalars/references directly; canonical i64 loops use checked range guards and a checked fallback.", ""]
+               if data.get("codegen_model") == "direct_scalar_checked_range_loops" else []),
              "## Environment", "", "| Item | Value |", "|---|---|"]
     for key, value in data["environment"].items():
         text = str(value).replace("|", "/").replace("\n", "; ")
@@ -600,7 +602,7 @@ def main():
         else:
             env[key] = banner.splitlines()[0]
     binaries = Executables()
-    data = dict(codegen_model="inline_array_and_arithmetic_checks", memory_model="static_data_stacks_fault_commit", stack_reports={}, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    data = dict(codegen_model="direct_scalar_checked_range_loops", memory_model="static_data_stacks_fault_commit", stack_reports={}, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 environment=env, workloads=args.workloads, warmups=2, reps=args.reps,
                 builds=[], rows=[], controls=[], source_hashes={},
                 representations={name: WORKLOADS[name].get("representation", "") for name in args.workloads},

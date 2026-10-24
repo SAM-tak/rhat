@@ -49,6 +49,12 @@ typedef struct {
 static Type *slot_type(Output *o, int n) {
   return ((Slot *)o->in->slots.v[n])->type;
 }
+/* Scalars and references are LLVM values. Aggregate/owned results retain
+ * destination passing; no host C ABI or ownership contract is changed. */
+static bool direct(Type *t) {
+  return kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL ||
+         t->kind == T_REF;
+}
 static char *stack_for(Output *o, int id) {
   int owner = ((Slot *)o->in->slots.v[id])->owner;
   if (o->in->result->owned && owner == o->in->result_slot)
@@ -83,6 +89,124 @@ static void bytes(FILE *f, const char *s) {
   for (const unsigned char *p = (const unsigned char *)s; *p; p++)
     fprintf(f, "\\%02X", *p);
   fputs("\\00\"", f);
+}
+typedef struct {
+  char *lo, *hi;
+} Interval;
+typedef struct {
+  Output *o;
+  Interval iv;
+  char *valid;
+} RangeOutput;
+static char *range_binary(Output *o, const char *op, const char *a,
+                          const char *b) {
+  int id = ++o->tmp;
+  fprintf(o->f, "  %%t%d = %s i128 %s, %s\n", id, op, a, b);
+  return fmt("%%t%d", id);
+}
+static void range_require(RangeOutput *r, char *condition) {
+  int id = ++r->o->tmp;
+  fprintf(r->o->f, "  %%t%d = and i1 %s, %s\n", id, r->valid, condition);
+  r->valid = fmt("%%t%d", id);
+}
+static void range_fit(RangeOutput *r, Interval v) {
+  range_require(r,
+                range_binary(r->o, "icmp sge", v.lo, "-9223372036854775808"));
+  range_require(r, range_binary(r->o, "icmp sle", v.hi, "9223372036854775807"));
+}
+static char *range_select(Output *o, char *a, char *b, bool maximum) {
+  char *condition = range_binary(o, maximum ? "icmp sgt" : "icmp slt", a, b);
+  int id = ++o->tmp;
+  fprintf(o->f, "  %%t%d = select i1 %s, i128 %s, i128 %s\n", id, condition, a,
+          b);
+  return fmt("%%t%d", id);
+}
+static Interval range_expression(RangeOutput *r, RangeExpr *e) {
+  Output *o = r->o;
+  FILE *f = o->f;
+  if (e->kind == RANGE_IV)
+    return r->iv;
+  if (e->kind == RANGE_CONST)
+    return (Interval){e->text, e->text};
+  if (e->kind == RANGE_SLOT) {
+    int value = load(o, e->slot), wide = ++o->tmp;
+    fprintf(f, "  %%t%d = sext i64 %%t%d to i128\n", wide, value);
+    return (Interval){fmt("%%t%d", wide), fmt("%%t%d", wide)};
+  }
+  if (e->kind == RANGE_LENGTH) {
+    if (e->type->kind == T_ARRAY) {
+      char *length = fmt("%d", e->type->count);
+      return (Interval){length, length};
+    }
+    char *place = fmt("%%p%d", e->slot);
+    if (e->indirect)
+      place = fmt("%%t%d", load(o, e->slot));
+    int ptr = ++o->tmp, len = ++o->tmp, wide = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i32 0, i32 1\n", ptr,
+            llvm_type(e->type), place);
+    fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", len, ptr);
+    fprintf(f, "  %%t%d = zext i64 %%t%d to i128\n", wide, len);
+    return (Interval){fmt("%%t%d", wide), fmt("%%t%d", wide)};
+  }
+  Interval a = range_expression(r, e->a), b = range_expression(r, e->b), v;
+  if (e->kind == RANGE_ADD) {
+    v.lo = range_binary(o, "add", a.lo, b.lo);
+    v.hi = range_binary(o, "add", a.hi, b.hi);
+  } else if (e->kind == RANGE_SUB) {
+    v.lo = range_binary(o, "sub", a.lo, b.hi);
+    v.hi = range_binary(o, "sub", a.hi, b.lo);
+  } else {
+    char *values[] = {
+        range_binary(o, "mul", a.lo, b.lo), range_binary(o, "mul", a.lo, b.hi),
+        range_binary(o, "mul", a.hi, b.lo), range_binary(o, "mul", a.hi, b.hi)};
+    v.lo = v.hi = values[0];
+    for (int j = 1; j < 4; j++) {
+      v.lo = range_select(o, v.lo, values[j], false);
+      v.hi = range_select(o, v.hi, values[j], true);
+    }
+  }
+  /* i128 arithmetic deliberately has no overflow flags. If a child did not
+   * fit i64, its false validity bit survives all following computations. */
+  range_fit(r, v);
+  return v;
+}
+static void range_guard(Output *o, Instr *i) {
+  RangePlan *plan = i->range;
+  RangeOutput r = {o, {NULL, NULL}, "true"};
+  Interval upper = range_expression(&r, plan->upper);
+  int limit = ++o->tmp;
+  fprintf(o->f, "  %%t%d = trunc i128 %s to i64\n", limit, upper.lo);
+  save(o, plan->limit, slot_type(o, plan->limit), fmt("%%t%d", limit));
+  int low = load(o, plan->induction), wide = ++o->tmp;
+  fprintf(o->f, "  %%t%d = sext i64 %%t%d to i128\n", wide, low);
+  r.iv.lo = fmt("%%t%d", wide);
+  r.iv.hi = range_binary(o, "sub", upper.hi, "1");
+  range_fit(&r, r.iv);
+  range_require(&r, range_binary(o, "icmp sle", r.iv.lo, r.iv.hi));
+  for (int j = 0; j < plan->indices.n; j++) {
+    Interval index = range_expression(&r, plan->indices.v[j]);
+    Interval length = range_expression(&r, plan->arrays.v[j]);
+    range_require(&r, range_binary(o, "icmp sge", index.lo, "0"));
+    range_require(&r, range_binary(o, "icmp slt", index.hi, length.lo));
+  }
+  fprintf(o->f, "  ; range.guard result=%%p%d\n", i->dst);
+  save(o, i->dst, i->type, r.valid);
+  /* The proof excludes container/reference mutation. Snapshot the data
+   * pointers explicitly: byte stores otherwise obscure their invariance to
+   * LLVM's alias analysis. Distinct arguments are still allowed to alias. */
+  for (int j = 0; j < plan->arrays.n; j++) {
+    RangeExpr *arr = plan->arrays.v[j];
+    int slot = (int)(intptr_t)plan->data.v[j] - 1;
+    char *place = fmt("%%p%d", arr->slot);
+    if (arr->indirect)
+      place = fmt("%%t%d", load(o, arr->slot));
+    if (arr->type->kind != T_ARRAY) {
+      int data = ++o->tmp;
+      fprintf(o->f, "  %%t%d = load ptr, ptr %s\n", data, place);
+      place = fmt("%%t%d", data);
+    }
+    save(o, slot, slot_type(o, slot), place);
+  }
 }
 static void instruction(Output *o, Instr *i) {
   FILE *f = o->f;
@@ -130,42 +254,49 @@ static void instruction(Output *o, Instr *i) {
                 llvm_type(index_type), a);
         a = b;
       }
-      char *length;
-      if (t->kind == T_ARRAY)
-        length = fmt("%d", t->count);
-      else {
-        b = ++o->tmp;
-        r = ++o->tmp;
-        fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n", b,
-                llvm_type(t), i->a);
-        fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", r, b);
-        length = fmt("%%t%d", r);
+      if (!i->index_proven) {
+        char *length;
+        if (t->kind == T_ARRAY)
+          length = fmt("%d", t->count);
+        else {
+          b = ++o->tmp;
+          r = ++o->tmp;
+          fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n", b,
+                  llvm_type(t), i->a);
+          fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", r, b);
+          length = fmt("%%t%d", r);
+        }
+        const char *compare_type = bits > 64 ? "i128" : "i64";
+        if (bits > 64) {
+          b = ++o->tmp;
+          fprintf(f, "  %%t%d = zext i64 %s to i128\n", b, length);
+          length = fmt("%%t%d", b);
+        }
+        int ok = ++o->tmp;
+        /* Unsigned compare rejects a signed negative at its full width too.
+         * Wide indices are truncated only after proving index < length. */
+        fprintf(f, "  %%t%d = icmp ult %s %%t%d, %s\n", ok, compare_type, a,
+                length);
+        fprintf(
+            f,
+            "  br i1 %%t%d, label %%index_ok_%d, label %%index_bad_%d, !prof "
+            "!0\nindex_bad_%d:\n",
+            ok, ok, ok, ok);
+        fprintf(
+            f,
+            "  call void @rh_index_fail(i32 %d)\n  unreachable\nindex_ok_%d:\n",
+            i->loc.line, ok);
       }
-      const char *compare_type = bits > 64 ? "i128" : "i64";
-      if (bits > 64) {
-        b = ++o->tmp;
-        fprintf(f, "  %%t%d = zext i64 %s to i128\n", b, length);
-        length = fmt("%%t%d", b);
-      }
-      int ok = ++o->tmp;
-      /* Unsigned compare rejects a signed negative at its full width too.
-       * Wide indices are truncated only after proving index < length. */
-      fprintf(f, "  %%t%d = icmp ult %s %%t%d, %s\n", ok, compare_type, a,
-              length);
-      fprintf(f,
-              "  br i1 %%t%d, label %%index_ok_%d, label %%index_bad_%d, !prof "
-              "!0\nindex_bad_%d:\n",
-              ok, ok, ok, ok);
-      fprintf(
-          f,
-          "  call void @rh_index_fail(i32 %d)\n  unreachable\nindex_ok_%d:\n",
-          i->loc.line, ok);
       if (bits > 64) {
         b = ++o->tmp;
         fprintf(f, "  %%t%d = trunc i128 %%t%d to i64\n", b, a);
         a = b;
       }
-      if (t->kind == T_ARRAY)
+      if (i->index_proven) {
+        r = load(o, i->index_data);
+        fprintf(f, "  %%p%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", i->dst,
+                t->kind == T_STRING ? "i8" : llvm_type(t->elem), r, a);
+      } else if (t->kind == T_ARRAY)
         fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, i64 %%t%d\n",
                 i->dst, llvm_type(t), i->a, a);
       else {
@@ -178,6 +309,9 @@ static void instruction(Output *o, Instr *i) {
                 t->kind == T_STRING ? "i8" : llvm_type(t->elem), r, a);
       }
     }
+    break;
+  case I_RANGE_GUARD:
+    range_guard(o, i);
     break;
   case I_STACK_BEGIN:
     a = ++o->tmp;
@@ -581,18 +715,35 @@ static void instruction(Output *o, Instr *i) {
     save(o, i->dst, t, fmt("%%t%d", r));
     break;
   }
-  case I_CALL:
+  case I_CALL: {
     a = ++o->tmp;
     fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
-    fprintf(f, "  call void @%s(i64 %%t%d", i->callee->symbol, a);
-    if (t->kind != T_VOID)
+    int *values = mem((size_t)i->args.n * sizeof(int));
+    for (int j = 0; j < i->args.n; j++)
+      if (direct(i->callee->params.v[j]))
+        values[j] = load(o, (int)(intptr_t)i->args.v[j] - 1);
+    r = ++o->tmp;
+    if (direct(t))
+      fprintf(f, "  %%t%d = call %s @%s(i64 %%t%d", r, llvm_type(t),
+              i->callee->symbol, a);
+    else
+      fprintf(f, "  call void @%s(i64 %%t%d", i->callee->symbol, a);
+    if (t->kind != T_VOID && !direct(t))
       fprintf(f, ", ptr %%p%d", i->dst);
     if (t->owned)
       fprintf(f, ", ptr %s", stack_for(o, i->dst));
-    for (int j = 0; j < i->args.n; j++)
-      fprintf(f, ", ptr %%p%d", (int)(intptr_t)i->args.v[j] - 1);
+    for (int j = 0; j < i->args.n; j++) {
+      Type *param = i->callee->params.v[j];
+      if (direct(param))
+        fprintf(f, ", %s %%t%d", llvm_type(param), values[j]);
+      else
+        fprintf(f, ", ptr %%p%d", (int)(intptr_t)i->args.v[j] - 1);
+    }
     fputs(")\n", f);
+    if (direct(t))
+      save(o, i->dst, t, fmt("%%t%d", r));
     break;
+  }
   case I_PRINT:
     for (int j = 0; j < i->args.n; j++) {
       int id = (int)(intptr_t)i->args.v[j] - 1;
@@ -649,7 +800,11 @@ static void instruction(Output *o, Instr *i) {
             i->other);
     break;
   case I_RETURN:
-    fputs("  ret void\n", f);
+    if (direct(o->in->result)) {
+      r = load(o, o->in->result_slot);
+      fprintf(f, "  ret %s %%t%d\n", llvm_type(o->in->result), r);
+    } else
+      fputs("  ret void\n", f);
     break;
   default:
     fail(i->loc, "internal: unknown IR operation");
@@ -724,21 +879,24 @@ void emit_llvm(Program *p, const char *path) {
         f);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
-    fprintf(f, "\n; %s%s%s\ndefine void @%s(", in->self ? in->self->name : "",
-            in->self ? "." : "", in->fn->name, in->symbol);
+    fprintf(f, "\n; %s%s%s\ndefine internal %s @%s(",
+            in->self ? in->self->name : "", in->self ? "." : "", in->fn->name,
+            direct(in->result) ? llvm_type(in->result) : "void", in->symbol);
     bool result = in->result->kind != T_VOID;
     fputs("i64 %sp", f);
-    if (result)
+    if (result && !direct(in->result))
       fputs(", ptr %out", f);
     if (in->result->owned)
       fputs(", ptr %result_stack", f);
-    for (int k = 0; k < in->params.n; k++)
-      fprintf(f, ", ptr %%arg%d", k);
+    for (int k = 0; k < in->params.n; k++) {
+      Type *param = in->params.v[k];
+      fprintf(f, ", %s %%arg%d", direct(param) ? llvm_type(param) : "ptr", k);
+    }
     fputs(") {\nentry:\n", f);
     Output o = {f, in, 0};
     for (int k = 0; k < in->slots.n; k++) {
       Slot *s = in->slots.v[k];
-      if (!s->alias)
+      if (!s->alias || (result && direct(in->result) && k == in->result_slot))
         fprintf(f, "  %%p%d = alloca %s\n", k, llvm_type(s->type));
     }
     for (int k = 0; k < in->code.n; k++) {
@@ -746,15 +904,19 @@ void emit_llvm(Program *p, const char *path) {
       if (i->op == I_STACK_BEGIN)
         fprintf(f, "  %%mark%d = alloca ptr\n", i->dst);
     }
-    if (result)
+    if (result && !direct(in->result))
       fprintf(f, "  %%p%d = getelementptr i8, ptr %%out, i64 0\n",
               in->result_slot);
     for (int k = 0; k < in->params.n; k++) {
       Type *t = in->params.v[k];
-      int r = ++o.tmp;
       int id = k + (result ? 1 : 0);
-      fprintf(f, "  %%t%d = load %s, ptr %%arg%d\n", r, llvm_type(t), k);
-      save(&o, id, t, fmt("%%t%d", r));
+      if (direct(t))
+        save(&o, id, t, fmt("%%arg%d", k));
+      else {
+        int r = ++o.tmp;
+        fprintf(f, "  %%t%d = load %s, ptr %%arg%d\n", r, llvm_type(t), k);
+        save(&o, id, t, fmt("%%t%d", r));
+      }
     }
     for (int k = 0; k < in->code.n; k++)
       instruction(&o, in->code.v[k]);
@@ -803,7 +965,8 @@ void dump_ir(Program *p, const char *path) {
                          "union.is",
                          "union.get.checked",
                          "array.truncate",
-                         "stack.save"};
+                         "stack.save",
+                         "range.guard"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,
@@ -846,6 +1009,11 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " stack-owner=%%%d", ((Slot *)in->slots.v[i->dst])->owner);
       if (i->op == I_PUSH)
         fprintf(f, " top=%s", i->push_at_top ? "append" : "retained");
+      if (i->op == I_INDEX && i->index_proven)
+        fputs(" range=proven", f);
+      if (i->op == I_RANGE_GUARD)
+        fprintf(f, " induction=%%%d indices=%d fallback=checked",
+                i->range->induction, i->range->indices.n);
       if (i->type)
         fprintf(f, " type=%s", type_name(i->type));
       if (i->text)

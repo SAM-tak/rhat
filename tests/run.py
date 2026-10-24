@@ -77,7 +77,7 @@ def layout_ir(ir, ll):
     assert "+0 A.a : i32^" in ir
     assert "+4 B.b : i32^" in ir
     assert "+8 C.c : i32^" in ir
-    assert "define void @rh_fn_0" in ll
+    assert "define internal void @rh_fn_0" in ll
 
 
 def region_ir(ir, ll):
@@ -99,7 +99,8 @@ def factorial_ir(ir, ll):
     body = ir.split("function rh_fn_1", 1)[1]
     assert "target=rh_fn_1" in body
     assert "branch.if" in body
-    assert "call void @rh_fn_1" in ll
+    assert "define internal i64 @rh_fn_1(i64 %sp, i64 %arg0)" in ll
+    assert "call i64 @rh_fn_1" in ll
 
 
 def scalar_check_ir(ir, ll):
@@ -1740,4 +1741,21 @@ run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang], env=b
 assert run([str(exe)]).stdout == "42\n"
 passed += 1
 print("PASS clang_override_precedence_and_diagnostic", flush=True)
+def direct_scalar_abi(ir, ll):
+    assert "define internal void @rh_fn_0" in ll
+    for typ in ("i1", "i8", "i16", "i32", "i64", "i128", "half", "float", "double"):
+        assert re.search(r'define internal ' + typ + r' @rh_fn_\d+\(i64 %sp, ' + typ + r' %arg0\)', ll), typ
+
+
+positive("direct_scalar_abi", '''
+let^ id=template^f^ x { return^ x }
+''' + '\n'.join(f'let^ v{j}:{typ}^={value}; assert(id(v{j})=v{j})' for j, (typ, value) in enumerate([
+    ('bool', 'true^'), ('u8', '255'), ('u16', '65535'), ('u32', '4294967295'),
+    ('u64', '18446744073709551615'), ('u128', '340282366920938463463374607431768211455'),
+    ('i8', '-128'), ('i16', '-32768'), ('i32', '-2147483648'),
+    ('i64', '-9223372036854775808'), ('i128', '-170141183460469231731687303715884105728'),
+    ('f8', '1.5'), ('f16', '1.5'), ('f32', '1.5'), ('f64', '1.5')])) + '\nprint(42)', "42\n", direct_scalar_abi)
+
+from ranges import exercise as exercise_ranges
+passed += exercise_ranges(run, source, compiler, args.clang, work, repo)
 print(f"{passed} integration cases passed (positive/runtime cases at -O0 and -O2)")

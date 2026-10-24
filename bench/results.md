@@ -2,6 +2,10 @@
 
 **All 48 size conditions include R^, C++ and Rust timings and relative performance.**
 
+**Subsequent internal-call and checked-loop optimizations:** [focused paired measurements](abi_ranges/results.md).
+The complete matrix below retains the preceding full-suite session; the focused report labels reused C++/Rust reference timings explicitly.
+Implementation limits and the sum control repeat are in [the validation notes](abi_ranges/README.md).
+
 R^ uses statically assigned data stacks, scope watermark rewinds and Windows fault-driven page commitment.
 The push fast path is emitted directly as LLVM IR; bounds/range checks remain enabled.
 
@@ -15,7 +19,7 @@ Same-session before/after check: [paired array comparison](array_codegen_compari
 
 Additional workloads: 2026-10-24T03:33:36.565830+00:00 UTC; bintrees: 2026-10-24T03:30:02.558939+00:00 UTC.
 
-All rows below were measured with the same current R^ compiler/runtime. Goose is not run.
+All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.
 Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.
 Every run checks its checksum and its executable SHA-256 against the artifact recorded immediately after build.
 R^ retains bounds/range checks and OS-backed stable-address arrays; no affinity is set.

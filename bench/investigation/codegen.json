@@ -1,0 +1,1070 @@
+{
+  "started_utc": "2026-10-24T05:02:05.080538+00:00",
+  "commit": "1ba91b6ba6eed162e80f10502750e42e39cc1448",
+  "policy": "alternating order; two warmups; best of three; medium inputs",
+  "warning": "unchecked variants are unsafe diagnostic ablations, not proposed compiler behavior",
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "commit": "d904390f94ffbab6694b16ce6cae70d6aee653e7",
+    "dirty": "M CMakeLists.txt\n M README.md\n M bench/README.md\n M bench/current_bintrees/results.json\n M bench/current_bintrees/results.md\n M bench/report_suite.py\n M bench/run_bench.py\n M bench/run_workloads.py\n M docs/design.md\n M runtime/rhat_runtime.c\n M src/llvm.c\n M src/main.c\n M src/rhat.h\n M tests/run.py\n?? bench/array_codegen_comparison/\n?? bench/pre_array_fastpaths/\n?? bench/pre_array_fastpaths_bintrees/\n?? src/arrays.c",
+    "compiler_sha256": "e5e63c7e119cc6354e917b2d2ea77f63dafc310fb04c45dae796fc922251f3a4",
+    "runtime_sha256": "fa716c2b975c1a319f24c7a08fdce07d0194298765efbf629955eab2ade9e034",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "clangcl": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "builds": [
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_unchecked.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE",
+      "-Wno-override-module",
+      "-std=c11",
+      "-O2",
+      "-rtlib=compiler-rt",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal_unchecked.ll",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\runtime\\rhat_runtime.c",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal_unchecked.exe"
+    ]
+  ],
+  "rows": [
+    {
+      "workload": "blur",
+      "variant": "baseline",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_blur_medium.exe",
+      "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374",
+      "input_ir_sha256": "9ca440ea0447a0df6cf778b5ff320bdcf346d1225fb160a9fc2c22b9f173ecd2",
+      "best_ms": 327.1378,
+      "samples": [
+        {
+          "ms": 345.2134,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374"
+        },
+        {
+          "ms": 327.1378,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374"
+        },
+        {
+          "ms": 372.4723,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 307.6238,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374"
+        },
+        {
+          "ms": 309.0323,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374"
+        }
+      ]
+    },
+    {
+      "workload": "blur",
+      "variant": "internal",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal.exe",
+      "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35",
+      "input_ir_sha256": "9ca440ea0447a0df6cf778b5ff320bdcf346d1225fb160a9fc2c22b9f173ecd2",
+      "best_ms": 302.3406,
+      "samples": [
+        {
+          "ms": 344.4837,
+          "peak_bytes": 12353536,
+          "output": "2048\n502239988",
+          "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35"
+        },
+        {
+          "ms": 302.3406,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35"
+        },
+        {
+          "ms": 330.349,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 429.7978,
+          "peak_bytes": 12361728,
+          "output": "2048\n502239988",
+          "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35"
+        },
+        {
+          "ms": 362.7991,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35"
+        }
+      ]
+    },
+    {
+      "workload": "blur",
+      "variant": "unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_unchecked.exe",
+      "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6",
+      "input_ir_sha256": "9ca440ea0447a0df6cf778b5ff320bdcf346d1225fb160a9fc2c22b9f173ecd2",
+      "best_ms": 42.8328,
+      "samples": [
+        {
+          "ms": 55.4544,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6"
+        },
+        {
+          "ms": 44.274,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6"
+        },
+        {
+          "ms": 42.8328,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 137.775,
+          "peak_bytes": 12357632,
+          "output": "2048\n502239988",
+          "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6"
+        },
+        {
+          "ms": 84.0301,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6"
+        }
+      ]
+    },
+    {
+      "workload": "blur",
+      "variant": "internal_unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal_unchecked.exe",
+      "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a",
+      "input_ir_sha256": "9ca440ea0447a0df6cf778b5ff320bdcf346d1225fb160a9fc2c22b9f173ecd2",
+      "best_ms": 45.5952,
+      "samples": [
+        {
+          "ms": 49.9905,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a"
+        },
+        {
+          "ms": 48.5746,
+          "peak_bytes": 12353536,
+          "output": "2048\n502239988",
+          "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a"
+        },
+        {
+          "ms": 45.5952,
+          "peak_bytes": 12353536,
+          "output": "2048\n502239988",
+          "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 132.2047,
+          "peak_bytes": 12361728,
+          "output": "2048\n502239988",
+          "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a"
+        },
+        {
+          "ms": 83.5574,
+          "peak_bytes": 12353536,
+          "output": "2048\n502239988",
+          "executable_sha256": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "variant": "baseline",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_lru_medium.exe",
+      "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c",
+      "input_ir_sha256": "4f8906dca3f9c1bb59a4d6e929d1df3b036d2ee2368606205f0e7a29951113f5",
+      "best_ms": 1514.2934,
+      "samples": [
+        {
+          "ms": 1712.6591,
+          "peak_bytes": 36802560,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c"
+        },
+        {
+          "ms": 1514.2934,
+          "peak_bytes": 36806656,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c"
+        },
+        {
+          "ms": 1562.3632,
+          "peak_bytes": 36802560,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1733.5298,
+          "peak_bytes": 36806656,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c"
+        },
+        {
+          "ms": 1608.0344,
+          "peak_bytes": 36806656,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "variant": "internal",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal.exe",
+      "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741",
+      "input_ir_sha256": "4f8906dca3f9c1bb59a4d6e929d1df3b036d2ee2368606205f0e7a29951113f5",
+      "best_ms": 1034.5754,
+      "samples": [
+        {
+          "ms": 1048.2938,
+          "peak_bytes": 36798464,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741"
+        },
+        {
+          "ms": 1034.5754,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741"
+        },
+        {
+          "ms": 1098.0099,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1176.0532,
+          "peak_bytes": 36827136,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741"
+        },
+        {
+          "ms": 1065.0318,
+          "peak_bytes": 36798464,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "variant": "unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_unchecked.exe",
+      "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236",
+      "input_ir_sha256": "4f8906dca3f9c1bb59a4d6e929d1df3b036d2ee2368606205f0e7a29951113f5",
+      "best_ms": 1574.1276,
+      "samples": [
+        {
+          "ms": 1574.1276,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236"
+        },
+        {
+          "ms": 1847.0463,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236"
+        },
+        {
+          "ms": 2177.2373,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1741.538,
+          "peak_bytes": 36823040,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236"
+        },
+        {
+          "ms": 2318.8218,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236"
+        }
+      ]
+    },
+    {
+      "workload": "lru",
+      "variant": "internal_unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal_unchecked.exe",
+      "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4",
+      "input_ir_sha256": "4f8906dca3f9c1bb59a4d6e929d1df3b036d2ee2368606205f0e7a29951113f5",
+      "best_ms": 761.5329,
+      "samples": [
+        {
+          "ms": 793.8393,
+          "peak_bytes": 36798464,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4"
+        },
+        {
+          "ms": 937.3499,
+          "peak_bytes": 36790272,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4"
+        },
+        {
+          "ms": 761.5329,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 843.4421,
+          "peak_bytes": 36827136,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4"
+        },
+        {
+          "ms": 798.7496,
+          "peak_bytes": 36794368,
+          "output": "4937489\n2561689\n329505\n1000000\n1009107182135619685\n501925078",
+          "executable_sha256": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4"
+        }
+      ]
+    },
+    {
+      "workload": "bintrees",
+      "variant": "baseline",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array-bintrees\\rhat_bintrees_medium.exe",
+      "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121",
+      "input_ir_sha256": "c451cd0b78c8b6748d11851de0dda83363e762850c399ac546c16271aa9db6bf",
+      "best_ms": 324.2862,
+      "samples": [
+        {
+          "ms": 378.2655,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121"
+        },
+        {
+          "ms": 327.394,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121"
+        },
+        {
+          "ms": 324.2862,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 392.1056,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121"
+        },
+        {
+          "ms": 388.1749,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121"
+        }
+      ]
+    },
+    {
+      "workload": "bintrees",
+      "variant": "internal",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal.exe",
+      "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61",
+      "input_ir_sha256": "c451cd0b78c8b6748d11851de0dda83363e762850c399ac546c16271aa9db6bf",
+      "best_ms": 291.5343,
+      "samples": [
+        {
+          "ms": 318.0965,
+          "peak_bytes": 9211904,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61"
+        },
+        {
+          "ms": 296.1294,
+          "peak_bytes": 9211904,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61"
+        },
+        {
+          "ms": 291.5343,
+          "peak_bytes": 9211904,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 428.3086,
+          "peak_bytes": 9224192,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61"
+        },
+        {
+          "ms": 342.1446,
+          "peak_bytes": 9207808,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61"
+        }
+      ]
+    },
+    {
+      "workload": "bintrees",
+      "variant": "unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_unchecked.exe",
+      "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac",
+      "input_ir_sha256": "c451cd0b78c8b6748d11851de0dda83363e762850c399ac546c16271aa9db6bf",
+      "best_ms": 300.9832,
+      "samples": [
+        {
+          "ms": 467.5577,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac"
+        },
+        {
+          "ms": 371.6825,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac"
+        },
+        {
+          "ms": 300.9832,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 507.9311,
+          "peak_bytes": 9207808,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac"
+        },
+        {
+          "ms": 369.5185,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac"
+        }
+      ]
+    },
+    {
+      "workload": "bintrees",
+      "variant": "internal_unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal_unchecked.exe",
+      "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b",
+      "input_ir_sha256": "c451cd0b78c8b6748d11851de0dda83363e762850c399ac546c16271aa9db6bf",
+      "best_ms": 299.6958,
+      "samples": [
+        {
+          "ms": 299.6958,
+          "peak_bytes": 9207808,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b"
+        },
+        {
+          "ms": 316.4105,
+          "peak_bytes": 9211904,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b"
+        },
+        {
+          "ms": 302.8893,
+          "peak_bytes": 9211904,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 448.0717,
+          "peak_bytes": 9224192,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b"
+        },
+        {
+          "ms": 390.5404,
+          "peak_bytes": 9207808,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b"
+        }
+      ]
+    },
+    {
+      "workload": "scene",
+      "variant": "baseline",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_scene_medium.exe",
+      "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087",
+      "input_ir_sha256": "d862a62c8140ca2f464fafc7877003ec7f8a52ac45e4868d5add48010a168f74",
+      "best_ms": 281.8423,
+      "samples": [
+        {
+          "ms": 281.8423,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087"
+        },
+        {
+          "ms": 281.8547,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087"
+        },
+        {
+          "ms": 282.4736,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 301.7346,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087"
+        },
+        {
+          "ms": 277.838,
+          "peak_bytes": 34488320,
+          "output": "254401\n16563864",
+          "executable_sha256": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087"
+        }
+      ]
+    },
+    {
+      "workload": "scene",
+      "variant": "internal",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal.exe",
+      "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f",
+      "input_ir_sha256": "d862a62c8140ca2f464fafc7877003ec7f8a52ac45e4868d5add48010a168f74",
+      "best_ms": 273.7632,
+      "samples": [
+        {
+          "ms": 274.2787,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f"
+        },
+        {
+          "ms": 274.2417,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f"
+        },
+        {
+          "ms": 273.7632,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 510.749,
+          "peak_bytes": 34504704,
+          "output": "254401\n16563864",
+          "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f"
+        },
+        {
+          "ms": 357.9971,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f"
+        }
+      ]
+    },
+    {
+      "workload": "scene",
+      "variant": "unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_unchecked.exe",
+      "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b",
+      "input_ir_sha256": "d862a62c8140ca2f464fafc7877003ec7f8a52ac45e4868d5add48010a168f74",
+      "best_ms": 279.4652,
+      "samples": [
+        {
+          "ms": 279.4652,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b"
+        },
+        {
+          "ms": 290.4771,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b"
+        },
+        {
+          "ms": 280.5167,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 436.8617,
+          "peak_bytes": 34508800,
+          "output": "254401\n16563864",
+          "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b"
+        },
+        {
+          "ms": 354.0659,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b"
+        }
+      ]
+    },
+    {
+      "workload": "scene",
+      "variant": "internal_unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal_unchecked.exe",
+      "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f",
+      "input_ir_sha256": "d862a62c8140ca2f464fafc7877003ec7f8a52ac45e4868d5add48010a168f74",
+      "best_ms": 259.6892,
+      "samples": [
+        {
+          "ms": 259.6892,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f"
+        },
+        {
+          "ms": 268.9678,
+          "peak_bytes": 34500608,
+          "output": "254401\n16563864",
+          "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f"
+        },
+        {
+          "ms": 266.0595,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 366.9097,
+          "peak_bytes": 34512896,
+          "output": "254401\n16563864",
+          "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f"
+        },
+        {
+          "ms": 320.2298,
+          "peak_bytes": 34496512,
+          "output": "254401\n16563864",
+          "executable_sha256": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f"
+        }
+      ]
+    },
+    {
+      "workload": "calc",
+      "variant": "baseline",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_calc_medium.exe",
+      "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c",
+      "input_ir_sha256": "900783f8f79446956f0034f4167a4d5c0301f496c150e003c057c4ab962b49d5",
+      "best_ms": 314.9376,
+      "samples": [
+        {
+          "ms": 314.9376,
+          "peak_bytes": 4386816,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c"
+        },
+        {
+          "ms": 320.4134,
+          "peak_bytes": 4378624,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c"
+        },
+        {
+          "ms": 323.2542,
+          "peak_bytes": 4386816,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 326.0876,
+          "peak_bytes": 4390912,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c"
+        },
+        {
+          "ms": 341.7739,
+          "peak_bytes": 4386816,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c"
+        }
+      ]
+    },
+    {
+      "workload": "calc",
+      "variant": "internal",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal.exe",
+      "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665",
+      "input_ir_sha256": "900783f8f79446956f0034f4167a4d5c0301f496c150e003c057c4ab962b49d5",
+      "best_ms": 307.8774,
+      "samples": [
+        {
+          "ms": 307.8774,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665"
+        },
+        {
+          "ms": 313.901,
+          "peak_bytes": 4403200,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665"
+        },
+        {
+          "ms": 327.2629,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 390.1348,
+          "peak_bytes": 4399104,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665"
+        },
+        {
+          "ms": 357.6747,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665"
+        }
+      ]
+    },
+    {
+      "workload": "calc",
+      "variant": "unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_unchecked.exe",
+      "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90",
+      "input_ir_sha256": "900783f8f79446956f0034f4167a4d5c0301f496c150e003c057c4ab962b49d5",
+      "best_ms": 315.0628,
+      "samples": [
+        {
+          "ms": 322.0722,
+          "peak_bytes": 4403200,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90"
+        },
+        {
+          "ms": 316.5559,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90"
+        },
+        {
+          "ms": 315.0628,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 419.0619,
+          "peak_bytes": 4399104,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90"
+        },
+        {
+          "ms": 356.8987,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90"
+        }
+      ]
+    },
+    {
+      "workload": "calc",
+      "variant": "internal_unchecked",
+      "size": "medium",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal_unchecked.exe",
+      "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c",
+      "input_ir_sha256": "900783f8f79446956f0034f4167a4d5c0301f496c150e003c057c4ab962b49d5",
+      "best_ms": 295.854,
+      "samples": [
+        {
+          "ms": 298.3824,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+        },
+        {
+          "ms": 295.854,
+          "peak_bytes": 4403200,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+        },
+        {
+          "ms": 300.0865,
+          "peak_bytes": 4407296,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 422.8702,
+          "peak_bytes": 4399104,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+        },
+        {
+          "ms": 347.5464,
+          "peak_bytes": 4403200,
+          "output": "16589727\n6746064\n259281\n5627\n61247\n57752\n16093\n17094074625383217522",
+          "executable_sha256": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+        }
+      ]
+    }
+  ],
+  "harness_source": "\"\"\"Diagnostic ablations, not production optimizations or official suite timings.\n\nRun from scripts/devshell.ps1 after the complete current suite has been built.\nThe unchecked variants deliberately remove index guards in temporary LLVM files;\nthey estimate opportunity only and must never be shipped as safe R^ code.\n\"\"\"\nfrom pathlib import Path\nimport hashlib\nimport json\nimport re\nimport shutil\nimport subprocess\nimport sys\nfrom datetime import datetime, timezone\n\nROOT = Path(__file__).resolve().parents[2]\nsys.path.insert(0, str(ROOT / 'bench'))\nfrom artifacts import Executables\nfrom run_bench import measure\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\ndef main():\n    work = ROOT / 'build/codegen-investigation'\n    work.mkdir(parents=True, exist_ok=True)\n    out = Path(__file__).resolve().parent\n    clang = shutil.which('clang')\n    assert clang, 'Load scripts/devshell.ps1 first'\n    current = json.loads((ROOT / 'bench/current/workloads_results.json').read_text())\n    trees = json.loads((ROOT / 'bench/current_bintrees/results.json').read_text())\n    data = dict(started_utc=datetime.now(timezone.utc).isoformat(),\n                commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),\n                policy='alternating order; two warmups; best of three; medium inputs',\n                warning='unchecked variants are unsafe diagnostic ablations, not proposed compiler behavior',\n                environment=current['environment'], builds=[], rows=[],\n                harness_source=Path(__file__).read_text())\n    registry = Executables()\n    for name in ('blur', 'lru', 'bintrees', 'scene', 'calc'):\n        session = trees if name == 'bintrees' else current\n        row = next(r for r in session['rows'] if r.get('workload', 'bintrees') == name\n                   and r['size'] == 'medium' and r['language'] == 'rhat')\n        baseline = Path(row['executable'])\n        assert sha(baseline) == row['executable_sha256']\n        original = Path(str(baseline) + '.ll').read_text()\n        variants = [('baseline', baseline)]\n        for variant in ('internal', 'unchecked', 'internal_unchecked'):\n            ir = original\n            if 'internal' in variant:\n                ir = ir.replace('define void @rh_fn_', 'define internal void @rh_fn_')\n            if 'unchecked' in variant:\n                ir, count = re.subn(r'br i1 %t\\d+, label (%index_ok_\\d+), label %index_bad_\\d+, !prof !0',\n                                    r'br label \\1', ir)\n                assert count > 0\n            ll = work / f'{name}_{variant}.ll'\n            ll.write_text(ir)\n            exe = ll.with_suffix('.exe')\n            cmd = [clang, '-Wno-override-module', '-std=c11', '-O2', '-rtlib=compiler-rt',\n                   str(ll), str(ROOT / 'runtime/rhat_runtime.c'), '-o', str(exe)]\n            subprocess.run(cmd, check=True, capture_output=True)\n            data['builds'].append(cmd)\n            remarks = subprocess.run([clang, '-Wno-override-module', '-O2', '-S', '-emit-llvm',\n                                      '-Rpass=loop-vectorize', '-Rpass-missed=loop-vectorize',\n                                      '-Rpass-analysis=loop-vectorize', str(ll), '-o',\n                                      str(ll.with_suffix('.opt.ll'))], capture_output=True, text=True, check=True)\n            (work / f'{name}_{variant}.remarks.txt').write_text(remarks.stderr)\n            variants.append((variant, exe))\n        samples = {v: [] for v, _ in variants}\n        warmups = {v: [] for v, _ in variants}\n        for _, exe in variants:\n            registry.add(exe)\n        for iteration in range(5):\n            order = variants if iteration % 2 == 0 else list(reversed(variants))\n            for variant, exe in order:\n                result = registry.measure(exe, lambda p: measure(p, 1800))\n                assert result['output'] == row['samples'][0]['output']\n                (warmups if iteration < 2 else samples)[variant].append(result)\n        for variant, exe in variants:\n            data['rows'].append(dict(workload=name, variant=variant, size='medium',\n                                     executable=str(exe), executable_sha256=sha(exe),\n                                     input_ir_sha256=sha(str(baseline) + '.ll'),\n                                     best_ms=min(s['ms'] for s in samples[variant]),\n                                     samples=samples[variant], warmups=warmups[variant]))\n        print(name, {v: round(min(s['ms'] for s in samples[v]), 2) for v, _ in variants}, flush=True)\n        data['executable_hashes'] = registry.hashes\n        (out / 'codegen.json').write_text(json.dumps(data, indent=2) + '\\n')\n\nif __name__ == '__main__':\n    main()\n",
+  "executable_hashes": {
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_blur_medium.exe": "d6cbb1afcf1ecd3798dd519bbe15a5c631f41389e212519a5d808f8a2cb14374",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal.exe": "f645786fd200b8f381391ede548f8b68db1e307764475079dc829f6321457b35",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_unchecked.exe": "0fbb89b0861bd996033aa04c3d8e7797fe82058df84700c3a96e79a1f0fd3cb6",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\blur_internal_unchecked.exe": "47b182642e5ac8d2e2f37f05b59f27f6ae07ff9bf53e0ae2ce1eebfc8cf45d1a",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_lru_medium.exe": "18857618eedcc66df5c8850fa1a81d9b51905567bb61eb42b9a2ff482921d10c",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal.exe": "1ba808e8bafff4cce45fba07ea5e21064a4387f09cb86f63e3b2edafae58c741",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_unchecked.exe": "59458237290e7124d67649ef44d15c20534e34a715206132c215301ad84e9236",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\lru_internal_unchecked.exe": "0e2989d74cf37ebaf04e6a8a888b5aa7556374a838e3b114981400a55a762dc4",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array-bintrees\\rhat_bintrees_medium.exe": "aa3df782bb92dd42a3edb44490efcbd78cdbc87d587d46b719ecd6c6c718f121",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal.exe": "35ddc647c3de90b3168804067a71c77a01627aeaea17b54f80226a9841dc5a61",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_unchecked.exe": "5676f8f725b0035aa9bf2afaccf0929699a87f445bdf164148127fa9a4ee00ac",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\bintrees_internal_unchecked.exe": "f1de5f31ae3bf9faca47001214c29ed029b6c7b4d81cf834693884a61d426c9b",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_scene_medium.exe": "6ed0556177e0d6e209093a9f72b76a176eb5e2e9a77453481daf3c9df974c087",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal.exe": "9455c76af20f1c8dbedb686645d11b0a552160ba86eaeecaa9b5e0d5cc81ef6f",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_unchecked.exe": "db0308a42e2a3790e68475a7e6ed2c8ebc8b5d1e1a0ae26810df73a165339b1b",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\scene_internal_unchecked.exe": "b9bb3cd7b791c2d20e0d46936a0626dab6ca4111c9158b1bc92ac93fb62a485f",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_calc_medium.exe": "c48a9882728b84de9a8bdc26d775a1068dc5229cdecd9e23d425f1a1ddea385c",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal.exe": "6ca2deae3437b52d1724da14e866202e71d7ae610fad4c6b85adc122e7d07665",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_unchecked.exe": "130af2fd4862ff0616c5650f3976203671cc462eba364489bf39d9e5d782dd90",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\codegen-investigation\\calc_internal_unchecked.exe": "5c535bc977c7fd41b6f60da3f8dcc64c85dbc0dbfa141b2d756e8cafe370190c"
+  }
+}

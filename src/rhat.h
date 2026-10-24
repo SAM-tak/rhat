@@ -194,8 +194,31 @@ enum {
   I_CASE_IS,
   I_CASE_GET,
   I_TRUNCATE,
-  I_STACK_BEGIN
+  I_STACK_BEGIN,
+  I_RANGE_GUARD
 };
+enum {
+  RANGE_SLOT,
+  RANGE_CONST,
+  RANGE_IV,
+  RANGE_LENGTH,
+  RANGE_ADD,
+  RANGE_SUB,
+  RANGE_MUL
+};
+typedef struct RangeExpr RangeExpr;
+struct RangeExpr {
+  int kind, slot;
+  char *text;
+  bool indirect;
+  Type *type;
+  RangeExpr *a, *b;
+};
+typedef struct {
+  int induction, comparison, limit;
+  RangeExpr *upper;
+  List indices, arrays, data;
+} RangePlan;
 typedef struct {
   int op;
   Loc loc;
@@ -205,6 +228,9 @@ typedef struct {
   Instance *callee;
   int stack_index;
   bool push_at_top;
+  bool index_proven;
+  int index_data;
+  RangePlan *range;
   List args;
 } Instr;
 typedef struct {
@@ -225,6 +251,7 @@ struct Instance {
 };
 void plan_stacks(Program *p);
 void analyze_array_growth(Program *p);
+void version_range_loops(Program *p);
 void report_stacks(Program *p);
 void emit_llvm(Program *p, const char *path);
 void dump_ir(Program *p, const char *path);

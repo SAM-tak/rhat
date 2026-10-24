@@ -10,6 +10,11 @@ the selected original variants, representation differences and remaining languag
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
 
+The subsequent internal-call and checked-loop optimizations have
+[focused paired measurements](abi_ranges/results.md). Their C++/Rust columns
+reuse the previous full-suite reference timings, with the original dates and
+variants retained. The complete 16-workload matrix remains the preceding session.
+
 The complete additional-workload matrix uses [run_workloads.py](run_workloads.py) and
 writes [current/workloads_results.md](current/workloads_results.md) / `workloads_results.json`.
 The numeric subset is also published in [workloads_results.md](workloads_results.md).
@@ -37,8 +42,9 @@ The current reference uses the same compiler/runtime as the complete suite.
 Pre-fix numeric data is retained in invalid_runs for audit.
 Array bounds/address calculations and the push fast path are emitted in LLVM IR.
 Push uses byte-capacity checks and a conservative control-flow/callee-effect analysis
-to omit retained-top comparisons only where proven safe. General bounds-check
-elimination and explicit SIMD optimizations are not included.
+to omit retained-top comparisons only where proven safe. Canonical i64 unit-step
+loops now use range guards and a checked fallback. Other loop shapes retain their
+index checks; explicit SIMD optimizations are not included.
 See [the paired comparison](array_codegen_comparison/results.md) for a same-session
 before/after check against the previous data-stack binaries; all current C++/Rust
 comparisons remain in [results.md](results.md).

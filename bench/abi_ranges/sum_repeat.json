@@ -1,0 +1,219 @@
+{
+  "policy": "sum large control repeat: alternating order; 2 warmups; 7 timed runs",
+  "rows": [
+    {
+      "workload": "sum",
+      "size": "large",
+      "n": 128000000,
+      "variant": "before",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_sum_large.exe",
+      "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713",
+      "source_sha256": "cb692e41aab6bae25c0222c775bc9490cc07b72e19dbc93ad93684c50f99c2a2",
+      "input_ir_sha256": "fbdbe64fcb51390e127447856801230ee6ec707ee7b26e3aa8433c9ff313dc14",
+      "best_ms": 691.4971,
+      "samples": [
+        {
+          "ms": 691.4971,
+          "peak_bytes": 515989504,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+        },
+        {
+          "ms": 779.1648,
+          "peak_bytes": 515989504,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+        },
+        {
+          "ms": 795.6376,
+          "peak_bytes": 515989504,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 710.544,
+          "peak_bytes": 516005888,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+        },
+        {
+          "ms": 740.5338,
+          "peak_bytes": 515989504,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+        }
+      ]
+    },
+    {
+      "workload": "sum",
+      "size": "large",
+      "n": 128000000,
+      "variant": "after",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\abi-ranges-bench\\after_sum_large.exe",
+      "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea",
+      "source_sha256": "cb692e41aab6bae25c0222c775bc9490cc07b72e19dbc93ad93684c50f99c2a2",
+      "input_ir_sha256": "9a6444b2629a145cfe92ddf42cba6eaed7280896381ebb6cfc661ec40028c59e",
+      "best_ms": 731.261,
+      "samples": [
+        {
+          "ms": 731.261,
+          "peak_bytes": 515993600,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+        },
+        {
+          "ms": 740.3919,
+          "peak_bytes": 515993600,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+        },
+        {
+          "ms": 768.106,
+          "peak_bytes": 515997696,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 776.9535,
+          "peak_bytes": 516022272,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+        },
+        {
+          "ms": 745.7999,
+          "peak_bytes": 515997696,
+          "output": "128000000\n511523579712",
+          "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+        }
+      ]
+    }
+  ],
+  "samples": {
+    "before": [
+      {
+        "ms": 696.0883,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 687.3164,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 684.2968,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 684.0025,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 705.117,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 719.9016,
+        "peak_bytes": 515989504,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 700.5199,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      }
+    ],
+    "after": [
+      {
+        "ms": 709.4865,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 709.0958,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 728.7994,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 769.3502,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 695.8585,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 703.4703,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 703.8456,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      }
+    ]
+  },
+  "warmups": {
+    "before": [
+      {
+        "ms": 716.3646,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      },
+      {
+        "ms": 686.7567,
+        "peak_bytes": 515993600,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713"
+      }
+    ],
+    "after": [
+      {
+        "ms": 689.0772,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      },
+      {
+        "ms": 696.8437,
+        "peak_bytes": 515997696,
+        "output": "128000000\n511523579712",
+        "executable_sha256": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+      }
+    ]
+  },
+  "executable_hashes": {
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-array\\rhat_sum_large.exe": "43513e1048805309953f81399026581410417e4379d77ef86284a68de20e2713",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\abi-ranges-bench\\after_sum_large.exe": "b0c499ce98a39fed0ef97560a6aabbf56bc2e2f6d57705c0f5cea2db997f29ea"
+  }
+}
