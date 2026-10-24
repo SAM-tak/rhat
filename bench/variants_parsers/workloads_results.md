@@ -1,6 +1,6 @@
 # Additional R^ workloads
 
-Measured: 2026-10-24T01:49:57.138083+00:00 (UTC).
+Measured: 2026-10-24T03:33:36.565830+00:00 (UTC).
 
 R^ replaces Goose. All comparison implementations were built and measured in this session.
 
@@ -16,16 +16,19 @@ The LLVM push fast path makes no runtime call; array descriptors are 24 bytes.
 
 Executable paths are unique per language; every run verifies its build-time SHA-256 before and after execution.
 
+Index bounds and address calculations are emitted inline, including full-width 128-bit checks.
+Push checks remaining bytes without division; proven append-only paths update the top directly.
+
 ## Environment
 
 | Item | Value |
 |---|---|
 | cpu | AMD Ryzen 5 2600 Six-Core Processor |
 | os | Windows-10-10.0.26300-SP0 |
-| commit | b958652e5b73f704689abff75b74bd574bc91120 |
-| dirty | M CMakeLists.txt;  M README.md;  M bench/README.md;  M bench/coverage.md;  M bench/current_bintrees/results.json;  M bench/current_bintrees/results.md;  M bench/report_suite.py;  M bench/run_bench.py;  M bench/run_workloads.py;  M docs/design.md;  M runtime/rhat_runtime.c;  M src/llvm.c;  M src/main.c;  M src/rhat.h;  M src/sema.c;  M tests/run.py;  M tests/runtime_regions.c; ?? bench/pre_data_stacks/; ?? bench/pre_data_stacks_bintrees/; ?? src/stacks.c |
-| compiler_sha256 | b009c93c77498b146d5d3838515e81a157d7c7fb4e23920c9ac243276cd421c7 |
-| runtime_sha256 | c607b74ad004fb719288b594f60e0a25913763517803c2d7490f484319961073 |
+| commit | d904390f94ffbab6694b16ce6cae70d6aee653e7 |
+| dirty | M CMakeLists.txt;  M README.md;  M bench/README.md;  M bench/current_bintrees/results.json;  M bench/current_bintrees/results.md;  M bench/report_suite.py;  M bench/run_bench.py;  M bench/run_workloads.py;  M docs/design.md;  M runtime/rhat_runtime.c;  M src/llvm.c;  M src/main.c;  M src/rhat.h;  M tests/run.py; ?? bench/array_codegen_comparison/; ?? bench/pre_array_fastpaths/; ?? bench/pre_array_fastpaths_bintrees/; ?? src/arrays.c |
+| compiler_sha256 | e5e63c7e119cc6354e917b2d2ea77f63dafc310fb04c45dae796fc922251f3a4 |
+| runtime_sha256 | fa716c2b975c1a319f24c7a08fdce07d0194298765efbf629955eab2ade9e034 |
 | clang | clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211) |
 | msvc | Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64 |
 | clangcl | clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211) |
@@ -41,30 +44,30 @@ R^ ports records_fixed.goose with a native nominal Event union, 24-byte records 
 
 | Size / N | Implementation | Best ms | Peak MiB | Comparison / R^ time |
 |---|---|---:|---:|---:|
-| small / 500000 | R^ native nominal union / inline text (LLVM/Clang) | 113.05 | 15.27 | 1.000x |
-| small / 500000 | C++ virtual objects (msvc) | 102.40 | 28.05 | 0.906x |
-| small / 500000 | C++ variant / owned string (msvc) | 97.99 | 48.68 | 0.867x |
-| small / 500000 | C++ variant / inline text (msvc) | 61.18 | 26.04 | 0.541x |
-| small / 500000 | C++ virtual objects (clangcl) | 120.51 | 28.07 | 1.066x |
-| small / 500000 | C++ variant / owned string (clangcl) | 107.58 | 48.70 | 0.952x |
-| small / 500000 | C++ variant / inline text (clangcl) | 72.78 | 26.05 | 0.644x |
-| small / 500000 | Rust records | 78.52 | 22.65 | 0.695x |
-| medium / 4000000 | R^ native nominal union / inline text (LLVM/Clang) | 759.35 | 95.34 | 1.000x |
-| medium / 4000000 | C++ virtual objects (msvc) | 706.09 | 187.05 | 0.930x |
-| medium / 4000000 | C++ variant / owned string (msvc) | 560.90 | 330.36 | 0.739x |
-| medium / 4000000 | C++ variant / inline text (msvc) | 274.64 | 166.88 | 0.362x |
-| medium / 4000000 | C++ virtual objects (clangcl) | 677.70 | 187.06 | 0.892x |
-| medium / 4000000 | C++ variant / owned string (clangcl) | 475.91 | 330.38 | 0.627x |
-| medium / 4000000 | C++ variant / inline text (clangcl) | 290.87 | 166.88 | 0.383x |
-| medium / 4000000 | Rust records | 431.18 | 150.71 | 0.568x |
-| large / 16000000 | R^ native nominal union / inline text (LLVM/Clang) | 2957.28 | 370.02 | 1.000x |
-| large / 16000000 | C++ virtual objects (msvc) | 2705.95 | 709.27 | 0.915x |
-| large / 16000000 | C++ variant / owned string (msvc) | 2076.70 | 1100.81 | 0.702x |
-| large / 16000000 | C++ variant / inline text (msvc) | 979.48 | 552.10 | 0.331x |
-| large / 16000000 | C++ virtual objects (clangcl) | 2941.99 | 709.24 | 0.995x |
-| large / 16000000 | C++ variant / owned string (clangcl) | 1858.41 | 1100.82 | 0.628x |
-| large / 16000000 | C++ variant / inline text (clangcl) | 1009.24 | 552.11 | 0.341x |
-| large / 16000000 | Rust records | 1578.38 | 590.04 | 0.534x |
+| small / 500000 | R^ native nominal union / inline text (LLVM/Clang) | 37.73 | 15.27 | 1.000x |
+| small / 500000 | C++ virtual objects (msvc) | 97.33 | 28.04 | 2.580x |
+| small / 500000 | C++ variant / owned string (msvc) | 84.62 | 48.64 | 2.243x |
+| small / 500000 | C++ variant / inline text (msvc) | 49.13 | 26.00 | 1.302x |
+| small / 500000 | C++ virtual objects (clangcl) | 92.12 | 28.05 | 2.442x |
+| small / 500000 | C++ variant / owned string (clangcl) | 81.65 | 48.66 | 2.164x |
+| small / 500000 | C++ variant / inline text (clangcl) | 50.47 | 26.01 | 1.338x |
+| small / 500000 | Rust records | 64.26 | 22.64 | 1.703x |
+| medium / 4000000 | R^ native nominal union / inline text (LLVM/Clang) | 184.22 | 95.34 | 1.000x |
+| medium / 4000000 | C++ virtual objects (msvc) | 676.44 | 187.05 | 3.672x |
+| medium / 4000000 | C++ variant / owned string (msvc) | 539.98 | 330.32 | 2.931x |
+| medium / 4000000 | C++ variant / inline text (msvc) | 273.15 | 166.84 | 1.483x |
+| medium / 4000000 | C++ virtual objects (clangcl) | 651.43 | 187.06 | 3.536x |
+| medium / 4000000 | C++ variant / owned string (clangcl) | 490.61 | 330.34 | 2.663x |
+| medium / 4000000 | C++ variant / inline text (clangcl) | 270.14 | 166.85 | 1.466x |
+| medium / 4000000 | Rust records | 401.20 | 150.71 | 2.178x |
+| large / 16000000 | R^ native nominal union / inline text (LLVM/Clang) | 710.40 | 370.02 | 1.000x |
+| large / 16000000 | C++ virtual objects (msvc) | 2666.74 | 709.26 | 3.754x |
+| large / 16000000 | C++ variant / owned string (msvc) | 2061.80 | 1100.77 | 2.902x |
+| large / 16000000 | C++ variant / inline text (msvc) | 986.45 | 552.07 | 1.389x |
+| large / 16000000 | C++ virtual objects (clangcl) | 2582.14 | 709.25 | 3.635x |
+| large / 16000000 | C++ variant / owned string (clangcl) | 1733.62 | 1100.79 | 2.440x |
+| large / 16000000 | C++ variant / inline text (clangcl) | 1054.58 | 552.07 | 1.484x |
+| large / 16000000 | Rust records | 1571.77 | 589.99 | 2.213x |
 
 ## interp
 
@@ -72,33 +75,33 @@ R^ uses a native nominal Expr union with 12-byte fixed nodes and u32 child indic
 
 | Size / depth | Implementation | Best ms | Peak MiB | Comparison / R^ time |
 |---|---|---:|---:|---:|
-| small / 16 | R^ native nominal union / u32 arena (LLVM/Clang) | 28.50 | 4.21 | 1.000x |
-| small / 16 | C++ virtual owning tree (msvc) | 22.32 | 4.88 | 0.783x |
-| small / 16 | C++ variant arena (msvc) | 20.56 | 4.77 | 0.722x |
-| small / 16 | C++ switch arena (msvc) | 20.57 | 4.77 | 0.722x |
-| small / 16 | C++ virtual owning tree (clangcl) | 23.47 | 4.88 | 0.824x |
-| small / 16 | C++ variant arena (clangcl) | 21.04 | 4.77 | 0.739x |
-| small / 16 | C++ switch arena (clangcl) | 19.44 | 4.77 | 0.682x |
-| small / 16 | Rust interp_box | 25.95 | 5.31 | 0.911x |
-| small / 16 | Rust interp_arena | 21.35 | 5.58 | 0.749x |
-| medium / 20 | R^ native nominal union / u32 arena (LLVM/Clang) | 104.63 | 7.21 | 1.000x |
-| medium / 20 | C++ virtual owning tree (msvc) | 84.59 | 12.88 | 0.808x |
-| medium / 20 | C++ variant arena (msvc) | 39.47 | 10.23 | 0.377x |
-| medium / 20 | C++ switch arena (msvc) | 38.93 | 10.23 | 0.372x |
-| medium / 20 | C++ virtual owning tree (clangcl) | 79.95 | 12.88 | 0.764x |
-| medium / 20 | C++ variant arena (clangcl) | 37.81 | 10.23 | 0.361x |
-| medium / 20 | C++ switch arena (clangcl) | 38.59 | 10.23 | 0.369x |
-| medium / 20 | Rust interp_box | 88.17 | 13.30 | 0.843x |
-| medium / 20 | Rust interp_arena | 38.35 | 11.68 | 0.367x |
-| large / 24 | R^ native nominal union / u32 arena (LLVM/Clang) | 1000.40 | 39.34 | 1.000x |
-| large / 24 | C++ virtual owning tree (msvc) | 658.72 | 99.16 | 0.658x |
-| large / 24 | C++ variant arena (msvc) | 238.20 | 59.55 | 0.238x |
-| large / 24 | C++ switch arena (msvc) | 218.15 | 59.55 | 0.218x |
-| large / 24 | C++ virtual owning tree (clangcl) | 630.86 | 99.16 | 0.631x |
-| large / 24 | C++ variant arena (clangcl) | 273.69 | 59.55 | 0.274x |
-| large / 24 | C++ switch arena (clangcl) | 224.19 | 59.55 | 0.224x |
-| large / 24 | Rust interp_box | 766.98 | 99.60 | 0.767x |
-| large / 24 | Rust interp_arena | 255.77 | 53.69 | 0.256x |
+| small / 16 | R^ native nominal union / u32 arena (LLVM/Clang) | 19.49 | 4.21 | 1.000x |
+| small / 16 | C++ virtual owning tree (msvc) | 20.43 | 4.88 | 1.049x |
+| small / 16 | C++ variant arena (msvc) | 18.24 | 4.96 | 0.936x |
+| small / 16 | C++ switch arena (msvc) | 18.29 | 4.97 | 0.938x |
+| small / 16 | C++ virtual owning tree (clangcl) | 21.02 | 4.88 | 1.079x |
+| small / 16 | C++ variant arena (clangcl) | 18.85 | 4.97 | 0.967x |
+| small / 16 | C++ switch arena (clangcl) | 18.72 | 4.98 | 0.961x |
+| small / 16 | Rust interp_box | 21.77 | 5.32 | 1.117x |
+| small / 16 | Rust interp_arena | 19.49 | 5.62 | 1.000x |
+| medium / 20 | R^ native nominal union / u32 arena (LLVM/Clang) | 37.88 | 7.21 | 1.000x |
+| medium / 20 | C++ virtual owning tree (msvc) | 69.00 | 12.88 | 1.822x |
+| medium / 20 | C++ variant arena (msvc) | 31.90 | 10.20 | 0.842x |
+| medium / 20 | C++ switch arena (msvc) | 32.15 | 10.20 | 0.849x |
+| medium / 20 | C++ virtual owning tree (clangcl) | 69.67 | 12.88 | 1.839x |
+| medium / 20 | C++ variant arena (clangcl) | 34.00 | 10.20 | 0.898x |
+| medium / 20 | C++ switch arena (clangcl) | 31.19 | 10.20 | 0.824x |
+| medium / 20 | Rust interp_box | 78.10 | 13.30 | 2.062x |
+| medium / 20 | Rust interp_arena | 33.39 | 11.70 | 0.881x |
+| large / 24 | R^ native nominal union / u32 arena (LLVM/Clang) | 276.96 | 39.34 | 1.000x |
+| large / 24 | C++ virtual owning tree (msvc) | 551.55 | 99.16 | 1.991x |
+| large / 24 | C++ variant arena (msvc) | 207.26 | 59.52 | 0.748x |
+| large / 24 | C++ switch arena (msvc) | 195.96 | 59.52 | 0.708x |
+| large / 24 | C++ virtual owning tree (clangcl) | 570.38 | 99.16 | 2.059x |
+| large / 24 | C++ variant arena (clangcl) | 247.51 | 59.52 | 0.894x |
+| large / 24 | C++ switch arena (clangcl) | 213.65 | 59.52 | 0.771x |
+| large / 24 | Rust interp_box | 688.68 | 99.59 | 2.487x |
+| large / 24 | Rust interp_arena | 221.41 | 53.66 | 0.799x |
 
 ## sexp
 
@@ -106,27 +109,27 @@ R^ generates the original text, parses it into 24-byte nominal union nodes linke
 
 | Size / N | Implementation | Best ms | Peak MiB | Comparison / R^ time |
 |---|---|---:|---:|---:|
-| small / 20000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 594.00 | 52.35 | 1.000x |
-| small / 20000 | C++ owning-pointer / owned symbols (msvc) | 480.47 | 130.02 | 0.809x |
-| small / 20000 | C++ index arena / borrowed symbols (msvc) | 218.20 | 61.14 | 0.367x |
-| small / 20000 | C++ owning-pointer / owned symbols (clangcl) | 417.44 | 130.00 | 0.703x |
-| small / 20000 | C++ index arena / borrowed symbols (clangcl) | 189.15 | 61.13 | 0.318x |
-| small / 20000 | Rust sexp_box | 393.13 | 96.24 | 0.662x |
-| small / 20000 | Rust sexp_arena | 165.88 | 62.54 | 0.279x |
-| medium / 100000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 3009.82 | 245.84 | 1.000x |
-| medium / 100000 | C++ owning-pointer / owned symbols (msvc) | 2399.20 | 633.55 | 0.797x |
-| medium / 100000 | C++ index arena / borrowed symbols (msvc) | 1079.57 | 293.77 | 0.359x |
-| medium / 100000 | C++ owning-pointer / owned symbols (clangcl) | 2011.68 | 633.53 | 0.668x |
-| medium / 100000 | C++ index arena / borrowed symbols (clangcl) | 830.09 | 293.79 | 0.276x |
-| medium / 100000 | Rust sexp_box | 1964.10 | 463.20 | 0.653x |
-| medium / 100000 | Rust sexp_arena | 750.69 | 243.16 | 0.249x |
-| large / 300000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 9007.11 | 729.60 | 1.000x |
-| large / 300000 | C++ owning-pointer / owned symbols (msvc) | 7264.29 | 1891.73 | 0.807x |
-| large / 300000 | C++ index arena / borrowed symbols (msvc) | 3157.67 | 964.01 | 0.351x |
-| large / 300000 | C++ owning-pointer / owned symbols (clangcl) | 5982.87 | 1891.68 | 0.664x |
-| large / 300000 | C++ index arena / borrowed symbols (clangcl) | 2495.70 | 964.04 | 0.277x |
-| large / 300000 | Rust sexp_box | 6147.11 | 1380.82 | 0.682x |
-| large / 300000 | Rust sexp_arena | 2303.98 | 911.06 | 0.256x |
+| small / 20000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 254.21 | 52.36 | 1.000x |
+| small / 20000 | C++ owning-pointer / owned symbols (msvc) | 480.21 | 130.00 | 1.889x |
+| small / 20000 | C++ index arena / borrowed symbols (msvc) | 220.70 | 61.04 | 0.868x |
+| small / 20000 | C++ owning-pointer / owned symbols (clangcl) | 408.72 | 129.98 | 1.608x |
+| small / 20000 | C++ index arena / borrowed symbols (clangcl) | 181.75 | 61.04 | 0.715x |
+| small / 20000 | Rust sexp_box | 410.76 | 96.24 | 1.616x |
+| small / 20000 | Rust sexp_arena | 168.49 | 61.44 | 0.663x |
+| medium / 100000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 1225.75 | 245.86 | 1.000x |
+| medium / 100000 | C++ owning-pointer / owned symbols (msvc) | 2372.36 | 633.51 | 1.935x |
+| medium / 100000 | C++ index arena / borrowed symbols (msvc) | 1041.30 | 293.53 | 0.850x |
+| medium / 100000 | C++ owning-pointer / owned symbols (clangcl) | 2050.11 | 633.54 | 1.673x |
+| medium / 100000 | C++ index arena / borrowed symbols (clangcl) | 840.35 | 293.53 | 0.686x |
+| medium / 100000 | Rust sexp_box | 1983.27 | 463.24 | 1.618x |
+| medium / 100000 | Rust sexp_arena | 795.64 | 242.19 | 0.649x |
+| large / 300000 | R^ nominal union / copied-symbol arenas (LLVM/Clang) | 3799.99 | 729.61 | 1.000x |
+| large / 300000 | C++ owning-pointer / owned symbols (msvc) | 7471.44 | 1891.68 | 1.966x |
+| large / 300000 | C++ index arena / borrowed symbols (msvc) | 3128.04 | 963.79 | 0.823x |
+| large / 300000 | C++ owning-pointer / owned symbols (clangcl) | 6015.48 | 1891.69 | 1.583x |
+| large / 300000 | C++ index arena / borrowed symbols (clangcl) | 2511.50 | 963.80 | 0.661x |
+| large / 300000 | Rust sexp_box | 6088.70 | 1380.86 | 1.602x |
+| large / 300000 | Rust sexp_arena | 2320.62 | 911.03 | 0.611x |
 
 ## calc
 
@@ -134,27 +137,27 @@ R^ generates and damages the original arithmetic inputs, parses every input with
 
 | Size / N | Implementation | Best ms | Peak MiB | Comparison / R^ time |
 |---|---|---:|---:|---:|
-| small / 100000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 207.42 | 4.20 | 1.000x |
-| small / 100000 | C++ owning AST / exceptions (msvc) | 323.70 | 4.24 | 1.561x |
-| small / 100000 | C++ index arena / error codes (msvc) | 80.45 | 4.18 | 0.388x |
-| small / 100000 | C++ owning AST / exceptions (clangcl) | 296.71 | 4.23 | 1.430x |
-| small / 100000 | C++ index arena / error codes (clangcl) | 68.19 | 4.19 | 0.329x |
-| small / 100000 | Rust calc_box | 152.60 | 4.70 | 0.736x |
-| small / 100000 | Rust calc_arena | 69.41 | 4.69 | 0.335x |
-| medium / 400000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 792.81 | 4.20 | 1.000x |
-| medium / 400000 | C++ owning AST / exceptions (msvc) | 1253.78 | 4.24 | 1.581x |
-| medium / 400000 | C++ index arena / error codes (msvc) | 277.88 | 4.18 | 0.350x |
-| medium / 400000 | C++ owning AST / exceptions (clangcl) | 1154.65 | 4.23 | 1.456x |
-| medium / 400000 | C++ index arena / error codes (clangcl) | 229.67 | 4.19 | 0.290x |
-| medium / 400000 | Rust calc_box | 572.08 | 4.70 | 0.722x |
-| medium / 400000 | Rust calc_arena | 222.86 | 4.68 | 0.281x |
-| large / 1600000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 3220.66 | 4.20 | 1.000x |
-| large / 1600000 | C++ owning AST / exceptions (msvc) | 4979.85 | 4.24 | 1.546x |
-| large / 1600000 | C++ index arena / error codes (msvc) | 1083.79 | 4.18 | 0.337x |
-| large / 1600000 | C++ owning AST / exceptions (clangcl) | 4646.70 | 4.23 | 1.443x |
-| large / 1600000 | C++ index arena / error codes (clangcl) | 897.36 | 4.19 | 0.279x |
-| large / 1600000 | Rust calc_box | 2282.36 | 4.66 | 0.709x |
-| large / 1600000 | Rust calc_arena | 841.50 | 4.69 | 0.261x |
+| small / 100000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 92.77 | 4.19 | 1.000x |
+| small / 100000 | C++ owning AST / exceptions (msvc) | 319.62 | 4.23 | 3.445x |
+| small / 100000 | C++ index arena / error codes (msvc) | 81.11 | 4.18 | 0.874x |
+| small / 100000 | C++ owning AST / exceptions (clangcl) | 303.10 | 4.23 | 3.267x |
+| small / 100000 | C++ index arena / error codes (clangcl) | 71.34 | 4.19 | 0.769x |
+| small / 100000 | Rust calc_box | 156.93 | 4.70 | 1.692x |
+| small / 100000 | Rust calc_arena | 70.96 | 4.69 | 0.765x |
+| medium / 400000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 322.02 | 4.19 | 1.000x |
+| medium / 400000 | C++ owning AST / exceptions (msvc) | 1211.69 | 4.24 | 3.763x |
+| medium / 400000 | C++ index arena / error codes (msvc) | 279.17 | 4.18 | 0.867x |
+| medium / 400000 | C++ owning AST / exceptions (clangcl) | 1137.89 | 4.23 | 3.534x |
+| medium / 400000 | C++ index arena / error codes (clangcl) | 225.02 | 4.19 | 0.699x |
+| medium / 400000 | Rust calc_box | 576.50 | 4.66 | 1.790x |
+| medium / 400000 | Rust calc_arena | 222.82 | 4.69 | 0.692x |
+| large / 1600000 | R^ nominal AST / explicit result unions (LLVM/Clang) | 1272.34 | 4.18 | 1.000x |
+| large / 1600000 | C++ owning AST / exceptions (msvc) | 4944.57 | 4.23 | 3.886x |
+| large / 1600000 | C++ index arena / error codes (msvc) | 1073.85 | 4.18 | 0.844x |
+| large / 1600000 | C++ owning AST / exceptions (clangcl) | 4607.22 | 4.23 | 3.621x |
+| large / 1600000 | C++ index arena / error codes (clangcl) | 861.59 | 4.19 | 0.677x |
+| large / 1600000 | Rust calc_box | 2213.89 | 4.66 | 1.740x |
+| large / 1600000 | Rust calc_arena | 832.43 | 4.69 | 0.654x |
 
 Every warm-up/sample checks its checksum. Each size first cross-checks independently built
 C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.

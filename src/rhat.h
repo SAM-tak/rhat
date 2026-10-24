@@ -204,6 +204,7 @@ typedef struct {
   Type *type;
   Instance *callee;
   int stack_index;
+  bool push_at_top;
   List args;
 } Instr;
 typedef struct {
@@ -220,8 +221,10 @@ struct Instance {
   int id, state, labels, result_slot;
   char *result_local;
   int stack_own, stack_need;
+  bool may_shrink;
 };
 void plan_stacks(Program *p);
+void analyze_array_growth(Program *p);
 void report_stacks(Program *p);
 void emit_llvm(Program *p, const char *path);
 void dump_ir(Program *p, const char *path);

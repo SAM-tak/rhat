@@ -144,6 +144,13 @@ void rh_runtime_shutdown(void) {
 _Noreturn void rh_stack_overflow(int32_t line) {
   rh_panic("data stack overflow", line);
 }
+_Noreturn void rh_division_fail(int32_t remainder, int32_t line) {
+  rh_panic(remainder ? "invalid integer remainder" : "invalid integer division",
+           line);
+}
+_Noreturn void rh_index_fail(int32_t line) {
+  rh_panic("array index out of bounds", line);
+}
 void rh_bounds(int64_t index, uint64_t length, int32_t line) {
   if (index < 0 || (uint64_t)index >= length)
     rh_panic("array index out of bounds", line);

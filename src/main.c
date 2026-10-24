@@ -180,6 +180,7 @@ int main(int argc, char **argv) {
   parse(&p, source);
   analyze(&p);
   plan_stacks(&p);
+  analyze_array_growth(&p);
   if (stacks)
     report_stacks(&p);
   if (rir)

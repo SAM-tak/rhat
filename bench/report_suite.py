@@ -12,6 +12,8 @@ def write_suite():
     for key in ('cpu','os','compiler_sha256','runtime_sha256','clang','msvc','rustc'):
         if additional['environment'][key] != binary['environment'][key]:
             raise ValueError(f'current suite environment mismatch: {key}')
+    if additional.get('codegen_model') != binary.get('codegen_model'):
+        raise ValueError('current suite codegen mismatch')
     if any(data.get('memory_model') != 'static_data_stacks_fault_commit' for data in (additional, binary)):
         raise ValueError('current suite must use static data stacks')
     if set(additional['workloads']) != set(NAMES)-{'bintrees'}:
@@ -40,6 +42,13 @@ def write_suite():
            '**All 48 size conditions include R^, C++ and Rust timings and relative performance.**','',
            'R^ uses statically assigned data stacks, scope watermark rewinds and Windows fault-driven page commitment.',
            'The push fast path is emitted directly as LLVM IR; bounds/range checks remain enabled.','',
+           *(['Array indexing uses inline full-width bounds checks and address calculations.',
+              'Push uses byte-capacity checks and directly updates the top where growth analysis proves it safe.',
+              'Integer division/remainder guards are also inline, allowing safe constant-divisor checks to fold away.',
+              'The failure paths retain their runtime diagnostics; checks are not disabled.','',
+              'Before these optimizations: [static-data-stack reference](pre_array_fastpaths/README.md).',
+              'Same-session before/after check: [paired array comparison](array_codegen_comparison/results.md).','']
+             if additional.get('codegen_model') == 'inline_array_and_arithmetic_checks' else []),
            f"Additional workloads: {additional['started_utc']} UTC; bintrees: {binary['started_utc']} UTC.",'',
            'All rows below were measured with the same current R^ compiler/runtime. Goose is not run.',
            'Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.',

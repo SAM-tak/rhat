@@ -102,6 +102,195 @@ def factorial_ir(ir, ll):
     assert "call void @rh_fn_1" in ll
 
 
+def scalar_check_ir(ir, ll):
+    assert "@rh_check_division" not in ll
+    assert "@rh_division_fail" in ll
+    assert "division_ok_" in ll
+
+positive("division_single_evaluation", '''
+let^ denominator=p^ counter:&i32^ -> i32^ { *counter:=*counter+1; return^ 97 }
+var^ counter:i32^=0
+print(1234 % denominator(&counter),counter)
+''', "70 1\n", scalar_check_ir)
+for bits in (8,16,32,64,128):
+    low=-(1 << (bits-1)); high=(1 << (bits-1))-1
+    positive("direct_signed_division_"+str(bits), f'''
+let^ divide=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a/b }}
+let^ remain=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a%b }}
+print(divide({low},2),remain({low},3),divide({high},-1),remain(-7,3))
+''', f"{low//2} {-((-low)%3)} {-high} -1\n", scalar_check_ir)
+for op,label in (("/","division"),("%","remainder")):
+    runtime_failure("direct_dynamic_"+label+"_overflow", f'''
+let^ calculate=f^ a:i128^, b:i128^ -> i128^ {{ return^ a {op} b }}
+print(calculate(-170141183460469231731687303715884105728,-1))
+''', "invalid integer "+label)
+    runtime_failure("direct_dynamic_"+label+"_zero", f'''
+let^ calculate=f^ a:u128^, b:u128^ -> u128^ {{ return^ a {op} b }}
+print(calculate(340282366920938463463374607431768211455,0))
+''', "invalid integer "+label)
+
+def direct_index_ir(ir, ll):
+    for helper in ("rh_array_at", "rh_view_at", "rh_bounds", "rh_index_integer"):
+        assert "@" + helper not in ll, helper
+    assert "icmp ult" in ll and "@rh_index_fail" in ll
+
+
+for kind in ("i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128"):
+    positive("direct_index_" + kind, f'''
+var^ fixed:i32^[2]=[10,20]
+var^ grow:i32^[>..]=[30,40]
+let^ view=grow.slice(0,2)
+let^ text="ab"
+let^ index:{kind}^=1
+fixed[index]:=21
+grow[index]:=41
+print(fixed[index],grow[index],view[index],text[index])
+''', "21 41 41 98\n", direct_index_ir)
+
+for name,setup,access in (
+    ("grow", "var^ a:i32^[>..]=[1,2]", "a[i]"),
+    ("view", "var^ a:i32^[>..]=[1,2]; let^ v=a.slice(0,2)", "v[i]"),
+    ("string", 'let^ text="ab"', "text[i]"),
+):
+    for suffix,kind,value in (("wide", "u128", "18446744073709551617"),
+                              ("negative", "i128", "-170141183460469231731687303715884105728")):
+        runtime_failure("direct_index_"+name+"_"+suffix,
+                        setup+f"; let^ i:{kind}^={value}; print({access})", "out of bounds")
+
+
+def high_water(name, text, expected, output, append_only=False):
+    """Observe actual retained tops in generated code, including loop back-edges.
+
+    R^ references alone cannot reveal a lowered top: pages stay committed.
+    The runtime assertions deliberately observe the hidden storage invariant.
+    """
+    global passed
+    wrapper = work / (name + "_runtime.c")
+    expected_c = ",".join(map(str, expected))
+    wrapper.write_text(f'''
+#define rh_assert rh_base_assert
+#define rh_runtime_shutdown rh_base_shutdown
+#include "{(repo / 'runtime/rhat_runtime.c').as_posix()}"
+#undef rh_assert
+#undef rh_runtime_shutdown
+static const uint64_t expected[] = {{{expected_c}}};
+static unsigned step;
+void rh_assert(int64_t condition, int32_t line) {{
+  rh_base_assert(condition, line);
+  if (step >= sizeof(expected)/sizeof(expected[0]) ||
+      (uint64_t)(rh_stacks[0].top-rh_stacks[0].base) != expected[step++])
+    rh_panic("generated code lost retained stack top", line);
+}}
+void rh_runtime_shutdown(void) {{
+  if (step != sizeof(expected)/sizeof(expected[0])) rh_panic("missing top observation",0);
+  rh_base_shutdown();
+}}
+''', encoding="utf-8")
+    path = source(name, text)
+    for opt in ("-O0", "-O2"):
+        exe = work / (name + opt[1:] + ".exe")
+        ir = work / (name + opt[1:] + ".rir")
+        run([compiler,"build",str(path),"-o",str(exe),opt,"--clang",args.clang,
+             "--runtime",str(wrapper),"--dump-ir",str(ir)])
+        assert run([str(exe)]).stdout == output
+        typed = ir.read_text()
+        assert "top=append" in typed
+        if append_only:
+            assert "top=retained" not in typed
+            assert "udiv i64" not in pathlib.Path(str(exe)+".ll").read_text()
+        else:
+            assert "top=retained" in typed
+    passed += 1
+    print("PASS " + name, flush=True)
+
+
+high_water("push_append_only_loop", '''
+let^ next=f^ n:i32^ -> i32^ { return^ n+1 }
+var^ a:i32^[>..]=[]
+var^ i:i32^=0
+while^ i<30 { a.push(next(i)); i:=i+1 }
+assert(a.len=30)
+print(a[29])
+''', [120], "30\n", append_only=True)
+high_water("push_after_append", '''
+var^ a:i32^[>..]=[1,2]
+a.append(a.slice(0,2))
+a.push(5)
+assert(a.len=5)
+print(a[4])
+''', [20], "5\n", append_only=True)
+high_water("push_shrink_loop_backedge", '''
+var^ a:i32^[>..]=[1,2,3,4]
+let^ view=a.slice(0,4)
+var^ i:i32^=0
+while^ i<3 { a.push(9); assert(true^); a.clear(); i:=i+1 }
+print(view[3])
+''', [20,20,20], "4\n")
+high_water("push_shrink_branch_join", '''
+var^ a:i32^[>..]=[1,2,3,4]
+if^ true^ { a.truncate(1) } else^ { print(0) }
+a.push(9)
+assert(a.len=2)
+print(a[1])
+''', [16], "9\n")
+high_water("push_shrink_alias", '''
+var^ a:i32^[>..]=[1,2,3,4]
+let^ ref=&a[3]
+var^ alias=&a
+alias.clear()
+a.push(9)
+assert(a.len=1)
+print(*ref)
+''', [16], "4\n")
+high_water("push_after_two_pops", '''
+var^ a:i32^[>..]=[1,2,3,4]
+let^ ref=&a[3]
+a.pop()
+a.pop()
+a.push(9)
+assert(a.len=3)
+print(*ref)
+''', [16], "4\n")
+high_water("push_shrink_recursive_effect", '''
+let^ cut=p^ a:&i32^[>..], n:i32^ {
+    if^ n=0 { a.clear() } else^ { again(a,n-1) }
+}
+let^ again=p^ a:&i32^[>..], n:i32^ { cut(a,n) }
+var^ a:i32^[>..]=[1,2,3,4]
+cut(&a,3)
+a.push(9)
+assert(a.len=1)
+print(a[0])
+''', [16], "9\n")
+high_water("push_shrunken_owned_result", '''
+let^ make=p^ -> i32^[>..] {
+    var^ result:i32^[>..]=[1,2,3,4]
+    result.clear()
+    return^ result
+}
+var^ a=make()
+a.push(9)
+assert(a.len=1)
+print(a[0])
+''', [16], "9\n")
+
+# A small real reservation exercises the generated byte-capacity guard at
+# exact and non-divisible boundaries without allocating a GiB in the tests.
+small_runtime = work / "small_array_runtime.c"
+small_runtime.write_text('#define RH_STACK_BYTES 65536\n#include "'+
+                         (repo/'runtime/rhat_runtime.c').as_posix()+'"\n', encoding="utf-8")
+for name,decl,count,element in (
+    ("byte", "var^ a:u8^[>..]=[]", 65536, "1"),
+    ("triple", "def^ Triple { self^{x:u8^=1,y:u8^=2,z:u8^=3} } var^ a:Triple[>..]=[]", 21845, "Triple.new()"),
+):
+    path=source("push_capacity_"+name, decl+f"; var^ i:i32^=0; while^ i<{count} {{ a.push({element}); i:=i+1 }} a.push({element})")
+    for opt in ("-O0","-O2"):
+        exe=work/("push_capacity_"+name+opt[1:]+".exe")
+        run([compiler,"build",str(path),"-o",str(exe),opt,"--clang",args.clang,"--runtime",str(small_runtime)])
+        assert "data stack overflow" in run([str(exe)],1).stderr
+    passed+=1
+    print("PASS push_capacity_"+name,flush=True)
+
 positive("empty_program", "", "")
 
 positive("string_tokens_remain_literals", 'print("(",")","[","]","{","}",",",";") let^ f="f^"; let^ p="p^"; let^ t="template^"; print(f,p,t,"true^","def^","+")', "( ) [ ] { } , ;\nf^ p^ template^ true^ def^ +\n")

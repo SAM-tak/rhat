@@ -1,0 +1,332 @@
+{
+  "started_utc": "2026-10-24T03:29:43.475383+00:00",
+  "policy": "alternating order; two warmups; best of three",
+  "before_source": "bench/pre_array_fastpaths/workloads_results.json",
+  "before_environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "commit": "b958652e5b73f704689abff75b74bd574bc91120",
+    "dirty": "M CMakeLists.txt\n M README.md\n M bench/README.md\n M bench/coverage.md\n M bench/current_bintrees/results.json\n M bench/current_bintrees/results.md\n M bench/report_suite.py\n M bench/run_bench.py\n M bench/run_workloads.py\n M docs/design.md\n M runtime/rhat_runtime.c\n M src/llvm.c\n M src/main.c\n M src/rhat.h\n M src/sema.c\n M tests/run.py\n M tests/runtime_regions.c\n?? bench/pre_data_stacks/\n?? bench/pre_data_stacks_bintrees/\n?? src/stacks.c",
+    "compiler_sha256": "b009c93c77498b146d5d3838515e81a157d7c7fb4e23920c9ac243276cd421c7",
+    "runtime_sha256": "c607b74ad004fb719288b594f60e0a25913763517803c2d7490f484319961073",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "clangcl": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "compiler_sha256": "e5e63c7e119cc6354e917b2d2ea77f63dafc310fb04c45dae796fc922251f3a4",
+  "runtime_sha256": "fa716c2b975c1a319f24c7a08fdce07d0194298765efbf629955eab2ade9e034",
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\sum_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_sum.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\push_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_push.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\blur_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_blur.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.EXE"
+    ]
+  ],
+  "rows": [
+    {
+      "workload": "sum",
+      "size": "medium",
+      "n": 16000000,
+      "implementation": "before",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_sum_medium.exe",
+      "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0",
+      "source_sha256": "07138872c75f5a81de7cc6659c658d5a80dee48d547ce4d1de0fe4db3486a4db",
+      "samples": [
+        {
+          "ms": 516.2682,
+          "peak_bytes": 67989504,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0"
+        },
+        {
+          "ms": 523.0094,
+          "peak_bytes": 67993600,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0"
+        },
+        {
+          "ms": 531.3823,
+          "peak_bytes": 67989504,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 516.6181,
+          "peak_bytes": 67993600,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0"
+        },
+        {
+          "ms": 510.4914,
+          "peak_bytes": 67989504,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0"
+        }
+      ],
+      "best_ms": 516.2682,
+      "peak_bytes": 67993600
+    },
+    {
+      "workload": "sum",
+      "size": "medium",
+      "n": 16000000,
+      "implementation": "after",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_sum.exe",
+      "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b",
+      "source_sha256": "07138872c75f5a81de7cc6659c658d5a80dee48d547ce4d1de0fe4db3486a4db",
+      "samples": [
+        {
+          "ms": 105.1803,
+          "peak_bytes": 67985408,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b"
+        },
+        {
+          "ms": 107.6296,
+          "peak_bytes": 67989504,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b"
+        },
+        {
+          "ms": 103.8531,
+          "peak_bytes": 67985408,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 185.8963,
+          "peak_bytes": 67985408,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b"
+        },
+        {
+          "ms": 139.4771,
+          "peak_bytes": 67989504,
+          "output": "16000000\n63945983872",
+          "executable_sha256": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b"
+        }
+      ],
+      "best_ms": 103.8531,
+      "peak_bytes": 67989504
+    },
+    {
+      "workload": "push",
+      "size": "medium",
+      "n": 16000000,
+      "implementation": "before",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_push_medium.exe",
+      "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1",
+      "source_sha256": "ee2fcd040e64ab93422e310863d36bc6fa8120c57bce0bff1ac5efded1384bc5",
+      "samples": [
+        {
+          "ms": 799.9978,
+          "peak_bytes": 134057984,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1"
+        },
+        {
+          "ms": 799.0238,
+          "peak_bytes": 134057984,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1"
+        },
+        {
+          "ms": 812.938,
+          "peak_bytes": 134057984,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 787.6342,
+          "peak_bytes": 134070272,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1"
+        },
+        {
+          "ms": 867.3849,
+          "peak_bytes": 134053888,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1"
+        }
+      ],
+      "best_ms": 799.0238,
+      "peak_bytes": 134057984
+    },
+    {
+      "workload": "push",
+      "size": "medium",
+      "n": 16000000,
+      "implementation": "after",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_push.exe",
+      "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23",
+      "source_sha256": "ee2fcd040e64ab93422e310863d36bc6fa8120c57bce0bff1ac5efded1384bc5",
+      "samples": [
+        {
+          "ms": 100.8247,
+          "peak_bytes": 134057984,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23"
+        },
+        {
+          "ms": 98.2328,
+          "peak_bytes": 134053888,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23"
+        },
+        {
+          "ms": 102.1604,
+          "peak_bytes": 134053888,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 199.5878,
+          "peak_bytes": 134053888,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23"
+        },
+        {
+          "ms": 162.7577,
+          "peak_bytes": 134057984,
+          "output": "16000000\n250000\n7999220817282\n12000142",
+          "executable_sha256": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23"
+        }
+      ],
+      "best_ms": 98.2328,
+      "peak_bytes": 134057984
+    },
+    {
+      "workload": "blur",
+      "size": "medium",
+      "n": 2048,
+      "implementation": "before",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_blur_medium.exe",
+      "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81",
+      "source_sha256": "d9dc114d4bc4b2f13efc31b0ab94486dd227a2ae6aac59ce47e4a71da8c422e5",
+      "samples": [
+        {
+          "ms": 1052.4903,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81"
+        },
+        {
+          "ms": 1044.9421,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81"
+        },
+        {
+          "ms": 1083.727,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1049.4702,
+          "peak_bytes": 12365824,
+          "output": "2048\n502239988",
+          "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81"
+        },
+        {
+          "ms": 1024.443,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81"
+        }
+      ],
+      "best_ms": 1044.9421,
+      "peak_bytes": 12349440
+    },
+    {
+      "workload": "blur",
+      "size": "medium",
+      "n": 2048,
+      "implementation": "after",
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_blur.exe",
+      "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696",
+      "source_sha256": "d9dc114d4bc4b2f13efc31b0ab94486dd227a2ae6aac59ce47e4a71da8c422e5",
+      "samples": [
+        {
+          "ms": 388.9477,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+        },
+        {
+          "ms": 316.594,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+        },
+        {
+          "ms": 318.3017,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 389.7662,
+          "peak_bytes": 12349440,
+          "output": "2048\n502239988",
+          "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+        },
+        {
+          "ms": 346.7085,
+          "peak_bytes": 12345344,
+          "output": "2048\n502239988",
+          "executable_sha256": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+        }
+      ],
+      "best_ms": 316.594,
+      "peak_bytes": 12349440
+    }
+  ],
+  "harness_source": "from pathlib import Path\nimport json,sys,shutil,subprocess\nfrom datetime import datetime,timezone\nroot=Path(__file__).resolve().parents[1]\nsys.path.insert(0,str(root/'bench'))\nfrom run_bench import measure,sha,sized\nfrom artifacts import Executables\nbaseline=json.loads((root/'bench/pre_array_fastpaths/workloads_results.json').read_text())\ncompiler=root/'build/Release/rhat.exe'\nclang=shutil.which('clang')\nwork=root/'build/array-paired'; work.mkdir(exist_ok=True)\nout=root/'bench/array_codegen_comparison';out.mkdir(exist_ok=True)\nregistry=Executables()\ndata=dict(started_utc=datetime.now(timezone.utc).isoformat(),policy='alternating order; two warmups; best of three',before_source='bench/pre_array_fastpaths/workloads_results.json',before_environment=baseline['environment'],compiler_sha256=sha(compiler),runtime_sha256=sha(root/'runtime/rhat_runtime.c'),builds=[],rows=[],harness_source=Path(__file__).read_text())\nfor name in ('sum','push','blur'):\n old=next(r for r in baseline['rows'] if r['workload']==name and r['size']=='medium' and r['language']=='rhat')\n before=Path(old['executable'])\n assert sha(before)==old['executable_sha256']\n src=work/f'{name}_medium.rh';exe=work/f'after_{name}.exe'\n sized(root/f'bench/rhat/{name}.rh',src,old['n'])\n oldsrc=before.parent/f'{name}_medium.rh'\n assert sha(src)==sha(oldsrc),(name,'input source mismatch')\n cmd=list(map(str,[compiler,'build',src,'-o',exe,'-O2','--clang',clang]))\n subprocess.run(cmd,check=True);data['builds'].append(cmd)\n registry.add(before);registry.add(exe)\n samples={'before':[],'after':[]};warmups={'before':[],'after':[]}\n expected=old['samples'][0]['output']\n for iteration in range(5):\n  order=[('before',before),('after',exe)]\n  if iteration%2:order.reverse()\n  for label,path in order:\n   result=registry.measure(path,lambda p:measure(p,1800))\n   assert result['output']==expected\n   (warmups if iteration<2 else samples)[label].append(result)\n for label,path in [('before',before),('after',exe)]:\n  data['rows'].append(dict(workload=name,size='medium',n=old['n'],implementation=label,executable=str(path),executable_sha256=registry.hashes[registry.key(path)],source_sha256=sha(src),samples=samples[label],warmups=warmups[label],best_ms=min(s['ms'] for s in samples[label]),peak_bytes=max(s['peak_bytes'] for s in samples[label])))\n a,b=data['rows'][-2:]\n print(name,round(a['best_ms'],2),'->',round(b['best_ms'],2),'ms; speedup',round(a['best_ms']/b['best_ms'],2),flush=True)\n data['executable_hashes']=registry.hashes\n (out/'results.json').write_text(json.dumps(data,indent=2)+'\\n',encoding='utf-8')\nlines=['# Inline array access and leaner push: paired comparison','',f\"Measured: {data['started_utc']} UTC.\",'','Same medium inputs, same toolchain, checked array access, alternating execution order.','Two warmups and best of three whole-process times; executable SHA-256 is checked before and after each run.','The before binaries use static data stacks already. This compares inline array access, leaner push, and inline integer division/remainder guards.','C++/Rust comparisons remain in [the full suite](../results.md).','','| Workload | Parameter | Before ms | After ms | Before / after |','|---|---:|---:|---:|---:|']\nfor name in ('sum','push','blur'):\n a,b=[r for r in data['rows'] if r['workload']==name]\n lines.append(f\"| {name} | {a['n']} | {a['best_ms']:.2f} | {b['best_ms']:.2f} | {a['best_ms']/b['best_ms']:.2f}x |\")\nlines+=['','Raw samples, checksums, executable identities, compiler/runtime hashes and the measuring script are in [results.json](results.json).','']\n(out/'results.md').write_text('\\n'.join(lines),encoding='utf-8')\n",
+  "executable_hashes": {
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_sum_medium.exe": "d492c15bd4ae7d36fe816a04d43a5f581a0ea31ab3b05d82f9b1e08e83b1ffd0",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_sum.exe": "3d29a362e2c8c24e89eebd2eea1c553e82bab2ba80e1513fe6ad6b6dd0fd612b",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_push_medium.exe": "300bd3dc7bdf009c5d86de8c7488b8e65c0b750dabc2198902811f856a2967d1",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_push.exe": "44262381aa325167bf8ac37d0e586efea00afa5f3af4b333efa5e416b2d2ac23",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks\\rhat_blur_medium.exe": "1ca4f812c8be8d764b8f7fca50a325df303245c42f1b8baa62b1cbb2d7147d81",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\array-paired\\after_blur.exe": "5541460601b69f24cc28589884bb5172615323522d80345f59891cfb7b8eb696"
+  }
+}

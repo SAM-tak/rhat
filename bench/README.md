@@ -35,7 +35,13 @@ Scope exit rewinds the stack without releasing its reservation or pages. This
 allows the original 512 MB large sum input without moving existing elements.
 The current reference uses the same compiler/runtime as the complete suite.
 Pre-fix numeric data is retained in invalid_runs for audit.
-The push fast path is emitted in LLVM IR. General bounds-check elimination and SIMD optimizations are not included.
+Array bounds/address calculations and the push fast path are emitted in LLVM IR.
+Push uses byte-capacity checks and a conservative control-flow/callee-effect analysis
+to omit retained-top comparisons only where proven safe. General bounds-check
+elimination and explicit SIMD optimizations are not included.
+See [the paired comparison](array_codegen_comparison/results.md) for a same-session
+before/after check against the previous data-stack binaries; all current C++/Rust
+comparisons remain in [results.md](results.md).
 
 `tree` / `graph` have a separate measurement session in
 [tree_graph/workloads_results.md](tree_graph/workloads_results.md), retaining

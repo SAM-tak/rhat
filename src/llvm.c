@@ -119,33 +119,64 @@ static void instruction(Output *o, Instr *i) {
               i->dst, llvm_type(t), i->a, i->label);
       break;
     }
-    if (kind_unsigned(slot_type(o, i->b)->kind) ||
-        numeric_bits(slot_type(o, i->b)->kind) > 64) {
-      a = ++o->tmp;
+    {
       Type *index_type = slot_type(o, i->b);
+      int bits = numeric_bits(index_type->kind);
+      a = load(o, i->b);
+      if (bits < 64) {
+        b = ++o->tmp;
+        fprintf(f, "  %%t%d = %s %s %%t%d to i64\n", b,
+                kind_unsigned(index_type->kind) ? "zext" : "sext",
+                llvm_type(index_type), a);
+        a = b;
+      }
+      char *length;
+      if (t->kind == T_ARRAY)
+        length = fmt("%d", t->count);
+      else {
+        b = ++o->tmp;
+        r = ++o->tmp;
+        fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n", b,
+                llvm_type(t), i->a);
+        fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", r, b);
+        length = fmt("%%t%d", r);
+      }
+      const char *compare_type = bits > 64 ? "i128" : "i64";
+      if (bits > 64) {
+        b = ++o->tmp;
+        fprintf(f, "  %%t%d = zext i64 %s to i128\n", b, length);
+        length = fmt("%%t%d", b);
+      }
+      int ok = ++o->tmp;
+      /* Unsigned compare rejects a signed negative at its full width too.
+       * Wide indices are truncated only after proving index < length. */
+      fprintf(f, "  %%t%d = icmp ult %s %%t%d, %s\n", ok, compare_type, a,
+              length);
       fprintf(f,
-              "  %%t%d = call i64 @rh_index_integer(ptr %%p%d, i32 %d, i32 %d, "
-              "i32 %d)\n",
-              a, i->b, numeric_bits(index_type->kind),
-              kind_unsigned(index_type->kind), i->loc.line);
-    } else
-      a = integer64(o, i->b);
-    if (t->kind == T_GROW)
-      fprintf(f,
-              "  %%p%d = call ptr @rh_array_at(ptr %%p%d, i64 %%t%d, i64 %zu, "
-              "i32 %d)\n",
-              i->dst, i->a, a, t->elem->size, i->loc.line);
-    else if (t->kind == T_SLICE || t->kind == T_STRING)
-      fprintf(f,
-              "  %%p%d = call ptr @rh_view_at(ptr %%p%d, i64 %%t%d, i64 %zu, "
-              "i32 %d)\n",
-              i->dst, i->a, a, t->kind == T_STRING ? (size_t)1 : t->elem->size,
-              i->loc.line);
-    else {
-      fprintf(f, "  call void @rh_bounds(i64 %%t%d, i64 %d, i32 %d)\n", a,
-              t->count, i->loc.line);
-      fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, i64 %%t%d\n",
-              i->dst, llvm_type(t), i->a, a);
+              "  br i1 %%t%d, label %%index_ok_%d, label %%index_bad_%d, !prof "
+              "!0\nindex_bad_%d:\n",
+              ok, ok, ok, ok);
+      fprintf(
+          f,
+          "  call void @rh_index_fail(i32 %d)\n  unreachable\nindex_ok_%d:\n",
+          i->loc.line, ok);
+      if (bits > 64) {
+        b = ++o->tmp;
+        fprintf(f, "  %%t%d = trunc i128 %%t%d to i64\n", b, a);
+        a = b;
+      }
+      if (t->kind == T_ARRAY)
+        fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, i64 %%t%d\n",
+                i->dst, llvm_type(t), i->a, a);
+      else {
+        b = ++o->tmp;
+        r = ++o->tmp;
+        fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", b,
+                llvm_type(t), i->a);
+        fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", r, b);
+        fprintf(f, "  %%p%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", i->dst,
+                t->kind == T_STRING ? "i8" : llvm_type(t->elem), r, a);
+      }
     }
     break;
   case I_STACK_BEGIN:
@@ -198,35 +229,42 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", limit, lp);
     fprintf(f, "  %%t%d = ptrtoint ptr %%t%d to i64\n", li, limit);
     fprintf(f, "  %%t%d = ptrtoint ptr %%t%d to i64\n", di, data);
-    int bytes = ++o->tmp, cap = ++o->tmp, ok = ++o->tmp;
+    int bytes = ++o->tmp, off = ++o->tmp, remaining = ++o->tmp, ok = ++o->tmp;
     fprintf(f, "  %%t%d = sub i64 %%t%d, %%t%d\n", bytes, li, di);
-    fprintf(f, "  %%t%d = udiv i64 %%t%d, %zu\n", cap, bytes, t->elem->size);
-    fprintf(f, "  %%t%d = icmp ult i64 %%t%d, %%t%d\n", ok, len, cap);
+    /* Every constructor/mutator maintains len * size <= available. Test
+     * remaining bytes before adding a new element; no capacity division. */
+    fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", off, len, t->elem->size);
+    fprintf(f, "  %%t%d = sub i64 %%t%d, %%t%d\n", remaining, bytes, off);
+    fprintf(f, "  %%t%d = icmp uge i64 %%t%d, %zu\n", ok, remaining,
+            t->elem->size);
     fprintf(f,
-            "  br i1 %%t%d, label %%push_ok_%d, label "
-            "%%push_bad_%d\npush_bad_%d:\n",
+            "  br i1 %%t%d, label %%push_ok_%d, label %%push_bad_%d, !prof "
+            "!0\npush_bad_%d:\n",
             ok, ok, ok, ok);
     fprintf(
         f,
         "  call void @rh_stack_overflow(i32 %d)\n  unreachable\npush_ok_%d:\n",
         i->loc.line, ok);
-    int off = ++o->tmp, ptr = ++o->tmp;
-    fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", off, len, t->elem->size);
+    int ptr = ++o->tmp;
     fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %%t%d\n", ptr, data,
             off);
     a = load(o, i->b);
     fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(t->elem), a, ptr);
-    int end = ++o->tmp, topaddr = ++o->tmp, top = ++o->tmp, greater = ++o->tmp,
-        high = ++o->tmp;
+    int end = ++o->tmp, topaddr = ++o->tmp;
     fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n", end, ptr,
             t->elem->size);
     fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %%t%d, i32 0, i32 1\n",
             topaddr, stack);
-    fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", top, topaddr);
-    fprintf(f, "  %%t%d = icmp ugt ptr %%t%d, %%t%d\n", greater, end, top);
-    fprintf(f, "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr %%t%d\n", high,
-            greater, end, top);
-    fprintf(f, "  store ptr %%t%d, ptr %%t%d\n", high, topaddr);
+    if (i->push_at_top) {
+      fprintf(f, "  store ptr %%t%d, ptr %%t%d\n", end, topaddr);
+    } else {
+      int top = ++o->tmp, greater = ++o->tmp, high = ++o->tmp;
+      fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", top, topaddr);
+      fprintf(f, "  %%t%d = icmp ugt ptr %%t%d, %%t%d\n", greater, end, top);
+      fprintf(f, "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr %%t%d\n", high,
+              greater, end, top);
+      fprintf(f, "  store ptr %%t%d, ptr %%t%d\n", high, topaddr);
+    }
     int newlen = ++o->tmp, lenaddr = ++o->tmp;
     fprintf(f, "  %%t%d = add i64 %%t%d, 1\n", newlen, len);
     fprintf(
@@ -407,11 +445,34 @@ static void instruction(Output *o, Instr *i) {
     if (ins)
       fprintf(f, "  %%t%d = %s %s %%t%d, %%t%d\n", r, ins, operand_type, a, b);
     else if (!strcmp(op, "/") || !strcmp(op, "%")) {
+      int nonzero = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp ne %s %%t%d, 0\n", nonzero, operand_type, b);
+      int ok = nonzero;
+      if (!uns) {
+        int bits = numeric_bits(t->kind);
+        const char *minimum =
+            bits == 128 ? "-170141183460469231731687303715884105728"
+            : bits == 64
+                ? "-9223372036854775808"
+                : fmt("-%llu", (unsigned long long)(UINT64_C(1) << (bits - 1)));
+        int ismin = ++o->tmp, negone = ++o->tmp, bad = ++o->tmp,
+            valid = ++o->tmp;
+        fprintf(f, "  %%t%d = icmp eq %s %%t%d, %s\n", ismin, operand_type, a,
+                minimum);
+        fprintf(f, "  %%t%d = icmp eq %s %%t%d, -1\n", negone, operand_type, b);
+        fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", bad, ismin, negone);
+        fprintf(f, "  %%t%d = xor i1 %%t%d, true\n", valid, bad);
+        ok = ++o->tmp;
+        fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", ok, nonzero, valid);
+      }
       fprintf(f,
-              "  call void @rh_check_division(ptr %%p%d, ptr %%p%d, i32 %d, "
-              "i32 %d, i32 %d, i32 %d)\n",
-              i->a, i->b, numeric_bits(t->kind), uns, !strcmp(op, "%"),
-              i->loc.line);
+              "  br i1 %%t%d, label %%division_ok_%d, label %%division_bad_%d, "
+              "!prof !0\ndivision_bad_%d:\n",
+              ok, ok, ok, ok);
+      fprintf(f,
+              "  call void @rh_division_fail(i32 %d, i32 %d)\n  "
+              "unreachable\ndivision_ok_%d:\n",
+              !strcmp(op, "%"), i->loc.line, ok);
       fprintf(f, "  %%t%d = %s%s %s %%t%d, %%t%d\n", r, uns ? "u" : "s",
               !strcmp(op, "/") ? "div" : "rem", operand_type, a, b);
     } else {
@@ -640,16 +701,15 @@ void emit_llvm(Program *p, const char *path) {
   fputs("declare void @rh_runtime_init(ptr, i64)\ndeclare void "
         "@rh_runtime_shutdown()\n"
         "declare void @rh_stack_overflow(i32) noreturn\n"
-        "declare ptr @rh_array_at(ptr, i64, i64, i32)\ndeclare void "
-        "@rh_bounds(i64, i64, i32)\ndeclare void @rh_assert(i64, i32)\ndeclare "
+        "declare void @rh_index_fail(i32) cold noreturn\n"
+        "declare void @rh_assert(i64, i32)\ndeclare "
         "void @rh_print_i64(i64)\ndeclare void @rh_print_f64(double)\ndeclare "
         "void @rh_print_bool(i64)\ndeclare void @rh_print_string(ptr, "
         "i64)\ndeclare void @rh_print_newline()\ndeclare void "
         "@rh_print_space()\n",
         f);
   fputs("declare void @rh_print_integer(ptr, i32, i32)\n"
-        "declare void @rh_check_division(ptr, ptr, i32, i32, i32, i32)\n"
-        "declare i64 @rh_index_integer(ptr, i32, i32, i32)\n"
+        "declare void @rh_division_fail(i32, i32) cold noreturn\n"
         "declare float @rh_f8_decode(i8)\ndeclare i8 @rh_f8_encode(float)\n",
         f);
   fputs("declare i8 @rh_f8_encode_f64(double)\n"
@@ -659,7 +719,6 @@ void emit_llvm(Program *p, const char *path) {
         "declare void @rh_union_tag(i32, i32, i32)\n"
         "declare void @rh_array_append(ptr, ptr, i64, i32)\n"
         "declare void @rh_make_slice(ptr, ptr, i64, i64, i64, i64, i32)\n"
-        "declare ptr @rh_view_at(ptr, i64, i64, i32)\n"
         "declare void @rh_array_pop(ptr, ptr, i64, i32)\n"
         "declare void @rh_array_clear(ptr)\n",
         f);
@@ -706,6 +765,7 @@ void emit_llvm(Program *p, const char *path) {
           "@rh_stacks, i64 %d)\n  call void @rh_fn_0(i64 0)\n  call void "
           "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
           p->stack_count);
+  fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
   if (fclose(f))
     fail((Loc){path, 1, 1}, "failed to write LLVM IR");
 }
@@ -784,6 +844,8 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " stack-offset=%d", i->stack_index);
       if (i->op == I_REGION || (i->op == I_CALL && i->type->owned))
         fprintf(f, " stack-owner=%%%d", ((Slot *)in->slots.v[i->dst])->owner);
+      if (i->op == I_PUSH)
+        fprintf(f, " top=%s", i->push_at_top ? "append" : "retained");
       if (i->type)
         fprintf(f, " type=%s", type_name(i->type));
       if (i->text)

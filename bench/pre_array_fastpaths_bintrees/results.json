@@ -1,0 +1,1479 @@
+{
+  "memory_model": "static_data_stacks_fault_commit",
+  "stack_reports": {
+    "small": "data stacks: 2; 1 GiB usable + 1 MiB guard per stack\n<top-level> (rh_fn_0): 1 own, 2 with callees\ntree_check (rh_fn_1): 1 own, 1 with callees\nmake (rh_fn_2): 0 own, 0 with callees\npower2 (rh_fn_3): 0 own, 0 with callees\ncheck (rh_fn_4): 0 own, 0 with callees",
+    "medium": "data stacks: 2; 1 GiB usable + 1 MiB guard per stack\n<top-level> (rh_fn_0): 1 own, 2 with callees\ntree_check (rh_fn_1): 1 own, 1 with callees\nmake (rh_fn_2): 0 own, 0 with callees\npower2 (rh_fn_3): 0 own, 0 with callees\ncheck (rh_fn_4): 0 own, 0 with callees",
+    "large": "data stacks: 2; 1 GiB usable + 1 MiB guard per stack\n<top-level> (rh_fn_0): 1 own, 2 with callees\ntree_check (rh_fn_1): 1 own, 1 with callees\nmake (rh_fn_2): 0 own, 0 with callees\npower2 (rh_fn_3): 0 own, 0 with callees\ncheck (rh_fn_4): 0 own, 0 with callees"
+  },
+  "runtime_region_bytes": 1073741824,
+  "executable_hashes": {
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rhat.exe": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_msvc.exe": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_clangcl.exe": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rustc.exe": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_small.exe": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_0.exe": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_1.exe": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_0.exe": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_1.exe": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_box.exe": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_arena.exe": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_medium.exe": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_0.exe": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_1.exe": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_0.exe": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_1.exe": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_box.exe": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_arena.exe": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_large.exe": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_0.exe": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_1.exe": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_0.exe": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_1.exe": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_box.exe": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_arena.exe": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+  },
+  "started_utc": "2026-10-24T01:46:18.962542+00:00",
+  "upstream_commit": "94cc64daeabcae6f072dc1fe2b864acda5a001bc",
+  "reps": 3,
+  "warmups": 2,
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "os": "Windows-10-10.0.26300-SP0",
+    "rhat_commit": "b958652e5b73f704689abff75b74bd574bc91120",
+    "rhat_dirty": "M CMakeLists.txt\n M README.md\n M bench/README.md\n M bench/coverage.md\n M bench/report_suite.py\n M bench/run_bench.py\n M bench/run_workloads.py\n M docs/design.md\n M runtime/rhat_runtime.c\n M src/llvm.c\n M src/main.c\n M src/rhat.h\n M src/sema.c\n M tests/run.py\n M tests/runtime_regions.c\n?? bench/pre_data_stacks/\n?? bench/pre_data_stacks_bintrees/\n?? src/stacks.c",
+    "clang": "clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211)",
+    "msvc": "Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+    "compiler_sha256": "b009c93c77498b146d5d3838515e81a157d7c7fb4e23920c9ac243276cd421c7",
+    "runtime_sha256": "c607b74ad004fb719288b594f60e0a25913763517803c2d7490f484319961073"
+  },
+  "source_hashes": {
+    "bench\\artifacts.py": "a94b95cde45174e3c0794a965d9415b3f310eb3fdcb8a2822f94a33b2385efa2",
+    "bench\\compare_page_commits.py": "1c16c2633cbe2cc58ce5e8a64c8ef8ca0b527e04f7f4dd7302d67847d910ae63",
+    "bench\\report_suite.py": "cd8137e5e02f6c28295b622e9b4f8e10cf5080d41a9b54f76192e92085ee92cb",
+    "bench\\rhat\\bintrees.rh": "ad9823d6d4883bbb751aa52a271fc7607fe78cde638e9e7d9c03a3b245b8f0f1",
+    "bench\\rhat\\blur.rh": "5f83732970bf747ac47ae34448ff94f4b6edaef01eeda2e07810887aaaa2efee",
+    "bench\\rhat\\calc.rh": "0fa825e0d4602a7d767b534f99af5edfe9640496156c01d7d7c8ad62573ada52",
+    "bench\\rhat\\graph.rh": "d444710d97cfd09afc0c7d4d9f032d9563b2664a356ec4a888ef66a64d4f6d65",
+    "bench\\rhat\\interp.rh": "cf1d1dd9ca8f7f19af0b1f9855bf9ff369e3d0695a1b35af5ad5792360e503f3",
+    "bench\\rhat\\lru.rh": "00e5df502baaac4fcfd7e1c15afab242ecc63278708dd8bb7560dfbeb98b6989",
+    "bench\\rhat\\particles.rh": "f2214647128a1dceda92ef558ae3e4c0b39ab0515b9a74ab13512bee9c1f460c",
+    "bench\\rhat\\push.rh": "527a133752842f9c76216de73b74ed0deaca9e3cac5f6b9847df841aad7944bb",
+    "bench\\rhat\\records.rh": "6044da0ca4b50818472579e3dbebe28f4b0a2b369518b192f49cd55785b53f65",
+    "bench\\rhat\\respond.rh": "93d9f820f6e42e8a1b4b859f07deac287836b3395d7f5f31aede2bbe2206ab74",
+    "bench\\rhat\\scene.rh": "e86d6a2a178b81753975faa0cb5f38ba8a86e73a02a4ba6fc893dd5e68d5d48e",
+    "bench\\rhat\\sexp.rh": "d9c61191f52050220c168765f0eb9c934f44a9e272fc0afc5f163c94f9dcb536",
+    "bench\\rhat\\strlist.rh": "bf6f57d85874234701db0e9d2141457652f00e74133fe09b6dc96af8407378c0",
+    "bench\\rhat\\sum.rh": "97d5b14c6baf6c4d28c16958dcfe603169effc357e1baf425160dd700b42f9fe",
+    "bench\\rhat\\tree.rh": "39bee15effeade9ed0f44ba3667cf929ccaabc07253a58c8327f40d435474f32",
+    "bench\\rhat\\words.rh": "42c065a8a9305b57eff7154725ab7ac1126de4496f5de91a45c3046afc6820b9",
+    "bench\\run_bench.py": "e03717a23375585bf551b19f1d9745f77843279eea6caa4a58afd2f198054593",
+    "bench\\run_workloads.py": "0cb683274e71324af7e03188b4a8c167ce9b8be28cbbda3fa538fea8f181ad7f",
+    "bench\\upstream\\cpp\\bench.h": "405df4b59de8085fccf977ff82b98ce8731b5afe272feeca6cdd99f214d633a4",
+    "bench\\upstream\\cpp\\bintrees.cpp": "bf5313f34b86f245d213e58ddb4cd8f1fb57ce91cbeffd2da7bb23df0057d5c3",
+    "bench\\upstream\\cpp\\blur.cpp": "3598cde41cfd9a9c09224d246a84be6c014681261e8444aa82423b052f4a15ca",
+    "bench\\upstream\\cpp\\calc.cpp": "ec7b9b8ea472841d6951ee6c41adf029e898406a8126b274bfb9c1ca7424efc4",
+    "bench\\upstream\\cpp\\graph.cpp": "ddf753527f9c2965200c829c4541e0bd9ffc95ef0f01cc56233ddf4466361c56",
+    "bench\\upstream\\cpp\\interp.cpp": "ad9d0be4160934a70a8f8bf0edadc8a4dd31329781dc474c89e4b357530352f5",
+    "bench\\upstream\\cpp\\lru.cpp": "1213c324fcfcd383237cccd359c98049dcab74fb24ce99a12157213774417d44",
+    "bench\\upstream\\cpp\\particles.cpp": "cdf5498a29cdb38769a07848f2ae754d75945d0f1958fe6c93177a9b7bbd4f0e",
+    "bench\\upstream\\cpp\\push.cpp": "becf691faac98b878e8506015e35d5f1724ee0b07d36f7279bb00051d5c60a32",
+    "bench\\upstream\\cpp\\records.cpp": "973861e38ebccdbc0a9296128273a6bd61039ff7f2bbe67c8eb42ac28d717416",
+    "bench\\upstream\\cpp\\respond.cpp": "e28cdc91efcd0bec50733ab877cafb0fb4c9e09d2fac395a9a845a7d70e6b853",
+    "bench\\upstream\\cpp\\scene.cpp": "2f6c27097060afb1e8dcb69c4fbf6c5cea1325d768c178b57c48529b28e4c4e7",
+    "bench\\upstream\\cpp\\sexp.cpp": "e70a33a5420041a0feeec2505835edee33ccec951ed9daa5cc5213960a6019b9",
+    "bench\\upstream\\cpp\\strlist.cpp": "2bba2b908031cee299736033b514c32b6cce12871c52866ae736d3123e1a5359",
+    "bench\\upstream\\cpp\\sum.cpp": "3aabd8c5f54744cd2c4d87f36c52939511d65922874d583ae5d9a6d769d17b04",
+    "bench\\upstream\\cpp\\tree.cpp": "d72799ee3e0a4f4e8f9d34f9ad814e1c5e9858961ec38b9332d02eb067336889",
+    "bench\\upstream\\cpp\\words.cpp": "9b0ed0b48714ad73c3497aa45a3d938b6d1aec8ebf1b063b95e896686a1dae66",
+    "bench\\upstream\\rust\\bench.rs": "887dffd1c4c7b858b0072a8feb86ad0c72a93bc83ab8ce482444b8a830c5b09c",
+    "bench\\upstream\\rust\\bintrees_arena.rs": "4c660c2fe5c7189a5c90dd851ef56a0ab683d657c79011218977f89bcde8999b",
+    "bench\\upstream\\rust\\bintrees_box.rs": "c182cadf2b1ee716a03298e863a258e9a01922d175194278d45efa215fc5bee8",
+    "bench\\upstream\\rust\\blur_index.rs": "86af9f09c4b8cfcffc522922c0c209d493e33239335fba06501e8d732c9f6e1a",
+    "bench\\upstream\\rust\\blur_windows.rs": "d0388773956676b324c3f48eb39044c91a009af50424ca950b8e02fb42953888",
+    "bench\\upstream\\rust\\calc_arena.rs": "a5c0303e431401e4369a248485542b4ec795e0bb9ca3fb4d8cbcccf10c21c5ee",
+    "bench\\upstream\\rust\\calc_box.rs": "f0e0d7e400d55860fbdaf350ab8e9aeb9ca1d4eda261e493868631bb859e3333",
+    "bench\\upstream\\rust\\graph_arena.rs": "dfe9583c5b7710cb8a4b50665c9fa79f444f484263d519ebb4f5e772a10480f9",
+    "bench\\upstream\\rust\\graph_csr.rs": "ed559a92eb24d89b68010dc507dd12c667bb0cc65e1aa29902ac361651cd0852",
+    "bench\\upstream\\rust\\graph_nested.rs": "c08cdd160cefac652385fd22f20c06d14f57d2aa57a86d73a4776ac974da862c",
+    "bench\\upstream\\rust\\interp_arena.rs": "8f8a82c8a26465c5a3ec0f7f7534413a44fd654c32ec72264932fa63e38bcedc",
+    "bench\\upstream\\rust\\interp_box.rs": "00bde123e0c01e72210ffdf0d2be1c99072fc9ed1e0886cbe1f52f67eb2004de",
+    "bench\\upstream\\rust\\lru_hashmap.rs": "dd48aee7cf41bd1ae6fb35730fd1e9bf6f07b13cd20d74461a368eb561703563",
+    "bench\\upstream\\rust\\lru_open.rs": "6b81987d74039cfe5e6a004ddfc37d3dca467e21302485b30b3b1d5ad8f73308",
+    "bench\\upstream\\rust\\particles.rs": "96dbbcbf74729cc068f0a9ea0430948b486dcebe884386f6403118d0b57df483",
+    "bench\\upstream\\rust\\particles_scalar.rs": "befe47b4b99f9009dd6bea13129c8c901a5570140dfee5779692a8f09b889772",
+    "bench\\upstream\\rust\\push.rs": "75cb251b7b8ba469b68f4b75e9a08b723f8e6860df3b18aad7481914f90f4505",
+    "bench\\upstream\\rust\\records.rs": "43b64d86c6ee051b9fc386b0a3ce6a83fba8ababe448993f55ac46454573410a",
+    "bench\\upstream\\rust\\respond_dto.rs": "871e93c8b5b34146e4c561ca148dac7145b5795db31d378a7174ea09b199527b",
+    "bench\\upstream\\rust\\respond_stream.rs": "d261c101f5ef5df31c2474d352c7ad44b65983f94da6bb9cb6d689869dc043b0",
+    "bench\\upstream\\rust\\scene_arena.rs": "643993b50109ae33a5642c0f4320e5322e150a69ad329b9753c9b205bdb87e97",
+    "bench\\upstream\\rust\\scene_box.rs": "93d141e3be3cdfa63dde769e328de2ee7544e11d3ea573089c9067e82ac30010",
+    "bench\\upstream\\rust\\sexp_arena.rs": "94181898a4a4770a6814252136ae80f11a0a661620a6a669813d40d5a3cc6208",
+    "bench\\upstream\\rust\\sexp_box.rs": "2928e3660d5804da0c0b994c2d19ca2e9a804f670bdc9d8105b25dfcac8d08a7",
+    "bench\\upstream\\rust\\strlist_borrowed.rs": "ac9caaa9b2ae6911e29fdd9b8115531d8a14a4542e809822aa8f85773ed993fc",
+    "bench\\upstream\\rust\\strlist_owned.rs": "7dee8def2a9c4638fe2d020173622471e33e7bed12132dd2b862eba491a2c586",
+    "bench\\upstream\\rust\\sum.rs": "e33515996c08472d7c0fe59759a87c535b9dceaebfe0f9530775a6dc2fe9ff4d",
+    "bench\\upstream\\rust\\tree_arena.rs": "3826ae6a73c28b05fec87da3059919356dcf275d2c6ce608be9b88669364fcc3",
+    "bench\\upstream\\rust\\tree_box.rs": "3448f2785d9a003622a47a089d0a39d5d591988d30633b6579a36b254ccd051c",
+    "bench\\upstream\\rust\\words_hashmap.rs": "ab34623457aa1898f4c14fed8caab670fd511246bf9d40030203ab113ae2b9ce",
+    "bench\\upstream\\rust\\words_open.rs": "6969d235f018cba322091d730124583dc8a389d2a71a8d390a343c3efb86b127",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small.rh": "89dee827577dcbce5de1df25e3bcdf3a48e906ca49d82f4c30033af3dbad5968",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_small.exe.ll": "5d1db5884bc9a5eb2182d51b54d379198950e247ffd140e1853713ac67fae1c8",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium.rh": "d5677654f609d7888b7897dd45f49afa261db6b86c95f88e72f61efbcaf97449",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_medium.exe.ll": "f0909fc3f5ce8a689ba0476cf7b443b097f894c1de228168ee75a45d87025580",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large.rh": "09d55b56bcb1cf37fe1357507d12f7a397f09a7ee85fe661d88ff8f2b4f203a7",
+    "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_large.exe.ll": "2aff658e6426fc4a0d26f1b80c603dd6e47a6d586e67e86a481c98955a6063b5"
+  },
+  "rows": [
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_small.exe",
+      "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7",
+      "label": "R^ i32-index data stacks (LLVM/Clang)",
+      "language": "rhat",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 91.9503,
+      "peak_bytes": 5267456,
+      "samples": [
+        {
+          "ms": 96.6328,
+          "peak_bytes": 5267456,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7"
+        },
+        {
+          "ms": 97.5555,
+          "peak_bytes": 5267456,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7"
+        },
+        {
+          "ms": 91.9503,
+          "peak_bytes": 5267456,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 189.9756,
+          "peak_bytes": 5279744,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7"
+        },
+        {
+          "ms": 126.2058,
+          "peak_bytes": 5271552,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "ef1fe73edab1a1f700c63d0c9e7e184eca0dfb1e674f317cd67c6f60bd8e45b7"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_0.exe",
+      "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5",
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 363.1925,
+      "peak_bytes": 8167424,
+      "samples": [
+        {
+          "ms": 421.5463,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5"
+        },
+        {
+          "ms": 363.1925,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5"
+        },
+        {
+          "ms": 366.9771,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 672.4198,
+          "peak_bytes": 8179712,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5"
+        },
+        {
+          "ms": 363.1128,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "97b0a87e9514202fcf95bbd623f7e8e4c3fa809acbfbe5e083e545e1b05008e5"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_1.exe",
+      "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb",
+      "label": "C++ reused arena (msvc)",
+      "language": "cpp",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 58.2411,
+      "peak_bytes": 6848512,
+      "samples": [
+        {
+          "ms": 60.0697,
+          "peak_bytes": 6795264,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb"
+        },
+        {
+          "ms": 60.9985,
+          "peak_bytes": 6848512,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb"
+        },
+        {
+          "ms": 58.2411,
+          "peak_bytes": 6791168,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 404.4577,
+          "peak_bytes": 6799360,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb"
+        },
+        {
+          "ms": 55.8251,
+          "peak_bytes": 6844416,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "cf0763b7419f21f57269729fd701922d18c0d01c4bcefa65649556fe2cbfdacb"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_0.exe",
+      "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1",
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 346.8861,
+      "peak_bytes": 8167424,
+      "samples": [
+        {
+          "ms": 346.8861,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1"
+        },
+        {
+          "ms": 359.8595,
+          "peak_bytes": 8163328,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1"
+        },
+        {
+          "ms": 424.1545,
+          "peak_bytes": 8167424,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 783.718,
+          "peak_bytes": 8179712,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1"
+        },
+        {
+          "ms": 549.4513,
+          "peak_bytes": 8163328,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "747e939c3ac9cb9cb832ec50a266fdb2051c510519b1593cf6a940438d196fd1"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_1.exe",
+      "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8",
+      "label": "C++ reused arena (clangcl)",
+      "language": "cpp",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 63.664,
+      "peak_bytes": 6848512,
+      "samples": [
+        {
+          "ms": 63.664,
+          "peak_bytes": 6803456,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8"
+        },
+        {
+          "ms": 64.2359,
+          "peak_bytes": 6848512,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8"
+        },
+        {
+          "ms": 67.5208,
+          "peak_bytes": 6828032,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 553.559,
+          "peak_bytes": 6799360,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8"
+        },
+        {
+          "ms": 377.1263,
+          "peak_bytes": 6803456,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "183d1c6a9204aaedc941ec8624b67da3935f17bd545fcea7fc37a0d51c183be8"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_box.exe",
+      "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0",
+      "label": "Rust box",
+      "language": "rust",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 394.8246,
+      "peak_bytes": 8617984,
+      "samples": [
+        {
+          "ms": 421.6633,
+          "peak_bytes": 8617984,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0"
+        },
+        {
+          "ms": 403.9336,
+          "peak_bytes": 8613888,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0"
+        },
+        {
+          "ms": 394.8246,
+          "peak_bytes": 8613888,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 777.7515,
+          "peak_bytes": 8622080,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0"
+        },
+        {
+          "ms": 588.3615,
+          "peak_bytes": 8601600,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "dba9b4b488b2c8525095d2fa55cd7ff4daeacdd9bab50a57e48643f3ee8748f0"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_arena.exe",
+      "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4",
+      "label": "Rust arena",
+      "language": "rust",
+      "size": "small",
+      "depth": 15,
+      "best_ms": 49.0065,
+      "peak_bytes": 6471680,
+      "samples": [
+        {
+          "ms": 54.1718,
+          "peak_bytes": 6471680,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4"
+        },
+        {
+          "ms": 49.0065,
+          "peak_bytes": 6467584,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4"
+        },
+        {
+          "ms": 50.8298,
+          "peak_bytes": 6471680,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 115.713,
+          "peak_bytes": 6459392,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4"
+        },
+        {
+          "ms": 68.1346,
+          "peak_bytes": 6463488,
+          "output": "131071\n32768\n4\n1015808\n8192\n6\n1040384\n2048\n8\n1046528\n512\n10\n1048064\n128\n12\n1048448\n32\n14\n1048544\n65535",
+          "executable_sha256": "5b706a03f3fc8cc66969916f3de41d8a96aaccabf2a8b68b781fbc153bad9af4"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_medium.exe",
+      "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691",
+      "label": "R^ i32-index data stacks (LLVM/Clang)",
+      "language": "rhat",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 381.1431,
+      "peak_bytes": 9203712,
+      "samples": [
+        {
+          "ms": 381.1431,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691"
+        },
+        {
+          "ms": 382.3898,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691"
+        },
+        {
+          "ms": 401.9796,
+          "peak_bytes": 9199616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 464.9116,
+          "peak_bytes": 9216000,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691"
+        },
+        {
+          "ms": 410.5017,
+          "peak_bytes": 9203712,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "38bb06ecb23e72c6729b9a49ad7ba3d91e503bdcacacf1eaa691e0944bce4691"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_0.exe",
+      "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0",
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 1587.7532,
+      "peak_bytes": 20860928,
+      "samples": [
+        {
+          "ms": 1682.1256,
+          "peak_bytes": 20856832,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0"
+        },
+        {
+          "ms": 1664.2359,
+          "peak_bytes": 20860928,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0"
+        },
+        {
+          "ms": 1587.7532,
+          "peak_bytes": 20852736,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2023.6426,
+          "peak_bytes": 20873216,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0"
+        },
+        {
+          "ms": 1681.577,
+          "peak_bytes": 20860928,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "84ff1cdb24a8d15e392312b1c81d7f26872bdc2cb3a2165ca6c9286e9ace54e0"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_1.exe",
+      "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262",
+      "label": "C++ reused arena (msvc)",
+      "language": "cpp",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 197.9594,
+      "peak_bytes": 13295616,
+      "samples": [
+        {
+          "ms": 212.5589,
+          "peak_bytes": 13295616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262"
+        },
+        {
+          "ms": 197.9594,
+          "peak_bytes": 13291520,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262"
+        },
+        {
+          "ms": 213.9259,
+          "peak_bytes": 13295616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 623.5013,
+          "peak_bytes": 13324288,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262"
+        },
+        {
+          "ms": 208.6961,
+          "peak_bytes": 13291520,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "6888eadc5fb13a2542436311b3ee0c5ae191c15a52d9de6a1f1317585adc6262"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_0.exe",
+      "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df",
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 1576.1227,
+      "peak_bytes": 20860928,
+      "samples": [
+        {
+          "ms": 1587.6926,
+          "peak_bytes": 20856832,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df"
+        },
+        {
+          "ms": 1576.1227,
+          "peak_bytes": 20856832,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df"
+        },
+        {
+          "ms": 1603.2535,
+          "peak_bytes": 20860928,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2046.0426,
+          "peak_bytes": 20869120,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df"
+        },
+        {
+          "ms": 1927.5299,
+          "peak_bytes": 20856832,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "4a9483cb79c8e0aca4b753ec176418ff9280d6cb94460d48af569c3438d5d5df"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_1.exe",
+      "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e",
+      "label": "C++ reused arena (clangcl)",
+      "language": "cpp",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 240.9422,
+      "peak_bytes": 13340672,
+      "samples": [
+        {
+          "ms": 247.8945,
+          "peak_bytes": 13340672,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e"
+        },
+        {
+          "ms": 264.7295,
+          "peak_bytes": 13291520,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e"
+        },
+        {
+          "ms": 240.9422,
+          "peak_bytes": 13328384,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1085.2167,
+          "peak_bytes": 13295616,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e"
+        },
+        {
+          "ms": 638.5221,
+          "peak_bytes": 13316096,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "edd9267b91aaa81b73b4401d2e6dc93f0fe9f5c513bd4a57a6c25745dc97f74e"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_box.exe",
+      "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376",
+      "label": "Rust box",
+      "language": "rust",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 1741.9247,
+      "peak_bytes": 21315584,
+      "samples": [
+        {
+          "ms": 1741.9247,
+          "peak_bytes": 21315584,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376"
+        },
+        {
+          "ms": 1879.0269,
+          "peak_bytes": 21303296,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376"
+        },
+        {
+          "ms": 1862.2173,
+          "peak_bytes": 21303296,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2270.8685,
+          "peak_bytes": 21315584,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376"
+        },
+        {
+          "ms": 1736.439,
+          "peak_bytes": 21319680,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "2af86123f1ee4630768c7547153144f5700ab8661275730a171a89f825cbd376"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_arena.exe",
+      "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678",
+      "label": "Rust arena",
+      "language": "rust",
+      "size": "medium",
+      "depth": 17,
+      "best_ms": 169.7344,
+      "peak_bytes": 11522048,
+      "samples": [
+        {
+          "ms": 175.3077,
+          "peak_bytes": 11505664,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678"
+        },
+        {
+          "ms": 169.7344,
+          "peak_bytes": 11522048,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678"
+        },
+        {
+          "ms": 172.4053,
+          "peak_bytes": 11509760,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 215.4291,
+          "peak_bytes": 11542528,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678"
+        },
+        {
+          "ms": 158.4366,
+          "peak_bytes": 11489280,
+          "output": "524287\n131072\n4\n4063232\n32768\n6\n4161536\n8192\n8\n4186112\n2048\n10\n4192256\n512\n12\n4193792\n128\n14\n4194176\n32\n16\n4194272\n262143",
+          "executable_sha256": "bd06bbb5b014ae7bc17dce5f6718255240d5ee0722850f9bd5021b7b06c3d678"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_large.exe",
+      "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5",
+      "label": "R^ i32-index data stacks (LLVM/Clang)",
+      "language": "rhat",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 1680.6742,
+      "peak_bytes": 24932352,
+      "samples": [
+        {
+          "ms": 1794.6344,
+          "peak_bytes": 24928256,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5"
+        },
+        {
+          "ms": 1769.6838,
+          "peak_bytes": 24932352,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5"
+        },
+        {
+          "ms": 1680.6742,
+          "peak_bytes": 24932352,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1953.7348,
+          "peak_bytes": 24956928,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5"
+        },
+        {
+          "ms": 1792.8206,
+          "peak_bytes": 24928256,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "74c1be59ef72b42367e5420d88ad35298c5792d6e069df5bd019907199267eb5"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_0.exe",
+      "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f",
+      "label": "C++ new/delete (msvc)",
+      "language": "cpp",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 7699.0423,
+      "peak_bytes": 71532544,
+      "samples": [
+        {
+          "ms": 7699.0423,
+          "peak_bytes": 71528448,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f"
+        },
+        {
+          "ms": 7839.078,
+          "peak_bytes": 71532544,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f"
+        },
+        {
+          "ms": 7727.1538,
+          "peak_bytes": 71528448,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 7846.5092,
+          "peak_bytes": 71544832,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f"
+        },
+        {
+          "ms": 7669.6055,
+          "peak_bytes": 71532544,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "897c136016db024b65ee20465f9ad23fe7a66ae7982576318311b9ea8f1c822f"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_1.exe",
+      "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5",
+      "label": "C++ reused arena (msvc)",
+      "language": "cpp",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 860.7892,
+      "peak_bytes": 33775616,
+      "samples": [
+        {
+          "ms": 863.982,
+          "peak_bytes": 33767424,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5"
+        },
+        {
+          "ms": 872.2015,
+          "peak_bytes": 33755136,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5"
+        },
+        {
+          "ms": 860.7892,
+          "peak_bytes": 33775616,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 1257.9511,
+          "peak_bytes": 33771520,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5"
+        },
+        {
+          "ms": 871.7188,
+          "peak_bytes": 33796096,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "3d0e7855079a1984acca62276c416409fed33210211ca096bf92b4729239f7b5"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_0.exe",
+      "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8",
+      "label": "C++ new/delete (clangcl)",
+      "language": "cpp",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 7818.4606,
+      "peak_bytes": 71536640,
+      "samples": [
+        {
+          "ms": 7818.4606,
+          "peak_bytes": 71532544,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8"
+        },
+        {
+          "ms": 7957.3481,
+          "peak_bytes": 71536640,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8"
+        },
+        {
+          "ms": 7882.04,
+          "peak_bytes": 71536640,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 8477.7161,
+          "peak_bytes": 71548928,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8"
+        },
+        {
+          "ms": 8370.9356,
+          "peak_bytes": 71532544,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "84182c9b1b05552a7cd53fc39e124d7ce4e687a9a0b94eb50a2af5539cbdbfd8"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_1.exe",
+      "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8",
+      "label": "C++ reused arena (clangcl)",
+      "language": "cpp",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 1043.2656,
+      "peak_bytes": 33787904,
+      "samples": [
+        {
+          "ms": 1043.2656,
+          "peak_bytes": 33771520,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8"
+        },
+        {
+          "ms": 1053.0821,
+          "peak_bytes": 33742848,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8"
+        },
+        {
+          "ms": 1066.2164,
+          "peak_bytes": 33787904,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 2141.2174,
+          "peak_bytes": 33787904,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8"
+        },
+        {
+          "ms": 1485.8204,
+          "peak_bytes": 33742848,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "c6a4c11e73ea0bfaa917d5e933f2f9c0b221d5b89b6fc85f9cd18bb9b894e6b8"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_box.exe",
+      "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92",
+      "label": "Rust box",
+      "language": "rust",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 8306.8804,
+      "peak_bytes": 71987200,
+      "samples": [
+        {
+          "ms": 8306.8804,
+          "peak_bytes": 71983104,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92"
+        },
+        {
+          "ms": 8430.0404,
+          "peak_bytes": 71970816,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92"
+        },
+        {
+          "ms": 10444.9681,
+          "peak_bytes": 71987200,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 10795.7514,
+          "peak_bytes": 71995392,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92"
+        },
+        {
+          "ms": 8293.4473,
+          "peak_bytes": 71958528,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "af920b0b44ac6dfbf30f73e1c9fefc34809a94dfa1b3cffc5b4cd349967c7c92"
+        }
+      ]
+    },
+    {
+      "executable": "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_arena.exe",
+      "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c",
+      "label": "Rust arena",
+      "language": "rust",
+      "size": "large",
+      "depth": 19,
+      "best_ms": 671.0165,
+      "peak_bytes": 30408704,
+      "samples": [
+        {
+          "ms": 671.0165,
+          "peak_bytes": 30400512,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+        },
+        {
+          "ms": 694.7171,
+          "peak_bytes": 30380032,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+        },
+        {
+          "ms": 681.6248,
+          "peak_bytes": 30408704,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+        }
+      ],
+      "warmups": [
+        {
+          "ms": 809.3015,
+          "peak_bytes": 30425088,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+        },
+        {
+          "ms": 710.5182,
+          "peak_bytes": 30355456,
+          "output": "2097151\n524288\n4\n16252928\n131072\n6\n16646144\n32768\n8\n16744448\n8192\n10\n16769024\n2048\n12\n16775168\n512\n14\n16776704\n128\n16\n16777088\n32\n18\n16777184\n1048575",
+          "executable_sha256": "aad97bbbe9c2fea7234bb16884842296fa559cc3f16e2f1c2093a3f38b87430c"
+        }
+      ]
+    }
+  ],
+  "startup": [
+    {
+      "label": "R^ LLVM/Clang",
+      "best_ms": 16.8338,
+      "peak_bytes": 4362240,
+      "samples": [
+        {
+          "ms": 110.0583,
+          "peak_bytes": 4358144,
+          "output": "",
+          "executable_sha256": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410"
+        },
+        {
+          "ms": 56.1249,
+          "peak_bytes": 4362240,
+          "output": "",
+          "executable_sha256": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410"
+        },
+        {
+          "ms": 16.8338,
+          "peak_bytes": 4358144,
+          "output": "",
+          "executable_sha256": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410"
+        },
+        {
+          "ms": 16.8739,
+          "peak_bytes": 4362240,
+          "output": "",
+          "executable_sha256": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410"
+        },
+        {
+          "ms": 17.0569,
+          "peak_bytes": 4358144,
+          "output": "",
+          "executable_sha256": "7efdde3a9c77f137391c6c07896b8302d1e050256b0474b7ea5efb8cb840b410"
+        }
+      ]
+    },
+    {
+      "label": "C++ MSVC",
+      "best_ms": 17.3485,
+      "peak_bytes": 4349952,
+      "samples": [
+        {
+          "ms": 67.7978,
+          "peak_bytes": 4349952,
+          "output": "",
+          "executable_sha256": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da"
+        },
+        {
+          "ms": 17.3485,
+          "peak_bytes": 4345856,
+          "output": "",
+          "executable_sha256": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da"
+        },
+        {
+          "ms": 17.6003,
+          "peak_bytes": 4345856,
+          "output": "",
+          "executable_sha256": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da"
+        },
+        {
+          "ms": 18.7957,
+          "peak_bytes": 4349952,
+          "output": "",
+          "executable_sha256": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da"
+        },
+        {
+          "ms": 18.3509,
+          "peak_bytes": 4349952,
+          "output": "",
+          "executable_sha256": "de19651e479f140052c8254cc704c923efc1390bf0472f850430142fc7c7e8da"
+        }
+      ]
+    },
+    {
+      "label": "C++ clang-cl",
+      "best_ms": 19.2115,
+      "peak_bytes": 4354048,
+      "samples": [
+        {
+          "ms": 102.7089,
+          "peak_bytes": 4354048,
+          "output": "",
+          "executable_sha256": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5"
+        },
+        {
+          "ms": 60.5402,
+          "peak_bytes": 4349952,
+          "output": "",
+          "executable_sha256": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5"
+        },
+        {
+          "ms": 21.7919,
+          "peak_bytes": 4349952,
+          "output": "",
+          "executable_sha256": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5"
+        },
+        {
+          "ms": 21.8803,
+          "peak_bytes": 4354048,
+          "output": "",
+          "executable_sha256": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5"
+        },
+        {
+          "ms": 19.2115,
+          "peak_bytes": 4354048,
+          "output": "",
+          "executable_sha256": "b5d06c0a5f9daccee22c45944d5a6339b630ad0f61fde55636fc24511ee844c5"
+        }
+      ]
+    },
+    {
+      "label": "Rust",
+      "best_ms": 17.5591,
+      "peak_bytes": 4878336,
+      "samples": [
+        {
+          "ms": 60.3392,
+          "peak_bytes": 4841472,
+          "output": "",
+          "executable_sha256": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449"
+        },
+        {
+          "ms": 18.604,
+          "peak_bytes": 4870144,
+          "output": "",
+          "executable_sha256": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449"
+        },
+        {
+          "ms": 18.5709,
+          "peak_bytes": 4870144,
+          "output": "",
+          "executable_sha256": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449"
+        },
+        {
+          "ms": 19.9637,
+          "peak_bytes": 4878336,
+          "output": "",
+          "executable_sha256": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449"
+        },
+        {
+          "ms": 17.5591,
+          "peak_bytes": 4841472,
+          "output": "",
+          "executable_sha256": "887b8ce19d9d7996ce7f142da84dd61dfa00baa161e1fb86c043eaf1d2e0e449"
+        }
+      ]
+    }
+  ],
+  "builds": [
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rhat.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rhat.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_msvc.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_msvc.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_msvc.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_clangcl.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_clangcl.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_clangcl.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rustc.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\empty_rustc.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_small.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=15",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=15",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=15",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=15",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_box.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_box.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_arena.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_small_arena.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_medium.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=17",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=17",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=17",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=17",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_box.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_box.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_arena.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_medium_arena.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\Release\\rhat.exe",
+      "build",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large.rh",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\rhat_bintrees_large.exe",
+      "-O2",
+      "--clang",
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe",
+      "--dump-ir",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large.rir"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=19",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=19",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_msvc_1.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=19",
+      "/DVARIANT=0",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_0.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_0.obj"
+    ],
+    [
+      "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.EXE",
+      "/nologo",
+      "/O2",
+      "/EHsc",
+      "/std:c++20",
+      "/DBENCH_N=19",
+      "/DVARIANT=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\bench\\upstream\\cpp\\bintrees.cpp",
+      "/FeC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_1.exe",
+      "/FoC:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_clangcl_1.obj"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_box.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_box.exe"
+    ],
+    [
+      "C:\\Users\\Owner\\.cargo\\bin\\rustc.EXE",
+      "-O",
+      "-C",
+      "codegen-units=1",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_arena.rs",
+      "-o",
+      "C:\\Users\\Owner\\source\\repos\\rhat\\build\\bench-data-stacks-bintrees\\bintrees_large_arena.exe"
+    ]
+  ]
+}
