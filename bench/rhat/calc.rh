@@ -1,3 +1,4 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/calc.goose, Apache-2.0.
 # Nominal AST/result unions; u32 indices; explicit errors; reusable text/node regions.
 def^ Num { self^{ value:i64^ } }
@@ -12,17 +13,13 @@ def^ Ok { self^{ value:u64^ } }
 def^ EvalResult = Ok | Failure
 def^ Cursor { self^{ pos:i64^=0 } }
 def^ Stats { self^{ chars:i64^=0, nodes:i64^=0, ok:i64^=0, sum:u64^=0, errors:i64^[5] } }
-let^ next=f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ emit_num=p^ text:&u8^[>..], value:u64^ {
     if^ value >= 10 { text.push(u8^(value/10)+48) }
     text.push(u8^(value % 10)+48)
 }
 let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
-    var^ r=next(seed)
+    var^ r=std.random.xorshift64(seed)
     let^ k=r % 8
     if^ depth = 0 or^ k = 0 { emit_num(text,1+(r bitshift^ -8) % 99); return^ r }
     if^ k = 1 { text.push(45); return^ this^(text,depth-1,r) }
@@ -39,7 +36,7 @@ let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
     else^ { if^ op = 1 { text.push(45) }
         else^ { if^ op = 2 { text.push(42) } else^ { text.push(47) } } }
     text.push(32)
-    return^ this^(text,depth-1,next(r))
+    return^ this^(text,depth-1,std.random.xorshift64(r))
 }
 let^ corrupt=p^ text:&u8^[>..], seed:u64^ {
     let^ kind=seed % 16
@@ -158,7 +155,7 @@ var^ seed:u64^=12345
 var^ stats=Stats{}
 var^ i:i64^=0
 while^ i < n {
-    seed := next(seed)
+    seed := std.random.xorshift64(seed)
     text.clear()
     let^ depth=i64^(seed % 4)+3
     let^ s=gen(&text,depth,seed bitshift^ -8)

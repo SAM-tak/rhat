@@ -5,3 +5,5 @@
 *.obj
 *.o
 __pycache__/
+
+.rhat-cache/

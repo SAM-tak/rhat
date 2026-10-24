@@ -13,6 +13,27 @@ Clang によるネイティブ実行ファイル生成まで実装していま�
 R^ のソースを C に変換する処理もありません。生成した `.ll` と小さな C ランタイムを
 Clang でコンパイル・リンクします。Windows x86-64 で検証しています。
 
+## モジュールと標準乱数
+
+```rhat
+import^ std.random
+
+var^ rng = std.random.new(12345)
+print(rng.next())
+let^ result = rng.rangeint(1, 6)
+print(result.get(i64^))
+```
+
+独立したファイルは `module^ lib.example` で名乗り、`public^` の付いた宣言を公開します。
+`import^ lib.example` または `let^ alias = import^ lib.example` で取り込みます。
+`--module-path DIR` は繰り返し指定できます。`require^` はありません。
+
+ビルドは全依存ソースを型・寿命・データスタック検査した後、モジュール別にオブジェクトを生成します。
+既定の `<出力先ディレクトリ>/.rhat-cache` でコンパイル済みオブジェクトを再利用します。
+`--cache-dir DIR`、`--no-cache`、`--verbose` で場所・再利用・詳細表示を指定できます。
+標準ライブラリはコンパイラに同梱され、ベンチの生成ソースを別の場所にコピーしても使用できます。
+詳細は [モジュールと分割コンパイル](docs/design.md#モジュールと分割コンパイル) を参照してください。
+
 ## ビルドと実行
 
 Windows では Visual Studio の C++ ビルド環境、Clang ツール（compiler-rt builtins を含む）、CMake、Python 3 が必要です。
@@ -139,7 +160,7 @@ Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
 ## 現在の制約
 
 これは L^ 全体の互換実装でも、Goose の完全な再実装でもありません。
-キャプチャを持つクロージャ、関数値の保存・受け渡し、コルーチン、モジュール、`enum^`・`errordef^` の専用構文、`super^`、
+キャプチャを持つクロージャ、関数値の保存・受け渡し、コルーチン、`enum^`、エラーの付随情報と `try^` / `catch^`、`super^`、
 演算子の多重定義、動的ディスパッチ、任意の C FFI、L^ バインド生成は未実装です。
 再帰の返り値に型を決める根拠がない場合は、明示的な返り値型が必要です。
 `number^` は未実装であり、数値の表現は `i64^` などで指定します。

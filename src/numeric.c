@@ -3,10 +3,10 @@
 #include <stdint.h>
 
 const char *builtin_name(int k) {
-  static const char *names[] = {"void^", "bool^",  "u8^", "u16^", "u32^",
-                                "u64^",  "u128^",  "i8^", "i16^", "i32^",
-                                "i64^",  "i128^",  "f8^", "f16^", "f32^",
-                                "f64^",  "string^"};
+  static const char *names[] = {"void^", "bool^",   "u8^", "u16^", "u32^",
+                                "u64^",  "u128^",   "i8^", "i16^", "i32^",
+                                "i64^",  "i128^",   "f8^", "f16^", "f32^",
+                                "f64^",  "string^", "nil^"};
   return k >= T_VOID && k < T_STRUCT ? names[k] : NULL;
 }
 bool kind_integer(int k) { return k >= T_U8 && k <= T_I128; }

@@ -1,3 +1,4 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/lru.goose, Apache-2.0.
 # Bounded index arena + free list, open addressing with backward-shift deletion.
 # Node/Slot layouts and operations match the original C++ expert / Rust open table.
@@ -5,11 +6,7 @@ def^ Node { self^{ key:i32^, val:i32^, prev:u32^, next:u32^ } }
 def^ Slot { self^{ key:i32^, idx:i32^ } }
 def^ Stats { self^{ count:i64^=0, hits:i64^=0, misses:i64^=0, removes:i64^=0 } }
 
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ home = f^ key:i32^, mask:i64^ -> i64^ {
     return^ i64^((u64^(key)*11400714819323198485 bitshift^ -24) bitand^ u64^(mask))
 }
@@ -116,7 +113,7 @@ var^ stats=Stats{}
 var^ r:u64^=12345
 i := 0
 while^ i < n {
-    r := next(r)
+    r := std.random.xorshift64(r)
     step(&pool,&free,&slots,&stats,cap,keys,mask,r)
     i := i+1
 }

@@ -56,6 +56,7 @@ typedef struct {
 enum { TOK_WORD = 256, TOK_INT, TOK_FLOAT, TOK_STRING, TOK_EOF };
 typedef struct {
   Program *p;
+  Module *module;
   List tokens;
   int at;
   bool header;
@@ -86,6 +87,44 @@ static char *word(Parser *p) {
   if (t->kind != TOK_WORD)
     fail(t->loc, "expected a name");
   return t->text;
+}
+static char *qualified_word(Parser *p) {
+  char *name = word(p);
+  while (take(p, "."))
+    name = fmt("%s.%s", name, word(p));
+  return name;
+}
+static char *expression_path(Expr *e) {
+  if (e->kind == E_NAME)
+    return e->text;
+  if (e->kind == E_MEMBER) {
+    char *base = expression_path(e->a);
+    if (base)
+      return fmt("%s.%s", base, e->text);
+  }
+  return NULL;
+}
+static bool type_constructor(Parser *p, Expr *e) {
+  char *name = expression_path(e);
+  if (!name)
+    return false;
+  for (int j = 0; j + 1 < p->tokens.n; j++) {
+    Token *a = p->tokens.v[j], *b = p->tokens.v[j + 1];
+    if (!strcmp(a->text, "def^") && !strcmp(b->text, name))
+      return true;
+    size_t n = strlen(b->text);
+    if (!strcmp(a->text, "errordef^") && !strncmp(name, b->text, n) &&
+        name[n] == '.')
+      return true;
+  }
+  for (int j = 0; j < p->module->imports.n; j++) {
+    Import *i = p->module->imports.v[j];
+    const char *prefix = i->alias ? i->alias : i->name;
+    size_t n = strlen(prefix);
+    if (!strncmp(name, prefix, n) && name[n] == '.')
+      return true;
+  }
+  return false;
 }
 static char *decl_word(Parser *p) {
   Loc loc = tok(p)->loc;
@@ -250,7 +289,7 @@ static Spec *spec(Parser *p) {
     need(p, ")");
   } else {
     s->kind = SPEC_NAME;
-    s->name = word(p);
+    s->name = qualified_word(p);
   }
   while (take(p, "[")) {
     Spec *w = mem(sizeof(*w));
@@ -298,14 +337,6 @@ static void entries(Parser *p, Expr *e, const char *end, bool named) {
       break;
   } while (take(p, ","));
   need(p, end);
-}
-static bool type_constructor(Parser *p, const char *name) {
-  for (int n = 0; n + 1 < p->tokens.n; n++) {
-    Token *t = p->tokens.v[n], *next_token = p->tokens.v[n + 1];
-    if (!strcmp(t->text, "def^") && !strcmp(next_token->text, name))
-      return true;
-  }
-  return false;
 }
 static Expr *if_tail(Parser *p, Expr *condition, Loc loc) {
   Expr *e = node(E_IF, loc);
@@ -366,6 +397,12 @@ static Expr *primary(Parser *p) {
     e = node(E_FUNCTION, t->loc);
     e->function = function(p, fmt("<anonymous@%d:%d>", t->loc.line, t->loc.col),
                            NULL, false);
+  } else if (!strcmp(t->text, "error^")) {
+    e = node(E_RECORD, t->loc);
+    e->error_constructor = true;
+    e->text = qualified_word(p);
+    need(p, "{");
+    entries(p, e, "}", true);
   } else if (t->kind == TOK_WORD) {
     e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
     e->text = t->text;
@@ -388,10 +425,9 @@ static Expr *primary(Parser *p) {
       n->b = expr(p, 0);
       need(p, "]");
       e = n;
-    } else if (!p->header && e->kind == E_NAME &&
-               type_constructor(p, e->text) && take(p, "{")) {
+    } else if (!p->header && type_constructor(p, e) && take(p, "{")) {
       Expr *n = node(E_RECORD, e->loc);
-      n->text = e->text;
+      n->text = expression_path(e);
       entries(p, n, "}", true);
       e = n;
     } else
@@ -411,8 +447,8 @@ static int prec(const char *s) {
   if (!strcmp(s, "+") || !strcmp(s, "-"))
     return 4;
   if (!strcmp(s, "*") || !strcmp(s, "/") || !strcmp(s, "%") ||
-      !strcmp(s, "bitand^") || !strcmp(s, "bitor^") ||
-      !strcmp(s, "bitxor^") || !strcmp(s, "bitshift^"))
+      !strcmp(s, "bitand^") || !strcmp(s, "bitor^") || !strcmp(s, "bitxor^") ||
+      !strcmp(s, "bitshift^"))
     return 5;
   return -1;
 }
@@ -540,13 +576,15 @@ static void definition(Parser *p) {
   d->id = p->p->defs.n;
   add(&p->p->defs, d);
   if (take(p, "=")) {
-    do { add(&d->union_names, word(p)); } while (take(p, "|"));
+    do {
+      add(&d->union_names, qualified_word(p));
+    } while (take(p, "|"));
     take(p, ";");
     return;
   }
   if (take(p, ":")) {
     do {
-      add(&d->base_names, word(p));
+      add(&d->base_names, qualified_word(p));
     } while (take(p, ","));
   }
   need(p, "{");
@@ -601,7 +639,7 @@ static void definition(Parser *p) {
     add(&d->own_methods, f);
   }
 }
-void parse(Program *p, const char *path) {
+void parse_file(Program *p, const char *path, Module *module) {
   p->path = path;
   FILE *f = fopen(path, "rb");
   if (!f)
@@ -617,16 +655,74 @@ void parse(Program *p, const char *path) {
   fclose(f);
   Parser q = {0};
   q.p = p;
+  q.module = module;
   lex(&q);
   p->entry = mem(sizeof(*p->entry));
   p->entry->loc = (Loc){path, 1, 1};
   p->entry->name = "<top-level>";
   p->entry->procedure = true;
+  module->entry = p->entry;
+  if (take(&q, "module^")) {
+    module->name = qualified_word(&q);
+    take(&q, ";");
+  }
   while (tok(&q)->kind != TOK_EOF) {
     if (take(&q, ";"))
       continue;
+    bool public = take(&q, "public^");
+    if (take(&q, "import^") ||
+        (is(&q, "let^") && q.at + 3 < q.tokens.n &&
+         !strcmp(((Token *)q.tokens.v[q.at + 2])->text, "=") &&
+         !strcmp(((Token *)q.tokens.v[q.at + 3])->text, "import^"))) {
+      if (public)
+        fail(tok(&q)->loc, "imports cannot be public^");
+      Import *i = mem(sizeof(*i));
+      i->loc = tok(&q)->loc;
+      if (take(&q, "let^")) {
+        i->alias = decl_word(&q);
+        need(&q, "=");
+        need(&q, "import^");
+      }
+      i->name = qualified_word(&q);
+      add(&module->imports, i);
+      take(&q, ";");
+      continue;
+    }
+    if (take(&q, "errordef^")) {
+      Def *group = mem(sizeof(*group));
+      group->loc = tok(&q)->loc;
+      group->name = decl_word(&q);
+      group->module = module;
+      group->public = public;
+      group->id = p->defs.n;
+      add(&p->defs, group);
+      add(&module->defs, group);
+      need(&q, "{");
+      do {
+        if (is(&q, "}"))
+          break;
+        Def *arm = mem(sizeof(*arm));
+        arm->loc = tok(&q)->loc;
+        arm->name = fmt("%s.%s", group->name, decl_word(&q));
+        arm->module = module;
+        arm->public = public;
+        arm->error_variant = true;
+        arm->id = p->defs.n;
+        add(&p->defs, arm);
+        add(&module->defs, arm);
+        add(&group->union_names, arm->name);
+      } while (take(&q, ","));
+      need(&q, "}");
+      if (!group->union_names.n)
+        fail(group->loc, "errordef^ requires a variant");
+      continue;
+    }
     if (take(&q, "def^")) {
       definition(&q);
+      Def *d = p->defs.v[p->defs.n - 1];
+      d->module = module;
+      d->public = public;
+      add(&module->defs, d);
       continue;
     }
     bool binding = false;
@@ -639,7 +735,22 @@ void parse(Program *p, const char *path) {
                  !strcmp(initializer->text, "template^"));
     }
     if (!binding) {
-      add(&p->entry->body, stmt(&q));
+      Stmt *s = stmt(&q);
+      if (!module->root) {
+        if (s->kind != S_BIND || s->mut)
+          fail(s->loc, "library top level permits only declarations and "
+                       "immutable constants");
+        Constant *c = mem(sizeof(*c));
+        c->name = s->name;
+        c->binding = s;
+        c->public = public;
+        add(&module->constants, c);
+      } else {
+        if (public)
+          fail(s->loc, "public^ executable bindings are not supported in the "
+                       "entry file");
+        add(&p->entry->body, s);
+      }
       continue;
     }
     int binding_start = q.at;
@@ -649,11 +760,15 @@ void parse(Program *p, const char *path) {
     Function *parsed_function = function(&q, name, NULL, false);
     /* A called literal initializes a value; it does not declare a named
      * function. */
-    if (is(&q, "(") || is(&q, ".") || is(&q, "[") || (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
+    if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
+        (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
       q.at = binding_start;
       add(&p->entry->body, stmt(&q));
       continue;
     }
+    parsed_function->module = module;
+    parsed_function->public = public;
+    add(&module->functions, parsed_function);
     add(&p->functions, parsed_function);
     take(&q, ";");
   }

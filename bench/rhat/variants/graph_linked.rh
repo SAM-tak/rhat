@@ -1,14 +1,11 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/graph.goose, Apache-2.0.
 # 8-byte edges linked by u32 indices. First nv pool slots are list heads.
 # The queue retains initialized storage; a separate tail resets the active
 # prefix between BFS sources. It never appends across sources without reuse.
 def^ Edge { self^{ to:i32^, next:u32^ } }
 
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 
 let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
     if^ *tail < q.len { q[*tail] := vertex }
@@ -30,7 +27,7 @@ while^ i < nv {
 }
 i := 0
 while^ i < ne {
-    r := next(r)
+    r := std.random.xorshift64(r)
     let^ u=i64^(r % u64^(nv))
     let^ to=i32^((r bitshift^ -24) % u64^(nv))
     let^ link=pool[u].next
@@ -43,7 +40,7 @@ var^ total:i64^=0
 var^ seed:u64^=999
 var^ source:i32^=0
 while^ source < 4 {
-    seed := next(seed)
+    seed := std.random.xorshift64(seed)
     let^ src=i32^(seed % u64^(nv))
     i := 0
     while^ i < nv { dist[i] := -1; i := i+1 }

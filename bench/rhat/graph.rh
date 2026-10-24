@@ -1,13 +1,10 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/graph.goose, Apache-2.0.
 # CSR variant matching C++ VARIANT 1 / Rust CSR, including two-pass build cost.
 # Same RNG, edge multiset, BFS sources and checksum; linked version is retained
 # in variants/graph_linked.rh.
 
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 
 let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
     if^ *tail < q.len { q[*tail] := vertex }
@@ -27,7 +24,7 @@ var^ q:i32^[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 while^ i < ne {
-    r := next(r)
+    r := std.random.xorshift64(r)
     esrc.push(i32^(r % u64^(nv)))
     edst.push(i32^((r bitshift^ -24) % u64^(nv)))
     i := i+1
@@ -61,7 +58,7 @@ var^ total:i64^=0
 var^ seed:u64^=999
 var^ source:i32^=0
 while^ source < 4 {
-    seed := next(seed)
+    seed := std.random.xorshift64(seed)
     let^ src=i32^(seed % u64^(nv))
     i := 0
     while^ i < nv { dist[i] := -1; i := i+1 }

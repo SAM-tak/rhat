@@ -1,0 +1,16 @@
+import^ std.random
+
+var^ rng = std.random.new(12345)
+let^ saved = rng.save()
+print(rng.next())
+print(rng.rangeint(1, 6).get(i64^))
+assert(rng.load(saved).is(nil^))
+print(rng.next()) # replay the first draw
+
+let^ automatic = std.random.new()
+if^ automatic.is(std.random.Random) {
+    var^ other = automatic.get(std.random.Random)
+    print(other.uniform(-1.0, 1.0).get(f64^))
+} else^ {
+    print("OS seed unavailable")
+}

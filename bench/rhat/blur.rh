@@ -1,10 +1,7 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/blur.goose, Apache-2.0.
 # Flat scalar buffers; borders retain their initial values in each buffer.
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r = x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ blur = p^ src:&u8^[>..], dst:&u8^[>..], w:i64^ {
     var^ y:i64^=1
     while^ y < w-1 {
@@ -26,7 +23,7 @@ var^ b:u8^[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 while^ i < w*w {
-    r := next(r)
+    r := std.random.xorshift64(r)
     a.push(u8^(r % 256))
     b.push(0)
     i := i+1

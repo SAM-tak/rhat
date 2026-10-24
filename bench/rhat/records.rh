@@ -1,3 +1,4 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/records_fixed.goose, Apache-2.0.
 # Native nominal sum type: fixed-capacity inline text, 24-byte records.
 def^ Tick {}
@@ -6,18 +7,14 @@ def^ Text { self^{ len:u8^, bytes:u8^[15] } }
 def^ Say { self^{ id:i32^, text:Text } }
 def^ Quit { self^{ id:i32^, code:u8^ } }
 def^ Event = Tick | Move | Say | Quit
-let^ next=f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ word=f^ seed:u64^ -> Text {
     var^ out=Text{}
-    var^ r=next(seed)
+    var^ r=std.random.xorshift64(seed)
     out.len := u8^(r % 12)+4
     var^ i:u8^=0
     while^ i < out.len {
-        r := next(r)
+        r := std.random.xorshift64(r)
         out.bytes[i] := u8^(r % 26)+97
         i := i+1
     }
@@ -41,7 +38,7 @@ var^ log:Event[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 while^ i < n {
-    r := next(r)
+    r := std.random.xorshift64(r)
     let^ k=r % 8
     let^ id=i32^((r bitshift^ -3) % 100000)
     if^ k < 4 {

@@ -1,0 +1,3 @@
+module^ std.sys
+
+public^ errordef^ Error { OutOfMemory }

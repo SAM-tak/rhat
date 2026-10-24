@@ -1,13 +1,10 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/scene.goose, Apache-2.0.
 # C++ expert / Rust arena representation: 120-byte nodes, four u32 child slots.
 def^ F3 { self^{ x:f32^, y:f32^, z:f32^ } }
 def^ Xf { self^{ m:f32^[9], t:F3 } }
 def^ Node { self^{ id:i32^, local:Xf, world:Xf, kids:u32^[4], nkids:u8^ } }
-let^ next=f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ identity=f^ -> Xf {
     return^ Xf{m=[1,0,0,0,1,0,0,0,1],t=F3{x=0,y=0,z=0}}
 }
@@ -41,7 +38,7 @@ let^ compose=p^ p:&Xf, l:&Xf, w:&Xf {
     w.t.z := p.m[6]*l.t.x+p.m[7]*l.t.y+p.m[8]*l.t.z+p.t.z
 }
 let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
-    let^ r=next(seed)
+    let^ r=std.random.xorshift64(seed)
     let^ self=u32^(pool.len)
     pool.push(Node{id=i32^(self),local=Xf{m=rotation(r),
         t=F3{x=f32^((r bitshift^ -16) % 9),y=f32^((r bitshift^ -24) % 9),z=f32^((r bitshift^ -32) % 9)}},
@@ -50,7 +47,7 @@ let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
     let^ n=1+(r bitshift^ -40) % 4
     var^ i:u64^=0
     while^ i < n {
-        let^ child=this^(pool,depth-1,next(r+i))
+        let^ child=this^(pool,depth-1,std.random.xorshift64(r+i))
         let^ k=pool[self].nkids
         pool[self].kids[k] := child
         pool[self].nkids := k+1

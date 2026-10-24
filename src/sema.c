@@ -22,6 +22,7 @@ Type *type_builtin(Program *p, int k) {
   t->align = 1;
   switch (k) {
   case T_BOOL:
+  case T_NIL:
     t->size = 1;
     break;
   case T_STRING:
@@ -165,15 +166,28 @@ static void compose(Program *p, Def *d) {
     for (int i = 0; i < d->union_names.n; i++) {
       char *name = d->union_names.v[i];
       Def *arm = lookup_def(p, name);
-      if (!arm)
-        fail(d->loc, "unknown union alternative '%s'", name);
-      compose(p, arm);
-      if (arm->abstract)
-        fail(d->loc, "union alternative '%s' must be concrete", name);
+      Type *at = NULL;
+      if (arm) {
+        compose(p, arm);
+        at = arm->type;
+        if (arm->abstract)
+          fail(d->loc, "union alternative '%s' must be concrete", name);
+      } else {
+        bool builtin = false;
+        for (int k = 0; k < T_STRUCT; k++)
+          if (!strcmp(name, builtin_name(k)))
+            builtin = true;
+        if (!builtin)
+          fail(d->loc, "unknown union alternative '%s'", name);
+        Spec spec = {.kind = SPEC_NAME, .name = name, .loc = d->loc};
+        at = type_spec(p, &spec);
+        if (at->kind == T_VOID)
+          fail(d->loc, "void cannot be a union alternative");
+      }
       for (int j = 0; j < d->alternatives.n; j++)
-        if (d->alternatives.v[j] == arm->type)
+        if (d->alternatives.v[j] == at)
           fail(d->loc, "duplicate union alternative '%s'", name);
-      add(&d->alternatives, arm->type);
+      add(&d->alternatives, at);
     }
     d->state = 2;
     return;
@@ -574,9 +588,48 @@ static Value literal_int(Context *c, Expr *e, Type *expected) {
   i->text = e->text;
   return v;
 }
+static int random_intrinsic(Instance *in, Expr *target) {
+  if (target->kind != E_NAME)
+    return -1;
+  const char *names[] = {"__seed^", "__sqrt^",      "__log^",
+                         "__cos^",  "__nextafter^", "__finite^"};
+  for (int j = 0; j < 6; j++)
+    if (!strcmp(target->text, names[j])) {
+      if (!in->fn->module || !in->fn->module->name ||
+          strcmp(in->fn->module->name, "std.random"))
+        fail(target->loc, "private standard-library intrinsic");
+      return j;
+    }
+  return -1;
+}
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
+  int native = random_intrinsic(c->in, target);
+  if (native >= 0) {
+    int count = native == 4 ? 2 : 1;
+    if (e->args.n != count)
+      fail(e->loc, "invalid intrinsic arity");
+    Type *input = native == 0 ? type_wrap(p, T_REF, type_builtin(p, T_U64), 0)
+                              : type_builtin(p, T_F64);
+    Type *output = type_builtin(p, native == 0 || native == 5 ? T_BOOL : T_F64);
+    Value out = value(c, output);
+    Instr *i = mem(sizeof(*i));
+    i->op = I_NATIVE;
+    i->loc = e->loc;
+    i->dst = out.id;
+    i->type = output;
+    i->other = native;
+    for (int j = 0; j < count; j++) {
+      Value v = expression(c, e->args.v[j], input);
+      if (v.type != input)
+        fail(e->loc, "invalid intrinsic argument");
+      v = snapshot(c, v, e->loc);
+      add(&i->args, (void *)(intptr_t)(v.id + 1));
+    }
+    add(&c->in->code, i);
+    return out;
+  }
   if (target->kind == E_NAME) {
     for (int k = T_U8; k <= T_F64; k++) {
       if (strcmp(target->text, builtin_name(k)))
@@ -649,13 +702,14 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (e->args.n != 1 || ((Expr *)e->args.v[0])->kind != E_NAME)
         fail(e->loc, "%s expects one alternative type name", target->text);
       Expr *name = e->args.v[0];
-      Def *arm = lookup_def(p, name->text);
-      int tag = arm ? union_alternative(base.type, arm->type) : -1;
+      Spec arm_spec = {.kind = SPEC_NAME, .name = name->text, .loc = name->loc};
+      Type *arm = type_spec(p, &arm_spec);
+      int tag = union_alternative(base.type, arm);
       if (tag < 0)
         fail(e->loc, "'%s' is not an alternative of '%s'", name->text,
              type_name(base.type));
       bool get = !strcmp(target->text, "get");
-      Type *t = get ? arm->type : type_builtin(p, T_BOOL);
+      Type *t = get ? arm : type_builtin(p, T_BOOL);
       if (expected && t != expected)
         fail(e->loc, "%s returns '%s', expected '%s'", target->text,
              type_name(t), type_name(expected));
@@ -818,7 +872,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   } else if (target->kind == E_NAME) {
     for (int j = 0; j < p->functions.n; j++) {
       Function *candidate = p->functions.v[j];
-      if (!strcmp(candidate->name, target->text)) {
+      if (!strcmp(candidate->name, target->text) &&
+          candidate->params.n == e->args.n) {
         f = candidate;
         break;
       }
@@ -890,12 +945,32 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   return out;
 }
+static Type *union_literal_hint(Type *t, Expr *e) {
+  if (!t || t->kind != T_UNION || e->constant_spec)
+    return NULL;
+  Expr *literal = e;
+  if (literal->kind == E_UNARY && !strcmp(literal->text, "-"))
+    literal = literal->a;
+  if (literal->kind != E_INT && literal->kind != E_FLOAT)
+    return NULL;
+  Type *hint = NULL;
+  for (int j = 0; j < t->def->alternatives.n; j++) {
+    Type *a = t->def->alternatives.v[j];
+    if ((literal->kind == E_INT && kind_integer(a->kind)) ||
+        (literal->kind == E_FLOAT && kind_float(a->kind))) {
+      if (hint)
+        return NULL;
+      hint = a;
+    }
+  }
+  return hint;
+}
 static Value construct(Context *c, Expr *e, Type *t, int dst) {
   if (t && t->kind == T_UNION && e->kind != E_IF) {
     if (e->kind == E_RECORD && (!e->text || !strcmp(e->text, t->def->name)))
       fail(e->loc, "construct union '%s' from a named alternative",
            type_name(t));
-    Value arm = expression(c, e, NULL);
+    Value arm = expression(c, e, union_literal_hint(t, e));
     Value out = {
         .id = dst >= 0 ? dst : slot(c, t, false), .type = t, .deps = arm.deps};
     if (arm.type == t)
@@ -956,6 +1031,10 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     if (!t || t->kind != T_STRUCT)
       fail(e->loc, "record construction needs a nominal type");
+    if (t->kind == T_STRUCT && (e->error_constructor != t->def->error_variant))
+      fail(e->loc, t->def->error_variant
+                       ? "error variant requires error^ constructor"
+                       : "error^ requires an errordef^ variant");
     if (t->def->abstract)
       fail(e->loc, "cannot construct abstract def^ '%s'", t->def->name);
     if (dst < 0 && t->owned)
@@ -1107,6 +1186,15 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   if (expected && expected->kind == T_UNION)
     return construct(c, e, expected, -1);
   Program *p = c->p;
+  if (e->constant_spec) {
+    Expr copy = *e;
+    copy.constant_spec = NULL;
+    Type *t = type_spec(p, e->constant_spec);
+    Value v = expression(c, &copy, t);
+    if (v.type != t || (expected && expected != t))
+      fail(e->loc, "constant type mismatch");
+    return v;
+  }
   Value out = {0};
   if (e->kind == E_FUNCTION)
     fail(e->loc, "function values cannot escape; invoke the literal directly");
@@ -1127,6 +1215,15 @@ static Value expression(Context *c, Expr *e, Type *expected) {
               : e->kind == E_FLOAT ? float_constant(e->text, t->kind, e->loc)
                                    : e->text;
     return out;
+  }
+  if (e->kind == E_NAME && !strcmp(e->text, "nil^")) {
+    Type *t = type_builtin(p, T_NIL);
+    Value v = value(c, t);
+    Instr *i = emit(c, I_CONST, e->loc);
+    i->dst = v.id;
+    i->type = t;
+    i->text = "0";
+    return v;
   }
   if (e->kind == E_NAME || e->kind == E_SELF) {
     if (c->in_default)
@@ -1515,10 +1612,10 @@ typedef struct {
   bool value_return;
 } Infer;
 
-static Function *lookup_function(Program *p, const char *name) {
+static Function *lookup_function(Program *p, const char *name, int arity) {
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
-    if (!strcmp(f->name, name))
+    if (!strcmp(f->name, name) && f->params.n == arity)
       return f;
   }
   return NULL;
@@ -1558,6 +1655,9 @@ static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
 }
 static Type *infer_call(Infer *c, Expr *e) {
   Expr *target = e->a;
+  int native = random_intrinsic(c->in, target);
+  if (native >= 0)
+    return type_builtin(c->p, native == 0 || native == 5 ? T_BOOL : T_F64);
   Function *f = NULL;
   Def *self = NULL;
   List actual = {0};
@@ -1583,7 +1683,7 @@ static Type *infer_call(Infer *c, Expr *e) {
       if (self)
         add(&actual, infer_lookup(c, "self^"));
     } else
-      f = lookup_function(c->p, target->text);
+      f = lookup_function(c->p, target->text, e->args.n);
   } else if (target->kind == E_MEMBER) {
     if (target->a->kind == E_NAME && !strcmp(target->text, "new")) {
       Def *d = lookup_def(c->p, target->a->text);
@@ -1598,8 +1698,10 @@ static Type *infer_call(Infer *c, Expr *e) {
       if (!strcmp(target->text, "is"))
         return type_builtin(c->p, T_BOOL);
       if (e->args.n == 1 && ((Expr *)e->args.v[0])->kind == E_NAME) {
-        Def *arm = lookup_def(c->p, ((Expr *)e->args.v[0])->text);
-        return arm ? arm->type : NULL;
+        Spec spec = {.kind = SPEC_NAME,
+                     .name = ((Expr *)e->args.v[0])->text,
+                     .loc = e->loc};
+        return type_spec(c->p, &spec);
       }
       return NULL;
     }
@@ -1652,8 +1754,10 @@ static Type *infer_call(Infer *c, Expr *e) {
 static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   if (!e)
     return type_builtin(c->p, T_VOID);
+  if (e->constant_spec)
+    return type_spec(c->p, e->constant_spec);
   if (expected && expected->kind == T_UNION && e->kind != E_IF) {
-    Type *actual = infer_expr(c, e, NULL);
+    Type *actual = infer_expr(c, e, union_literal_hint(expected, e));
     return actual && (actual == expected ||
                       union_alternative(expected, actual) >= 0)
                ? expected
@@ -1670,6 +1774,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   case E_STRING:
     return type_builtin(c->p, T_STRING);
   case E_NAME:
+    if (!strcmp(e->text, "nil^"))
+      return type_builtin(c->p, T_NIL);
+    return infer_lookup(c, e->text);
   case E_SELF:
     return infer_lookup(c, e->text);
   case E_FUNCTION:
@@ -1848,6 +1955,14 @@ static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
   in->result = f->result ? type_spec(p, f->result) : f->required_result;
   in->id = p->instances.n;
   in->symbol = fmt("rh_fn_%d", in->id);
+  if (p->modules.n > 1 && f != p->entry) {
+    char *identity = fmt(
+        "%s:%s:%s", f->module && f->module->name ? f->module->name : "<entry>",
+        f->name, self ? self->name : "");
+    for (int j = 0; j < actual->n; j++)
+      identity = fmt("%s:%s", identity, type_name(actual->v[j]));
+    in->symbol = fmt("rh_fn_%s", link_identity(identity));
+  }
   in->result_slot = -1;
   add(&p->instances, in);
   return in;
@@ -1924,6 +2039,13 @@ void analyze(Program *p) {
     Type *t = mem(sizeof(*t));
     t->kind = d->union_names.n ? T_UNION : T_STRUCT;
     t->def = d;
+    if (p->modules.n > 1 || (d->module && d->module->name))
+      t->symbol =
+          fmt("%%rh_type_%s",
+              link_identity(fmt("%s:%s",
+                                d->module && d->module->name ? d->module->name
+                                                             : "<entry>",
+                                d->name)));
     t->id = p->types.n;
     d->type = t;
     add(&p->types, t);
@@ -1939,8 +2061,10 @@ void analyze(Program *p) {
     if (lookup_def(p, f->name))
       fail(f->loc, "function conflicts with def^ '%s'", f->name);
     for (int k = 0; k < j; k++)
-      if (!strcmp(f->name, ((Function *)p->functions.v[k])->name))
-        fail(f->loc, "duplicate function '%s'", f->name);
+      if (!strcmp(f->name, ((Function *)p->functions.v[k])->name) &&
+          f->params.n == ((Function *)p->functions.v[k])->params.n)
+        fail(f->loc, "duplicate function '%s' with %d arguments", f->name,
+             f->params.n);
   }
   List none = {0};
   p->entry->required_result = type_builtin(p, T_VOID);

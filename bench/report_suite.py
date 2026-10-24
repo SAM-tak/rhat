@@ -8,6 +8,13 @@ NAMES=('sum','push','strlist','records','tree','interp','graph','words','particl
 
 
 def write_suite():
+    latest=HERE/'modules_refresh/results.json'
+    if latest.exists():
+        measured=json.loads(latest.read_text(encoding='utf-8'))
+        if measured.get('complete'):
+            from modules_refresh.measure import write_report
+            write_report(measured)
+            return
     complete=None
     all_verified=HERE/'all08/verification.json'
     if all_verified.exists():

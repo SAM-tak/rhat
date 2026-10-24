@@ -29,8 +29,28 @@ typedef struct Type Type;
 typedef struct Spec Spec;
 typedef struct Instance Instance;
 typedef struct Field Field;
+typedef struct Module Module;
+typedef struct {
+  char *name, *alias;
+  Loc loc;
+  Module *target;
+} Import;
+typedef struct {
+  char *name;
+  Stmt *binding;
+  bool public;
+  int state;
+} Constant;
+struct Module {
+  char *name, *path;
+  List imports, defs, functions, constants;
+  Function *entry;
+  bool root;
+  int state;
+};
 
 struct Spec {
+  bool resolved;
   Loc loc;
   char *name;
   Spec *elem;
@@ -55,6 +75,8 @@ enum {
   E_IF
 };
 struct Expr {
+  Spec *constant_spec;
+  bool error_constructor;
   int kind;
   Loc loc;
   char *text;
@@ -79,6 +101,8 @@ typedef struct {
   bool self;
 } Param;
 struct Function {
+  Module *module;
+  bool public;
   Loc loc;
   char *name;
   Def *owner;
@@ -98,6 +122,8 @@ struct Field {
   int index;
 };
 struct Def {
+  Module *module;
+  bool public, error_variant;
   Loc loc;
   char *name;
   List base_names, bases, own_fields, own_methods;
@@ -125,6 +151,7 @@ enum {
   T_F32,
   T_F64,
   T_STRING,
+  T_NIL,
   T_STRUCT,
   T_REF,
   T_ARRAY,
@@ -133,6 +160,7 @@ enum {
   T_UNION
 };
 struct Type {
+  char *symbol;
   int kind, id, count;
   Type *elem;
   Def *def;
@@ -141,6 +169,9 @@ struct Type {
   bool refs, owned;
 };
 typedef struct {
+  List modules, module_paths;
+  Module *emitting;
+  const char *stdlib_dir;
   List defs, functions, types, instances, strings;
   Function *entry;
   int stack_count;
@@ -148,6 +179,8 @@ typedef struct {
   const char *path;
 } Program;
 void parse(Program *p, const char *path);
+void parse_file(Program *p, const char *path, Module *module);
+void resolve_modules(Program *p);
 void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
 Type *type_builtin(Program *p, int kind);
@@ -175,6 +208,7 @@ enum {
   I_FIELD,
   I_INDEX,
   I_CALL,
+  I_NATIVE,
   I_PRINT,
   I_ASSERT,
   I_LABEL,
@@ -247,7 +281,7 @@ struct Instance {
   int id, state, labels, result_slot;
   char *result_local;
   int stack_own, stack_need;
-  bool may_shrink;
+  bool may_shrink, emitted, cross_module;
 };
 void plan_stacks(Program *p);
 void analyze_array_growth(Program *p);
@@ -255,6 +289,15 @@ void version_range_loops(Program *p);
 void report_stacks(Program *p);
 void emit_llvm(Program *p, const char *path);
 void emit_llvm_builtins(FILE *f);
+char *digest_bytes(const void *data, size_t n);
+char *digest_file(const char *path);
+char *link_identity(const char *text);
+const char *tool_resource(const char *compiler, const char *fallback,
+                          const char *relative);
+int run_process(char *const *args);
+int build_objects(Program *p, const char *compiler, const char *clang,
+                  const char *runtime, const char *opt, const char *out,
+                  const char *cache, bool reuse, bool verbose);
 void dump_ir(Program *p, const char *path);
 char *llvm_type(Type *t);
 #endif

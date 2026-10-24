@@ -1,12 +1,9 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/push.goose, Apache-2.0.
 # Marks are real Item references, retained across subsequent pushes.
 def^ Item { self^{ key:i32^, val:i32^ } }
 
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 
 let^ n:i64^=1000000 # BENCH_N
 var^ items:Item[>..]=[]
@@ -14,7 +11,7 @@ var^ marks:(&Item)[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 while^ i < n {
-    r := next(r)
+    r := std.random.xorshift64(r)
     let^ element=items.push(Item{ key=i32^(r % 1000000), val=i32^(i % 97) })
     if^ i % 64 = 0 { marks.push(element) }
     i := i+1

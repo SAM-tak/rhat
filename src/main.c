@@ -15,6 +15,9 @@
 #ifndef RH_DEFAULT_CLANG
 #define RH_DEFAULT_CLANG "clang"
 #endif
+#ifndef RH_STDLIB_PATH
+#define RH_STDLIB_PATH "stdlib"
+#endif
 #if defined(_WIN32)
 /* The CRT spawn API joins arguments into a command line without quoting. */
 static char *windows_argument(const char *arg) {
@@ -44,7 +47,7 @@ static char *windows_argument(const char *arg) {
   return out;
 }
 #endif
-static int spawn(char *const *args) {
+int run_process(char *const *args) {
 #if defined(_WIN32)
   List quoted = {0};
   for (int n = 0; args[n]; n++)
@@ -90,7 +93,8 @@ static void usage(void) {
        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
        "[--clang PATH] [--runtime PATH]\nOptions: --stacks, --emit-llvm PATH, "
        "--dump-ir "
-       "PATH\nTarget: host x86-64, C runtime ABI");
+       "PATH, --module-path DIR, --cache-dir DIR, --no-cache, --verbose\n"
+       "Target: host x86-64, C runtime ABI");
 }
 int main(int argc, char **argv) {
   if (argc < 2 || !strcmp(argv[1], "--help") || !strcmp(argv[1], "-h")) {
@@ -117,10 +121,20 @@ int main(int argc, char **argv) {
   if (!clang || !*clang)
     clang = RH_DEFAULT_CLANG;
   if (!runtime)
-    runtime = RH_RUNTIME_PATH;
-  bool stacks = false;
+    runtime = tool_resource(argv[0], RH_RUNTIME_PATH, "rhat_runtime.c");
+  bool stacks = false, reuse = true, verbose = false;
+  const char *cache = NULL;
+  List module_paths = {0};
   for (int j = 3; j < argc; j++) {
     char *s = argv[j];
+    if (!strcmp(s, "--no-cache")) {
+      reuse = false;
+      continue;
+    }
+    if (!strcmp(s, "--verbose")) {
+      verbose = true;
+      continue;
+    }
     if (!strcmp(s, "--stacks")) {
       stacks = true;
       continue;
@@ -134,7 +148,11 @@ int main(int argc, char **argv) {
       return 2;
     }
     const char *v = argv[++j];
-    if (!strcmp(s, "-o"))
+    if (!strcmp(s, "--module-path"))
+      add(&module_paths, (void *)v);
+    else if (!strcmp(s, "--cache-dir"))
+      cache = v;
+    else if (!strcmp(s, "-o"))
       out = v;
     else if (!strcmp(s, "--clang"))
       clang = v;
@@ -177,7 +195,17 @@ int main(int argc, char **argv) {
     }
   }
   Program p = {0};
+  p.module_paths = module_paths;
+  p.stdlib_dir = tool_resource(argv[0], RH_STDLIB_PATH, "stdlib");
   parse(&p, source);
+  for (int j = 0; j < p.modules.n; j++) {
+    Module *m = p.modules.v[j];
+    for (int k = 0; k < 3; k++)
+      if (same_path(outputs[k], m->path)) {
+        fputs("output would overwrite an imported source file\n", stderr);
+        return 2;
+      }
+  }
   analyze(&p);
   plan_stacks(&p);
   analyze_array_growth(&p);
@@ -193,12 +221,8 @@ int main(int argc, char **argv) {
     return 0;
   }
   emit_llvm(&p, ll);
-  char *args[] = {(char *)clang,        "-Wno-override-module",
-                  "-std=c11",           (char *)opt,
-                  "-rtlib=compiler-rt", (char *)ll,
-                  (char *)runtime,      "-o",
-                  (char *)out,          NULL};
-  int status = spawn(args);
+  int status = build_objects(&p, argv[0], clang, runtime, opt, out, cache,
+                             reuse, verbose);
   if (status < 0) {
     int error = errno;
     fprintf(stderr,
@@ -219,7 +243,7 @@ int main(int argc, char **argv) {
       exe = fmt("./%s", out);
 #endif
     char *run[] = {exe, NULL};
-    status = spawn(run);
+    status = run_process(run);
     if (status < 0) {
       perror(exe);
       return 1;

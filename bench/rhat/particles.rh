@@ -1,19 +1,16 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/particles.goose, Apache-2.0.
 # Scalar AoS variant; six binary32 fields, 24 bytes per particle.
 def^ Particle {
     self^{ x:f32^, y:f32^, z:f32^, vx:f32^, vy:f32^, vz:f32^ }
 }
-let^ next = f^ x:u64^ -> u64^ {
-    var^ r = x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ n:i64^=100000 # BENCH_N
 var^ ps:Particle[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 while^ i < n {
-    r := next(r)
+    r := std.random.xorshift64(r)
     ps.push(Particle{
         x=f32^(r % 1024),
         y=f32^((r bitshift^ -12) % 1024),

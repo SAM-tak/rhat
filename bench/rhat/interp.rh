@@ -1,3 +1,4 @@
+import^ std.random
 # Port of aardappel/goose bench/goose/interp.goose, Apache-2.0.
 # Native nominal sum, 12-byte nodes with u32 children, as in C++/Rust arenas.
 def^ Num { self^{ v:i32^ } }
@@ -5,13 +6,9 @@ def^ Add { self^{ l:u32^, r:u32^ } }
 def^ Mul { self^{ l:u32^, r:u32^ } }
 def^ Neg { self^{ of:u32^ } }
 def^ Expr = Num | Add | Mul | Neg
-let^ next=f^ x:u64^ -> u64^ {
-    var^ r=x bitxor^ (x bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
-}
+
 let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
-    let^ s=next(seed)
+    let^ s=std.random.xorshift64(seed)
     if^ depth = 0 {
         pool.push(Num{v=i32^(s % 1000)})
         return^ u32^(pool.len-1)
@@ -23,7 +20,7 @@ let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
         return^ u32^(pool.len-1)
     }
     let^ a=this^(pool,depth-1,s)
-    let^ b=this^(pool,depth-1,next(s))
+    let^ b=this^(pool,depth-1,std.random.xorshift64(s))
     if^ k < 5 { pool.push(Add{l=a,r=b}) }
     else^ { pool.push(Mul{l=a,r=b}) }
     return^ u32^(pool.len-1)

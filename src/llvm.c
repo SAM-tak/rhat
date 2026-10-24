@@ -6,6 +6,7 @@ char *llvm_type(Type *t) {
     return "void";
   case T_BOOL:
     return "i1";
+  case T_NIL:
   case T_U8:
   case T_I8:
   case T_F8:
@@ -38,7 +39,7 @@ char *llvm_type(Type *t) {
   case T_GROW:
     return "{ ptr, i64, ptr }";
   default:
-    return fmt("%%rh_type_%d", t->id);
+    return t->symbol ? t->symbol : fmt("%%rh_type_%d", t->id);
   }
 }
 typedef struct {
@@ -249,7 +250,8 @@ static void instruction(Output *o, Instr *i) {
     break;
   case I_STRING:
     save(o, i->dst, t,
-         fmt("{ ptr @rh_str_%d, i64 %zu }", i->label, strlen(i->text)));
+         fmt("{ ptr @%s_str_%d, i64 %zu }", o->in->symbol, i->label,
+             strlen(i->text)));
     break;
   case I_ZERO:
     save(o, i->dst, t, "zeroinitializer");
@@ -553,9 +555,10 @@ static void instruction(Output *o, Instr *i) {
       if (literal->op == I_STRING && literal->dst == i->b &&
           t->elem->kind == T_U8) {
         fprintf(f,
-                "  call void @rh_append_literal(ptr %%p%d, ptr @rh_str_%d, i64 "
+                "  call void @rh_append_literal(ptr %%p%d, ptr @%s_str_%d, i64 "
                 "%zu, i32 %d)\n",
-                i->a, literal->label, strlen(literal->text), i->loc.line);
+                i->a, o->in->symbol, literal->label, strlen(literal->text),
+                i->loc.line);
         return;
       }
       break;
@@ -857,6 +860,37 @@ static void instruction(Output *o, Instr *i) {
     save(o, i->dst, t, fmt("%%t%d", r));
     break;
   }
+  case I_NATIVE: {
+    int values[2];
+    for (int j = 0; j < i->args.n; j++)
+      values[j] = load(o, (int)(intptr_t)i->args.v[j] - 1);
+    if (i->other == 0) {
+      r = ++o->tmp;
+      fprintf(f, "  %%t%d = call i64 @rh_random_seed(ptr %%t%d)\n", r,
+              values[0]);
+      a = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", a, r);
+      save(o, i->dst, t, fmt("%%t%d", a));
+    } else if (i->other == 5) {
+      r = ++o->tmp;
+      a = ++o->tmp;
+      fprintf(f, "  %%t%d = call double @llvm.fabs.f64(double %%t%d)\n", r,
+              values[0]);
+      fprintf(f, "  %%t%d = fcmp ole double %%t%d, 0x7FEFFFFFFFFFFFFF\n", a, r);
+      save(o, i->dst, t, fmt("%%t%d", a));
+    } else {
+      const char *names[] = {"", "llvm.sqrt.f64", "llvm.log.f64",
+                             "llvm.cos.f64", "nextafter"};
+      r = ++o->tmp;
+      fprintf(f, "  %%t%d = call double @%s(double %%t%d", r, names[i->other],
+              values[0]);
+      if (i->args.n == 2)
+        fprintf(f, ", double %%t%d", values[1]);
+      fputs(")\n", f);
+      save(o, i->dst, t, fmt("%%t%d", r));
+    }
+    break;
+  }
   case I_CALL: {
     a = ++o->tmp;
     fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
@@ -963,6 +997,26 @@ static void instruction(Output *o, Instr *i) {
   }
 }
 void emit_llvm(Program *p, const char *path) {
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    in->emitted = !p->emitting || in->fn->module == p->emitting;
+  }
+  bool changed;
+  do {
+    changed = false;
+    for (int j = 0; j < p->instances.n; j++) {
+      Instance *in = p->instances.v[j];
+      if (!in->emitted)
+        continue;
+      for (int k = 0; k < in->code.n; k++) {
+        Instr *i = in->code.v[k];
+        if (i->op == I_CALL && !i->callee->emitted) {
+          i->callee->emitted = true;
+          changed = true;
+        }
+      }
+    }
+  } while (changed);
   FILE *f = fopen(path, "wb");
   if (!f)
     fail((Loc){path, 1, 1}, "cannot write LLVM IR");
@@ -987,25 +1041,47 @@ void emit_llvm(Program *p, const char *path) {
     }
     fputs(" }\n", f);
   }
-  int count = 0;
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
+    if (!in->emitted)
+      continue;
+    int count = 0;
     for (int k = 0; k < in->code.n; k++) {
       Instr *i = in->code.v[k];
       if (i->op == I_STRING) {
         i->label = count++;
-        fprintf(f, "@rh_str_%d = private unnamed_addr constant [%zu x i8] ",
-                i->label, strlen(i->text) + 1);
+        fprintf(f, "@%s_str_%d = private unnamed_addr constant [%zu x i8] ",
+                in->symbol, i->label, strlen(i->text) + 1);
         bytes(f, i->text);
         fputc('\n', f);
       }
     }
   }
   fprintf(f,
-          "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = internal "
-          "global [%d x %%RhStack] zeroinitializer\n",
-          p->stack_count);
+          "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = %sglobal "
+          "[%d x %%RhStack]%s\n",
+          !p->emitting        ? "internal "
+          : p->emitting->root ? ""
+                              : "external ",
+          p->stack_count,
+          !p->emitting || p->emitting->root ? " zeroinitializer" : "");
   emit_llvm_builtins(f);
+  bool random_native = false;
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    for (int k = 0; k < in->code.n; k++)
+      if (((Instr *)in->code.v[k])->op == I_NATIVE)
+        random_native = true;
+  }
+  if (random_native)
+    fputs("declare i64 @rh_random_seed(ptr)\n"
+          "declare double @llvm.sqrt.f64(double)\n"
+          "declare double @llvm.log.f64(double)\n"
+          "declare double @llvm.cos.f64(double)\n"
+          "declare double @llvm.fabs.f64(double)\n"
+          "declare double @nextafter(double, double)\n",
+          f);
+
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
@@ -1023,8 +1099,15 @@ void emit_llvm(Program *p, const char *path) {
     fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
-    fprintf(f, "\n; %s%s%s\ndefine internal %s @%s(",
-            in->self ? in->self->name : "", in->self ? "." : "", in->fn->name,
+    if (!in->emitted)
+      continue;
+    const char *linkage = !p->emitting ? "internal"
+                          : in->fn->module != p->emitting
+                              ? "available_externally"
+                          : in->cross_module ? "dso_local"
+                                             : "internal";
+    fprintf(f, "\n; %s%s%s\ndefine %s %s @%s(", in->self ? in->self->name : "",
+            in->self ? "." : "", in->fn->name, linkage,
             direct(in->result) ? llvm_type(in->result) : "void", in->symbol);
     bool result = in->result->kind != T_VOID;
     fputs("i64 %sp", f);
@@ -1066,11 +1149,12 @@ void emit_llvm(Program *p, const char *path) {
       instruction(&o, in->code.v[k]);
     fputs("}\n", f);
   }
-  fprintf(f,
-          "\ndefine i32 @main() {\nentry:\n  call void @rh_runtime_init(ptr "
-          "@rh_stacks, i64 %d)\n  call void @rh_fn_0(i64 0)\n  call void "
-          "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
-          p->stack_count);
+  if (!p->emitting || p->emitting->root)
+    fprintf(f,
+            "\ndefine i32 @main() {\nentry:\n  call void @rh_runtime_init(ptr "
+            "@rh_stacks, i64 %d)\n  call void @rh_fn_0(i64 0)\n  call void "
+            "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
+            p->stack_count);
   fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
   fputs("!1 = !{!\"Rhat storage\"}\n"
         "!2 = !{!\"non-owning value\", !1, i64 0}\n"
@@ -1096,6 +1180,7 @@ void dump_ir(Program *p, const char *path) {
                          "field",
                          "index.checked",
                          "call",
+                         "native.intrinsic",
                          "print",
                          "assert",
                          "label",
