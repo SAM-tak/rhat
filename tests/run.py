@@ -81,17 +81,17 @@ def layout_ir(ir, ll):
 
 
 def region_ir(ir, ll):
-    assert "region.construct" in ir and "region.release" in ir
+    assert "region.construct" in ir and "stack.restore" in ir
     assert "array.push" in ir and "index.checked" in ir
     assert "destination=%0" in ir
-    assert "malloc" not in ll and "@rh_region_init" in ll
+    assert "malloc" not in ll and "@rh_runtime_init" in ll
 
 
 def top_cleanup_ir(ir, ll):
     assert "<top-level>" in ir
-    assert ir.count("region.release") == 1
-    assert ir.index("region.construct") < ir.index("region.release") < ir.index("  return")
-    assert "@rh_region_release" in ll
+    assert ir.count("stack.restore") == 1
+    assert ir.index("region.construct") < ir.index("stack.restore") < ir.index("  return")
+    assert "stack.save" in ir
 
 
 def factorial_ir(ir, ll):
@@ -368,8 +368,8 @@ box.items.clear()
 box.items.push(42)
 print(box.items[0])
 """, "7 3 2\n42\n", lambda ir,ll: (
-    "type Box size=40 align=8" in ir and "+8 Box.items" in ir
-    and "{ ptr, i64, i64, i64 }" in ll
+    "type Box size=32 align=8" in ir and "+8 Box.items" in ir
+    and "{ ptr, i64, ptr }" in ll
 ) or (_ for _ in ()).throw(AssertionError("array descriptor layout")))
 runtime_failure("empty_pop", "var^ a:i32^[>..]=[]; a.pop()", "line 1: pop from empty array")
 runtime_failure("pop_bounds", "var^ a:i32^[>..]=[1]; a.pop(); print(a[0])", "array index out of bounds")
@@ -666,13 +666,20 @@ if os.name == "nt":
     for opt in ("-O0", "-O2"):
         exe = work / ("runtime_regions_" + opt[1:] + ".exe")
         run([args.clang, "-std=c11", opt, str(repo / "tests/runtime_regions.c"), "-o", str(exe)])
-        assert run([str(exe)]).stdout == "page commits verified\n"
-        for mode, diagnostic in (("commit-failure", "region commit failed"),
+        assert run([str(exe)]).stdout == "data stacks verified\n"
+        for mode, diagnostic in (("commit-failure", "data stack commit failed"),
                                  ("page-failure", "page size query failed"),
-                                 ("capacity", "region capacity exceeded"),
-                                 ("append-capacity", "region capacity exceeded"),
-                                 ("truncate-growth", "truncate length out of bounds")):
+                                 ("capacity", "data stack overflow"),
+                                 ("append-capacity", "data stack overflow"),
+                                 ("element-capacity", "data stack overflow"),
+                                 ("truncate-growth", "truncate length out of bounds"),
+                                 ("guard", "data stack overflow")):
             assert diagnostic in run([str(exe), mode], 1).stderr
+        small = work / ("runtime_small_stack_" + opt[1:] + ".exe")
+        run([args.clang, "-std=c11", opt, "-DRH_STACK_BYTES=65536",
+             str(repo / "tests/runtime_regions.c"), "-o", str(small)])
+        assert run([str(small), "small-limit"]).stdout == "small reservation verified\n"
+        assert "data stack overflow" in run([str(small), "guard"], 1).stderr
     passed += 1
     print("PASS windows_page_commit_calls_and_failures", flush=True)
 
@@ -1140,14 +1147,120 @@ def^ A { template^ use=p^ self^,x {} }
 negative("template_requires_function", """
 let^ value=template^42
 """, "expected 'f^'")
-positive("recursive_region_cleanup", """
+negative("recursive_region_cleanup", """
 let^ sum=f^ n:i32^ -> i32^ {
     var^ scratch:i32^[>..]=[n]
     if^ n=0 { return^ scratch[0] }
     return^ scratch[0] + this^(n-1)
 }
 print(sum(10))
-""", "55\n")
+""", "holds local owned value")
+def stack_ir(ir, ll):
+    assert "stack.save" in ir and "stack.restore" in ir
+    assert "stack-offset=" in ir and "stack-owner=" in ir
+    assert "@rh_array_push" not in ll and "@rh_region_init" not in ll
+    assert "{ ptr, i64, ptr }" in ll and "%RhStack" in ll
+
+positive("stack_reuse_and_nested_calls", """
+let^ inner=f^ n:i32^ -> i32^ {
+    var^ a:i32^[>..]=[n]
+    return^ a[0]
+}
+let^ outer=f^ n:i32^ -> i32^ {
+    var^ a:i32^[>..]=[n+1]
+    return^ inner(n)+a[0]
+}
+var^ long:i32^[>..]=[99]
+let^ ref=&long[0]
+var^ total:i32^=0
+var^ i:i32^=0
+while^ i<100 { total:=total+outer(i); i:=i+1 }
+print(total,*ref)
+""", "10000 99\n", stack_ir)
+positive("recursive_scratch_scope_ends", """
+let^ walk=f^ n:i32^ -> i32^ {
+    var^ value:i32^=0
+    if^ true^ { var^ scratch:i32^[>..]=[n]; value:=scratch[0] }
+    if^ n=0 { return^ value }
+    return^ value+this^(n-1)
+}
+print(walk(10))
+""", "55\n", stack_ir)
+positive("recursive_owned_destination_forwarding", """
+let^ make=f^ n:i32^ -> i32^[>..] {
+    if^ n>0 { return^ this^(n-1) }
+    return^ [7,8]
+}
+var^ a=make(10)
+print(a.len,a[0],a[1])
+""", "2 7 8\n")
+positive("owned_result_and_local_scratch", """
+def^ Bag { self^{ id:i32^, data:i32^[>..] } }
+let^ make=f^ n:i32^ -> Bag {
+    var^ scratch:i32^[>..]=[n+1]
+    var^ result:Bag=Bag{id=n,data=[scratch[0]]}
+    result.data.push(n+2)
+    return^ result
+}
+var^ a=make(40)
+var^ b=make(80)
+print(a.id,a.data[0],a.data[1],b.data[0])
+""", "40 41 42 81\n")
+negative("recursive_owned_initializer", """
+let^ make=f^ n:i32^ -> i32^[>..] {
+    if^ n=0 { return^ [1] }
+    var^ a= this^(n-1)
+    return^ [a[0]]
+}
+""", "holds local owned value")
+negative("recursive_owned_field_initializer", """
+def^ Bag { self^{ id:i32^, data:i32^[>..] } }
+let^ bad=f^ n:i32^ -> i32^ {
+    if^ n=0 { return^ 0 }
+    var^ a:Bag=Bag{id=this^(n-1),data=[]}
+    return^ a.id
+}
+""", "holds local owned value")
+negative("mutual_recursive_owned_local", """
+let^ a=f^ n:i32^ -> i32^ {
+    var^ scratch:i32^[>..]=[n]
+    if^ n=0 { return^ scratch[0] }
+    return^ b(n-1)
+}
+let^ b=f^ n:i32^ -> i32^ { return^ a(n) }
+print(a(2))
+""", "holds local owned value")
+positive("mutual_recursive_borrowed_pool", """
+let^ a=p^ pool:&i32^[>..], n:i32^ {
+    pool.push(n)
+    if^ n>0 { b(pool,n-1) }
+}
+let^ b=p^ pool:&i32^[>..], n:i32^ { a(pool,n) }
+var^ pool:i32^[>..]=[]
+a(&pool,5)
+print(pool.len,pool[0],pool[5])
+""", "6 5 0\n")
+positive("template_owned_scope_reuse", """
+let^ length=template^f^ item {
+    var^ scratch:i32^[>..]=[i32^(item)]
+    return^ scratch[0]
+}
+print(length(i64^(42)),length(i32^(9)))
+""", "42 9\n")
+# Stack reports must include transitive callees and count exclusive branches
+# once, while overlapping owners reserve separate indices.
+path=source("static_stack_report", """
+let^ leaf=f^ -> i32^ { var^ a:i32^[>..]=[1]; return^ a[0] }
+var^ x:i32^[>..]=[2]
+if^ true^ { var^ a:i32^[>..]=[3]; print(leaf()) }
+el^ { var^ b:i32^[>..]=[4]; print(leaf()) }
+print(x[0])
+""")
+report=run([compiler,"check",str(path),"--stacks"]).stdout
+assert report.startswith("data stacks: 3;"), report
+assert "2 own, 3 with callees" in report, report
+passed+=1
+print("PASS static_stack_report",flush=True)
 positive("recursive_borrow", """
 let^ retain=f^ p:&i32^, n:i32^ -> &i32^ {
     if^ n=0 { return^ p }

@@ -17,62 +17,132 @@
 #include <sys/mman.h>
 #endif
 
+/* Shared with emitted LLVM: four pointers, followed by a three-word array. */
+typedef struct {
+  unsigned char *base, *top, *limit, *committed;
+} RhStack;
 typedef struct {
   unsigned char *data;
-  uint64_t len, capacity, high_water;
+  uint64_t len;
+  RhStack *stack;
 } RhArray;
 typedef struct {
   const unsigned char *data;
   uint64_t len;
 } RhSlice;
-#define RH_REGION_BYTES (UINT64_C(1024) * 1024 * 1024)
+#ifndef RH_STACK_BYTES
+#define RH_STACK_BYTES (UINT64_C(1024) * 1024 * 1024)
+#endif
+#define RH_GUARD_BYTES (UINT64_C(1024) * 1024)
+#define RH_COMMIT_BYTES (UINT64_C(1024) * 1024)
+static RhStack *rh_stacks;
+static uint64_t rh_stack_count;
 static _Noreturn void rh_panic(const char *why, int32_t line) {
   fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, why);
   exit(1);
 }
 #if defined(_WIN32)
-static INIT_ONCE rh_page_once = INIT_ONCE_STATIC_INIT;
+static PVOID rh_fault_handler;
 static uint64_t rh_page_bytes;
-static BOOL CALLBACK rh_init_page_size(PINIT_ONCE once, PVOID parameter,
-                                       PVOID *context) {
-  (void)once;
-  (void)parameter;
-  (void)context;
-  SYSTEM_INFO info;
-  GetSystemInfo(&info);
-  rh_page_bytes = info.dwPageSize;
-  return rh_page_bytes != 0;
+static _Noreturn void rh_fault_die(const char *message, DWORD length) {
+  DWORD written;
+  WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, length, &written, NULL);
+  ExitProcess(1);
+}
+static LONG WINAPI rh_fault(EXCEPTION_POINTERS *ep) {
+  EXCEPTION_RECORD *e = ep->ExceptionRecord;
+  if (e->ExceptionCode != EXCEPTION_ACCESS_VIOLATION ||
+      e->NumberParameters < 2 ||
+      (e->ExceptionInformation[0] != 0 && e->ExceptionInformation[0] != 1))
+    return EXCEPTION_CONTINUE_SEARCH;
+  uintptr_t hit = (uintptr_t)e->ExceptionInformation[1];
+  for (uint64_t j = 0; j < rh_stack_count; j++) {
+    RhStack *s = &rh_stacks[j];
+    if (!s->base)
+      continue;
+    uintptr_t base = (uintptr_t)s->base;
+    if (hit < base || hit - base >= RH_STACK_BYTES + RH_GUARD_BYTES)
+      continue;
+    if (hit - base >= RH_STACK_BYTES) {
+      static const char msg[] = "R^ runtime error: data stack overflow\n";
+      rh_fault_die(msg, sizeof(msg) - 1);
+    }
+    MEMORY_BASIC_INFORMATION info;
+    if (!VirtualQuery((void *)hit, &info, sizeof(info)) ||
+        info.State != MEM_RESERVE)
+      return EXCEPTION_CONTINUE_SEARCH;
+    uintptr_t offset = (hit - base) / RH_COMMIT_BYTES * RH_COMMIT_BYTES;
+    uint64_t bytes = RH_COMMIT_BYTES;
+    if (bytes > RH_STACK_BYTES - offset)
+      bytes = RH_STACK_BYTES - offset;
+    unsigned char *page = s->base + offset;
+    if (!VirtualAlloc(page, (SIZE_T)bytes, MEM_COMMIT, PAGE_READWRITE)) {
+      static const char msg[] = "R^ runtime error: data stack commit failed\n";
+      rh_fault_die(msg, sizeof(msg) - 1);
+    }
+    if ((uintptr_t)s->committed < (uintptr_t)page + bytes)
+      s->committed = page + bytes;
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif
-void rh_region_init(RhArray *a) {
+void rh_runtime_init(RhStack *stacks, uint64_t count) {
+  rh_stacks = stacks;
+  rh_stack_count = count;
 #if defined(_WIN32)
-  if (!InitOnceExecuteOnce(&rh_page_once, rh_init_page_size, NULL, NULL))
-    rh_panic("page size query failed", 0);
-  a->data =
-      VirtualAlloc(NULL, (SIZE_T)RH_REGION_BYTES, MEM_RESERVE, PAGE_READWRITE);
-  if (!a->data)
-    rh_panic("virtual address reservation failed", 0);
-#else
-  void *p = mmap(NULL, (size_t)RH_REGION_BYTES, PROT_READ | PROT_WRITE,
-                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (p == MAP_FAILED)
-    rh_panic("virtual address reservation failed", 0);
-  a->data = p;
+  if (count) {
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    rh_page_bytes = info.dwPageSize;
+    if (!rh_page_bytes)
+      rh_panic("page size query failed", 0);
+    rh_fault_handler = AddVectoredExceptionHandler(1, rh_fault);
+    if (!rh_fault_handler)
+      rh_panic("cannot install data stack fault handler", 0);
+  }
 #endif
-  a->len = 0;
-  a->capacity = RH_REGION_BYTES;
-  a->high_water = 0;
+  for (uint64_t j = 0; j < count; j++) {
+    RhStack *s = &stacks[j];
+#if defined(_WIN32)
+    s->base = VirtualAlloc(NULL, (SIZE_T)(RH_STACK_BYTES + RH_GUARD_BYTES),
+                           MEM_RESERVE, PAGE_READWRITE);
+    if (!s->base)
+      rh_panic("data stack reservation failed", 0);
+#else
+    void *p = mmap(NULL, (size_t)(RH_STACK_BYTES + RH_GUARD_BYTES), PROT_NONE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (p == MAP_FAILED)
+      rh_panic("data stack reservation failed", 0);
+    s->base = p;
+    if (mprotect(p, (size_t)RH_STACK_BYTES, PROT_READ | PROT_WRITE))
+      rh_panic("cannot enable data stack pages", 0);
+#endif
+    s->top = s->committed = s->base;
+    s->limit = s->base + RH_STACK_BYTES;
+  }
 }
-void rh_region_release(RhArray *a) {
+void rh_runtime_shutdown(void) {
+  for (uint64_t j = 0; j < rh_stack_count; j++) {
 #if defined(_WIN32)
-  if (a->data && !VirtualFree(a->data, 0, MEM_RELEASE))
-    rh_panic("region release failed", 0);
+    if (!VirtualFree(rh_stacks[j].base, 0, MEM_RELEASE))
+      rh_panic("data stack release failed", 0);
 #else
-  if (a->data && munmap(a->data, (size_t)a->capacity))
-    rh_panic("region release failed", 0);
+    if (munmap(rh_stacks[j].base, (size_t)(RH_STACK_BYTES + RH_GUARD_BYTES)))
+      rh_panic("data stack release failed", 0);
 #endif
-  a->data = NULL;
-  a->len = a->capacity = a->high_water = 0;
+    rh_stacks[j].base = NULL;
+  }
+  rh_stack_count = 0;
+#if defined(_WIN32)
+  if (rh_fault_handler)
+    RemoveVectoredExceptionHandler(rh_fault_handler);
+  rh_fault_handler = NULL;
+#endif
+  rh_stacks = NULL;
+}
+_Noreturn void rh_stack_overflow(int32_t line) {
+  rh_panic("data stack overflow", line);
 }
 void rh_bounds(int64_t index, uint64_t length, int32_t line) {
   if (index < 0 || (uint64_t)index >= length)
@@ -84,31 +154,19 @@ void *rh_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {
 }
 static void *rh_array_write(RhArray *a, const void *value, uint64_t count,
                             uint64_t size, int32_t line) {
-  if (!size || size > a->capacity || a->len > a->capacity / size ||
-      count > a->capacity / size - a->len)
-    rh_panic("region capacity exceeded", line);
+  uint64_t available = (uint64_t)(a->stack->limit - a->data);
+  if (!size || a->len > available / size || count > available / size - a->len)
+    rh_stack_overflow(line);
   uint64_t off = a->len * size, end_bytes = off + count * size;
-  if (!count)
-    return a->data + off;
-#if defined(_WIN32)
-  uint64_t page = rh_page_bytes;
-  /* Pop/clear retain initialized storage and committed pages. */
-  uint64_t begin = (a->high_water + page - 1) / page * page,
-           end = (end_bytes + page - 1) / page * page;
-  if (end > begin && !VirtualAlloc(a->data + begin, (SIZE_T)(end - begin),
-                                   MEM_COMMIT, PAGE_READWRITE))
-    rh_panic("region commit failed", line);
-#endif
-  memmove(a->data + off, value, (size_t)(count * size));
+  if (count)
+    memmove(a->data + off, value, (size_t)(count * size));
   a->len += count;
-  if (end_bytes > a->high_water)
-    a->high_water = end_bytes;
+  if (a->data + end_bytes > a->stack->top)
+    a->stack->top = a->data + end_bytes;
   return a->data + off;
 }
-void *rh_array_push(RhArray *a, const void *value, uint64_t size, int32_t line) {
-  return rh_array_write(a, value, 1, size, line);
-}
-void rh_array_append(RhArray *a, const RhSlice *values, uint64_t size, int32_t line) {
+void rh_array_append(RhArray *a, const RhSlice *values, uint64_t size,
+                     int32_t line) {
   rh_array_write(a, values->data, values->len, size, line);
 }
 void rh_array_pop(RhArray *a, void *out, uint64_t size, int32_t line) {
@@ -127,14 +185,16 @@ void rh_array_truncate(RhArray *a, int64_t length, int32_t line) {
     rh_panic("truncate length out of bounds", line);
   a->len = (uint64_t)length;
 }
-void rh_make_slice(RhSlice *out, const void *data, uint64_t len,
-                   int64_t start, int64_t count, uint64_t size, int32_t line) {
-  if (start < 0 || count < 0 || (uint64_t)start > len || (uint64_t)count > len - (uint64_t)start)
+void rh_make_slice(RhSlice *out, const void *data, uint64_t len, int64_t start,
+                   int64_t count, uint64_t size, int32_t line) {
+  if (start < 0 || count < 0 || (uint64_t)start > len ||
+      (uint64_t)count > len - (uint64_t)start)
     rh_panic("slice range out of bounds", line);
   out->data = (const unsigned char *)data + (uint64_t)start * size;
   out->len = (uint64_t)count;
 }
-const void *rh_view_at(const RhSlice *view, int64_t index, uint64_t size, int32_t line) {
+const void *rh_view_at(const RhSlice *view, int64_t index, uint64_t size,
+                       int32_t line) {
   rh_bounds(index, view->len, line);
   return view->data + (uint64_t)index * size;
 }
@@ -284,7 +344,8 @@ uint8_t rh_f8_encode_f64(double value) {
   if (e < -10)
     return (uint8_t)sign;
   unsigned shift = e < -6 ? (unsigned)(43 - e) : 49u;
-  uint64_t significand = (bits & UINT64_C(0xfffffffffffff)) | (UINT64_C(1) << 52);
+  uint64_t significand =
+      (bits & UINT64_C(0xfffffffffffff)) | (UINT64_C(1) << 52);
   unsigned q = (unsigned)(significand >> shift);
   uint64_t rest = significand & ((UINT64_C(1) << shift) - 1);
   uint64_t halfway = UINT64_C(1) << (shift - 1);
@@ -301,7 +362,8 @@ uint8_t rh_f8_encode_f64(double value) {
   }
   return (uint8_t)(sign | (encoded > 126 ? 127u : encoded));
 }
-void rh_check_float_cast(double value, int32_t bits, int32_t uns, int32_t line) {
+void rh_check_float_cast(double value, int32_t bits, int32_t uns,
+                         int32_t line) {
   double upper = 1.0;
   for (int32_t j = 0; j < bits - (uns ? 0 : 1); j++)
     upper *= 2.0;

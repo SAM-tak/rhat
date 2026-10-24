@@ -29,12 +29,13 @@ python bench/run_workloads.py --report-only
 
 `sum` uses i32 values and eight scans; `blur` uses two flat u8 buffers and
 16 passes with unchanged borders; `particles` uses 24-byte binary32 AoS
-particles and 200 scalar updates. R^ regions now reserve 1 GiB of virtual
-address space per array; physical pages are committed only as used. This
+particles and 200 scalar updates. R^ now assigns reusable data stacks statically, reserving 1 GiB plus a
+1 MiB guard per stack at startup. Windows commits up to 1 MiB on faults.
+Scope exit rewinds the stack without releasing its reservation or pages. This
 allows the original 512 MB large sum input without moving existing elements.
 The current reference uses the same compiler/runtime as the complete suite.
 Pre-fix numeric data is retained in invalid_runs for audit.
-No shared-region or check-elimination optimization is included.
+The push fast path is emitted in LLVM IR. General bounds-check elimination and SIMD optimizations are not included.
 
 `tree` / `graph` have a separate measurement session in
 [tree_graph/workloads_results.md](tree_graph/workloads_results.md), retaining
@@ -134,12 +135,11 @@ Sample order alternates forwards/backwards across implementations.
 
 R^ emits LLVM IR, so its single Clang result is compared with both C++
 backends and rustc. There is no R^/MSVC result. Original C++/Rust sources are
-unchanged, including scratch reuse in their arena variants. R^ currently
-reserves/releases an OS region for every tree. The original recorded run
-committed memory on every push; the current runtime commits only newly needed
-pages and queries the page size once. These costs remain inside the
-measurement. Its nodes use two i32
-indices (8 bytes), preserving tree shape and checksum without introducing
+unchanged, including scratch reuse in their arena variants. R^ now reserves its
+data stacks once and rewinds the temporary tree's watermark, retaining pages.
+The pre-data-stack reports reserved/released a region per tree; those measurements
+remain available in pre_data_stacks_bintrees. All storage costs stay inside the
+measurement. Its nodes use two i32 indices (8 bytes), preserving tree shape and checksum without introducing
 unsupported relative-reference or nullable-reference syntax.
 
 `lru` is measured separately in [lru/workloads_results.md](lru/workloads_results.md):
@@ -155,8 +155,9 @@ removed nodes, so the pool is bounded by capacity plus two sentinels. Eviction,
 backward-shift deletion, recency order, all original sizes and six checksums are
 preserved. It uses integer indices without pool-bound relative-reference or
 generation guarantees. Array pop/clear retain initialized storage and committed
-pages; a high-water mark avoids recommitting pages on refill. This session uses
-the new 32-byte descriptor; earlier measurements are not silently refreshed.
+pages. This historical LRU session uses the earlier 32-byte descriptor;
+the current full suite uses the 24-byte data-stack descriptor. Earlier
+measurements are not silently refreshed.
 
 `scene` has a separate session in [scene/workloads_results.md](scene/workloads_results.md):
 

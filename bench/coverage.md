@@ -61,8 +61,11 @@ the container lifetime bound. Loop reference histories reach a fixed point befor
 IR is finalized. Borrowed-storage reference writes remain conservatively restricted.
 
 Array pop/clear preserve initialized slots and monotonically retained reference
-histories. Fresh LRU measurements use the new 32-byte array descriptor with a
-high-water mark; historical reports retain their original runtimes and hashes.
+histories. The current array descriptor is 24 bytes (data, length, stack pointer).
+The compiler assigns reusable data stacks, reserves them at startup, and rewinds
+scope watermarks without decommitting pages. Recursive cycles cannot retain
+local owned regions across cycle calls; borrowed external pools remain supported.
+Historical reports retain their original runtimes and descriptor sizes.
 
 Read-only `T[:]` views, checked slice(start,count), byte access on string literals
 and bulk append are implemented. Strlist/words copy the split strings into owned

@@ -56,7 +56,7 @@ Type *type_wrap(Program *p, int k, Type *e, int n) {
     t->align = 8;
     t->refs = true;
   } else if (k == T_GROW) {
-    t->size = 32;
+    t->size = 24;
     t->align = 8;
     t->owned = true;
     t->refs = e->refs;
@@ -69,10 +69,10 @@ Type *type_spec(Program *p, Spec *s) {
     return type_builtin(p, T_VOID);
   if (s->kind != SPEC_NAME)
     return type_wrap(p,
-                     s->kind == SPEC_REF    ? T_REF
-                     : s->kind == SPEC_GROW ? T_GROW
+                     s->kind == SPEC_REF     ? T_REF
+                     : s->kind == SPEC_GROW  ? T_GROW
                      : s->kind == SPEC_SLICE ? T_SLICE
-                                            : T_ARRAY,
+                                             : T_ARRAY,
                      type_spec(p, s->elem), s->count);
   for (int k = 0; k < T_STRUCT; k++)
     if (!strcmp(s->name, builtin_name(k)))
@@ -92,10 +92,13 @@ char *type_name(Type *t) {
   if (t->kind == T_REF)
     return fmt("&%s", type_name(t->elem));
   if (t->kind == T_SLICE)
-    return fmt(t->elem->kind == T_REF ? "(%s)[:]" : "%s[:]", type_name(t->elem));
+    return fmt(t->elem->kind == T_REF ? "(%s)[:]" : "%s[:]",
+               type_name(t->elem));
   if (t->kind == T_GROW)
-    return fmt(t->elem->kind == T_REF ? "(%s)[>..]" : "%s[>..]", type_name(t->elem));
-  return fmt(t->elem->kind == T_REF ? "(%s)[%d]" : "%s[%d]", type_name(t->elem), t->count);
+    return fmt(t->elem->kind == T_REF ? "(%s)[>..]" : "%s[>..]",
+               type_name(t->elem));
+  return fmt(t->elem->kind == T_REF ? "(%s)[%d]" : "%s[%d]", type_name(t->elem),
+             t->count);
 }
 bool derives(Def *d, Def *b) {
   if (d == b)
@@ -182,7 +185,8 @@ static void compose(Program *p, Def *d) {
       fail(d->loc, "unknown composition base '%s'", n);
     compose(p, b);
     if (b->type->kind != T_STRUCT)
-      fail(d->loc, "composition base must be a structure, found union '%s'", b->name);
+      fail(d->loc, "composition base must be a structure, found union '%s'",
+           b->name);
     add(&d->bases, b);
     for (int j = 0; j < b->fields.n; j++) {
       Field *f = b->fields.v[j], *old = field(d, f->name);
@@ -321,8 +325,10 @@ static void layout(Type *t, Loc l) {
       layout(arm, l);
       if (arm->owned)
         fail(l, "union alternatives must be non-owning fixed-size values");
-      if (arm->size > size) size = arm->size;
-      if (arm->align > align) align = arm->align;
+      if (arm->size > size)
+        size = arm->size;
+      if (arm->align > align)
+        align = arm->align;
       t->refs |= arm->refs;
     }
     t->payload_align = align;
@@ -331,7 +337,8 @@ static void layout(Type *t, Loc l) {
     if (size > SIZE_MAX - t->payload_offset)
       fail(l, "union layout overflows");
     size += t->payload_offset;
-    if (align < 4) align = 4;
+    if (align < 4)
+      align = 4;
   } else if (t->kind == T_ARRAY) {
     layout(t->elem, l);
     if (t->elem->owned || !t->elem->size)
@@ -417,6 +424,7 @@ static int slot(Context *c, Type *t, bool alias) {
   s->type = t;
   s->alias = alias;
   int id = c->in->slots.n;
+  s->owner = id;
   add(&c->in->slots, s);
   return id;
 }
@@ -443,7 +451,8 @@ static Var *lookup(Context *c, const char *name) {
   return NULL;
 }
 static Value variable(Var *v) {
-  return (Value){v->slot, v->type, v->type->refs ? v->deps : 0, v->root, v, true};
+  return (Value){v->slot, v->type, v->type->refs ? v->deps : 0,
+                 v->root, v,       true};
 }
 static void access_check(Context *c, bool priv, Def *owner, Loc l,
                          const char *name) {
@@ -533,26 +542,9 @@ static Value field_value(Context *c, Value base, Field *f, Loc l) {
   return r;
 }
 static void release(Context *c, Type *t, int id, Loc l) {
-  if (t->kind == T_GROW) {
-    Instr *i = emit(c, I_RELEASE, l);
-    i->a = id;
-    i->type = t;
-  } else if (t->kind == T_STRUCT && t->owned) {
-    for (int j = 0; j < t->def->fields.n; j++) {
-      Field *f = t->def->fields.v[j];
-      if (f->type->owned) {
-        Value b = {0};
-        b.id = id;
-        b.type = t;
-        b.addressable = true;
-        Def *access = c->access;
-        c->access = f->owner;
-        Value v = field_value(c, b, f, l);
-        c->access = access;
-        release(c, f->type, v.id, l);
-      }
-    }
-  }
+  Instr *i = emit(c, I_RELEASE, l);
+  i->a = id;
+  i->type = t;
 }
 static void cleanup(Context *c, int from, Loc l) {
   for (int j = c->vars.n - 1; j >= from; j--) {
@@ -660,12 +652,15 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       Def *arm = lookup_def(p, name->text);
       int tag = arm ? union_alternative(base.type, arm->type) : -1;
       if (tag < 0)
-        fail(e->loc, "'%s' is not an alternative of '%s'", name->text, type_name(base.type));
+        fail(e->loc, "'%s' is not an alternative of '%s'", name->text,
+             type_name(base.type));
       bool get = !strcmp(target->text, "get");
       Type *t = get ? arm->type : type_builtin(p, T_BOOL);
       if (expected && t != expected)
-        fail(e->loc, "%s returns '%s', expected '%s'", target->text, type_name(t), type_name(expected));
-      Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
+        fail(e->loc, "%s returns '%s', expected '%s'", target->text,
+             type_name(t), type_name(expected));
+      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
+                   .type = t,
                    .deps = t->refs ? base.deps : 0};
       Instr *i = emit(c, get ? I_CASE_GET : I_CASE_IS, e->loc);
       i->dst = out.id;
@@ -679,18 +674,28 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
         !strcmp(target->text, "slice")) {
       if (e->args.n != 2)
         fail(e->loc, "slice expects start and count");
-      if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) && !base.addressable)
-        fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
-      Value start = snapshot(c, expression(c, e->args.v[0], type_builtin(p, T_I64)), e->loc);
-      Value count = snapshot(c, expression(c, e->args.v[1], type_builtin(p, T_I64)), e->loc);
+      if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) &&
+          !base.addressable)
+        fail(e->loc,
+             "slice source needs a binding; cannot borrow a temporary array");
+      Value start = snapshot(
+          c, expression(c, e->args.v[0], type_builtin(p, T_I64)), e->loc);
+      Value count = snapshot(
+          c, expression(c, e->args.v[1], type_builtin(p, T_I64)), e->loc);
       if (start.type->kind != T_I64 || count.type->kind != T_I64)
         fail(e->loc, "slice start and count must be i64^");
-      Type *elem = base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
+      Type *elem =
+          base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
       Type *t = type_wrap(p, T_SLICE, elem, 0);
       if (expected && expected != t)
-        fail(e->loc, "slice returns '%s', expected '%s'", type_name(t), type_name(expected));
-      Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
-                   .deps = base.deps | ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) ? base.storage : 0)};
+        fail(e->loc, "slice returns '%s', expected '%s'", type_name(t),
+             type_name(expected));
+      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
+                   .type = t,
+                   .deps = base.deps | ((base.type->kind == T_ARRAY ||
+                                         base.type->kind == T_GROW)
+                                            ? base.storage
+                                            : 0)};
       Instr *i = emit(c, I_SLICE, e->loc);
       i->dst = out.id;
       i->a = base.id;
@@ -762,9 +767,11 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       store_check(c, base, v, e->loc);
       Type *t = type_wrap(p, T_REF, base.type->elem, 0);
       if (expected && expected != t)
-        fail(e->loc, "push returns '%s', expected '%s'", type_name(t), type_name(expected));
+        fail(e->loc, "push returns '%s', expected '%s'", type_name(t),
+             type_name(expected));
       Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
-                   .type = t, .deps = base.storage | base.deps | v.deps};
+                   .type = t,
+                   .deps = base.storage | base.deps | v.deps};
       Instr *i = emit(c, I_PUSH, e->loc);
       i->dst = out.id;
       i->a = base.id;
@@ -886,14 +893,17 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
 static Value construct(Context *c, Expr *e, Type *t, int dst) {
   if (t && t->kind == T_UNION && e->kind != E_IF) {
     if (e->kind == E_RECORD && (!e->text || !strcmp(e->text, t->def->name)))
-      fail(e->loc, "construct union '%s' from a named alternative", type_name(t));
+      fail(e->loc, "construct union '%s' from a named alternative",
+           type_name(t));
     Value arm = expression(c, e, NULL);
-    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t, .deps = arm.deps};
+    Value out = {
+        .id = dst >= 0 ? dst : slot(c, t, false), .type = t, .deps = arm.deps};
     if (arm.type == t)
       return copy_to(c, out, arm, e->loc, true);
     int tag = union_alternative(t, arm.type);
     if (tag < 0)
-      fail(e->loc, "'%s' is not an alternative of nominal union '%s'", type_name(arm.type), type_name(t));
+      fail(e->loc, "'%s' is not an alternative of nominal union '%s'",
+           type_name(arm.type), type_name(t));
     Instr *i = emit(c, I_UNION, e->loc);
     i->dst = out.id;
     i->a = arm.id;
@@ -998,7 +1008,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       Value v = {0};
       if (init)
         v = construct(c, init, f->type, dest.id);
-      else if (f->type->kind == T_REF || f->type->kind == T_STRING || f->type->kind == T_SLICE || f->type->kind == T_UNION ||
+      else if (f->type->kind == T_REF || f->type->kind == T_STRING ||
+               f->type->kind == T_SLICE || f->type->kind == T_UNION ||
                (f->type->kind == T_ARRAY && f->type->refs))
         fail(e->loc, "field '%s' needs an initializer", f->name);
       else if (f->type->kind == T_STRUCT) {
@@ -1159,7 +1170,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (!kind_integer(index.type->kind))
       fail(e->loc, "index must be an integer");
     bool view = base.type->kind == T_SLICE || base.type->kind == T_STRING;
-    out.type = base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
+    out.type =
+        base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
     out.id = slot(c, out.type, true);
     out.storage = view ? base.deps : base.storage;
     /* The container must outlive references loaded from it. This conservative
@@ -1182,7 +1194,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     }
     Value a = expression(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
-                             ? expected : NULL);
+                             ? expected
+                             : NULL);
     if (!strcmp(e->text, "&")) {
       if (!a.addressable)
         fail(e->loc, "cannot borrow a temporary; bind it first");
@@ -1313,6 +1326,12 @@ static void statements(Context *c, List *body, bool scope) {
           fail(s->loc, "binding cannot have void type");
         if (dest < 0)
           dest = slot(c, t, false);
+        if (t->owned && !alias_result) {
+          Instr *begin = emit(c, I_STACK_BEGIN, s->loc);
+          begin->dst = dest;
+          begin->type = t;
+          begin->text = s->name;
+        }
         v = construct(c, s->a, t, dest);
       } else {
         v = expression(c, s->a, NULL);
@@ -1576,17 +1595,21 @@ static Type *infer_call(Infer *c, Expr *e) {
       base = base->elem;
     if (base && base->kind == T_UNION &&
         (!strcmp(target->text, "is") || !strcmp(target->text, "get"))) {
-      if (!strcmp(target->text, "is")) return type_builtin(c->p, T_BOOL);
+      if (!strcmp(target->text, "is"))
+        return type_builtin(c->p, T_BOOL);
       if (e->args.n == 1 && ((Expr *)e->args.v[0])->kind == E_NAME) {
         Def *arm = lookup_def(c->p, ((Expr *)e->args.v[0])->text);
         return arm ? arm->type : NULL;
       }
       return NULL;
     }
-    if (base && (base->kind == T_ARRAY || base->kind == T_GROW ||
-                 base->kind == T_SLICE || base->kind == T_STRING) && !strcmp(target->text, "slice"))
-      return type_wrap(c->p, T_SLICE,
-                       base->kind == T_STRING ? type_builtin(c->p, T_U8) : base->elem, 0);
+    if (base &&
+        (base->kind == T_ARRAY || base->kind == T_GROW ||
+         base->kind == T_SLICE || base->kind == T_STRING) &&
+        !strcmp(target->text, "slice"))
+      return type_wrap(
+          c->p, T_SLICE,
+          base->kind == T_STRING ? type_builtin(c->p, T_U8) : base->elem, 0);
     if (base && base->kind == T_GROW && !strcmp(target->text, "pop"))
       return base->elem;
     if (base && base->kind == T_GROW && !strcmp(target->text, "truncate"))
@@ -1616,7 +1639,8 @@ static Type *infer_call(Infer *c, Expr *e) {
         infer_expr(c, e->args.v[j],
                    param && param->spec ? type_spec(c->p, param->spec) : NULL);
     Type *want = param && param->spec ? type_spec(c->p, param->spec) : NULL;
-    if (t && want && union_alternative(want, t) >= 0) t = want;
+    if (t && want && union_alternative(want, t) >= 0)
+      t = want;
     if (!t)
       known = false;
     add(&actual, t);
@@ -1630,7 +1654,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     return type_builtin(c->p, T_VOID);
   if (expected && expected->kind == T_UNION && e->kind != E_IF) {
     Type *actual = infer_expr(c, e, NULL);
-    return actual && (actual == expected || union_alternative(expected, actual) >= 0) ? expected : actual;
+    return actual && (actual == expected ||
+                      union_alternative(expected, actual) >= 0)
+               ? expected
+               : actual;
   }
   switch (e->kind) {
   case E_INT:
@@ -1686,12 +1713,16 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
       base = base->elem;
     infer_expr(c, e->b, type_builtin(c->p, T_I64));
     return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
-           : base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE) ? base->elem : NULL;
+           : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                      base->kind == T_SLICE)
+               ? base->elem
+               : NULL;
   }
   case E_UNARY: {
     Type *a = infer_expr(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
-                             ? expected : NULL);
+                             ? expected
+                             : NULL);
     if (!strcmp(e->text, "!"))
       return type_builtin(c->p, T_BOOL);
     if (!a)

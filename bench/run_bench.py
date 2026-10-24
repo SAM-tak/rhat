@@ -176,8 +176,11 @@ def write_results(data, out, page_update=None):
     coverage_link = pathlib.Path(os.path.relpath(HERE / "coverage.md", out)).as_posix()
     lines += ["", "## Limits", "",
               "The R^ port uses two i32 child indices per node (8 bytes), rather than",
-              f"Goose relative references. These recorded runs reserve/release a {data.get('runtime_region_bytes',64*1024*1024)//1048576} MiB virtual region for",
-              "each tree; the C++/Rust arena rows reuse their scratch allocation across trees.",
+              ("Goose relative references. These runs use statically assigned data stacks, reserved at startup. "
+               "Each temporary tree rewinds its stack watermark and retains committed pages for reuse. "
+               "Windows commits up to 1 MiB on page faults."
+               if data.get("memory_model") == "static_data_stacks_fault_commit" else
+               f"Goose relative references. These recorded runs reserve/release a {data.get('runtime_region_bytes',64*1024*1024)//1048576} MiB virtual region for each tree; the C++/Rust arena rows reuse their scratch allocation across trees."),
               ("R^ retains runtime bounds checks. Pushes within already committed pages make no OS call."
                if page_update else "Runtime bounds checks and OS-backed array storage are included in these measurements."),
               "There is no R^/MSVC row: MSVC does not consume LLVM IR.",
@@ -245,7 +248,7 @@ def main():
                rustc=command([tools["rustc"], "--version"]),
                compiler_sha256=sha(args.compiler), runtime_sha256=sha(ROOT / "runtime/rhat_runtime.c"))
     binaries = Executables()
-    data = dict(runtime_region_bytes=1024*1024*1024, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    data = dict(memory_model="static_data_stacks_fault_commit", stack_reports={}, runtime_region_bytes=1024*1024*1024, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 reps=args.reps, warmups=2, environment=env, source_hashes={}, rows=[], startup=[], builds=[])
     for path in sorted(HERE.rglob("*")):
         if path.is_file() and path.suffix in (".rh", ".cpp", ".h", ".rs", ".py"):
@@ -293,8 +296,9 @@ def main():
                "--dump-ir", src.with_suffix(".rir")])
         binaries.add(exe)
         data["source_hashes"][str(src)] = sha(src)
+        data["stack_reports"][size] = command([args.compiler, "check", src, "--stacks"])
         data["source_hashes"][str(exe)+".ll"] = sha(pathlib.Path(str(exe)+".ll"))
-        implementations.append(("R^ i32-index local region (LLVM/Clang)", "rhat", exe))
+        implementations.append(("R^ i32-index data stacks (LLVM/Clang)", "rhat", exe))
         for tc in ("msvc", "clangcl"):
             for variant, shape in ((0, "new/delete"), (1, "reused arena")):
                 exe = args.work / f"bintrees_{size}_{tc}_{variant}.exe"

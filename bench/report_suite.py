@@ -12,6 +12,8 @@ def write_suite():
     for key in ('cpu','os','compiler_sha256','runtime_sha256','clang','msvc','rustc'):
         if additional['environment'][key] != binary['environment'][key]:
             raise ValueError(f'current suite environment mismatch: {key}')
+    if any(data.get('memory_model') != 'static_data_stacks_fault_commit' for data in (additional, binary)):
+        raise ValueError('current suite must use static data stacks')
     if set(additional['workloads']) != set(NAMES)-{'bintrees'}:
         raise ValueError('current suite must contain all 15 additional workloads')
     groups={name:[r for r in additional['rows'] if r['workload']==name] for name in NAMES if name!='bintrees'}
@@ -34,7 +36,10 @@ def write_suite():
             if len(outputs)!=1:
                 raise ValueError(f'checksum mismatch: {name}/{size}')
     env=additional['environment']
-    lines=['# R^ benchmark results — all 16 workloads','',
+    lines=['# R^ vs C++ vs Rust — all 16 workloads','',
+           '**All 48 size conditions include R^, C++ and Rust timings and relative performance.**','',
+           'R^ uses statically assigned data stacks, scope watermark rewinds and Windows fault-driven page commitment.',
+           'The push fast path is emitted directly as LLVM IR; bounds/range checks remain enabled.','',
            f"Additional workloads: {additional['started_utc']} UTC; bintrees: {binary['started_utc']} UTC.",'',
            'All rows below were measured with the same current R^ compiler/runtime. Goose is not run.',
            'Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.',
@@ -43,6 +48,7 @@ def write_suite():
            '**Correction:** older R^ rows for sum, particles, push and records ran overwritten Rust binaries and are invalid.',
            'Those claims are withdrawn. [Archived evidence](invalid_runs/README.md) retains the original raw data. All current rows use separate language-specific executable paths.','',
            'Records uses the original fixed-mode variant; respond uses the original streaming variant. Other representation differences are in [coverage.md](coverage.md).','',
+           'Before this change: [per-owner-region measurements](pre_data_stacks/README.md).','',
            'Full matrices, all implementation labels, raw samples, source/LLVM/executable hashes and build commands:',
            '[15 workloads](current/workloads_results.md), [bintrees](current_bintrees/results.md).','',
            f"CPU: {env['cpu']}; OS: {env['os']}; compiler SHA-256: `{env['compiler_sha256']}`.",'',

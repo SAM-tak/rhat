@@ -143,6 +143,7 @@ struct Type {
 typedef struct {
   List defs, functions, types, instances, strings;
   Function *entry;
+  int stack_count;
   char *source;
   const char *path;
 } Program;
@@ -192,7 +193,8 @@ enum {
   I_UNION,
   I_CASE_IS,
   I_CASE_GET,
-  I_TRUNCATE
+  I_TRUNCATE,
+  I_STACK_BEGIN
 };
 typedef struct {
   int op;
@@ -201,11 +203,13 @@ typedef struct {
   char *text;
   Type *type;
   Instance *callee;
+  int stack_index;
   List args;
 } Instr;
 typedef struct {
   Type *type;
   bool alias;
+  int owner;
 } Slot;
 struct Instance {
   Function *fn;
@@ -215,7 +219,10 @@ struct Instance {
   char *symbol;
   int id, state, labels, result_slot;
   char *result_local;
+  int stack_own, stack_need;
 };
+void plan_stacks(Program *p);
+void report_stacks(Program *p);
 void emit_llvm(Program *p, const char *path);
 void dump_ir(Program *p, const char *path);
 char *llvm_type(Type *t);

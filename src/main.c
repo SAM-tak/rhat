@@ -88,7 +88,8 @@ static void usage(void) {
   puts("R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat emit SOURCE -o "
        "OUTPUT.ll [--dump-ir OUTPUT.rir]\n       rhat build SOURCE -o OUTPUT "
        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
-       "[--clang PATH] [--runtime PATH]\nOptions: --emit-llvm PATH, --dump-ir "
+       "[--clang PATH] [--runtime PATH]\nOptions: --stacks, --emit-llvm PATH, "
+       "--dump-ir "
        "PATH\nTarget: host x86-64, C runtime ABI");
 }
 int main(int argc, char **argv) {
@@ -117,8 +118,13 @@ int main(int argc, char **argv) {
     clang = RH_DEFAULT_CLANG;
   if (!runtime)
     runtime = RH_RUNTIME_PATH;
+  bool stacks = false;
   for (int j = 3; j < argc; j++) {
     char *s = argv[j];
+    if (!strcmp(s, "--stacks")) {
+      stacks = true;
+      continue;
+    }
     if (!strcmp(s, "-O0") || !strcmp(s, "-O2")) {
       opt = s;
       continue;
@@ -173,6 +179,9 @@ int main(int argc, char **argv) {
   Program p = {0};
   parse(&p, source);
   analyze(&p);
+  plan_stacks(&p);
+  if (stacks)
+    report_stacks(&p);
   if (rir)
     dump_ir(&p, rir);
   if (!strcmp(command, "check"))

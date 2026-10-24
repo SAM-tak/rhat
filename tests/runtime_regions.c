@@ -52,24 +52,43 @@ static DWORD page_state(const void *address) {
   assert(VirtualQuery(address, &info, sizeof(info)) == sizeof(info));
   return info.State;
 }
+static void push(RhArray *a, const void *v, uint64_t size) {
+  rh_array_write(a, v, 1, size, 91);
+}
 int main(int argc, char **argv) {
-  _Static_assert(sizeof(RhArray) == 32, "generated LLVM array ABI");
+  _Static_assert(sizeof(RhArray) == 24, "generated LLVM array ABI");
+  _Static_assert(sizeof(RhStack) == 32, "generated LLVM stack ABI");
   _Static_assert(sizeof(RhSlice) == 16, "generated LLVM slice ABI");
-  SYSTEM_INFO info;
-  GetSystemInfo(&info);
-  SIZE_T page = info.dwPageSize;
-  RhArray a, triples, large, empty;
   if (argc > 1 && !strcmp(argv[1], "page-failure"))
     fail_page_size = 1;
-  rh_region_init(&a);
-  assert(queries == 1 && reserves == 1 && commits == 0);
-  assert(page_state(a.data) == MEM_RESERVE);
+  RhStack stacks[2] = {0};
+  rh_runtime_init(stacks, 2);
+  assert(queries == 1 && reserves == 2 && commits == 0);
+  RhStack *s = &stacks[0];
+  RhArray a = {s->top, 0, s};
   unsigned char value = 37;
+  assert(page_state(a.data) == MEM_RESERVE);
   if (argc > 1) {
     if (!strcmp(argv[1], "commit-failure"))
       fail_commit = 1;
+    if (!strcmp(argv[1], "small-limit")) {
+      *(volatile unsigned char *)(s->limit - 1) = value;
+      assert(last_size == RH_STACK_BYTES && s->committed == s->limit);
+      assert(page_state(s->limit) == MEM_RESERVE);
+      rh_runtime_shutdown();
+      puts("small reservation verified");
+      return 0;
+    }
+    if (!strcmp(argv[1], "element-capacity")) {
+      push(&a, &value, UINT64_MAX);
+      return 2;
+    }
+    if (!strcmp(argv[1], "guard")) {
+      *(volatile unsigned char *)s->limit = 1;
+      return 2;
+    }
     if (!strcmp(argv[1], "capacity"))
-      a.len = a.capacity;
+      a.len = RH_STACK_BYTES;
     if (!strcmp(argv[1], "truncate-growth")) {
       rh_array_truncate(&a, 1, 91);
       return 2;
@@ -79,110 +98,70 @@ int main(int argc, char **argv) {
       rh_array_append(&a, &too_many, 1, 91);
       return 2;
     }
-    rh_array_push(&a, &value, 1, 91);
-    return 2; /* Every selected failure must terminate inside the runtime. */
+    push(&a, &value, 1);
+    return 2;
   }
-  /* A page of byte pushes commits exactly once, and the next page stays
-   * reserved until its first byte is actually needed. */
-  for (SIZE_T i = 0; i < page; i++)
-    assert(rh_array_push(&a, &value, 1, 1) == a.data + i);
-  assert(commits == 1 && queries == 1);
-  assert(last_commit == a.data && last_size == page);
-  assert(page_state(a.data) == MEM_COMMIT);
-  assert(page_state(a.data + page) == MEM_RESERVE);
+  /* The fault commits a chunk, not one page per push. */
+  for (uint64_t i = 0; i < RH_COMMIT_BYTES; i++)
+    push(&a, &value, 1);
+  assert(commits == 1 && last_commit == a.data && last_size == RH_COMMIT_BYTES);
+  assert(s->top == a.data + RH_COMMIT_BYTES);
+  assert(page_state(a.data + RH_COMMIT_BYTES) == MEM_RESERVE);
+  push(&a, &value, 1);
+  assert(commits == 2);
   unsigned char *first = rh_array_at(&a, 0, 1, 1);
-  rh_array_push(&a, &value, 1, 1);
-  assert(commits == 2 && last_commit == a.data + page && last_size == page);
-  assert(first == a.data && *first == 37 && a.data[page] == 37);
-  /* Logical shrinking keeps pages and initialized slots available for reuse. */
-  unsigned char popped = 0;
-  uint64_t water = a.high_water;
-  unsigned saved_commits = commits;
-  rh_array_pop(&a, &popped, 1, 1);
-  assert(popped == 37 && a.len == page && a.high_water == water);
-  assert(rh_array_push(&a, &value, 1, 1) == a.data + page);
+  unsigned char out;
+  rh_array_pop(&a, &out, 1, 1);
+  assert(out == value);
+  unsigned char *high = s->top;
   rh_array_clear(&a);
-  assert(a.len == 0 && a.high_water == water && *first == 37);
-  value = 99;
-  assert(rh_array_push(&a, &value, 1, 1) == first && *first == 99);
-  for (uint64_t j = 1; j < water; j++)
-    rh_array_push(&a, &value, 1, 1);
-  assert(commits == saved_commits);
-  for (uint64_t j = water; j < page * 2 + 1; j++)
-    rh_array_push(&a, &value, 1, 1);
-  assert(commits == saved_commits + 1 && a.high_water == page * 2 + 1);
-
-  /* Bulk copies retain stable slots, allow overlap, and commit a multi-page
-   * extension in one call. An empty append does not touch memory or the OS. */
-  RhSlice kept = {a.data, a.len}, zero = {a.data, 0};
-  water = a.high_water;
-  saved_commits = commits;
-  rh_array_clear(&a);
-  rh_array_append(&a, &zero, 1, 1);
-  assert(a.len == 0 && commits == saved_commits);
-  rh_array_append(&a, &kept, 1, 1);
-  assert(a.len == kept.len && a.high_water == water && commits == saved_commits);
-  rh_array_append(&a, &kept, 1, 1);
-  assert(a.len == kept.len * 2 && a.high_water == water * 2);
-  assert(commits == saved_commits + 1 && last_size == page * 2);
-  assert(a.data[0] == 99 && a.data[a.len - 1] == 99);
-
-  RhSlice rest = {a.data + 1, a.len - 1};
-  water = a.high_water;
-  saved_commits = commits;
-  rh_array_truncate(&a, 1, 1);
-  assert(a.len == 1 && a.high_water == water && *first == 99);
-  rh_array_append(&a, &rest, 1, 1);
-  assert(a.len == rest.len + 1 && a.high_water == water && commits == saved_commits);
-
-  /* Three-byte elements cross a page partway through an element. */
-  rh_region_init(&triples);
-  unsigned before = commits;
-  unsigned char triple[] = {11, 22, 33};
-  assert(page % 3 != 0);
-  for (SIZE_T i = 0; i < page / 3 + 1; i++)
-    rh_array_push(&triples, triple, sizeof(triple), 2);
-  assert(commits == before + 2);
-  assert(last_commit == triples.data + page && last_size == page);
-  assert(triples.data[0] == 11 && triples.data[triples.len * 3 - 1] == 33);
-
-  /* A single element can need several pages; overlapping old pages must
-   * not be committed again when the next large element is appended. */
-  SIZE_T size = page * 2 + 3;
-  unsigned char *source =
-      VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  assert(source);
-  memset(source, 0x5a, size);
-  rh_region_init(&large);
-  before = commits;
-  rh_array_push(&large, source, size, 3);
-  assert(commits == before + 1 && last_size == page * 3);
-  rh_array_push(&large, source, size, 3);
-  assert(commits == before + 2);
-  assert(last_commit == large.data + page * 3 && last_size == page * 2);
-  assert(large.data[0] == 0x5a && large.data[size * 2 - 1] == 0x5a);
-  assert(VirtualFree(source, 0, MEM_RELEASE));
-
-  rh_region_init(&empty);
-  assert(queries == 1 && reserves == 4);
-  rh_region_release(&empty);
-  rh_region_release(&large);
-  rh_region_release(&triples);
-  rh_region_release(&a);
-  assert(releases == 4 && a.data == NULL && a.len == 0 && a.capacity == 0 &&
-         a.high_water == 0);
-  assert(queries == 1);
-  /* Cross the old 64 MiB limit through real pushes, retaining stable storage. */
-  RhArray wide;
-  unsigned char chunk[4096] = {42};
-  rh_region_init(&wide);
-  assert(wide.capacity == UINT64_C(1024) * 1024 * 1024);
-  for (unsigned j = 0; j < 16385; j++)
-    rh_array_push(&wide, chunk, sizeof(chunk), 4);
-  assert(wide.len * sizeof(chunk) > UINT64_C(64) * 1024 * 1024);
-  assert(wide.data[0] == 42 && wide.data[UINT64_C(64) * 1024 * 1024] == 42);
-  assert(queries == 1);
-  rh_region_release(&wide);
-  puts("page commits verified");
+  assert(a.len == 0 && s->top == high && *first == value);
+  value = 42;
+  push(&a, &value, 1);
+  assert(*first == 42 && s->top == high);
+  /* End/re-enter a scope: the owner descriptor is new; reservation and
+   * committed pages are reused, and the other active stack is untouched. */
+  unsigned saved = commits;
+  for (unsigned repeat = 0; repeat < 1000; repeat++) {
+    s->top = s->base;
+    a = (RhArray){s->top, 0, s};
+    push(&a, &value, 1);
+    assert(a.data == first);
+  }
+  assert(reserves == 2 && releases == 0 && commits == saved);
+  assert(stacks[1].top == stacks[1].base);
+  /* Bulk overlap and zero-count append keep their previous semantics. */
+  RhSlice view = {a.data, 1};
+  rh_array_append(&a, &view, 1, 1);
+  assert(a.len == 2 && a.data[1] == value);
+  RhSlice empty = {NULL, 0};
+  rh_array_append(&a, &empty, 1, 1);
+  assert(commits == saved);
+  static unsigned char bulk[2 * RH_COMMIT_BYTES + 3];
+  RhArray second = {stacks[1].top, 0, &stacks[1]};
+  RhSlice many = {bulk, sizeof(bulk)};
+  rh_array_append(&second, &many, 1, 1);
+  assert(second.len == sizeof(bulk));
+  assert(commits == saved + 3);
+  assert(stacks[1].top == second.data + sizeof(bulk));
+  assert(second.data[sizeof(bulk) - 1] == 0);
+  /* Unrelated faults, execute faults and faults on already committed pages
+   * are never swallowed by our handler. */
+  EXCEPTION_RECORD record = {0};
+  CONTEXT context = {0};
+  EXCEPTION_POINTERS ep = {&record, &context};
+  record.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
+  record.NumberParameters = 2;
+  record.ExceptionInformation[0] = 1;
+  record.ExceptionInformation[1] = (ULONG_PTR)first;
+  assert(rh_fault(&ep) == EXCEPTION_CONTINUE_SEARCH);
+  record.ExceptionInformation[1] = 0;
+  assert(rh_fault(&ep) == EXCEPTION_CONTINUE_SEARCH);
+  record.ExceptionInformation[0] = 8;
+  record.ExceptionInformation[1] = (ULONG_PTR)stacks[1].base;
+  assert(rh_fault(&ep) == EXCEPTION_CONTINUE_SEARCH);
+  rh_runtime_shutdown();
+  assert(releases == 2);
+  puts("data stacks verified");
   return 0;
 }

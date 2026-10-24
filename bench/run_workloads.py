@@ -99,8 +99,8 @@ WORKLOADS = {
                 "The pool never exceeds capacity + 2 nodes. This matches the original C++ expert / Rust open-table "
                 "representation, including hash, eviction, explicit removal and recency walk. Original sizes, "
                 "seed and all six checksum lines are preserved. Indices are ordinary integers, without "
-                "Goose's pool-bound relative-reference guarantees or generation checks. Arrays reserve stable "
-                "1 GiB regions and retain committed pages when their logical length decreases."),
+                "Goose's pool-bound relative-reference guarantees or generation checks. Arrays use statically assigned stable "
+                "1 GiB data stacks and retain committed pages when their logical length decreases."),
     "push": dict(sizes=(1_000_000, 16_000_000, 64_000_000), smoke=1000,
                  cpp=("vector indices", "reserved vector indices", "deque pointers"), rust=("push",),
                  rhat_label="R^ stable region / real pointer marks (LLVM/Clang)",
@@ -514,6 +514,9 @@ def report(data, out):
              "R^ retains bounds/range checks and OS-backed, stable-address arrays. No affinity is set.", "",
              "Comparison / R^ time: above 1 means R^ is faster. No suite-wide average is claimed.", "",
              "Smoke sizes are correctness checks and are not performance evidence.", "",
+             *(["Storage: statically assigned data stacks, scope watermark rewinds, and Windows fault-driven commits (up to 1 MiB).",
+                "The LLVM push fast path makes no runtime call; array descriptors are 24 bytes.", ""]
+               if data.get("memory_model") == "static_data_stacks_fault_commit" else []),
              *( ["Executable paths are unique per language; every run verifies its build-time SHA-256 before and after execution.", ""] if data.get("executable_hashes") else []),
              "## Environment", "", "| Item | Value |", "|---|---|"]
     for key, value in data["environment"].items():
@@ -594,7 +597,7 @@ def main():
         else:
             env[key] = banner.splitlines()[0]
     binaries = Executables()
-    data = dict(executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    data = dict(memory_model="static_data_stacks_fault_commit", stack_reports={}, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 environment=env, workloads=args.workloads, warmups=2, reps=args.reps,
                 builds=[], rows=[], controls=[], source_hashes={},
                 representations={name: WORKLOADS[name].get("representation", "") for name in args.workloads},
@@ -627,6 +630,7 @@ def main():
             exe = work / f"rhat_{name}_{size}.exe"
             build([compiler, "build", src, "-o", exe, "-O2", "--clang", tools["clang"],
                    "--dump-ir", src.with_suffix(".rir")])
+            data["stack_reports"][f"{name}/{size}"] = command([compiler, "check", src, "--stacks"], cwd=work)
             data["source_hashes"][str(src)] = sha(src)
             data["source_hashes"][str(exe) + ".ll"] = sha(pathlib.Path(str(exe) + ".ll"))
             add_implementation(implementations, spec.get("rhat_label", "R^ LLVM/Clang"), "rhat", exe)

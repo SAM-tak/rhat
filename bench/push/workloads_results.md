@@ -1,6 +1,6 @@
 # Additional R^ workloads
 
-Measured: 2026-10-23T21:02:09.397008+00:00 (UTC).
+Measured: 2026-10-24T01:49:57.138083+00:00 (UTC).
 
 R^ replaces Goose. All comparison implementations were built and measured in this session.
 
@@ -11,6 +11,9 @@ Comparison / R^ time: above 1 means R^ is faster. No suite-wide average is claim
 
 Smoke sizes are correctness checks and are not performance evidence.
 
+Storage: statically assigned data stacks, scope watermark rewinds, and Windows fault-driven commits (up to 1 MiB).
+The LLVM push fast path makes no runtime call; array descriptors are 24 bytes.
+
 Executable paths are unique per language; every run verifies its build-time SHA-256 before and after execution.
 
 ## Environment
@@ -19,10 +22,10 @@ Executable paths are unique per language; every run verifies its build-time SHA-
 |---|---|
 | cpu | AMD Ryzen 5 2600 Six-Core Processor |
 | os | Windows-10-10.0.26300-SP0 |
-| commit | 555c77b2b33232521f985c722825a47145b8e30d |
-| dirty | M README.md;  M bench/README.md;  M bench/coverage.md;  M bench/push/workloads_results.json;  M bench/push/workloads_results.md;  M bench/results.md;  M bench/run_bench.py;  M bench/run_workloads.py;  M bench/upstream/PROVENANCE.md;  M bench/workloads_results.json;  M bench/workloads_results.md;  M docs/design.md;  M runtime/rhat_runtime.c;  M src/front.c;  M src/llvm.c;  M src/rhat.h;  M src/sema.c;  M tests/run.py;  M tests/runtime_regions.c; ?? bench/artifacts.py; ?? bench/historical_bintrees_results.md; ?? bench/invalid_runs/; ?? bench/lru/; ?? bench/report_suite.py; ?? bench/rhat/calc.rh; ?? bench/rhat/interp.rh; ?? bench/rhat/lru.rh; ?? bench/rhat/records.rh; ?? bench/rhat/respond.rh; ?? bench/rhat/scene.rh; ?? bench/rhat/sexp.rh; ?? bench/rhat/strlist.rh; ?? bench/rhat/words.rh; ?? bench/scene/; ?? bench/text/; ?? bench/upstream/cpp/calc.cpp; ?? bench/upstream/cpp/interp.cpp; ?? bench/upstream/cpp/lru.cpp; ?? bench/upstream/cpp/records.cpp; ?? bench/upstream/cpp/respond.cpp; ?? bench/upstream/cpp/scene.cpp; ?? bench/upstream/cpp/sexp.cpp; ?? bench/upstream/cpp/strlist.cpp; ?? bench/upstream/cpp/words.cpp; ?? bench/upstream/rust/calc_arena.rs; ?? bench/upstream/rust/calc_box.rs; ?? bench/upstream/rust/interp_arena.rs; ?? bench/upstream/rust/interp_box.rs; ?? bench/upstream/rust/lru_hashmap.rs; ?? bench/upstream/rust/lru_open.rs; ?? bench/upstream/rust/records.rs; ?? bench/upstream/rust/respond_dto.rs; ?? bench/upstream/rust/respond_stream.rs; ?? bench/upstream/rust/scene_arena.rs; ?? bench/upstream/rust/scene_box.rs; ?? bench/upstream/rust/sexp_arena.rs; ?? bench/upstream/rust/sexp_box.rs; ?? bench/upstream/rust/strlist_borrowed.rs; ?? bench/upstream/rust/strlist_owned.rs; ?? bench/upstream/rust/words_hashmap.rs; ?? bench/upstream/rust/words_open.rs; ?? bench/variants_parsers/ |
-| compiler_sha256 | 0d5be2d1de7705f476440990257e52d7dc67328af099a3ecc38c88355e5113af |
-| runtime_sha256 | c0dfdca54088c8e0aec92cef0348f864651c75ba08a1c8391619bcc2088339e7 |
+| commit | b958652e5b73f704689abff75b74bd574bc91120 |
+| dirty | M CMakeLists.txt;  M README.md;  M bench/README.md;  M bench/coverage.md;  M bench/current_bintrees/results.json;  M bench/current_bintrees/results.md;  M bench/report_suite.py;  M bench/run_bench.py;  M bench/run_workloads.py;  M docs/design.md;  M runtime/rhat_runtime.c;  M src/llvm.c;  M src/main.c;  M src/rhat.h;  M src/sema.c;  M tests/run.py;  M tests/runtime_regions.c; ?? bench/pre_data_stacks/; ?? bench/pre_data_stacks_bintrees/; ?? src/stacks.c |
+| compiler_sha256 | b009c93c77498b146d5d3838515e81a157d7c7fb4e23920c9ac243276cd421c7 |
+| runtime_sha256 | c607b74ad004fb719288b594f60e0a25913763517803c2d7490f484319961073 |
 | clang | clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211) |
 | msvc | Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64 |
 | clangcl | clang version 22.1.3 (https://github.com/llvm/llvm-project e9846648fd6183ee6d8cbdb4502213fcf902a211) |
@@ -38,30 +41,30 @@ R^ stores 8-byte Items and retains real Item references returned by push, markin
 
 | Size / N | Implementation | Best ms | Peak MiB | Comparison / R^ time |
 |---|---|---:|---:|---:|
-| small / 1000000 | R^ stable region / real pointer marks (LLVM/Clang) | 74.33 | 11.54 | 1.000x |
-| small / 1000000 | C++ vector indices (msvc) | 29.62 | 14.53 | 0.399x |
-| small / 1000000 | C++ reserved vector indices (msvc) | 22.78 | 11.51 | 0.306x |
-| small / 1000000 | C++ deque pointers (msvc) | 58.61 | 23.50 | 0.789x |
-| small / 1000000 | C++ vector indices (clangcl) | 30.41 | 14.52 | 0.409x |
-| small / 1000000 | C++ reserved vector indices (clangcl) | 26.05 | 11.51 | 0.350x |
-| small / 1000000 | C++ deque pointers (clangcl) | 57.40 | 23.51 | 0.772x |
-| small / 1000000 | Rust push | 23.26 | 12.04 | 0.313x |
-| medium / 16000000 | R^ stable region / real pointer marks (LLVM/Clang) | 1013.88 | 127.76 | 1.000x |
-| medium / 16000000 | C++ vector indices (msvc) | 230.55 | 189.38 | 0.227x |
-| medium / 16000000 | C++ reserved vector indices (msvc) | 104.36 | 129.52 | 0.103x |
-| medium / 16000000 | C++ deque pointers (msvc) | 757.03 | 315.89 | 0.747x |
-| medium / 16000000 | C++ vector indices (clangcl) | 235.12 | 189.38 | 0.232x |
-| medium / 16000000 | C++ reserved vector indices (clangcl) | 165.13 | 129.50 | 0.163x |
-| medium / 16000000 | C++ deque pointers (clangcl) | 700.29 | 315.91 | 0.691x |
-| medium / 16000000 | Rust push | 95.74 | 129.21 | 0.094x |
-| large / 64000000 | R^ stable region / real pointer marks (LLVM/Clang) | 4118.67 | 499.69 | 1.000x |
-| large / 64000000 | C++ vector indices (msvc) | 929.35 | 936.50 | 0.226x |
-| large / 64000000 | C++ reserved vector indices (msvc) | 354.81 | 501.45 | 0.086x |
-| large / 64000000 | C++ deque pointers (msvc) | 2876.34 | 1251.09 | 0.698x |
-| large / 64000000 | C++ vector indices (clangcl) | 939.51 | 936.48 | 0.228x |
-| large / 64000000 | C++ reserved vector indices (clangcl) | 618.59 | 501.42 | 0.150x |
-| large / 64000000 | C++ deque pointers (clangcl) | 2749.76 | 1251.10 | 0.668x |
-| large / 64000000 | Rust push | 335.68 | 501.11 | 0.082x |
+| small / 1000000 | R^ stable region / real pointer marks (LLVM/Clang) | 61.39 | 11.59 | 1.000x |
+| small / 1000000 | C++ vector indices (msvc) | 28.89 | 14.66 | 0.471x |
+| small / 1000000 | C++ reserved vector indices (msvc) | 21.87 | 11.74 | 0.356x |
+| small / 1000000 | C++ deque pointers (msvc) | 61.71 | 23.55 | 1.005x |
+| small / 1000000 | C++ vector indices (clangcl) | 29.48 | 14.65 | 0.480x |
+| small / 1000000 | C++ reserved vector indices (clangcl) | 25.47 | 11.74 | 0.415x |
+| small / 1000000 | C++ deque pointers (clangcl) | 56.67 | 23.56 | 0.923x |
+| small / 1000000 | Rust push | 21.60 | 12.04 | 0.352x |
+| medium / 16000000 | R^ stable region / real pointer marks (LLVM/Clang) | 810.96 | 127.84 | 1.000x |
+| medium / 16000000 | C++ vector indices (msvc) | 237.91 | 189.19 | 0.293x |
+| medium / 16000000 | C++ reserved vector indices (msvc) | 105.46 | 129.55 | 0.130x |
+| medium / 16000000 | C++ deque pointers (msvc) | 824.89 | 315.93 | 1.017x |
+| medium / 16000000 | C++ vector indices (clangcl) | 245.75 | 189.19 | 0.303x |
+| medium / 16000000 | C++ reserved vector indices (clangcl) | 172.25 | 129.52 | 0.212x |
+| medium / 16000000 | C++ deque pointers (clangcl) | 745.03 | 315.93 | 0.919x |
+| medium / 16000000 | Rust push | 115.12 | 129.21 | 0.142x |
+| large / 64000000 | R^ stable region / real pointer marks (LLVM/Clang) | 3413.73 | 499.79 | 1.000x |
+| large / 64000000 | C++ vector indices (msvc) | 1030.51 | 936.29 | 0.302x |
+| large / 64000000 | C++ reserved vector indices (msvc) | 402.74 | 501.45 | 0.118x |
+| large / 64000000 | C++ deque pointers (msvc) | 3429.72 | 1251.09 | 1.005x |
+| large / 64000000 | C++ vector indices (clangcl) | 1071.73 | 936.27 | 0.314x |
+| large / 64000000 | C++ reserved vector indices (clangcl) | 670.32 | 501.45 | 0.196x |
+| large / 64000000 | C++ deque pointers (clangcl) | 3266.61 | 1251.07 | 0.957x |
+| large / 64000000 | Rust push | 380.73 | 501.11 | 0.112x |
 
 Every warm-up/sample checks its checksum. Each size first cross-checks independently built
 C++ and Rust controls; smoke sizes additionally use a Python oracle. The oracle is outside timing.

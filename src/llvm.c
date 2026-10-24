@@ -36,7 +36,7 @@ char *llvm_type(Type *t) {
   case T_ARRAY:
     return fmt("[%d x %s]", t->count, llvm_type(t->elem));
   case T_GROW:
-    return "{ ptr, i64, i64, i64 }";
+    return "{ ptr, i64, ptr }";
   default:
     return fmt("%%rh_type_%d", t->id);
   }
@@ -48,6 +48,12 @@ typedef struct {
 } Output;
 static Type *slot_type(Output *o, int n) {
   return ((Slot *)o->in->slots.v[n])->type;
+}
+static char *stack_for(Output *o, int id) {
+  int owner = ((Slot *)o->in->slots.v[id])->owner;
+  if (o->in->result->owned && owner == o->in->result_slot)
+    return "%result_stack";
+  return fmt("%%s%d", owner);
 }
 static int load(Output *o, int n) {
   int t = ++o->tmp;
@@ -130,8 +136,11 @@ static void instruction(Output *o, Instr *i) {
               "i32 %d)\n",
               i->dst, i->a, a, t->elem->size, i->loc.line);
     else if (t->kind == T_SLICE || t->kind == T_STRING)
-      fprintf(f, "  %%p%d = call ptr @rh_view_at(ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n",
-              i->dst, i->a, a, t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
+      fprintf(f,
+              "  %%p%d = call ptr @rh_view_at(ptr %%p%d, i64 %%t%d, i64 %zu, "
+              "i32 %d)\n",
+              i->dst, i->a, a, t->kind == T_STRING ? (size_t)1 : t->elem->size,
+              i->loc.line);
     else {
       fprintf(f, "  call void @rh_bounds(i64 %%t%d, i64 %d, i32 %d)\n", a,
               t->count, i->loc.line);
@@ -139,24 +148,100 @@ static void instruction(Output *o, Instr *i) {
               i->dst, llvm_type(t), i->a, a);
     }
     break;
-  case I_REGION:
-    fprintf(f, "  call void @rh_region_init(ptr %%p%d)\n", i->dst);
+  case I_STACK_BEGIN:
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
+    fprintf(f, "  %%s%d = getelementptr %%RhStack, ptr @rh_stacks, i64 %%t%d\n",
+            i->dst, a);
+    fprintf(f,
+            "  %%markp%d = getelementptr %%RhStack, ptr %%s%d, i32 0, i32 1\n",
+            i->dst, i->dst);
+    b = ++o->tmp;
+    fprintf(f, "  %%t%d = load ptr, ptr %%markp%d\n", b, i->dst);
+    fprintf(f, "  store ptr %%t%d, ptr %%mark%d\n", b, i->dst);
     break;
-  case I_RELEASE:
-    fprintf(f, "  call void @rh_region_release(ptr %%p%d)\n", i->a);
-    break;
-  case I_PUSH:
+  case I_REGION: {
+    char *stack = stack_for(o, i->dst);
+    a = ++o->tmp;
+    b = ++o->tmp;
     r = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %s, i32 0, i32 1\n", a,
+            stack);
+    fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", b, a);
+    fprintf(f,
+            "  %%t%d = insertvalue { ptr, i64, ptr } { ptr null, i64 0, ptr "
+            "null }, ptr %%t%d, 0\n",
+            r, b);
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = insertvalue { ptr, i64, ptr } %%t%d, ptr %s, 2\n", a,
+            r, stack);
+    save(o, i->dst, t, fmt("%%t%d", a));
+    break;
+  }
+  case I_RELEASE:
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = load ptr, ptr %%mark%d\n", a, i->a);
+    fprintf(f, "  store ptr %%t%d, ptr %%markp%d\n", a, i->a);
+    break;
+  case I_PUSH: {
+    int desc = load(o, i->a);
+    int data = ++o->tmp, len = ++o->tmp, stack = ++o->tmp;
+    fprintf(f, "  %%t%d = extractvalue { ptr, i64, ptr } %%t%d, 0\n", data,
+            desc);
+    fprintf(f, "  %%t%d = extractvalue { ptr, i64, ptr } %%t%d, 1\n", len,
+            desc);
+    fprintf(f, "  %%t%d = extractvalue { ptr, i64, ptr } %%t%d, 2\n", stack,
+            desc);
+    int lp = ++o->tmp, limit = ++o->tmp, li = ++o->tmp, di = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %%t%d, i32 0, i32 2\n",
+            lp, stack);
+    fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", limit, lp);
+    fprintf(f, "  %%t%d = ptrtoint ptr %%t%d to i64\n", li, limit);
+    fprintf(f, "  %%t%d = ptrtoint ptr %%t%d to i64\n", di, data);
+    int bytes = ++o->tmp, cap = ++o->tmp, ok = ++o->tmp;
+    fprintf(f, "  %%t%d = sub i64 %%t%d, %%t%d\n", bytes, li, di);
+    fprintf(f, "  %%t%d = udiv i64 %%t%d, %zu\n", cap, bytes, t->elem->size);
+    fprintf(f, "  %%t%d = icmp ult i64 %%t%d, %%t%d\n", ok, len, cap);
+    fprintf(f,
+            "  br i1 %%t%d, label %%push_ok_%d, label "
+            "%%push_bad_%d\npush_bad_%d:\n",
+            ok, ok, ok, ok);
     fprintf(
         f,
-        "  %%t%d = call ptr @rh_array_push(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-        r, i->a, i->b, t->elem->size, i->loc.line);
+        "  call void @rh_stack_overflow(i32 %d)\n  unreachable\npush_ok_%d:\n",
+        i->loc.line, ok);
+    int off = ++o->tmp, ptr = ++o->tmp;
+    fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", off, len, t->elem->size);
+    fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %%t%d\n", ptr, data,
+            off);
+    a = load(o, i->b);
+    fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(t->elem), a, ptr);
+    int end = ++o->tmp, topaddr = ++o->tmp, top = ++o->tmp, greater = ++o->tmp,
+        high = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n", end, ptr,
+            t->elem->size);
+    fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %%t%d, i32 0, i32 1\n",
+            topaddr, stack);
+    fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", top, topaddr);
+    fprintf(f, "  %%t%d = icmp ugt ptr %%t%d, %%t%d\n", greater, end, top);
+    fprintf(f, "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr %%t%d\n", high,
+            greater, end, top);
+    fprintf(f, "  store ptr %%t%d, ptr %%t%d\n", high, topaddr);
+    int newlen = ++o->tmp, lenaddr = ++o->tmp;
+    fprintf(f, "  %%t%d = add i64 %%t%d, 1\n", newlen, len);
+    fprintf(
+        f,
+        "  %%t%d = getelementptr { ptr, i64, ptr }, ptr %%p%d, i32 0, i32 1\n",
+        lenaddr, i->a);
+    fprintf(f, "  store i64 %%t%d, ptr %%t%d\n", newlen, lenaddr);
     if (i->dst >= 0)
-      save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
+      save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", ptr));
     break;
+  }
   case I_POP:
-    fprintf(f, "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-            i->a, i->dst, t->elem->size, i->loc.line);
+    fprintf(
+        f, "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
+        i->a, i->dst, t->elem->size, i->loc.line);
     break;
   case I_CLEAR:
     fprintf(f, "  call void @rh_array_clear(ptr %%p%d)\n", i->a);
@@ -165,9 +250,11 @@ static void instruction(Output *o, Instr *i) {
     Type *arm = slot_type(o, i->a);
     save(o, i->dst, t, "zeroinitializer");
     int tag = ++o->tmp, payload = ++o->tmp;
-    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tag, llvm_type(t), i->dst);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tag,
+            llvm_type(t), i->dst);
     fprintf(f, "  store i32 %d, ptr %%t%d\n", i->label, tag);
-    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", payload, llvm_type(t), i->dst);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", payload,
+            llvm_type(t), i->dst);
     a = load(o, i->a);
     fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(arm), a, payload);
     break;
@@ -175,17 +262,20 @@ static void instruction(Output *o, Instr *i) {
   case I_CASE_IS:
   case I_CASE_GET: {
     int tagptr = ++o->tmp, tag = ++o->tmp;
-    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tagptr, llvm_type(t), i->a);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tagptr,
+            llvm_type(t), i->a);
     fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, tagptr);
     if (i->op == I_CASE_IS) {
       r = ++o->tmp;
       fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", r, tag, i->label);
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     } else {
-      fprintf(f, "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n", tag, i->label, i->loc.line);
+      fprintf(f, "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n", tag,
+              i->label, i->loc.line);
       int payload = ++o->tmp;
       Type *arm = slot_type(o, i->dst);
-      fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", payload, llvm_type(t), i->a);
+      fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
+              payload, llvm_type(t), i->a);
       r = ++o->tmp;
       fprintf(f, "  %%t%d = load %s, ptr %%t%d\n", r, llvm_type(arm), payload);
       save(o, i->dst, arm, fmt("%%t%d", r));
@@ -194,11 +284,14 @@ static void instruction(Output *o, Instr *i) {
   }
   case I_TRUNCATE:
     a = load(o, i->b);
-    fprintf(f, "  call void @rh_array_truncate(ptr %%p%d, i64 %%t%d, i32 %d)\n", i->a, a, i->loc.line);
+    fprintf(f, "  call void @rh_array_truncate(ptr %%p%d, i64 %%t%d, i32 %d)\n",
+            i->a, a, i->loc.line);
     break;
   case I_APPEND:
-    fprintf(f, "  call void @rh_array_append(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-            i->a, i->b, t->elem->size, i->loc.line);
+    fprintf(
+        f,
+        "  call void @rh_array_append(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
+        i->a, i->b, t->elem->size, i->loc.line);
     break;
   case I_SLICE: {
     char *data, *length;
@@ -208,15 +301,20 @@ static void instruction(Output *o, Instr *i) {
     } else {
       int base = load(o, i->a);
       int ptr = ++o->tmp, len = ++o->tmp;
-      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 0\n", ptr, llvm_type(t), base);
-      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 1\n", len, llvm_type(t), base);
+      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 0\n", ptr, llvm_type(t),
+              base);
+      fprintf(f, "  %%t%d = extractvalue %s %%t%d, 1\n", len, llvm_type(t),
+              base);
       data = fmt("%%t%d", ptr);
       length = fmt("%%t%d", len);
     }
     a = load(o, i->b);
     b = load(o, i->other);
-    fprintf(f, "  call void @rh_make_slice(ptr %%p%d, ptr %s, i64 %s, i64 %%t%d, i64 %%t%d, i64 %zu, i32 %d)\n",
-            i->dst, data, length, a, b, t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
+    fprintf(f,
+            "  call void @rh_make_slice(ptr %%p%d, ptr %s, i64 %s, i64 %%t%d, "
+            "i64 %%t%d, i64 %zu, i32 %d)\n",
+            i->dst, data, length, a, b,
+            t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
     break;
   }
   case I_LENGTH:
@@ -242,10 +340,13 @@ static void instruction(Output *o, Instr *i) {
       if (numeric_bits(count->kind) != 128) {
         wide = ++o->tmp;
         fprintf(f, "  %%t%d = %s %s %%t%d to i128\n", wide,
-                kind_unsigned(count->kind) ? "zext" : "sext", llvm_type(count), b);
+                kind_unsigned(count->kind) ? "zext" : "sext", llvm_type(count),
+                b);
       }
-      int neg = ++o->tmp, magnitude = ++o->tmp, masked = ++o->tmp, amount = masked;
-      int left = ++o->tmp, right = ++o->tmp, selected = ++o->tmp, large = ++o->tmp;
+      int neg = ++o->tmp, magnitude = ++o->tmp, masked = ++o->tmp,
+          amount = masked;
+      int left = ++o->tmp, right = ++o->tmp, selected = ++o->tmp,
+          large = ++o->tmp;
       fprintf(f, "  %%t%d = icmp slt i128 %%t%d, 0\n", neg, wide);
       if (kind_unsigned(count->kind))
         fprintf(f, "  %%t%d = add i128 %%t%d, 0\n", magnitude, wide);
@@ -261,10 +362,13 @@ static void instruction(Output *o, Instr *i) {
               numeric_bits(t->kind) - 1);
       if (numeric_bits(t->kind) != 128) {
         amount = ++o->tmp;
-        fprintf(f, "  %%t%d = trunc i128 %%t%d to %s\n", amount, masked, llvm_type(t));
+        fprintf(f, "  %%t%d = trunc i128 %%t%d to %s\n", amount, masked,
+                llvm_type(t));
       }
-      fprintf(f, "  %%t%d = shl %s %%t%d, %%t%d\n", left, llvm_type(t), a, amount);
-      fprintf(f, "  %%t%d = lshr %s %%t%d, %%t%d\n", right, llvm_type(t), a, amount);
+      fprintf(f, "  %%t%d = shl %s %%t%d, %%t%d\n", left, llvm_type(t), a,
+              amount);
+      fprintf(f, "  %%t%d = lshr %s %%t%d, %%t%d\n", right, llvm_type(t), a,
+              amount);
       fprintf(f, "  %%t%d = select i1 %s, %s %%t%d, %s %%t%d\n", selected,
               kind_unsigned(count->kind) ? "false" : fmt("%%t%d", neg),
               llvm_type(t), right, llvm_type(t), left);
@@ -373,7 +477,9 @@ static void instruction(Output *o, Instr *i) {
       if (src_bits != 64 || !src_fp) {
         b = ++o->tmp;
         fprintf(f, "  %%t%d = %s %s %%t%d to double\n", b,
-                src_fp ? "fpext" : kind_unsigned(source->kind) ? "uitofp" : "sitofp",
+                src_fp                        ? "fpext"
+                : kind_unsigned(source->kind) ? "uitofp"
+                                              : "sitofp",
                 src_type, a);
         a = b;
       }
@@ -384,16 +490,21 @@ static void instruction(Output *o, Instr *i) {
     } else {
       const char *op;
       if (!src_fp && !dst_fp)
-        op = src_bits > dst_bits ? "trunc" : kind_unsigned(source->kind) ? "zext" : "sext";
+        op = src_bits > dst_bits           ? "trunc"
+             : kind_unsigned(source->kind) ? "zext"
+                                           : "sext";
       else if (!src_fp)
         op = kind_unsigned(source->kind) ? "uitofp" : "sitofp";
       else if (!dst_fp) {
         int checked = a;
         if (src_bits != 64) {
           checked = ++o->tmp;
-          fprintf(f, "  %%t%d = fpext %s %%t%d to double\n", checked, src_type, a);
+          fprintf(f, "  %%t%d = fpext %s %%t%d to double\n", checked, src_type,
+                  a);
         }
-        fprintf(f, "  call void @rh_check_float_cast(double %%t%d, i32 %d, i32 %d, i32 %d)\n",
+        fprintf(f,
+                "  call void @rh_check_float_cast(double %%t%d, i32 %d, i32 "
+                "%d, i32 %d)\n",
                 checked, dst_bits, kind_unsigned(t->kind), i->loc.line);
         op = kind_unsigned(t->kind) ? "fptoui" : "fptosi";
       } else
@@ -402,21 +513,23 @@ static void instruction(Output *o, Instr *i) {
         r = a;
       else {
         r = ++o->tmp;
-        fprintf(f, "  %%t%d = %s %s %%t%d to %s\n", r, op, src_type, a, llvm_type(t));
+        fprintf(f, "  %%t%d = %s %s %%t%d to %s\n", r, op, src_type, a,
+                llvm_type(t));
       }
     }
     save(o, i->dst, t, fmt("%%t%d", r));
     break;
   }
   case I_CALL:
-    fprintf(f, "  call void @%s(", i->callee->symbol);
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
+    fprintf(f, "  call void @%s(i64 %%t%d", i->callee->symbol, a);
     if (t->kind != T_VOID)
-      fprintf(f, "ptr %%p%d", i->dst);
-    for (int j = 0; j < i->args.n; j++) {
-      if (j || t->kind != T_VOID)
-        fputs(", ", f);
-      fprintf(f, "ptr %%p%d", (int)(intptr_t)i->args.v[j] - 1);
-    }
+      fprintf(f, ", ptr %%p%d", i->dst);
+    if (t->owned)
+      fprintf(f, ", ptr %s", stack_for(o, i->dst));
+    for (int j = 0; j < i->args.n; j++)
+      fprintf(f, ", ptr %%p%d", (int)(intptr_t)i->args.v[j] - 1);
     fputs(")\n", f);
     break;
   case I_PRINT:
@@ -490,7 +603,8 @@ void emit_llvm(Program *p, const char *path) {
     Type *t = p->types.v[j];
     if (t->kind == T_UNION) {
       fprintf(f, "%s = type { i32, [%zu x i8], [%zu x i%zu] }\n", llvm_type(t),
-              t->payload_offset - 4, (t->payload_bytes + t->payload_align - 1) / t->payload_align,
+              t->payload_offset - 4,
+              (t->payload_bytes + t->payload_align - 1) / t->payload_align,
               t->payload_align * 8);
       continue;
     }
@@ -519,9 +633,14 @@ void emit_llvm(Program *p, const char *path) {
       }
     }
   }
-  fputs("\ndeclare void @rh_region_init(ptr)\ndeclare void "
-        "@rh_region_release(ptr)\ndeclare ptr @rh_array_push(ptr, ptr, i64, "
-        "i32)\ndeclare ptr @rh_array_at(ptr, i64, i64, i32)\ndeclare void "
+  fprintf(f,
+          "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = internal "
+          "global [%d x %%RhStack] zeroinitializer\n",
+          p->stack_count);
+  fputs("declare void @rh_runtime_init(ptr, i64)\ndeclare void "
+        "@rh_runtime_shutdown()\n"
+        "declare void @rh_stack_overflow(i32) noreturn\n"
+        "declare ptr @rh_array_at(ptr, i64, i64, i32)\ndeclare void "
         "@rh_bounds(i64, i64, i32)\ndeclare void @rh_assert(i64, i32)\ndeclare "
         "void @rh_print_i64(i64)\ndeclare void @rh_print_f64(double)\ndeclare "
         "void @rh_print_bool(i64)\ndeclare void @rh_print_string(ptr, "
@@ -534,29 +653,39 @@ void emit_llvm(Program *p, const char *path) {
         "declare float @rh_f8_decode(i8)\ndeclare i8 @rh_f8_encode(float)\n",
         f);
   fputs("declare i8 @rh_f8_encode_f64(double)\n"
-        "declare void @rh_check_float_cast(double, i32, i32, i32)\n", f);
+        "declare void @rh_check_float_cast(double, i32, i32, i32)\n",
+        f);
   fputs("declare void @rh_array_truncate(ptr, i64, i32)\n"
         "declare void @rh_union_tag(i32, i32, i32)\n"
         "declare void @rh_array_append(ptr, ptr, i64, i32)\n"
         "declare void @rh_make_slice(ptr, ptr, i64, i64, i64, i64, i32)\n"
         "declare ptr @rh_view_at(ptr, i64, i64, i32)\n"
         "declare void @rh_array_pop(ptr, ptr, i64, i32)\n"
-        "declare void @rh_array_clear(ptr)\n", f);
+        "declare void @rh_array_clear(ptr)\n",
+        f);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     fprintf(f, "\n; %s%s%s\ndefine void @%s(", in->self ? in->self->name : "",
             in->self ? "." : "", in->fn->name, in->symbol);
     bool result = in->result->kind != T_VOID;
+    fputs("i64 %sp", f);
     if (result)
-      fputs("ptr %out", f);
+      fputs(", ptr %out", f);
+    if (in->result->owned)
+      fputs(", ptr %result_stack", f);
     for (int k = 0; k < in->params.n; k++)
-      fprintf(f, "%sptr %%arg%d", k || result ? ", " : "", k);
+      fprintf(f, ", ptr %%arg%d", k);
     fputs(") {\nentry:\n", f);
     Output o = {f, in, 0};
     for (int k = 0; k < in->slots.n; k++) {
       Slot *s = in->slots.v[k];
       if (!s->alias)
         fprintf(f, "  %%p%d = alloca %s\n", k, llvm_type(s->type));
+    }
+    for (int k = 0; k < in->code.n; k++) {
+      Instr *i = in->code.v[k];
+      if (i->op == I_STACK_BEGIN)
+        fprintf(f, "  %%mark%d = alloca ptr\n", i->dst);
     }
     if (result)
       fprintf(f, "  %%p%d = getelementptr i8, ptr %%out, i64 0\n",
@@ -572,9 +701,11 @@ void emit_llvm(Program *p, const char *path) {
       instruction(&o, in->code.v[k]);
     fputs("}\n", f);
   }
-  fputs("\ndefine i32 @main() {\nentry:\n  call void @rh_fn_0()\n  ret i32 "
-        "0\n}\n",
-        f);
+  fprintf(f,
+          "\ndefine i32 @main() {\nentry:\n  call void @rh_runtime_init(ptr "
+          "@rh_stacks, i64 %d)\n  call void @rh_fn_0(i64 0)\n  call void "
+          "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
+          p->stack_count);
   if (fclose(f))
     fail((Loc){path, 1, 1}, "failed to write LLVM IR");
 }
@@ -582,21 +713,45 @@ void dump_ir(Program *p, const char *path) {
   FILE *f = fopen(path, "wb");
   if (!f)
     fail((Loc){path, 1, 1}, "cannot write R^ IR");
-  const char *names[] = {"const",          "string",     "copy",
-                         "zero",           "binary",     "unary",
-                         "borrow",         "deref",      "field",
-                         "index.checked",  "call",       "print",
-                         "assert",         "label",      "branch",
-                         "branch.if",      "return",     "region.construct",
-                         "region.release", "array.push", "length", "numeric.convert",
-                         "array.pop", "array.clear", "slice.checked", "array.append", "union.construct", "union.is", "union.get.checked", "array.truncate"};
+  const char *names[] = {"const",
+                         "string",
+                         "copy",
+                         "zero",
+                         "binary",
+                         "unary",
+                         "borrow",
+                         "deref",
+                         "field",
+                         "index.checked",
+                         "call",
+                         "print",
+                         "assert",
+                         "label",
+                         "branch",
+                         "branch.if",
+                         "return",
+                         "region.construct",
+                         "stack.restore",
+                         "array.push",
+                         "length",
+                         "numeric.convert",
+                         "array.pop",
+                         "array.clear",
+                         "slice.checked",
+                         "array.append",
+                         "union.construct",
+                         "union.is",
+                         "union.get.checked",
+                         "array.truncate",
+                         "stack.save"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,
             d->type->align, d->abstract ? " abstract" : "");
     size_t off = 0;
     if (d->type->kind == T_UNION) {
-      fprintf(f, "  tag +0 : u32^ payload=+%zu bytes=%zu\n", d->type->payload_offset, d->type->payload_bytes);
+      fprintf(f, "  tag +0 : u32^ payload=+%zu bytes=%zu\n",
+              d->type->payload_offset, d->type->payload_bytes);
       for (int k = 0; k < d->alternatives.n; k++)
         fprintf(f, "  case %d : %s\n", k, type_name(d->alternatives.v[k]));
     }
@@ -613,6 +768,7 @@ void dump_ir(Program *p, const char *path) {
     fprintf(f, "\nfunction %s %s%s%s -> %s destination=%%%d\n", in->symbol,
             in->self ? in->self->name : "", in->self ? "." : "", in->fn->name,
             type_name(in->result), in->result_slot);
+    fprintf(f, "  stacks own=%d need=%d\n", in->stack_own, in->stack_need);
     for (int k = 0; k < in->params.n; k++)
       fprintf(f, "  parameter %d : %s\n", k, type_name(in->params.v[k]));
     for (int k = 0; k < in->slots.n; k++) {
@@ -624,6 +780,10 @@ void dump_ir(Program *p, const char *path) {
       Instr *i = in->code.v[k];
       fprintf(f, "  %-18s dst=%%%d a=%%%d b=%%%d", names[i->op], i->dst, i->a,
               i->b);
+      if (i->op == I_STACK_BEGIN || i->op == I_CALL)
+        fprintf(f, " stack-offset=%d", i->stack_index);
+      if (i->op == I_REGION || (i->op == I_CALL && i->type->owned))
+        fprintf(f, " stack-owner=%%%d", ((Slot *)in->slots.v[i->dst])->owner);
       if (i->type)
         fprintf(f, " type=%s", type_name(i->type));
       if (i->text)
