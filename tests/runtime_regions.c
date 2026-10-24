@@ -52,8 +52,67 @@ static DWORD page_state(const void *address) {
   assert(VirtualQuery(address, &info, sizeof(info)) == sizeof(info));
   return info.State;
 }
+/* Test-only writes drive real page faults; generated array operations are
+ * verified separately by end-to-end R^ tests. No production C array helpers. */
+typedef struct {
+  unsigned char *data;
+  uint64_t len;
+  RhStack *stack;
+} RhArray;
+typedef struct {
+  const unsigned char *data;
+  uint64_t len;
+} RhSlice;
+static void probe_bounds(int64_t index, uint64_t length, int32_t line) {
+  if (index < 0 || (uint64_t)index >= length)
+    rh_panic("array index out of bounds", line);
+}
+
+static void *probe_array_at(RhArray *a, int64_t index, uint64_t size, int32_t line) {
+  probe_bounds(index, a->len, line);
+  return a->data + (uint64_t)index * size;
+}
+
+static void *probe_array_write(RhArray *a, const void *value, uint64_t count,
+                            uint64_t size, int32_t line) {
+  uint64_t available = (uint64_t)(a->stack->limit - a->data);
+  if (!size || a->len > available / size || count > available / size - a->len)
+    rh_stack_overflow(line);
+  uint64_t off = a->len * size, end_bytes = off + count * size;
+  if (count)
+    memmove(a->data + off, value, (size_t)(count * size));
+  a->len += count;
+  if (a->data + end_bytes > a->stack->top)
+    a->stack->top = a->data + end_bytes;
+  return a->data + off;
+}
+
+static void probe_array_append(RhArray *a, const RhSlice *values, uint64_t size,
+                     int32_t line) {
+  probe_array_write(a, values->data, values->len, size, line);
+}
+
+static void probe_array_pop(RhArray *a, void *out, uint64_t size, int32_t line) {
+  if (!a->len)
+    rh_panic("pop from empty array", line);
+  memmove(out, a->data + (a->len - 1) * size, (size_t)size);
+  a->len--;
+}
+
+static void probe_array_clear(RhArray *a) {
+  /* Slots and their values remain alive until region release. Existing
+   * references can observe a later push overwriting the same slot. */
+  a->len = 0;
+}
+
+static void probe_array_truncate(RhArray *a, int64_t length, int32_t line) {
+  if (length < 0 || (uint64_t)length > a->len)
+    rh_panic("truncate length out of bounds", line);
+  a->len = (uint64_t)length;
+}
+
 static void push(RhArray *a, const void *v, uint64_t size) {
-  rh_array_write(a, v, 1, size, 91);
+  probe_array_write(a, v, 1, size, 91);
 }
 int main(int argc, char **argv) {
   _Static_assert(sizeof(RhArray) == 24, "generated LLVM array ABI");
@@ -90,12 +149,12 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "capacity"))
       a.len = RH_STACK_BYTES;
     if (!strcmp(argv[1], "truncate-growth")) {
-      rh_array_truncate(&a, 1, 91);
+      probe_array_truncate(&a, 1, 91);
       return 2;
     }
     if (!strcmp(argv[1], "append-capacity")) {
       RhSlice too_many = {&value, UINT64_MAX};
-      rh_array_append(&a, &too_many, 1, 91);
+      probe_array_append(&a, &too_many, 1, 91);
       return 2;
     }
     push(&a, &value, 1);
@@ -109,12 +168,12 @@ int main(int argc, char **argv) {
   assert(page_state(a.data + RH_COMMIT_BYTES) == MEM_RESERVE);
   push(&a, &value, 1);
   assert(commits == 2);
-  unsigned char *first = rh_array_at(&a, 0, 1, 1);
+  unsigned char *first = probe_array_at(&a, 0, 1, 1);
   unsigned char out;
-  rh_array_pop(&a, &out, 1, 1);
+  probe_array_pop(&a, &out, 1, 1);
   assert(out == value);
   unsigned char *high = s->top;
-  rh_array_clear(&a);
+  probe_array_clear(&a);
   assert(a.len == 0 && s->top == high && *first == value);
   value = 42;
   push(&a, &value, 1);
@@ -132,15 +191,15 @@ int main(int argc, char **argv) {
   assert(stacks[1].top == stacks[1].base);
   /* Bulk overlap and zero-count append keep their previous semantics. */
   RhSlice view = {a.data, 1};
-  rh_array_append(&a, &view, 1, 1);
+  probe_array_append(&a, &view, 1, 1);
   assert(a.len == 2 && a.data[1] == value);
   RhSlice empty = {NULL, 0};
-  rh_array_append(&a, &empty, 1, 1);
+  probe_array_append(&a, &empty, 1, 1);
   assert(commits == saved);
   static unsigned char bulk[2 * RH_COMMIT_BYTES + 3];
   RhArray second = {stacks[1].top, 0, &stacks[1]};
   RhSlice many = {bulk, sizeof(bulk)};
-  rh_array_append(&second, &many, 1, 1);
+  probe_array_append(&second, &many, 1, 1);
   assert(second.len == sizeof(bulk));
   assert(commits == saved + 3);
   assert(stacks[1].top == second.data + sizeof(bulk));

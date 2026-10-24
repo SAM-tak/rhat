@@ -454,9 +454,9 @@ static void instruction(Output *o, Instr *i) {
             "!0\npop_bad_%d:\n",
             valid, valid, valid, valid);
     fprintf(f,
-            "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n"
+            "  call void @rh_pop_fail(i32 %d)\n"
             "  unreachable\npop_ok_%d:\n",
-            i->a, i->dst, t->elem->size, i->loc.line, valid);
+            i->loc.line, valid);
     fprintf(f, "  %%t%d = sub i64 %%t%d, 1\n", last, len);
     fprintf(f, "  %%t%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", element,
             llvm_type(t->elem), data, last);
@@ -509,9 +509,9 @@ static void instruction(Output *o, Instr *i) {
               "!0\ntag_bad_%d:\n",
               valid, valid, valid, valid);
       fprintf(f,
-              "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n  "
+              "  call void @rh_union_fail(i32 %d)\n  "
               "unreachable\ntag_ok_%d:\n",
-              tag, i->label, i->loc.line, valid);
+              i->loc.line, valid);
       int payload = ++o->tmp;
       Type *arm = slot_type(o, i->dst);
       fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
@@ -522,11 +522,27 @@ static void instruction(Output *o, Instr *i) {
     }
     break;
   }
-  case I_TRUNCATE:
+  case I_TRUNCATE: {
     a = load(o, i->b);
-    fprintf(f, "  call void @rh_array_truncate(ptr %%p%d, i64 %%t%d, i32 %d)\n",
-            i->a, a, i->loc.line);
+    int lenaddr = ++o->tmp, len = ++o->tmp, nonnegative = ++o->tmp;
+    int within = ++o->tmp, valid = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n", lenaddr,
+            llvm_type(t), i->a);
+    fprintf(f, "  %%t%d = load i64, ptr %%t%d, !tbaa !5\n", len, lenaddr);
+    fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", nonnegative, a);
+    fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %%t%d\n", within, a, len);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid, nonnegative, within);
+    fprintf(f,
+            "  br i1 %%t%d, label %%truncate_ok_%d, label %%truncate_bad_%d, "
+            "!prof !0\ntruncate_bad_%d:\n",
+            valid, valid, valid, valid);
+    fprintf(f,
+            "  call void @rh_truncate_fail(i32 %d)\n  "
+            "unreachable\ntruncate_ok_%d:\n",
+            i->loc.line, valid);
+    fprintf(f, "  store i64 %%t%d, ptr %%t%d, !tbaa !5\n", a, lenaddr);
     break;
+  }
   case I_APPEND:
     for (int k = 1; k < o->in->code.n; k++) {
       if (o->in->code.v[k] != i)
@@ -544,10 +560,15 @@ static void instruction(Output *o, Instr *i) {
       }
       break;
     }
-    fprintf(
-        f,
-        "  call void @rh_array_append(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-        i->a, i->b, t->elem->size, i->loc.line);
+    a = load(o, i->b);
+    b = ++o->tmp;
+    r = ++o->tmp;
+    fprintf(f, "  %%t%d = extractvalue {ptr,i64} %%t%d, 0\n", b, a);
+    fprintf(f, "  %%t%d = extractvalue {ptr,i64} %%t%d, 1\n", r, a);
+    fprintf(f,
+            "  call void @rh_append_view(ptr %%p%d, ptr %%t%d, i64 %%t%d, i64 "
+            "%zu, i32 %d)\n",
+            i->a, b, r, t->elem->size, i->loc.line);
     break;
   case I_SLICE: {
     char *data, *length;
@@ -566,11 +587,35 @@ static void instruction(Output *o, Instr *i) {
     }
     a = load(o, i->b);
     b = load(o, i->other);
+    int start_ok = ++o->tmp, count_ok = ++o->tmp, remaining = ++o->tmp;
+    int start_positive = ++o->tmp, count_positive = ++o->tmp;
+    int valid_start = ++o->tmp, valid_count = ++o->tmp, valid = ++o->tmp;
+    fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %s\n", start_ok, a, length);
+    fprintf(f, "  %%t%d = sub i64 %s, %%t%d\n", remaining, length, a);
+    fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %%t%d\n", count_ok, b, remaining);
+    fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", start_positive, a);
+    fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", count_positive, b);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid_start, start_ok,
+            start_positive);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid_count, count_ok,
+            count_positive);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid, valid_start,
+            valid_count);
     fprintf(f,
-            "  call void @rh_make_slice(ptr %%p%d, ptr %s, i64 %s, i64 %%t%d, "
-            "i64 %%t%d, i64 %zu, i32 %d)\n",
-            i->dst, data, length, a, b,
-            t->kind == T_STRING ? (size_t)1 : t->elem->size, i->loc.line);
+            "  br i1 %%t%d, label %%slice_ok_%d, label %%slice_bad_%d, !prof "
+            "!0\nslice_bad_%d:\n",
+            valid, valid, valid, valid);
+    fprintf(f,
+            "  call void @rh_slice_fail(i32 %d)\n  unreachable\nslice_ok_%d:\n",
+            i->loc.line, valid);
+    int ptr = ++o->tmp, first = ++o->tmp, view = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %%t%d\n", ptr,
+            t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, a);
+    fprintf(f, "  %%t%d = insertvalue {ptr,i64} undef, ptr %%t%d, 0\n", first,
+            ptr);
+    fprintf(f, "  %%t%d = insertvalue {ptr,i64} %%t%d, i64 %%t%d, 1\n", view,
+            first, b);
+    save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", view));
     break;
   }
   case I_LENGTH:
@@ -795,9 +840,9 @@ static void instruction(Output *o, Instr *i) {
                 "!0\ncast_bad_%d:\n",
                 valid, valid, valid, valid);
         fprintf(f,
-                "  call void @rh_check_float_cast(double %%t%d, i32 %d, i32 "
-                "%d, i32 %d)\n  unreachable\ncast_ok_%d:\n",
-                checked, dst_bits, uns, i->loc.line, valid);
+                "  call void @rh_float_cast_fail(i32 %d)\n  "
+                "unreachable\ncast_ok_%d:\n",
+                i->loc.line, valid);
         op = kind_unsigned(t->kind) ? "fptoui" : "fptosi";
       } else
         op = src_bits > dst_bits ? "fptrunc" : "fpext";
@@ -881,10 +926,20 @@ static void instruction(Output *o, Instr *i) {
     }
     fputs("  call void @rh_print_newline()\n", f);
     break;
-  case I_ASSERT:
+  case I_ASSERT: {
     a = integer64(o, (int)(intptr_t)i->args.v[0] - 1);
-    fprintf(f, "  call void @rh_assert(i64 %%t%d, i32 %d)\n", a, i->loc.line);
+    int valid = ++o->tmp;
+    fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", valid, a);
+    fprintf(f,
+            "  br i1 %%t%d, label %%assert_ok_%d, label %%assert_bad_%d, !prof "
+            "!0\nassert_bad_%d:\n",
+            valid, valid, valid, valid);
+    fprintf(
+        f,
+        "  call void @rh_assert_fail(i32 %d)\n  unreachable\nassert_ok_%d:\n",
+        i->loc.line, valid);
     break;
+  }
   case I_LABEL:
     fprintf(f, "block%d:\n", i->label);
     break;
@@ -950,62 +1005,22 @@ void emit_llvm(Program *p, const char *path) {
           "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = internal "
           "global [%d x %%RhStack] zeroinitializer\n",
           p->stack_count);
-  fputs("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n"
-        "define internal void @rh_append_literal(ptr %a, ptr %src, i64 %n, i32 "
-        "%line) alwaysinline {\n"
-        "entry:\n"
-        "  %data = load ptr, ptr %a\n"
-        "  %lenp = getelementptr {ptr,i64,ptr}, ptr %a, i32 0, i32 1\n"
-        "  %len = load i64, ptr %lenp\n"
-        "  %stackp = getelementptr {ptr,i64,ptr}, ptr %a, i32 0, i32 2\n"
-        "  %stack = load ptr, ptr %stackp\n"
-        "  %limitp = getelementptr %RhStack, ptr %stack, i32 0, i32 2\n"
-        "  %limit = load ptr, ptr %limitp\n"
-        "  %li = ptrtoint ptr %limit to i64\n"
-        "  %di = ptrtoint ptr %data to i64\n"
-        "  %bytes = sub i64 %li, %di\n"
-        "  %remaining = sub i64 %bytes, %len\n"
-        "  %ok = icmp uge i64 %remaining, %n\n"
-        "  br i1 %ok, label %copy, label %bad, !prof !0\n"
-        "bad:\n  call void @rh_stack_overflow(i32 %line)\n  unreachable\n"
-        "copy:\n"
-        "  %dst = getelementptr i8, ptr %data, i64 %len\n"
-        "  call void @llvm.memcpy.p0.p0.i64(ptr %dst, ptr %src, i64 %n, i1 "
-        "false)\n"
-        "  %newlen = add i64 %len, %n\n"
-        "  %end = getelementptr i8, ptr %data, i64 %newlen\n"
-        "  %topp = getelementptr %RhStack, ptr %stack, i32 0, i32 1\n"
-        "  %top = load ptr, ptr %topp\n"
-        "  %greater = icmp ugt ptr %end, %top\n"
-        "  %high = select i1 %greater, ptr %end, ptr %top\n"
-        "  store ptr %high, ptr %topp\n"
-        "  store i64 %newlen, ptr %lenp\n"
-        "  ret void\n}\n",
+  emit_llvm_builtins(f);
+  fputs("declare void @rh_runtime_init(ptr, i64)\n"
+        "declare void @rh_runtime_shutdown()\n"
+        "declare void @rh_print_f64(double)\n"
+        "declare void @rh_print_bool(i64)\n"
+        "declare void @rh_print_string(ptr, i64)\n"
+        "declare void @rh_print_newline()\n"
+        "declare void @rh_print_space()\n"
+        "declare void @rh_print_integer(ptr, i32, i32)\n"
+        "declare void @rh_division_fail(i32, i32) cold noreturn\n",
         f);
-  fputs("declare void @rh_runtime_init(ptr, i64)\ndeclare void "
-        "@rh_runtime_shutdown()\n"
-        "declare void @rh_stack_overflow(i32) noreturn\n"
-        "declare void @rh_index_fail(i32) cold noreturn\n"
-        "declare void @rh_assert(i64, i32)\ndeclare "
-        "void @rh_print_i64(i64)\ndeclare void @rh_print_f64(double)\ndeclare "
-        "void @rh_print_bool(i64)\ndeclare void @rh_print_string(ptr, "
-        "i64)\ndeclare void @rh_print_newline()\ndeclare void "
-        "@rh_print_space()\n",
-        f);
-  fputs("declare void @rh_print_integer(ptr, i32, i32)\n"
-        "declare void @rh_division_fail(i32, i32) cold noreturn\n"
-        "declare float @rh_f8_decode(i8)\ndeclare i8 @rh_f8_encode(float)\n",
-        f);
-  fputs("declare i8 @rh_f8_encode_f64(double)\n"
-        "declare void @rh_check_float_cast(double, i32, i32, i32)\n",
-        f);
-  fputs("declare void @rh_array_truncate(ptr, i64, i32)\n"
-        "declare void @rh_union_tag(i32, i32, i32)\n"
-        "declare void @rh_array_append(ptr, ptr, i64, i32)\n"
-        "declare void @rh_make_slice(ptr, ptr, i64, i64, i64, i64, i32)\n"
-        "declare void @rh_array_pop(ptr, ptr, i64, i32)\n"
-        "declare void @rh_array_clear(ptr)\n",
-        f);
+  const char *failures[] = {"stack_overflow", "index_fail",      "pop_fail",
+                            "union_fail",     "float_cast_fail", "slice_fail",
+                            "truncate_fail",  "assert_fail"};
+  for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++)
+    fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     fprintf(f, "\n; %s%s%s\ndefine internal %s @%s(",

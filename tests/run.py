@@ -169,24 +169,41 @@ def high_water(name, text, expected, output, append_only=False):
     wrapper = work / (name + "_runtime.c")
     expected_c = ",".join(map(str, expected))
     wrapper.write_text(f'''
-#define rh_assert rh_base_assert
+#define rh_print_integer rh_base_print_integer
+#define rh_print_newline rh_base_print_newline
 #define rh_runtime_shutdown rh_base_shutdown
 #include "{(repo / 'runtime/rhat_runtime.c').as_posix()}"
-#undef rh_assert
+#undef rh_print_integer
+#undef rh_print_newline
 #undef rh_runtime_shutdown
 static const uint64_t expected[] = {{{expected_c}}};
 static unsigned step;
-void rh_assert(int64_t condition, int32_t line) {{
-  rh_base_assert(condition, line);
+static int skip_newline;
+void rh_print_integer(const void *value, int32_t bits, int32_t uns) {{
+  int64_t marker=0;
+  if (bits==64) memcpy(&marker,value,8);
+  if (bits!=64 || uns || marker!=INT64_C(1234567890123456789)) {{
+    rh_base_print_integer(value,bits,uns);
+    return;
+  }}
   if (step >= sizeof(expected)/sizeof(expected[0]) ||
       (uint64_t)(rh_stacks[0].top-rh_stacks[0].base) != expected[step++])
-    rh_panic("generated code lost retained stack top", line);
+    rh_panic("generated code lost retained stack top", 0);
+  skip_newline=1;
+}}
+void rh_print_newline(void) {{
+  if (skip_newline) skip_newline=0;
+  else rh_base_print_newline();
 }}
 void rh_runtime_shutdown(void) {{
   if (step != sizeof(expected)/sizeof(expected[0])) rh_panic("missing top observation",0);
   rh_base_shutdown();
 }}
 ''', encoding="utf-8")
+    # Assertions no longer call the runtime on success. Observe a deliberate
+    # print checkpoint instead, while keeping the assertion itself meaningful.
+    text = re.sub(r"assert\(([^()]*)\)",
+                  r"assert(\1); { let^ top_marker:i64^=1234567890123456789; print(top_marker) }", text)
     path = source(name, text)
     for opt in ("-O0", "-O2"):
         exe = work / (name + opt[1:] + ".exe")
@@ -198,7 +215,9 @@ void rh_runtime_shutdown(void) {{
         assert "top=append" in typed
         if append_only:
             assert "top=retained" not in typed
-            assert "udiv i64" not in pathlib.Path(str(exe)+".ll").read_text()
+            llvm = pathlib.Path(str(exe)+".ll").read_text()
+            bodies = re.findall(r"(?ms)^define internal [^\n]* @rh_fn_\d+\(.*?^}", llvm)
+            assert bodies and all("udiv i64" not in body for body in bodies)
         else:
             assert "top=retained" in typed
     passed += 1
@@ -539,7 +558,7 @@ negative("append_borrowed_references", "let^ bad=p^ a:&(&i32^)[>..], b:(&i32^)[:
 def direct_pop_ir(ir, ll):
     assert "array.pop" in ir and "pop_ok_" in ll
     assert re.search(r"load i64, ptr %t\d+, !tbaa !5", ll)
-    calls = [line for line in ll.splitlines() if "call void @rh_array_pop(" in line]
+    calls = [line for line in ll.splitlines() if "call void @rh_pop_fail(" in line]
     assert calls
     for call in calls:
         assert call + "\n  unreachable\npop_ok_" in ll
@@ -1091,7 +1110,7 @@ negative("f128_pending", "let^ n:f128^=1.0", "f128^ is pending")
 # Independent nearest-neighbour FP8 oracle. Compare the software codec and
 # all four operations over every pair of the 256 encodings, including zeros,
 # subnormals and NaNs. The oracle enumerates values instead of using the
-# runtime's exponent/shift/guard-bit algorithm.
+# emitted IR's exponent/shift/guard-bit algorithm.
 def fp8_value(code):
     exponent, fraction = (code >> 3) & 15, code & 7
     value = (fraction / 512 if exponent == 0 else
@@ -1178,9 +1197,17 @@ int main(void) {
     return 0;
 }
 """, encoding="utf-8")
+fp8_source = source("fp8_codec_module", "print(f8^(1.5))")
+fp8_module = work / "fp8_codec_module.ll"
+run([compiler,"emit",str(fp8_source),"-o",str(fp8_module)])
+codec = fp8_module.read_text()
+functions = re.findall(r"(?ms)^define internal (?:float|i8) @rh_f8_.*?^}", codec)
+assert len(functions)==3
+fp8_external = work / "fp8_codec_external.ll"
+fp8_external.write_text("\n".join(f.replace("define internal ","define ",1) for f in functions)+"\n")
 for opt in ("-O0", "-O2"):
     exe = work / ("fp8_exhaustive_" + opt[1:] + ".exe")
-    run([args.clang, "-std=c11", opt, str(c_path), str(repo / "runtime/rhat_runtime.c"), "-o", str(exe)])
+    run([args.clang, "-std=c11", opt, str(c_path), str(fp8_external), "-Wno-override-module", "-o", str(exe)])
     run([str(exe)])
 passed += 1
 print("PASS fp8_exhaustive_262144_operations", flush=True)
@@ -1871,6 +1898,12 @@ var^ n:i32^=0
 print(i64^(value(&n)),n)
 ''', '1 1\n')
 
+from ir_builtins import exercise as exercise_builtins
+builtin_checks = exercise_builtins(repo, work, compiler, args.clang, source, run,
+                                  positive, runtime_failure, high_water)
+# The callbacks above increment passed themselves; do not load its old value
+# through += before those callbacks have run.
+passed += builtin_checks
 from ranges import exercise as exercise_ranges
 passed += exercise_ranges(run, source, compiler, args.clang, work, repo)
 print(f"{passed} integration cases passed (positive/runtime cases at -O0 and -O2)")

@@ -254,6 +254,7 @@ void analyze_array_growth(Program *p);
 void version_range_loops(Program *p);
 void report_stacks(Program *p);
 void emit_llvm(Program *p, const char *path);
+void emit_llvm_builtins(FILE *f);
 void dump_ir(Program *p, const char *path);
 char *llvm_type(Type *t);
 #endif
