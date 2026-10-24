@@ -10,6 +10,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'bench'))
 from artifacts import overwritten_rhat_rows
 from run_workloads import WORKLOADS
+from check_codegen import verify as verify_codegen
 
 
 def digest(p):
@@ -31,6 +32,7 @@ def main():
     assert a['environment']['compiler_sha256']==digest(ROOT/'build/Release/rhat.exe')
     assert a['environment']['runtime_sha256']==digest(ROOT/'runtime/rhat_runtime.c')
     assert a['codegen_model']==b['codegen_model']
+    assert a['codegen_model']=='typed_storage_inline_pop'
     rows=a['rows']+[dict(r,workload='bintrees',n=r['depth']) for r in b['rows']]
     assert len(rows)==378
     for data in (a,b):
@@ -77,10 +79,12 @@ def main():
                             rhat_ms=rh['best_ms'],cpp_ms=cpp['best_ms'],rust_ms=rust['best_ms'],
                             cpp_label=cpp['label'],rust_label=rust['label'],cpp_ratio=cr,rust_ratio=rr,
                             passed=min(cr,rr)>=.8))
+    codegen=verify_codegen(a,ROOT)
     passed=all(r['passed'] for r in summary)
     verdict=dict(objective=frozen['objective'],threshold=.8,gate_passed=passed,
                  verified_condition_count=48,initially_unmet_count=len(initial),
                  compiler_sha256=a['environment']['compiler_sha256'],runtime_sha256=a['environment']['runtime_sha256'],
+                 codegen_evidence=dict(path=codegen,sha256=digest(ROOT/codegen),descriptor_loads_per_remove=dict(length=1,data=1)),
                  measured_dates=[a['started_utc'],b['started_utc']],
                  raw_report_hashes={str(p.relative_to(ROOT)):digest(p) for p in (HERE/'current/workloads_results.json',HERE/'current_bintrees/results.json')},rows=summary)
     (HERE/'verification.json').write_text(json.dumps(verdict,indent=2)+'\n')

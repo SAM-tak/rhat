@@ -536,6 +536,15 @@ negative("append_pure_borrow", 'let^ bad=f^ a:&u8^[>..] { a.append("hello") }', 
 negative("append_inner_owner", "var^ a:(&i32^)[>..]=[]; { var^ x:i32^=1; var^ b:(&i32^)[>..]=[&x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
 negative("append_borrowed_references", "let^ bad=p^ a:&(&i32^)[>..], b:(&i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
 
+def direct_pop_ir(ir, ll):
+    assert "array.pop" in ir and "pop_ok_" in ll
+    assert re.search(r"load i64, ptr %t\d+, !tbaa !5", ll)
+    calls = [line for line in ll.splitlines() if "call void @rh_array_pop(" in line]
+    assert calls
+    for call in calls:
+        assert call + "\n  unreachable\npop_ok_" in ll
+
+
 positive("pop_clear_slot_reuse", """
 def^ Item { self^{ key:i32^, val:i64^ } }
 let^ take=p^ a:&Item[>..] { return^ a.pop() }
@@ -551,7 +560,30 @@ a.push(Item{key=3,val=77})
 print(held.key,held.val,last.key,last.val)
 let^ same=a.pop()
 print(a.len,same.key,held.val)
-""", "1 2 99\n0 1 42\n3 77 2 99\n0 3 77\n")
+""", "1 2 99\n0 1 42\n3 77 2 99\n0 3 77\n", direct_pop_ir)
+positive("pop_copies_before_overlapping_assignment", """
+def^ Pair { self^{ x:i64^, y:i64^ } }
+var^ a:Pair[>..]=[Pair{x=1,y=2},Pair{x=3,y=4}]
+let^ held=&a[0]
+let^ tail=a.slice(1,1)
+a[0]:=a.pop()
+print(a.len,held.x,held.y,tail[0].x,tail[0].y)
+a.push(Pair{x=5,y=6})
+print(tail[0].x,tail[0].y)
+""", "1 3 4 3 4\n5 6\n", direct_pop_ir)
+positive("typed_storage_keeps_descriptor_aliases", """
+def^ Box { self^{ tag:i64^=7, items:i32^[>..] } }
+let^ mutate=p^ a:&i32^[>..], b:&i32^[>..] {
+    let^ old=a.len
+    print(b.pop(),a.len,old)
+    a.push(42)
+    print(b.len,b[0],b[1])
+}
+var^ box=Box{items=[10,20]}
+let^ held=&box.items[1]
+mutate(&box.items,&box.items)
+print(box.tag,box.items.len,*held)
+""", "20 1 2\n2 10 42\n7 2 42\n", direct_pop_ir)
 positive("push_reuses_aliased_slot", """
 var^ a:i32^[>..]=[42]
 let^ held=&a[0]

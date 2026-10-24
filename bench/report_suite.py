@@ -73,13 +73,15 @@ def write_suite():
               'The failure paths retain their runtime diagnostics; checks are not disabled.','',
               'Before these optimizations: [static-data-stack reference](pre_array_fastpaths/README.md).',
               'Same-session before/after check: [paired array comparison](array_codegen_comparison/results.md).','']
-             if additional.get('codegen_model') in ('inline_array_and_arithmetic_checks', 'direct_scalar_checked_range_loops', 'small_values_inline_guards_literals') else []),
+             if additional.get('codegen_model') in ('inline_array_and_arithmetic_checks', 'direct_scalar_checked_range_loops', 'small_values_inline_guards_literals', 'typed_storage_inline_pop') else []),
            *(['Internal functions pass scalar/reference values directly.',
               'Canonical i64 loops use range guards, stable pointer snapshots and a checked fallback.','']
-             if additional.get('codegen_model') in ('direct_scalar_checked_range_loops','small_values_inline_guards_literals') else []),
+             if additional.get('codegen_model') in ('direct_scalar_checked_range_loops','small_values_inline_guards_literals','typed_storage_inline_pop') else []),
            *(['Non-owning values up to 16 bytes pass directly; union and float-to-integer guards are inline.',
               'Literal byte appends use checked constant copies; arbitrary overlapping appends keep memmove semantics.','']
-             if additional.get('codegen_model')=='small_values_inline_guards_literals' else []),
+             if additional.get('codegen_model') in ('small_values_inline_guards_literals','typed_storage_inline_pop') else []),
+          *(['pop の通常経路も LLVM IR に展開。非所有値と配列管理情報の型による別領域性を LLVM に伝える。','']
+             if additional.get('codegen_model')=='typed_storage_inline_pop' else []),
            f"Additional workloads: {additional['started_utc']} UTC; bintrees: {binary['started_utc']} UTC.",'',
            'All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.',
            'Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.',

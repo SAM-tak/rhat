@@ -60,14 +60,46 @@ static char *stack_for(Output *o, int id) {
     return "%result_stack";
   return fmt("%%s%d", owner);
 }
+/* A non-owning value cannot contain an owning array descriptor. Array
+ * elements are non-owning; references cannot expose descriptor fields or
+ * reinterpret storage. Keep aggregates containing owned fields unclassified
+ * so their whole-value copies may alias either category. */
+static const char *memory_tag(Type *t) {
+  return t->kind == T_GROW ? ", !tbaa !5" : !t->owned ? ", !tbaa !4" : "";
+}
 static int load(Output *o, int n) {
   int t = ++o->tmp;
-  fprintf(o->f, "  %%t%d = load %s, ptr %%p%d\n", t, llvm_type(slot_type(o, n)),
-          n);
+  Type *type = slot_type(o, n);
+  if (type->kind == T_GROW) {
+    /* SROA drops TBAA on aggregate loads. Scalar descriptor accesses retain
+     * the distinction from element stores through optimizer decomposition. */
+    int data = ++o->tmp, lenaddr = ++o->tmp, len = ++o->tmp;
+    int stackaddr = ++o->tmp, stack = ++o->tmp;
+    int first = ++o->tmp, second = ++o->tmp;
+    const char *ll = llvm_type(type);
+    fprintf(o->f, "  %%t%d = load ptr, ptr %%p%d, !tbaa !5\n", data, n);
+    fprintf(o->f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n",
+            lenaddr, ll, n);
+    fprintf(o->f, "  %%t%d = load i64, ptr %%t%d, !tbaa !5\n", len, lenaddr);
+    fprintf(o->f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
+            stackaddr, ll, n);
+    fprintf(o->f, "  %%t%d = load ptr, ptr %%t%d, !tbaa !5\n", stack,
+            stackaddr);
+    fprintf(o->f, "  %%t%d = insertvalue %s undef, ptr %%t%d, 0\n", first, ll,
+            data);
+    fprintf(o->f, "  %%t%d = insertvalue %s %%t%d, i64 %%t%d, 1\n", second, ll,
+            first, len);
+    fprintf(o->f, "  %%t%d = insertvalue %s %%t%d, ptr %%t%d, 2\n", t, ll,
+            second, stack);
+    return t;
+  }
+  fprintf(o->f, "  %%t%d = load %s, ptr %%p%d%s\n", t, llvm_type(type), n,
+          memory_tag(type));
   return t;
 }
 static void save(Output *o, int dst, Type *t, const char *operand) {
-  fprintf(o->f, "  store %s %s, ptr %%p%d\n", llvm_type(t), operand, dst);
+  fprintf(o->f, "  store %s %s, ptr %%p%d%s\n", llvm_type(t), operand, dst,
+          memory_tag(t));
 }
 static int integer64(Output *o, int id) {
   Type *t = slot_type(o, id);
@@ -262,7 +294,7 @@ static void instruction(Output *o, Instr *i) {
           r = ++o->tmp;
           fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n", b,
                   llvm_type(t), i->a);
-          fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", r, b);
+          fprintf(f, "  %%t%d = load i64, ptr %%t%d%s\n", r, b, memory_tag(t));
           length = fmt("%%t%d", r);
         }
         const char *compare_type = bits > 64 ? "i128" : "i64";
@@ -303,7 +335,7 @@ static void instruction(Output *o, Instr *i) {
         r = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", b,
                 llvm_type(t), i->a);
-        fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", r, b);
+        fprintf(f, "  %%t%d = load ptr, ptr %%t%d%s\n", r, b, memory_tag(t));
         fprintf(f, "  %%p%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", i->dst,
                 t->kind == T_STRING ? "i8" : llvm_type(t->elem), r, a);
       }
@@ -409,11 +441,36 @@ static void instruction(Output *o, Instr *i) {
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", ptr));
     break;
   }
-  case I_POP:
-    fprintf(
-        f, "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
-        i->a, i->dst, t->elem->size, i->loc.line);
+  case I_POP: {
+    int base = load(o, i->a), data = ++o->tmp, len = ++o->tmp;
+    int valid = ++o->tmp, last = ++o->tmp, element = ++o->tmp;
+    int value = ++o->tmp, lenaddr = ++o->tmp;
+    fprintf(f, "  %%t%d = extractvalue %s %%t%d, 0\n", data, llvm_type(t),
+            base);
+    fprintf(f, "  %%t%d = extractvalue %s %%t%d, 1\n", len, llvm_type(t), base);
+    fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", valid, len);
+    fprintf(f,
+            "  br i1 %%t%d, label %%pop_ok_%d, label %%pop_bad_%d, !prof "
+            "!0\npop_bad_%d:\n",
+            valid, valid, valid, valid);
+    fprintf(f,
+            "  call void @rh_array_pop(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n"
+            "  unreachable\npop_ok_%d:\n",
+            i->a, i->dst, t->elem->size, i->loc.line, valid);
+    fprintf(f, "  %%t%d = sub i64 %%t%d, 1\n", last, len);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", element,
+            llvm_type(t->elem), data, last);
+    fprintf(f, "  %%t%d = load %s, ptr %%t%d\n", value, llvm_type(t->elem),
+            element);
+    save(o, i->dst, t->elem, fmt("%%t%d", value));
+    fprintf(f,
+            "  %%t%d = getelementptr {ptr,i64,ptr}, ptr %%p%d, i32 0, i32 1\n",
+            lenaddr, i->a);
+    /* Shrinking changes only logical length. References keep the physical
+     * storage alive, and a later push must retain its high-water mark. */
+    fprintf(f, "  store i64 %%t%d, ptr %%t%d\n", last, lenaddr);
     break;
+  }
   case I_CLEAR:
     a = ++o->tmp;
     fprintf(f,
@@ -524,8 +581,8 @@ static void instruction(Output *o, Instr *i) {
       b = ++o->tmp;
       fprintf(f,
               "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 1\n  %%t%d = "
-              "load i64, ptr %%t%d\n",
-              a, llvm_type(t), i->a, b, a);
+              "load i64, ptr %%t%d%s\n",
+              a, llvm_type(t), i->a, b, a, memory_tag(t));
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", b));
     }
     break;
@@ -1000,6 +1057,12 @@ void emit_llvm(Program *p, const char *path) {
           "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
           p->stack_count);
   fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
+  fputs("!1 = !{!\"Rhat storage\"}\n"
+        "!2 = !{!\"non-owning value\", !1, i64 0}\n"
+        "!3 = !{!\"owning array descriptor\", !1, i64 0}\n"
+        "!4 = !{!2, !2, i64 0}\n"
+        "!5 = !{!3, !3, i64 0}\n",
+        f);
   if (fclose(f))
     fail((Loc){path, 1, 1}, "failed to write LLVM IR");
 }
