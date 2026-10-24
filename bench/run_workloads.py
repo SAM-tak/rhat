@@ -125,8 +125,10 @@ WORKLOADS = {
     "graph": dict(sizes=(100_000, 500_000, 2_000_000), smoke=64, parameter="vertices",
                   cpp=("nested vectors", "CSR", "linked index arena"),
                   rust=("graph_nested", "graph_csr", "graph_arena"),
-                  rhat_label="R^ linked u32-index pool (LLVM/Clang)",
-                  representation="R^ uses 8-byte edges (i32 target, u32 next index), including one list-head slot per vertex. "
+                  rhat_label="R^ CSR / checked i32 arrays (LLVM/Clang)",
+                  representation="R^ uses the original two-pass CSR count/prefix/fill representation, matching C++ VARIANT 1 and Rust CSR. "
+                  "Source and destination arrays, start offsets, fill cursors and contiguous edges retain all construction cost. "
+                  "The previous linked index implementation is preserved in rhat/variants/graph_linked.rh. "
                   "Its queue overwrites an initialized prefix and pushes only when its high-water length grows; "
                   "a separate tail resets between the four BFS sources. There is no unbounded append across sources. "
                   "This adds an enqueue branch compared with Vec::clear. Edges, seed sequence, distances and checksums are unchanged."),
@@ -520,9 +522,11 @@ def report(data, out):
              *( ["Executable paths are unique per language; every run verifies its build-time SHA-256 before and after execution.", ""] if data.get("executable_hashes") else []),
              *(["Index bounds and address calculations are emitted inline, including full-width 128-bit checks.",
                 "Push checks remaining bytes without division; proven append-only paths update the top directly.", ""]
-               if data.get("codegen_model") in ("inline_array_and_arithmetic_checks", "direct_scalar_checked_range_loops") else []),
+               if data.get("codegen_model") in ("inline_array_and_arithmetic_checks", "direct_scalar_checked_range_loops", "small_values_inline_guards_literals") else []),
              *(["Internal functions pass scalars/references directly; canonical i64 loops use checked range guards and a checked fallback.", ""]
-               if data.get("codegen_model") == "direct_scalar_checked_range_loops" else []),
+               if data.get("codegen_model") in ("direct_scalar_checked_range_loops", "small_values_inline_guards_literals") else []),
+             *(["Non-owning values up to 16 bytes pass directly; union/float guards and checked literal appends are inline.", ""]
+               if data.get("codegen_model") == "small_values_inline_guards_literals" else []),
              "## Environment", "", "| Item | Value |", "|---|---|"]
     for key, value in data["environment"].items():
         text = str(value).replace("|", "/").replace("\n", "; ")
@@ -602,7 +606,7 @@ def main():
         else:
             env[key] = banner.splitlines()[0]
     binaries = Executables()
-    data = dict(codegen_model="direct_scalar_checked_range_loops", memory_model="static_data_stacks_fault_commit", stack_reports={}, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    data = dict(codegen_model="small_values_inline_guards_literals", memory_model="static_data_stacks_fault_commit", stack_reports={}, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 environment=env, workloads=args.workloads, warmups=2, reps=args.reps,
                 builds=[], rows=[], controls=[], source_hashes={},
                 representations={name: WORKLOADS[name].get("representation", "") for name in args.workloads},

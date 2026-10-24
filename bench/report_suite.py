@@ -1,14 +1,25 @@
 """Summarize the complete, artifact-verified current 16-workload suite."""
 import json
 import pathlib
+import hashlib
 
 HERE=pathlib.Path(__file__).resolve().parent
 NAMES=('sum','push','strlist','records','tree','interp','graph','words','particles','sexp','lru','scene','calc','bintrees','respond','blur')
 
 
 def write_suite():
-    additional=json.loads((HERE/'current/workloads_results.json').read_text(encoding='utf-8'))
-    binary=json.loads((HERE/'current_bintrees/results.json').read_text(encoding='utf-8'))
+    complete=None
+    all_verified=HERE/'all08/verification.json'
+    if all_verified.exists():
+        candidate=json.loads(all_verified.read_text(encoding='utf-8'))
+        if candidate.get('gate_passed'):
+            for name,expected in candidate['raw_report_hashes'].items():
+                if hashlib.sha256((HERE.parent/name).read_bytes()).hexdigest()!=expected:
+                    raise ValueError('full refresh raw data changed')
+            complete=candidate
+    base=HERE/'all08' if complete else HERE
+    additional=json.loads((base/'current/workloads_results.json').read_text(encoding='utf-8'))
+    binary=json.loads((base/'current_bintrees/results.json').read_text(encoding='utf-8'))
     for key in ('cpu','os','compiler_sha256','runtime_sha256','clang','msvc','rustc'):
         if additional['environment'][key] != binary['environment'][key]:
             raise ValueError(f'current suite environment mismatch: {key}')
@@ -20,6 +31,20 @@ def write_suite():
         raise ValueError('current suite must contain all 15 additional workloads')
     groups={name:[r for r in additional['rows'] if r['workload']==name] for name in NAMES if name!='bintrees'}
     groups['bintrees']=[dict(r,n=r['depth']) for r in binary['rows']]
+    refresh=None
+    verified=HERE/'target08/verification.json'
+    if not complete and verified.exists():
+        candidate=json.loads(verified.read_text(encoding='utf-8'))
+        if candidate.get('gate_passed'):
+            for name,expected in candidate['raw_report_hashes'].items():
+                if hashlib.sha256((HERE.parent/name).read_bytes()).hexdigest()!=expected:
+                    raise ValueError('target refresh raw data changed')
+            fresh=json.loads((HERE/'target08/current/workloads_results.json').read_text(encoding='utf-8'))
+            fresh_trees=json.loads((HERE/'target08/current_bintrees/results.json').read_text(encoding='utf-8'))
+            for name in ('graph','blur','lru'):
+                groups[name]=[r for r in fresh['rows'] if r['workload']==name]
+            groups['bintrees']=[dict(r,n=r['depth']) for r in fresh_trees['rows']]
+            refresh=candidate
     for name,rows in groups.items():
         for size in ('small','medium','large'):
             selected=[r for r in rows if r['size']==size]
@@ -48,10 +73,13 @@ def write_suite():
               'The failure paths retain their runtime diagnostics; checks are not disabled.','',
               'Before these optimizations: [static-data-stack reference](pre_array_fastpaths/README.md).',
               'Same-session before/after check: [paired array comparison](array_codegen_comparison/results.md).','']
-             if additional.get('codegen_model') in ('inline_array_and_arithmetic_checks', 'direct_scalar_checked_range_loops') else []),
+             if additional.get('codegen_model') in ('inline_array_and_arithmetic_checks', 'direct_scalar_checked_range_loops', 'small_values_inline_guards_literals') else []),
            *(['Internal functions pass scalar/reference values directly.',
               'Canonical i64 loops use range guards, stable pointer snapshots and a checked fallback.','']
-             if additional.get('codegen_model') == 'direct_scalar_checked_range_loops' else []),
+             if additional.get('codegen_model') in ('direct_scalar_checked_range_loops','small_values_inline_guards_literals') else []),
+           *(['Non-owning values up to 16 bytes pass directly; union and float-to-integer guards are inline.',
+              'Literal byte appends use checked constant copies; arbitrary overlapping appends keep memmove semantics.','']
+             if additional.get('codegen_model')=='small_values_inline_guards_literals' else []),
            f"Additional workloads: {additional['started_utc']} UTC; bintrees: {binary['started_utc']} UTC.",'',
            'All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.',
            'Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.',
@@ -68,12 +96,27 @@ def write_suite():
            '| Workload | Size / parameter | R^ ms | Best C++ ms | Best Rust ms | C++ / R^ | Rust / R^ | R^ peak MiB |',
            '|---|---|---:|---:|---:|---:|---:|---:|']
     focused=HERE/'abi_ranges/results.json'
-    if focused.exists():
+    if not complete and focused.exists():
         newer=json.loads(focused.read_text(encoding='utf-8'))
         if len(newer.get('rows',[]))==42 and newer['compiler_sha256'] != env['compiler_sha256']:
             lines[4:4]=['**Subsequent internal-call and checked-loop optimizations:** [focused paired measurements](abi_ranges/results.md).',
                         'The complete matrix below retains the preceding full-suite session; the focused report labels reused C++/Rust reference timings explicitly.',
                         'Implementation limits and the sum control repeat are in [the validation notes](abi_ranges/README.md).','']
+    if refresh:
+        lines=[line.replace('All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.',
+                            'The table combines the fresh target refresh with the preceding full-suite reference for the other 12 workloads. Goose is not run.')
+               .replace('All rows below were measured with the same current R^ compiler/runtime. Goose is not run.',
+                        'The table combines the fresh target refresh with the preceding full-suite reference for the other 12 workloads. Goose is not run.')
+               for line in lines]
+        lines[4:4]=['**Fresh threshold verification:** [graph, blur, lru and bintrees](target08/results.md) were rebuilt and remeasured, including every original C++/Rust variant.',
+                    'Those four workloads use the fresh rows below; the other 12 retain the dated full-suite reference above.',
+                    'Graph now uses CSR, including all construction cost; its previous linked-index port is retained in rhat/variants/graph_linked.rh.',
+                    f"Refresh dates: {'; '.join(refresh['measured_dates'])}; refresh compiler SHA-256: `{refresh['compiler_sha256']}`.",'']
+    if complete:
+        lines[4:4]=['**Fresh full verification: all 48 conditions meet 0.8x against both fastest C++ and fastest Rust.** [Gate and raw evidence](all08/results.md).',
+                    'All original comparison variants were rebuilt and remeasured. No earlier timings are reused in this matrix.','']
+        lines=[line.replace('(current/workloads_results.md)','(all08/current/workloads_results.md)')
+                   .replace('(current_bintrees/results.md)','(all08/current_bintrees/results.md)') for line in lines]
     for name in NAMES:
         for size in ('small','medium','large'):
             selected=[r for r in groups[name] if r['size']==size]

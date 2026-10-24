@@ -32,16 +32,16 @@ This retains stable addresses and commits physical pages only as needed.
 | records | N=500K / 4M / 16M | **Ported (fixed mode):** native nominal Event union, 24-byte records, 15-byte inline text; four alternatives and four scans as records_fixed.goose; variable-mode ADT remains future work |
 | tree | depth=16 / 20 / 24 | **Ported:** 12-byte nodes with u32 child indices, zero sentinel excluded from count, eight full traversals; relative references are not claimed |
 | interp | depth=16 / 20 / 24 | **Ported:** native nominal Expr union, 12-byte u32-index arena, original tree/RNG and eight pass-dependent evaluations; variable-size nodes and relative references are not claimed |
-| graph | V=100K / 500K / 2M | **Ported:** 8-byte linked index pool, degree eight, four BFS sources; queue overwrites initialized storage with a separate active tail; no check-free vertex types or relative-reference guarantees |
+| graph | V=100K / 500K / 2M | **Ported:** two-pass CSR matching C++ VARIANT 1 / Rust CSR, including source/destination arrays, counts, prefix sums and fill; degree eight, four BFS sources and queue reuse unchanged. Previous 8-byte linked pool retained in rhat/variants/graph_linked.rh |
 | words | N=500K / 4M / 16M | **Ported:** 21-byte vocabulary words, copied packed word list, FNV open table with 24-byte borrowed-slice key/count slots; original text/skew/RNG and all checksums; built-in dictionary remains future work |
 | particles | N=100K / 1M / 4M | **Ported:** scalar AoS, six f32 fields (24 bytes), 200 updates; no vector arithmetic substitution |
 | sexp | N=20K / 100K / 300K | **Ported:** 24-byte nominal union nodes with u32 links, separate owned copied symbol-byte region and offset/length fields; real EOF/unclosed error propagation via a ParseResult union; original parse and four walks; explicit results replace nonlocal return |
 | lru | N=2M / 8M / 32M | **Ported:** 16-byte nodes, bounded index arena/free list, open-addressed table with backward-shift deletion; original eviction, explicit removal and six checksums; no pool-bound relative-reference guarantees |
 | scene | depth=12 / 14 / 16 | **Ported:** 120-byte nodes with four inline u32 child indices and u8 count, matching C++/Rust arena layout; original preorder generation, f32 transforms and 16 frames; no 117-byte limited-array/relative-reference layout |
 | calc | N=100K / 400K / 1.6M | **Ported:** 24-byte nominal AST nodes with i64 numbers and u32 links; explicit ParseResult/EvalResult errors, clear/truncate reuse, original damaged inputs / precedence / wrapping u64 evaluation and eight checksum lines |
-| bintrees | depth=15 / 17 / 19 | **Ported:** 8-byte i32-index nodes, local OS region per tree. No compiler/runtime changes. Original nullable relative-reference interface is not claimed |
+| bintrees | depth=15 / 17 / 19 | **Ported:** 8-byte i32-index nodes, shared data-stack rewind per local tree, no per-tree OS release; node count comes from pool length. Previous duplicate-counter port retained in rhat/variants/bintrees_counted.rh. Original nullable relative-reference interface is not claimed |
 | respond | N=100K / 400K / 1.6M | **Ported (streaming):** original respond_stream workload with identical escaped JSON, integer formatting, reusable output region and FNV checksum; DTO-building variant / general nested ownership remain future work |
-| blur | W=1024 / 2048 / 8192 | **Ported:** flat u8 buffers, 16 passes, original border behavior; row-slice/check-free contracts remain future optimizations |
+| blur | W=1024 / 2048 / 8192 | **Ported:** flat u8 buffers, 16 passes, original border behavior; canonical inner loops use range-checked fast paths with the original checked fallback |
 
 All 16 original workload names now have R^ sources and independent smoke oracles.
 Records selects the original fixed variant; respond selects the original streaming

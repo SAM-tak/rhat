@@ -3,7 +3,8 @@
 /* A true bit proves logical end == retained stack top for this owner.
  * Only construction establishes it. Shrinking through any alias invalidates
  * every bit; joins intersect and loop back-edges must reach a fixed point.
- * Borrowed pushes always keep the conservative maximum-update path. */
+ * Borrowed pushes keep the maximum-update path unless the whole closed
+ * program is proven never to shrink any array. */
 typedef struct {
   bool seen;
   unsigned char *top;
@@ -46,6 +47,15 @@ void analyze_array_growth(Program *p) {
       }
     }
   } while (changed);
+  /* Every owner starts at its stack top. Without any shrink operation in
+   * this closed program, construction/push/append and scope reuse preserve
+   * logical end == top for borrowed owners as well. No external entry or
+   * user-forged array descriptors exist. A single possible shrink disables
+   * this global proof; the local CFG proof below still applies. */
+  bool never_shrinks = true;
+  for (int j = 0; j < p->instances.n; j++)
+    if (((Instance *)p->instances.v[j])->may_shrink)
+      never_shrinks = false;
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
     int n = in->code.n, count = in->slots.n;
@@ -86,7 +96,8 @@ void analyze_array_growth(Program *p) {
     for (int k = 0; k < n; k++) {
       Instr *i = in->code.v[k];
       if (i->op == I_PUSH && states[k].seen)
-        i->push_at_top = states[k].top[((Slot *)in->slots.v[i->a])->owner] != 0;
+        i->push_at_top = never_shrinks ||
+                         states[k].top[((Slot *)in->slots.v[i->a])->owner] != 0;
     }
   }
 }

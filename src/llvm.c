@@ -49,11 +49,10 @@ typedef struct {
 static Type *slot_type(Output *o, int n) {
   return ((Slot *)o->in->slots.v[n])->type;
 }
-/* Scalars and references are LLVM values. Aggregate/owned results retain
- * destination passing; no host C ABI or ownership contract is changed. */
+/* Non-owning values up to two machine words are LLVM values. Large and
+ * owned results retain destination passing; no host C ABI is changed. */
 static bool direct(Type *t) {
-  return kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL ||
-         t->kind == T_REF;
+  return t->kind != T_VOID && !t->owned && t->size > 0 && t->size <= 16;
 }
 static char *stack_for(Output *o, int id) {
   int owner = ((Slot *)o->in->slots.v[id])->owner;
@@ -416,7 +415,11 @@ static void instruction(Output *o, Instr *i) {
         i->a, i->dst, t->elem->size, i->loc.line);
     break;
   case I_CLEAR:
-    fprintf(f, "  call void @rh_array_clear(ptr %%p%d)\n", i->a);
+    a = ++o->tmp;
+    fprintf(f,
+            "  %%t%d = getelementptr {ptr,i64,ptr}, ptr %%p%d, i32 0, i32 1\n",
+            a, i->a);
+    fprintf(f, "  store i64 0, ptr %%t%d\n", a);
     break;
   case I_UNION: {
     Type *arm = slot_type(o, i->a);
@@ -442,8 +445,16 @@ static void instruction(Output *o, Instr *i) {
       fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", r, tag, i->label);
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     } else {
-      fprintf(f, "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n", tag,
-              i->label, i->loc.line);
+      int valid = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", valid, tag, i->label);
+      fprintf(f,
+              "  br i1 %%t%d, label %%tag_ok_%d, label %%tag_bad_%d, !prof "
+              "!0\ntag_bad_%d:\n",
+              valid, valid, valid, valid);
+      fprintf(f,
+              "  call void @rh_union_tag(i32 %%t%d, i32 %d, i32 %d)\n  "
+              "unreachable\ntag_ok_%d:\n",
+              tag, i->label, i->loc.line, valid);
       int payload = ++o->tmp;
       Type *arm = slot_type(o, i->dst);
       fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
@@ -460,6 +471,22 @@ static void instruction(Output *o, Instr *i) {
             i->a, a, i->loc.line);
     break;
   case I_APPEND:
+    for (int k = 1; k < o->in->code.n; k++) {
+      if (o->in->code.v[k] != i)
+        continue;
+      Instr *literal = o->in->code.v[k - 1];
+      /* The immediately preceding instruction fixes the source value;
+       * arbitrary views retain overlap-safe runtime memmove semantics. */
+      if (literal->op == I_STRING && literal->dst == i->b &&
+          t->elem->kind == T_U8) {
+        fprintf(f,
+                "  call void @rh_append_literal(ptr %%p%d, ptr @rh_str_%d, i64 "
+                "%zu, i32 %d)\n",
+                i->a, literal->label, strlen(literal->text), i->loc.line);
+        return;
+      }
+      break;
+    }
     fprintf(
         f,
         "  call void @rh_array_append(ptr %%p%d, ptr %%p%d, i64 %zu, i32 %d)\n",
@@ -697,10 +724,23 @@ static void instruction(Output *o, Instr *i) {
           fprintf(f, "  %%t%d = fpext %s %%t%d to double\n", checked, src_type,
                   a);
         }
+        bool uns = kind_unsigned(t->kind);
+        uint64_t upper = (uint64_t)(1023 + dst_bits - (uns ? 0 : 1)) << 52;
+        uint64_t lower = uns ? 0 : upper | (UINT64_C(1) << 63);
+        int low = ++o->tmp, high = ++o->tmp, valid = ++o->tmp;
+        fprintf(f, "  %%t%d = fcmp oge double %%t%d, 0x%016llX\n", low, checked,
+                (unsigned long long)lower);
+        fprintf(f, "  %%t%d = fcmp olt double %%t%d, 0x%016llX\n", high,
+                checked, (unsigned long long)upper);
+        fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid, low, high);
+        fprintf(f,
+                "  br i1 %%t%d, label %%cast_ok_%d, label %%cast_bad_%d, !prof "
+                "!0\ncast_bad_%d:\n",
+                valid, valid, valid, valid);
         fprintf(f,
                 "  call void @rh_check_float_cast(double %%t%d, i32 %d, i32 "
-                "%d, i32 %d)\n",
-                checked, dst_bits, kind_unsigned(t->kind), i->loc.line);
+                "%d, i32 %d)\n  unreachable\ncast_ok_%d:\n",
+                checked, dst_bits, uns, i->loc.line, valid);
         op = kind_unsigned(t->kind) ? "fptoui" : "fptosi";
       } else
         op = src_bits > dst_bits ? "fptrunc" : "fpext";
@@ -853,6 +893,38 @@ void emit_llvm(Program *p, const char *path) {
           "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = internal "
           "global [%d x %%RhStack] zeroinitializer\n",
           p->stack_count);
+  fputs("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n"
+        "define internal void @rh_append_literal(ptr %a, ptr %src, i64 %n, i32 "
+        "%line) alwaysinline {\n"
+        "entry:\n"
+        "  %data = load ptr, ptr %a\n"
+        "  %lenp = getelementptr {ptr,i64,ptr}, ptr %a, i32 0, i32 1\n"
+        "  %len = load i64, ptr %lenp\n"
+        "  %stackp = getelementptr {ptr,i64,ptr}, ptr %a, i32 0, i32 2\n"
+        "  %stack = load ptr, ptr %stackp\n"
+        "  %limitp = getelementptr %RhStack, ptr %stack, i32 0, i32 2\n"
+        "  %limit = load ptr, ptr %limitp\n"
+        "  %li = ptrtoint ptr %limit to i64\n"
+        "  %di = ptrtoint ptr %data to i64\n"
+        "  %bytes = sub i64 %li, %di\n"
+        "  %remaining = sub i64 %bytes, %len\n"
+        "  %ok = icmp uge i64 %remaining, %n\n"
+        "  br i1 %ok, label %copy, label %bad, !prof !0\n"
+        "bad:\n  call void @rh_stack_overflow(i32 %line)\n  unreachable\n"
+        "copy:\n"
+        "  %dst = getelementptr i8, ptr %data, i64 %len\n"
+        "  call void @llvm.memcpy.p0.p0.i64(ptr %dst, ptr %src, i64 %n, i1 "
+        "false)\n"
+        "  %newlen = add i64 %len, %n\n"
+        "  %end = getelementptr i8, ptr %data, i64 %newlen\n"
+        "  %topp = getelementptr %RhStack, ptr %stack, i32 0, i32 1\n"
+        "  %top = load ptr, ptr %topp\n"
+        "  %greater = icmp ugt ptr %end, %top\n"
+        "  %high = select i1 %greater, ptr %end, ptr %top\n"
+        "  store ptr %high, ptr %topp\n"
+        "  store i64 %newlen, ptr %lenp\n"
+        "  ret void\n}\n",
+        f);
   fputs("declare void @rh_runtime_init(ptr, i64)\ndeclare void "
         "@rh_runtime_shutdown()\n"
         "declare void @rh_stack_overflow(i32) noreturn\n"

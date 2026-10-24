@@ -1,8 +1,7 @@
 # Port of aardappel/goose bench/goose/graph.goose, Apache-2.0.
-# 8-byte edges linked by u32 indices. First nv pool slots are list heads.
-# The queue retains initialized storage; a separate tail resets the active
-# prefix between BFS sources. It never appends across sources without reuse.
-def^ Edge { self^{ to:i32^, next:u32^ } }
+# CSR variant matching C++ VARIANT 1 / Rust CSR, including two-pass build cost.
+# Same RNG, edge multiset, BFS sources and checksum; linked version is retained
+# in variants/graph_linked.rh.
 
 let^ next = f^ x:u64^ -> u64^ {
     var^ r=x bitxor^ (x bitshift^ 13)
@@ -18,26 +17,45 @@ let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
 
 let^ nv:i64^=100000 # BENCH_N
 let^ ne=nv*8
-var^ pool:Edge[>..]=[]
+var^ esrc:i32^[>..]=[]
+var^ edst:i32^[>..]=[]
+var^ start:i32^[>..]=[]
+var^ fill:i32^[>..]=[]
+var^ out:i32^[>..]=[]
 var^ dist:i32^[>..]=[]
 var^ q:i32^[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < nv {
-    pool.push(Edge{ to=-1, next=0 })
-    dist.push(0)
+while^ i < ne {
+    r := next(r)
+    esrc.push(i32^(r % u64^(nv)))
+    edst.push(i32^((r bitshift^ -24) % u64^(nv)))
     i := i+1
 }
 i := 0
+while^ i < nv+1 { start.push(0); i := i+1 }
+i := 0
 while^ i < ne {
-    r := next(r)
-    let^ u=i64^(r % u64^(nv))
-    let^ to=i32^((r bitshift^ -24) % u64^(nv))
-    let^ link=pool[u].next
-    pool.push(Edge{ to=to, next=link })
-    pool[u].next := u32^(pool.len-1)
+    let^ u=i64^(esrc[i])+1
+    start[u] := start[u]+1
     i := i+1
 }
+i := 0
+while^ i < nv { start[i+1] := start[i+1]+start[i]; i := i+1 }
+i := 0
+while^ i < nv+1 { fill.push(start[i]); i := i+1 }
+i := 0
+while^ i < ne { out.push(0); i := i+1 }
+i := 0
+while^ i < ne {
+    let^ u=esrc[i]
+    let^ at=fill[u]
+    out[at] := edst[i]
+    fill[u] := at+1
+    i := i+1
+}
+i := 0
+while^ i < nv { dist.push(0); i := i+1 }
 
 var^ total:i64^=0
 var^ seed:u64^=999
@@ -56,14 +74,15 @@ while^ source < 4 {
         head := head+1
         let^ d=dist[u]
         total := total+i64^(d)
-        var^ link=pool[u].next
-        while^ link != 0 {
-            let^ w=pool[link].to
+        var^ k=start[u]
+        let^ end=start[u+1]
+        while^ k < end {
+            let^ w=out[k]
             if^ dist[w] < 0 {
                 dist[w] := d+1
                 enqueue(&q,&tail,w)
             }
-            link := pool[link].next
+            k := k+1
         }
     }
     assert(tail <= nv)

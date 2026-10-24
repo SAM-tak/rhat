@@ -86,4 +86,17 @@ def exercise(run, source, compiler, clang, work, repo):
                 fallback = run([str(other)], 1 if error else 0)
                 assert (actual.stdout, actual.stderr) == (fallback.stdout, fallback.stderr), name
         print('PASS ' + name, flush=True)
-    return len(cases)
+    wrapper=work/'literal_capacity_runtime.c'
+    wrapper.write_text('#define RH_STACK_BYTES 65536\n#include "'+
+                       (repo/'runtime/rhat_runtime.c').as_posix()+'"\n')
+    path=source('literal_append_capacity',
+                'var^ a:u8^[>..]=[]; var^ i:i32^=0; while^ i<64 { a.append("'+
+                'a'*1024+'"); i := i+1 }; a.append("!")')
+    for opt in ('-O0','-O2'):
+        exe=work/('literal_append_capacity_'+opt[1:]+'.exe')
+        run([compiler,'build',str(path),'-o',str(exe),'--clang',clang,'--runtime',str(wrapper),opt])
+        result=run([str(exe)],1)
+        assert 'data stack overflow' in result.stderr,result.stderr
+        assert 'at line 1:' in result.stderr,result.stderr
+    print('PASS literal_append_capacity',flush=True)
+    return len(cases)+1

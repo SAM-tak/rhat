@@ -1,0 +1,90 @@
+{
+  "objective": "Every original condition at <=0.5x must reach >=0.8x against both fastest C++ and fastest Rust, with fresh original-variant measurements.",
+  "threshold": 0.8,
+  "source_reports": {
+    "bench/current/workloads_results.json": "976cd4947a8a32c0352bdfd9c5b5f38fa2e31aae047f730ce22ba3d77593599d",
+    "bench/current_bintrees/results.json": "7aa2755fbf62796b9d10667477dcdd2c0246731fe88aff2418515e2e8c57e474"
+  },
+  "conditions": [
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "before_ms": 292.3308,
+      "cpp_ms": 123.7017,
+      "rust_ms": 167.0988,
+      "cpp_ratio": 0.42315657467499146,
+      "rust_ratio": 0.5716086023094386
+    },
+    {
+      "workload": "blur",
+      "size": "small",
+      "n": 1024,
+      "before_ms": 86.0739,
+      "cpp_ms": 23.5909,
+      "rust_ms": 26.1891,
+      "cpp_ratio": 0.27407727545748484,
+      "rust_ratio": 0.30426296473146913
+    },
+    {
+      "workload": "blur",
+      "size": "medium",
+      "n": 2048,
+      "before_ms": 315.3673,
+      "cpp_ms": 50.6572,
+      "rust_ms": 56.9973,
+      "cpp_ratio": 0.16062920917926496,
+      "rust_ratio": 0.1807330690277654
+    },
+    {
+      "workload": "blur",
+      "size": "large",
+      "n": 8192,
+      "before_ms": 4939.4327,
+      "cpp_ms": 584.0142,
+      "rust_ms": 714.8512,
+      "cpp_ratio": 0.11823507586205191,
+      "rust_ratio": 0.14472334039494048
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 116.496,
+      "cpp_ms": 41.3611,
+      "rust_ms": 43.4831,
+      "cpp_ratio": 0.35504309160829556,
+      "rust_ratio": 0.37325830929817333
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "before_ms": 1338.9576,
+      "cpp_ms": 327.2168,
+      "rust_ms": 370.1621,
+      "cpp_ratio": 0.24438174890676148,
+      "rust_ratio": 0.27645543070221196
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "before_ms": 6732.2015,
+      "cpp_ms": 2161.4179,
+      "rust_ms": 2183.2423,
+      "cpp_ratio": 0.3210566261274265,
+      "rust_ratio": 0.3242984185782318
+    },
+    {
+      "workload": "bintrees",
+      "size": "large",
+      "n": 19,
+      "before_ms": 1441.4,
+      "cpp_ms": 856.5849,
+      "rust_ms": 678.3114,
+      "cpp_ratio": 0.5942728597197169,
+      "rust_ratio": 0.47059206327181907
+    }
+  ]
+}

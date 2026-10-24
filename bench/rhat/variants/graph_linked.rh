@@ -1,0 +1,73 @@
+# Port of aardappel/goose bench/goose/graph.goose, Apache-2.0.
+# 8-byte edges linked by u32 indices. First nv pool slots are list heads.
+# The queue retains initialized storage; a separate tail resets the active
+# prefix between BFS sources. It never appends across sources without reuse.
+def^ Edge { self^{ to:i32^, next:u32^ } }
+
+let^ next = f^ x:u64^ -> u64^ {
+    var^ r=x bitxor^ (x bitshift^ 13)
+    r := r bitxor^ (r bitshift^ -7)
+    return^ r bitxor^ (r bitshift^ 17)
+}
+
+let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
+    if^ *tail < q.len { q[*tail] := vertex }
+    else^ { q.push(vertex) }
+    *tail := *tail+1
+}
+
+let^ nv:i64^=100000 # BENCH_N
+let^ ne=nv*8
+var^ pool:Edge[>..]=[]
+var^ dist:i32^[>..]=[]
+var^ q:i32^[>..]=[]
+var^ r:u64^=12345
+var^ i:i64^=0
+while^ i < nv {
+    pool.push(Edge{ to=-1, next=0 })
+    dist.push(0)
+    i := i+1
+}
+i := 0
+while^ i < ne {
+    r := next(r)
+    let^ u=i64^(r % u64^(nv))
+    let^ to=i32^((r bitshift^ -24) % u64^(nv))
+    let^ link=pool[u].next
+    pool.push(Edge{ to=to, next=link })
+    pool[u].next := u32^(pool.len-1)
+    i := i+1
+}
+
+var^ total:i64^=0
+var^ seed:u64^=999
+var^ source:i32^=0
+while^ source < 4 {
+    seed := next(seed)
+    let^ src=i32^(seed % u64^(nv))
+    i := 0
+    while^ i < nv { dist[i] := -1; i := i+1 }
+    dist[src] := 0
+    var^ tail:i64^=0
+    enqueue(&q,&tail,src)
+    var^ head:i64^=0
+    while^ head < tail {
+        let^ u=q[head]
+        head := head+1
+        let^ d=dist[u]
+        total := total+i64^(d)
+        var^ link=pool[u].next
+        while^ link != 0 {
+            let^ w=pool[link].to
+            if^ dist[w] < 0 {
+                dist[w] := d+1
+                enqueue(&q,&tail,w)
+            }
+            link := pool[link].next
+        }
+    }
+    assert(tail <= nv)
+    source := source+1
+}
+print(nv+ne)
+print(total)

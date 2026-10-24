@@ -220,6 +220,35 @@ a.push(5)
 assert(a.len=5)
 print(a[4])
 ''', [20], "5\n", append_only=True)
+high_water("borrowed_recursive_append_only", '''
+let^ write=p^ a:&i32^[>..], n:i32^ {
+    if^ n > 0 { a.push(n); this^(a,n-1) }
+}
+var^ a:i32^[>..]=[]
+write(&a,3)
+assert(a.len=3)
+print(a[2])
+''', [12], "1\n", append_only=True)
+high_water("borrowed_append_after_caller_shrink", '''
+let^ write=p^ a:&i32^[>..] { a.push(9) }
+var^ a:i32^[>..]=[1,2,3]
+let^ view=a.slice(0,3)
+a.clear()
+write(&a)
+assert(a.len=1)
+print(view[2])
+''', [12], "3\n")
+high_water("literal_append_keeps_high_water", '''
+var^ a:u8^[>..]=[1,2,3,4,5,6]
+a.append("abcd")
+let^ held=a.slice(0,10)
+a.clear()
+a.append("xy")
+assert(a.len=2)
+a.push(3)
+assert(a.len=3)
+print(held[9])
+''', [10,10], "100\n")
 high_water("push_shrink_loop_backedge", '''
 var^ a:i32^[>..]=[1,2,3,4]
 let^ view=a.slice(0,4)
@@ -852,6 +881,21 @@ for name, value in (("negative_unsigned", "u8^(-0.5)"), ("too_large", "i8^(128.0
                     ("too_negative", "i8^(-129.0)"), ("nan", "i32^(f8^(1000.0))"),
                     ("infinity", "i64^(1.0 / 0.0)"), ("wide_upper", "u128^(340282366920938463463374607431768211456.0)")):
     runtime_failure("float_cast_" + name, "print(" + value + ")", "floating value out of integer range")
+for bits in (8,16,32,64,128):
+    for unsigned in (False,True):
+        typ=('u' if unsigned else 'i')+str(bits)+'^'
+        upper=math.ldexp(1.0,bits if unsigned else bits-1)
+        lower=0.0 if unsigned else -upper
+        last=math.nextafter(upper,0.0)
+        literal=lambda x:format(x,'.17f')
+        positive(f"inline_float_cast_{typ[:-1]}",
+                 f'print({typ}({literal(lower)}),{typ}({literal(last)}))',
+                 f'{int(lower)} {int(last)}\n',
+                 lambda ir,ll: ('fcmp oge double' in ll and 'fcmp olt double' in ll and 'cast_bad_' in ll)
+                 or (_ for _ in ()).throw(AssertionError('cast guard missing')))
+        runtime_failure(f"inline_float_upper_{typ[:-1]}",f'print({typ}({literal(upper)}))',"floating value out of integer range")
+        if not unsigned:
+            runtime_failure(f"inline_float_lower_{typ[:-1]}",f'print({typ}({literal(math.nextafter(lower,-math.inf))}))',"floating value out of integer range")
 if os.name == "nt":
     for opt in ("-O0", "-O2"):
         exe = work / ("runtime_regions_" + opt[1:] + ".exe")
@@ -1160,6 +1204,15 @@ print("PASS benchmark_executable_identity_and_collision_detection",flush=True)
 for workload, spec in WORKLOADS.items():
     text = benchmark_source(workload, spec["smoke"])
     positive("bench_" + workload, text, workload_oracle(workload, spec["smoke"]) + "\n")
+from run_bench import oracle as binary_tree_oracle
+for name, relative, n, expected in (
+        ("graph_linked_retained", "variants/graph_linked.rh", 64, workload_oracle("graph",64)),
+        ("bintrees_counted_retained", "variants/bintrees_counted.rh", 6, binary_tree_oracle(6)),
+        ("bintrees_length_count", "bintrees.rh", 6, binary_tree_oracle(6))):
+    text=(repo/"bench/rhat"/relative).read_text(encoding="utf-8")
+    text,hits=re.subn(r"(?m)(=.*?)(\d+)(\s*# BENCH_N)$",lambda m:m[1]+str(n)+m[3],text)
+    assert hits==1
+    positive("bench_"+name,text,expected+"\n")
 for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17)), ("lru", (8, 16, 64, 128)), ("scene", (0, 1, 2, 5)), ("strlist", (0, 1, 17)), ("words", (0, 1, 17)), ("respond", (0, 1, 17)), ("records", (0, 1, 17)), ("interp", (0, 1, 2, 5)), ("sexp", (0, 1, 3)), ("calc", (0, 1, 17))):
     for n in sizes:
         positive(f"bench_{workload}_{n}", benchmark_source(workload, n), workload_oracle(workload, n) + "\n")
@@ -1755,6 +1808,36 @@ let^ id=template^f^ x { return^ x }
     ('i8', '-128'), ('i16', '-32768'), ('i32', '-2147483648'),
     ('i64', '-9223372036854775808'), ('i128', '-170141183460469231731687303715884105728'),
     ('f8', '1.5'), ('f16', '1.5'), ('f32', '1.5'), ('f64', '1.5')])) + '\nprint(42)', "42\n", direct_scalar_abi)
+
+positive("small_aggregate_value_abi", '''
+def^ Pair { self^{ a:i64^, b:i64^ } }
+def^ Ref { self^{ p:&i32^ } }
+def^ A { self^{ value:i64^ } }
+def^ B { self^{ value:i32^ } }
+def^ U = A | B
+def^ Big { self^{ a:i64^, b:i64^, c:i64^ } }
+let^ id=template^f^ x { return^ x }
+var^ v:i32^=42
+let^ pair=id(Pair{a=12,b=30})
+let^ ref=id(Ref{p=&v})
+let^ text=id("abc")
+let^ view=id(text.slice(1,2))
+let^ ary=id([1,2,3,4])
+let^ u:U=A{value=42}
+let^ got=id(u)
+let^ big=id(Big{a=1,b=2,c=3})
+print(pair.a+pair.b,*ref.p,text,view.len,ary[3],got.get(A).value,big.c)
+''', '42 42 abc 2 4 42 3\n',
+lambda ir,ll: ('define internal { ptr, i64 }' in ll and
+              'define internal [4 x i32]' in ll and
+              re.search(r'define internal %rh_type_\d+ @rh_fn_\d+\(i64 %sp, %rh_type_\d+ %arg0\)',ll) and
+              re.search(r'define internal void @rh_fn_\d+\(i64 %sp, ptr %out, ptr %arg0\)',ll))
+              or (_ for _ in ()).throw(AssertionError('small/large value ABI')))
+positive("float_cast_single_evaluation", '''
+let^ value=p^ n:&i32^ -> f64^ { *n := *n+1; return^ 1.5 }
+var^ n:i32^=0
+print(i64^(value(&n)),n)
+''', '1 1\n')
 
 from ranges import exercise as exercise_ranges
 passed += exercise_ranges(run, source, compiler, args.clang, work, repo)

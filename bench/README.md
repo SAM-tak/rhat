@@ -10,6 +10,18 @@ the selected original variants, representation differences and remaining languag
 See [results.md](results.md) for the local measurements and
 [upstream/PROVENANCE.md](upstream/PROVENANCE.md) for source attribution.
 
+The [all-48-condition verification](all08/README.md) covers the remaining sub-0.8x
+conditions and rechecks the complete suite with every original C++/Rust variant.
+Its primary data lives in `all08/current` and `all08/current_bintrees`.
+The earlier `current` directories remain frozen historical references for the
+threshold manifests; results.md selects the new matrix only after its gate passes.
+
+The [0.8x threshold verification](target08/results.md) freezes the eight originally
+slow conditions and remeasures all sizes of graph, blur, lru and bintrees,
+including every original C++/Rust comparison variant. Graph now also has a CSR
+port matching the comparison's fastest representation; its prior linked-index
+port remains in `rhat/variants/graph_linked.rh`. Construction cost is included.
+
 The subsequent internal-call and checked-loop optimizations have
 [focused paired measurements](abi_ranges/results.md). Their C++/Rust columns
 reuse the previous full-suite reference timings, with the original dates and

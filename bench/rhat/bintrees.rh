@@ -1,18 +1,18 @@
 # Port of aardappel/goose bench/goose/bintrees.goose, Apache-2.0.
 # Fixed-size nodes use i32^ indices (8 bytes/node), not relative references.
-# A local pool is reserved and released for every short-lived tree.
+# Local pools rewind a shared data stack; committed pages are reused.
+# The pool length is the node count, as in the C++/Rust arena variants.
 def^ Node { self^{ l:i32^=-1, r:i32^=-1 } }
 
-let^ make = p^ pool:&Node[>..], count:&i32^, depth:i64^ -> i32^ {
+let^ make = p^ pool:&Node[>..], depth:i64^ -> i32^ {
     var^ l:i32^=-1
     var^ r:i32^=-1
     if^ depth > 0 {
-        l := this^(pool,count,depth-1)
-        r := this^(pool,count,depth-1)
+        l := this^(pool,depth-1)
+        r := this^(pool,depth-1)
     }
-    let^ index=*count
+    let^ index=i32^(pool.len)
     pool.push(Node{l=l,r=r});
-    *count := *count+1
     return^ index
 }
 
@@ -26,8 +26,7 @@ let^ check = f^ pool:&Node[>..], index:i32^ -> i64^ {
 
 let^ tree_check = p^ depth:i64^ -> i64^ {
     var^ pool:Node[>..]=[]
-    var^ count:i32^=0
-    let^ root=make(&pool,&count,depth)
+    let^ root=make(&pool,depth)
     return^ check(&pool,root)
 }
 
@@ -42,8 +41,7 @@ let^ power2 = f^ n:i64^ -> i64^ {
 let^ maxdepth:i64^=15 # BENCH_N
 print(tree_check(maxdepth+1))
 var^ long:Node[>..]=[]
-var^ count:i32^=0
-let^ root=make(&long,&count,maxdepth)
+let^ root=make(&long,maxdepth)
 var^ d:i64^=4
 while^ d <= maxdepth {
     let^ iters=power2(maxdepth-d+4)

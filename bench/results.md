@@ -2,6 +2,11 @@
 
 **All 48 size conditions include R^, C++ and Rust timings and relative performance.**
 
+**Fresh threshold verification:** [graph, blur, lru and bintrees](target08/results.md) were rebuilt and remeasured, including every original C++/Rust variant.
+Those four workloads use the fresh rows below; the other 12 retain the dated full-suite reference above.
+Graph now uses CSR, including all construction cost; its previous linked-index port is retained in rhat/variants/graph_linked.rh.
+Refresh dates: 2026-10-24T08:44:09.980173+00:00; 2026-10-24T08:40:46.669248+00:00; refresh compiler SHA-256: `33e18d7d5db330b389e2ae762303bd6cc211a5a8261e1b17cec26bb5f835374b`.
+
 **Subsequent internal-call and checked-loop optimizations:** [focused paired measurements](abi_ranges/results.md).
 The complete matrix below retains the preceding full-suite session; the focused report labels reused C++/Rust reference timings explicitly.
 Implementation limits and the sum control repeat are in [the validation notes](abi_ranges/README.md).
@@ -19,7 +24,7 @@ Same-session before/after check: [paired array comparison](array_codegen_compari
 
 Additional workloads: 2026-10-24T03:33:36.565830+00:00 UTC; bintrees: 2026-10-24T03:30:02.558939+00:00 UTC.
 
-All rows below were measured with the same R^ compiler/runtime recorded for this full-suite session. Goose is not run.
+The table combines the fresh target refresh with the preceding full-suite reference for the other 12 workloads. Goose is not run.
 Original small/medium/large sizes; two warm-ups and best of three whole-process wall times. No suite-wide average is claimed.
 Every run checks its checksum and its executable SHA-256 against the artifact recorded immediately after build.
 R^ retains bounds/range checks and OS-backed stable-address arrays; no affinity is set.
@@ -58,9 +63,9 @@ The C++ and Rust columns select the fastest measured variant/backend for each si
 | interp | small / 16 | 19.49 | 18.24 | 19.49 | 0.936x | 1.000x | 4.21 |
 | interp | medium / 20 | 37.88 | 31.19 | 33.39 | 0.824x | 0.881x | 7.21 |
 | interp | large / 24 | 276.96 | 195.96 | 221.41 | 0.708x | 0.799x | 39.34 |
-| graph | small / 100000 | 116.50 | 41.36 | 43.48 | 0.355x | 0.373x | 11.54 |
-| graph | medium / 500000 | 1338.96 | 327.22 | 370.16 | 0.244x | 0.276x | 42.04 |
-| graph | large / 2000000 | 6732.20 | 2161.42 | 2183.24 | 0.321x | 0.324x | 156.54 |
+| graph | small / 100000 | 43.45 | 42.05 | 42.09 | 0.968x | 0.969x | 14.72 |
+| graph | medium / 500000 | 318.73 | 305.90 | 330.71 | 0.960x | 1.038x | 57.47 |
+| graph | large / 2000000 | 1949.15 | 2116.31 | 2164.12 | 1.086x | 1.110x | 217.72 |
 | words | small / 500000 | 71.60 | 80.20 | 74.54 | 1.120x | 1.041x | 19.97 |
 | words | medium / 4000000 | 821.55 | 761.67 | 843.63 | 0.927x | 1.027x | 132.42 |
 | words | large / 16000000 | 4080.16 | 4003.41 | 4167.21 | 0.981x | 1.021x | 517.85 |
@@ -70,24 +75,24 @@ The C++ and Rust columns select the fastest measured variant/backend for each si
 | sexp | small / 20000 | 254.21 | 181.75 | 168.49 | 0.715x | 0.663x | 52.36 |
 | sexp | medium / 100000 | 1225.75 | 840.35 | 795.64 | 0.686x | 0.649x | 245.86 |
 | sexp | large / 300000 | 3799.99 | 2511.50 | 2320.62 | 0.661x | 0.611x | 729.61 |
-| lru | small / 2000000 | 292.33 | 123.70 | 167.10 | 0.423x | 0.572x | 11.66 |
-| lru | medium / 8000000 | 1474.28 | 842.89 | 1001.53 | 0.572x | 0.679x | 35.10 |
-| lru | large / 32000000 | 7507.82 | 4443.07 | 4817.90 | 0.592x | 0.642x | 128.85 |
+| lru | small / 2000000 | 99.97 | 118.69 | 113.85 | 1.187x | 1.139x | 11.66 |
+| lru | medium / 8000000 | 738.23 | 810.26 | 1030.69 | 1.098x | 1.396x | 35.10 |
+| lru | large / 32000000 | 3914.45 | 4228.68 | 4713.71 | 1.080x | 1.204x | 128.85 |
 | scene | small / 12 | 56.46 | 33.16 | 33.35 | 0.587x | 0.591x | 8.46 |
 | scene | medium / 14 | 288.49 | 173.09 | 162.06 | 0.600x | 0.562x | 32.89 |
 | scene | large / 16 | 1727.81 | 975.82 | 905.10 | 0.565x | 0.524x | 185.89 |
 | calc | small / 100000 | 92.77 | 71.34 | 70.96 | 0.769x | 0.765x | 4.19 |
 | calc | medium / 400000 | 322.02 | 225.02 | 222.82 | 0.699x | 0.692x | 4.19 |
 | calc | large / 1600000 | 1272.34 | 861.59 | 832.43 | 0.677x | 0.654x | 4.18 |
-| bintrees | small / 15 | 78.16 | 57.11 | 47.01 | 0.731x | 0.601x | 5.03 |
-| bintrees | medium / 17 | 319.37 | 204.65 | 165.43 | 0.641x | 0.518x | 8.78 |
-| bintrees | large / 19 | 1441.40 | 856.58 | 678.31 | 0.594x | 0.471x | 23.78 |
+| bintrees | small / 15 | 51.42 | 55.39 | 46.00 | 1.077x | 0.895x | 5.04 |
+| bintrees | medium / 17 | 185.01 | 198.37 | 154.80 | 1.072x | 0.837x | 8.79 |
+| bintrees | large / 19 | 806.49 | 830.32 | 654.06 | 1.030x | 0.811x | 23.78 |
 | respond | small / 100000 | 85.04 | 66.05 | 99.34 | 0.777x | 1.168x | 4.19 |
 | respond | medium / 400000 | 290.21 | 213.02 | 340.87 | 0.734x | 1.175x | 4.19 |
 | respond | large / 1600000 | 1102.93 | 824.20 | 1324.45 | 0.747x | 1.201x | 4.19 |
-| blur | small / 1024 | 86.07 | 23.59 | 26.19 | 0.274x | 0.304x | 5.78 |
-| blur | medium / 2048 | 315.37 | 50.66 | 57.00 | 0.161x | 0.181x | 11.77 |
-| blur | large / 8192 | 4939.43 | 584.01 | 714.85 | 0.118x | 0.145x | 131.78 |
+| blur | small / 1024 | 23.91 | 25.25 | 27.08 | 1.056x | 1.133x | 5.78 |
+| blur | medium / 2048 | 44.75 | 52.11 | 59.86 | 1.164x | 1.337x | 11.78 |
+| blur | large / 8192 | 486.27 | 595.44 | 667.65 | 1.225x | 1.373x | 131.78 |
 
 Historical sessions remain available in the individual folders; their compiler/runtime revisions differ. The current tables above supersede their performance claims.
 The original bintrees raw baseline remains in `results.json` and its controlled page-commit study in `page_commit_results.json`.

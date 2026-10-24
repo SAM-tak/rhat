@@ -248,7 +248,7 @@ def main():
                rustc=command([tools["rustc"], "--version"]),
                compiler_sha256=sha(args.compiler), runtime_sha256=sha(ROOT / "runtime/rhat_runtime.c"))
     binaries = Executables()
-    data = dict(codegen_model="direct_scalar_checked_range_loops", memory_model="static_data_stacks_fault_commit", stack_reports={}, runtime_region_bytes=1024*1024*1024, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
+    data = dict(codegen_model="small_values_inline_guards_literals", memory_model="static_data_stacks_fault_commit", stack_reports={}, runtime_region_bytes=1024*1024*1024, executable_hashes=binaries.hashes, started_utc=datetime.now(timezone.utc).isoformat(), upstream_commit=UPSTREAM,
                 reps=args.reps, warmups=2, environment=env, source_hashes={}, rows=[], startup=[], builds=[])
     for path in sorted(HERE.rglob("*")):
         if path.is_file() and path.suffix in (".rh", ".cpp", ".h", ".rs", ".py"):

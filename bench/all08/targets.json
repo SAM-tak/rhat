@@ -1,0 +1,518 @@
+{
+  "objective": "All 16 workloads and all 48 original conditions must reach >=0.8 against both freshly measured fastest C++ and Rust original variants.",
+  "threshold": 0.8,
+  "source_reports": {
+    "bench/current/workloads_results.json": "976cd4947a8a32c0352bdfd9c5b5f38fa2e31aae047f730ce22ba3d77593599d",
+    "bench/current_bintrees/results.json": "7aa2755fbf62796b9d10667477dcdd2c0246731fe88aff2418515e2e8c57e474",
+    "bench/target08/current/workloads_results.json": "746f275e841075fdeeaa50bf52bf6210ae174f8bc148bf22934056470d2a68ed",
+    "bench/target08/current_bintrees/results.json": "4810d480c1b547fc122720cc8c4d64dab180e72f1372843cc6e8e25250d07c14"
+  },
+  "conditions": [
+    {
+      "workload": "bintrees",
+      "size": "small",
+      "n": 15,
+      "before_ms": 51.4167,
+      "cpp_ratio": 1.0773659141874137,
+      "rust_ratio": 0.8945926129059236
+    },
+    {
+      "workload": "bintrees",
+      "size": "medium",
+      "n": 17,
+      "before_ms": 185.0131,
+      "cpp_ratio": 1.07217542973984,
+      "rust_ratio": 0.8367115625866492
+    },
+    {
+      "workload": "bintrees",
+      "size": "large",
+      "n": 19,
+      "before_ms": 806.493,
+      "cpp_ratio": 1.029547683612877,
+      "rust_ratio": 0.810991043939625
+    },
+    {
+      "workload": "blur",
+      "size": "small",
+      "n": 1024,
+      "before_ms": 23.9078,
+      "cpp_ratio": 1.0562410594032072,
+      "rust_ratio": 1.132755837007169
+    },
+    {
+      "workload": "blur",
+      "size": "medium",
+      "n": 2048,
+      "before_ms": 44.7548,
+      "cpp_ratio": 1.1644248214716633,
+      "rust_ratio": 1.3374252594135154
+    },
+    {
+      "workload": "blur",
+      "size": "large",
+      "n": 8192,
+      "before_ms": 486.2674,
+      "cpp_ratio": 1.2245087785033504,
+      "rust_ratio": 1.3729999173294363
+    },
+    {
+      "workload": "calc",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 92.7665,
+      "cpp_ratio": 0.7689769474972108,
+      "rust_ratio": 0.764932383996378
+    },
+    {
+      "workload": "calc",
+      "size": "medium",
+      "n": 400000,
+      "before_ms": 322.0223,
+      "cpp_ratio": 0.6987717931335812,
+      "rust_ratio": 0.6919548739326439
+    },
+    {
+      "workload": "calc",
+      "size": "large",
+      "n": 1600000,
+      "before_ms": 1272.3401,
+      "cpp_ratio": 0.6771679207469764,
+      "rust_ratio": 0.6542498346157605
+    },
+    {
+      "workload": "graph",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 43.4525,
+      "cpp_ratio": 0.9677072665554342,
+      "rust_ratio": 0.9686070997065761
+    },
+    {
+      "workload": "graph",
+      "size": "medium",
+      "n": 500000,
+      "before_ms": 318.7286,
+      "cpp_ratio": 0.9597541607499296,
+      "rust_ratio": 1.0375780522990408
+    },
+    {
+      "workload": "graph",
+      "size": "large",
+      "n": 2000000,
+      "before_ms": 1949.1467,
+      "cpp_ratio": 1.08576193880122,
+      "rust_ratio": 1.1102903131919213
+    },
+    {
+      "workload": "interp",
+      "size": "small",
+      "n": 16,
+      "before_ms": 19.4887,
+      "cpp_ratio": 0.9357063323874861,
+      "rust_ratio": 0.999964081749937
+    },
+    {
+      "workload": "interp",
+      "size": "medium",
+      "n": 20,
+      "before_ms": 37.8785,
+      "cpp_ratio": 0.8235489789722401,
+      "rust_ratio": 0.8813997386380136
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "before_ms": 276.9587,
+      "cpp_ratio": 0.7075563973978791,
+      "rust_ratio": 0.7994249684158684
+    },
+    {
+      "workload": "lru",
+      "size": "small",
+      "n": 2000000,
+      "before_ms": 99.9727,
+      "cpp_ratio": 1.1871871020788676,
+      "rust_ratio": 1.1387658830860825
+    },
+    {
+      "workload": "lru",
+      "size": "medium",
+      "n": 8000000,
+      "before_ms": 738.2313,
+      "cpp_ratio": 1.0975646792543206,
+      "rust_ratio": 1.396155649320206
+    },
+    {
+      "workload": "lru",
+      "size": "large",
+      "n": 32000000,
+      "before_ms": 3914.4451,
+      "cpp_ratio": 1.0802763078731135,
+      "rust_ratio": 1.2041822479513125
+    },
+    {
+      "workload": "particles",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 54.71,
+      "cpp_ratio": 0.8237872418205081,
+      "rust_ratio": 0.818375068543228
+    },
+    {
+      "workload": "particles",
+      "size": "medium",
+      "n": 1000000,
+      "before_ms": 753.8385,
+      "cpp_ratio": 0.8676777585649977,
+      "rust_ratio": 0.8604559199351055
+    },
+    {
+      "workload": "particles",
+      "size": "large",
+      "n": 4000000,
+      "before_ms": 2980.1337,
+      "cpp_ratio": 0.8747155538692778,
+      "rust_ratio": 0.8773386912137533
+    },
+    {
+      "workload": "push",
+      "size": "small",
+      "n": 1000000,
+      "before_ms": 23.5021,
+      "cpp_ratio": 0.9756064351696232,
+      "rust_ratio": 1.0277762412720566
+    },
+    {
+      "workload": "push",
+      "size": "medium",
+      "n": 16000000,
+      "before_ms": 103.1436,
+      "cpp_ratio": 1.086794527241632,
+      "rust_ratio": 0.9778881093931179
+    },
+    {
+      "workload": "push",
+      "size": "large",
+      "n": 64000000,
+      "before_ms": 348.5474,
+      "cpp_ratio": 1.04578459056071,
+      "rust_ratio": 0.9786447983832329
+    },
+    {
+      "workload": "records",
+      "size": "small",
+      "n": 500000,
+      "before_ms": 37.7277,
+      "cpp_ratio": 1.3021413974347762,
+      "rust_ratio": 1.703358540276773
+    },
+    {
+      "workload": "records",
+      "size": "medium",
+      "n": 4000000,
+      "before_ms": 184.2226,
+      "cpp_ratio": 1.466398259496935,
+      "rust_ratio": 2.177774605287299
+    },
+    {
+      "workload": "records",
+      "size": "large",
+      "n": 16000000,
+      "before_ms": 710.3951,
+      "cpp_ratio": 1.3885936150178966,
+      "rust_ratio": 2.2125335605496153
+    },
+    {
+      "workload": "respond",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 85.0418,
+      "cpp_ratio": 0.7766862883899447,
+      "rust_ratio": 1.1681126222634046
+    },
+    {
+      "workload": "respond",
+      "size": "medium",
+      "n": 400000,
+      "before_ms": 290.2065,
+      "cpp_ratio": 0.7340262881775563,
+      "rust_ratio": 1.1745884396111044
+    },
+    {
+      "workload": "respond",
+      "size": "large",
+      "n": 1600000,
+      "before_ms": 1102.935,
+      "cpp_ratio": 0.7472769474175722,
+      "rust_ratio": 1.200839306033447
+    },
+    {
+      "workload": "scene",
+      "size": "small",
+      "n": 12,
+      "before_ms": 56.4601,
+      "cpp_ratio": 0.5872819920616507,
+      "rust_ratio": 0.5906684543598046
+    },
+    {
+      "workload": "scene",
+      "size": "medium",
+      "n": 14,
+      "before_ms": 288.4864,
+      "cpp_ratio": 0.5999995147084923,
+      "rust_ratio": 0.5617436385216079
+    },
+    {
+      "workload": "scene",
+      "size": "large",
+      "n": 16,
+      "before_ms": 1727.8078,
+      "cpp_ratio": 0.5647760705791466,
+      "rust_ratio": 0.5238420615996756
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "before_ms": 254.2135,
+      "cpp_ratio": 0.7149525890639167,
+      "rust_ratio": 0.6628007560574084
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "before_ms": 1225.7461,
+      "cpp_ratio": 0.6855799908317064,
+      "rust_ratio": 0.6491068582637138
+    },
+    {
+      "workload": "sexp",
+      "size": "large",
+      "n": 300000,
+      "before_ms": 3799.9924,
+      "cpp_ratio": 0.6609228481614858,
+      "rust_ratio": 0.6106902740121269
+    },
+    {
+      "workload": "strlist",
+      "size": "small",
+      "n": 200000,
+      "before_ms": 33.08,
+      "cpp_ratio": 1.0017623941958889,
+      "rust_ratio": 1.1014207980652964
+    },
+    {
+      "workload": "strlist",
+      "size": "medium",
+      "n": 2000000,
+      "before_ms": 176.6873,
+      "cpp_ratio": 0.8836945269976959,
+      "rust_ratio": 0.9892929486160014
+    },
+    {
+      "workload": "strlist",
+      "size": "large",
+      "n": 8000000,
+      "before_ms": 617.864,
+      "cpp_ratio": 0.9232486437144743,
+      "rust_ratio": 1.0338365724496006
+    },
+    {
+      "workload": "sum",
+      "size": "small",
+      "n": 1000000,
+      "before_ms": 21.6286,
+      "cpp_ratio": 0.9859260423698253,
+      "rust_ratio": 1.0171393432769575
+    },
+    {
+      "workload": "sum",
+      "size": "medium",
+      "n": 16000000,
+      "before_ms": 100.9097,
+      "cpp_ratio": 1.0159637775159376,
+      "rust_ratio": 0.9923297760274781
+    },
+    {
+      "workload": "sum",
+      "size": "large",
+      "n": 128000000,
+      "before_ms": 690.7701,
+      "cpp_ratio": 1.07540569575898,
+      "rust_ratio": 0.9653818252990395
+    },
+    {
+      "workload": "tree",
+      "size": "small",
+      "n": 16,
+      "before_ms": 21.9321,
+      "cpp_ratio": 0.8429698934438563,
+      "rust_ratio": 0.912297500011399
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "before_ms": 139.5341,
+      "cpp_ratio": 0.8436066882575658,
+      "rust_ratio": 0.7076642913811033
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "before_ms": 2199.6434,
+      "cpp_ratio": 0.7084633354661033,
+      "rust_ratio": 0.6126649892432565
+    },
+    {
+      "workload": "words",
+      "size": "small",
+      "n": 500000,
+      "before_ms": 71.6046,
+      "cpp_ratio": 1.1200844638472947,
+      "rust_ratio": 1.040930331291565
+    },
+    {
+      "workload": "words",
+      "size": "medium",
+      "n": 4000000,
+      "before_ms": 821.5495,
+      "cpp_ratio": 0.927116625352459,
+      "rust_ratio": 1.0268781126395914
+    },
+    {
+      "workload": "words",
+      "size": "large",
+      "n": 16000000,
+      "before_ms": 4080.1623,
+      "cpp_ratio": 0.9811877336350077,
+      "rust_ratio": 1.0213336366546009
+    }
+  ],
+  "initially_unmet": [
+    {
+      "workload": "calc",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 92.7665,
+      "cpp_ratio": 0.7689769474972108,
+      "rust_ratio": 0.764932383996378
+    },
+    {
+      "workload": "calc",
+      "size": "medium",
+      "n": 400000,
+      "before_ms": 322.0223,
+      "cpp_ratio": 0.6987717931335812,
+      "rust_ratio": 0.6919548739326439
+    },
+    {
+      "workload": "calc",
+      "size": "large",
+      "n": 1600000,
+      "before_ms": 1272.3401,
+      "cpp_ratio": 0.6771679207469764,
+      "rust_ratio": 0.6542498346157605
+    },
+    {
+      "workload": "interp",
+      "size": "large",
+      "n": 24,
+      "before_ms": 276.9587,
+      "cpp_ratio": 0.7075563973978791,
+      "rust_ratio": 0.7994249684158684
+    },
+    {
+      "workload": "respond",
+      "size": "small",
+      "n": 100000,
+      "before_ms": 85.0418,
+      "cpp_ratio": 0.7766862883899447,
+      "rust_ratio": 1.1681126222634046
+    },
+    {
+      "workload": "respond",
+      "size": "medium",
+      "n": 400000,
+      "before_ms": 290.2065,
+      "cpp_ratio": 0.7340262881775563,
+      "rust_ratio": 1.1745884396111044
+    },
+    {
+      "workload": "respond",
+      "size": "large",
+      "n": 1600000,
+      "before_ms": 1102.935,
+      "cpp_ratio": 0.7472769474175722,
+      "rust_ratio": 1.200839306033447
+    },
+    {
+      "workload": "scene",
+      "size": "small",
+      "n": 12,
+      "before_ms": 56.4601,
+      "cpp_ratio": 0.5872819920616507,
+      "rust_ratio": 0.5906684543598046
+    },
+    {
+      "workload": "scene",
+      "size": "medium",
+      "n": 14,
+      "before_ms": 288.4864,
+      "cpp_ratio": 0.5999995147084923,
+      "rust_ratio": 0.5617436385216079
+    },
+    {
+      "workload": "scene",
+      "size": "large",
+      "n": 16,
+      "before_ms": 1727.8078,
+      "cpp_ratio": 0.5647760705791466,
+      "rust_ratio": 0.5238420615996756
+    },
+    {
+      "workload": "sexp",
+      "size": "small",
+      "n": 20000,
+      "before_ms": 254.2135,
+      "cpp_ratio": 0.7149525890639167,
+      "rust_ratio": 0.6628007560574084
+    },
+    {
+      "workload": "sexp",
+      "size": "medium",
+      "n": 100000,
+      "before_ms": 1225.7461,
+      "cpp_ratio": 0.6855799908317064,
+      "rust_ratio": 0.6491068582637138
+    },
+    {
+      "workload": "sexp",
+      "size": "large",
+      "n": 300000,
+      "before_ms": 3799.9924,
+      "cpp_ratio": 0.6609228481614858,
+      "rust_ratio": 0.6106902740121269
+    },
+    {
+      "workload": "tree",
+      "size": "medium",
+      "n": 20,
+      "before_ms": 139.5341,
+      "cpp_ratio": 0.8436066882575658,
+      "rust_ratio": 0.7076642913811033
+    },
+    {
+      "workload": "tree",
+      "size": "large",
+      "n": 24,
+      "before_ms": 2199.6434,
+      "cpp_ratio": 0.7084633354661033,
+      "rust_ratio": 0.6126649892432565
+    }
+  ]
+}
