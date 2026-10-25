@@ -1,0 +1,1 @@
+The transport, threading, JSON-RPC, URI and UTF-16 position helpers are adapted from the L^ language server (../lhat), under Apache-2.0; see LICENSE.lhat. cJSON is distributed under its own license in ../vendor/cjson/LICENSE.

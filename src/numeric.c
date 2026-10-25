@@ -1,4 +1,5 @@
 #include "rhat.h"
+#include "tooling.h"
 #include <math.h>
 #include <stdint.h>
 
@@ -112,7 +113,7 @@ static int decimal_compare(Decimal a, double value) {
       cmp = x < y ? -1 : x > y ? 1 : 0;
     }
   }
-  free(b.digits);
+  mem_free(b.digits);
   return cmp;
 }
 static double narrow_value(unsigned bits, int kind) {
@@ -146,7 +147,7 @@ char *float_constant(const char *text, int kind, Loc loc) {
     double b = narrow_value(low + 1, kind);
     int cmp = decimal_compare(d, (a + b) * 0.5);
     unsigned bits = low + (cmp > 0 || (cmp == 0 && (low & 1)));
-    free(d.digits);
+    mem_free(d.digits);
     if (bits > maximum)
       fail(loc, "floating literal does not fit '%s'", builtin_name(kind));
     if (negative)

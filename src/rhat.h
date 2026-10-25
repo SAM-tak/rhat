@@ -92,6 +92,7 @@ enum {
   E_CHAIN     /* Comparisons share operands and short-circuit left to right. */
 };
 struct Expr {
+  Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */
   Spec *test_spec; /* The type operand of fits^, never evaluated as a value. */
   Spec *constant_spec;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
@@ -162,6 +163,7 @@ typedef struct {
   Type *inferred; /* Body-derived constraint, independent of call sites. */
 } Param;
 struct Function {
+  Loc declaration;     /* Name token for editor navigation. */
   Function *enclosing; /* Lexical enclosing function, without a captured
                           activation. */
   Module *module;
@@ -238,6 +240,9 @@ struct Type {
                     */
 };
 typedef struct {
+  bool library_root; /* Check a standalone module using library rules. */
+  bool tooling; /* Retain source and checked resolutions for editor clients. */
+  List sources, overlays, resolutions; /* ToolSource and ToolRef records. */
   List modules, module_paths;
   Module *emitting;
   const char *stdlib_dir;

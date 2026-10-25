@@ -2,6 +2,7 @@
 #define _XOPEN_SOURCE 700
 #endif
 #include "rhat.h"
+#include "tooling.h"
 #ifndef RH_STDLIB_PATH
 #define RH_STDLIB_PATH "stdlib"
 #endif
@@ -16,7 +17,11 @@ static char *directory(const char *path) {
   *end = 0;
   return s;
 }
-static bool exists(const char *path) {
+static bool exists(Program *p, const char *path)
+{
+  if (source_override(p, path)) {
+    return true;
+  }
   FILE *f = fopen(path, "rb");
   if (!f)
     return false;
@@ -44,15 +49,17 @@ static void load_dependencies(Program *p, Module *m) {
       if (!strncmp(i->name, "std.", 4)) {
         path = fmt("%s/%s.rh", p->stdlib_dir ? p->stdlib_dir : RH_STDLIB_PATH,
                    relative);
-        if (!exists(path))
+        if (!exists(p, path)) {
           path = NULL;
+        }
       } else {
         for (int j = 0; j <= p->module_paths.n && !path; j++) {
           char *root =
               j < p->module_paths.n ? p->module_paths.v[j] : directory(p->path);
           char *candidate = fmt("%s/%s.rh", root, relative);
-          if (exists(candidate))
+          if (exists(p, candidate)) {
             path = candidate;
+          }
         }
       }
       if (!path)
@@ -267,6 +274,8 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e) {
     Constant *c = NULL;
     char *resolved = resolve(m, path, e->loc, &c);
     if (c) {
+      tool_record(p, e->name_loc.file ? e->name_loc : e->loc, c->binding->loc,
+                  resolved, NULL, NULL, NULL, 14, false);
       Expr *r = copy_expr(c->binding->a);
       r->constant_spec = c->binding->spec;
       *e = *r;
@@ -538,7 +547,7 @@ void resolve_modules(Program *p) {
 }
 void parse(Program *p, const char *path) {
   Module *m = mem(sizeof(*m));
-  m->root = true;
+  m->root = !p->library_root;
   m->path = str(path);
   add(&p->modules, m);
   parse_file(p, path, m);
@@ -557,11 +566,12 @@ void parse(Program *p, const char *path) {
     char *a = realpath(path, NULL), *b = realpath(expected, NULL);
     bool same = a && b && !strcmp(a, b);
 #endif
-    if (!same)
-      fail((Loc){path, 1, 1},
-           "std.* is reserved for the bundled standard library");
     free(a);
     free(b);
+    if (!same) {
+      fail((Loc){path, 1, 1},
+           "std.* is reserved for the bundled standard library");
+    }
   }
   load_dependencies(p, m);
   resolve_modules(p);

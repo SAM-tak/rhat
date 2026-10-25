@@ -11,6 +11,7 @@ typedef struct {
   Type *type;
 } PathFact;
 struct Var {
+  Loc declaration; /* Source binding used by editor resolutions. */
   char *name;
   Type *type;
   int slot, depth, lexical;

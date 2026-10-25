@@ -1,4 +1,5 @@
 #include "sema_internal.h"
+#include "tooling.h"
 #include <errno.h>
 #include <limits.h>
 
@@ -184,6 +185,7 @@ Type *type_spec(Program *p, Spec *s) {
   Def *d = lookup_def(p, s->name);
   if (!d)
     fail(s->loc, "unknown type '%s'", s->name);
+  tool_record(p, s->loc, d->loc, d->name, d->type, NULL, d, 23, false);
   return d->type;
 }
 char *type_name(Type *t) {
@@ -2121,6 +2123,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   if (f->abstract)
     fail(e->loc, "cannot call abstract method '%s'", f->name);
+  tool_record(p, target->name_loc.file ? target->name_loc : target->loc,
+              f->declaration.file ? f->declaration : f->loc, f->name, NULL, f,
+              f->owner, f->owner ? 6 : 12, false);
   inferred_call(c->in->fn, f, e->loc);
   int offset = values.n;
   if (f->params.n != e->args.n + offset)
@@ -2367,6 +2372,10 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
         !t->def->public) {
       fail(e->loc, "contextual construction requires a public type outside "
                    "its module");
+    }
+    if (e->text) {
+      tool_record(c->p, e->loc, t->def->loc, t->def->name, t, NULL, t->def, 23,
+                  false);
     }
     if (t->def->abstract)
       fail(e->loc, "cannot construct abstract def^ '%s'", t->def->name);
@@ -2662,6 +2671,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (v->unavailable)
       fail(e->loc, "first^ binding '%s' is not definitely initialized here",
            v->name);
+    tool_record(p, e->loc, v->declaration, v->name,
+                v->narrowed && !c->raw_name ? v->narrowed : v->type, NULL, NULL,
+                v->parameter ? TOOL_PARAMETER : 13, false);
     Value result = variable(v);
     if (v->narrowed && !c->raw_name) {
       return convert_value(c, result, v->narrowed, -1, e->loc);
@@ -2702,6 +2714,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
         result = convert_value(c, result, type, -1, e->loc);
       }
     }
+    tool_record(p, e->name_loc.file ? e->name_loc : e->loc, f->loc, f->name,
+                result.type, NULL, f->owner, 8, false);
     return result;
   }
   if (e->kind == E_INDEX) {
@@ -3703,6 +3717,7 @@ static void statements(Context *c, List *body, bool scope) {
       if (s->integer && !kind_integer(t->kind))
         fail(s->loc, "counted loops require an integer type");
       Var *var = mem(sizeof(*var));
+      var->declaration = s->loc;
       var->name = s->name;
       var->slot = v.id;
       var->type = t;
@@ -3718,6 +3733,7 @@ static void statements(Context *c, List *body, bool scope) {
       Value dst = variable(var);
       dst.var = NULL;
       store_check(c, dst, v, s->loc);
+      tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, 13, true);
       add(&c->vars, var);
     }
     else if (s->kind == S_BIND_MANY) {
@@ -3747,9 +3763,15 @@ static void statements(Context *c, List *body, bool scope) {
       if (c->terminated) {
         break;
       }
-      for (int j = 0; j < s->body.n; j++)
-        if (strcmp(((Stmt *)s->body.v[j])->name, "_^"))
-          ((Var *)c->vars.v[begin + j])->name = ((Stmt *)s->body.v[j])->name;
+      for (int j = 0; j < s->body.n; j++) {
+        Stmt *binding = s->body.v[j];
+        Var *v = c->vars.v[begin + j];
+        if (strcmp(binding->name, "_^")) {
+          v->name = binding->name;
+          tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL,
+                      NULL, 13, true);
+        }
+      }
     }
     else if (s->kind == S_ASSIGN && s->optional) {
       nil_assignment(c, s);
@@ -4072,6 +4094,9 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     if (t->owned)
       fail(a->loc, "owned by-value parameters are not supported; use '&'");
     Var *v = mem(sizeof(*v));
+    v->declaration = a->loc;
+    tool_record(p, a->loc, a->loc, a->name, t, NULL, NULL, TOOL_PARAMETER,
+                true);
     v->name = !strcmp(a->name, "_^") ? fmt("\001discard_param%d", j) : a->name;
     v->type = t;
     v->slot = slot(&c, t, false);

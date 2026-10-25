@@ -1,9 +1,10 @@
 #include "rhat.h"
+#include "tooling.h"
 #include <ctype.h>
 #include <errno.h>
 
 void *mem(size_t n) {
-  void *p = calloc(1, n ? n : 1);
+  void *p = compiler_hooks ? compiler_hooks->allocate(n) : calloc(1, n ? n : 1);
   if (!p) {
     fputs("out of memory\n", stderr);
     exit(1);
@@ -32,7 +33,10 @@ char *fmt(const char *s, ...) {
 void add(List *a, void *v) {
   if (a->n == a->cap) {
     a->cap = a->cap ? a->cap * 2 : 8;
-    void **p = realloc(a->v, (size_t)a->cap * sizeof(void *));
+    void **p =
+        compiler_hooks
+            ? compiler_hooks->resize(a->v, (size_t)a->cap * sizeof(void *))
+            : realloc(a->v, (size_t)a->cap * sizeof(void *));
     if (!p)
       exit(1);
     a->v = p;
@@ -40,6 +44,14 @@ void add(List *a, void *v) {
   a->v[a->n++] = v;
 }
 _Noreturn void fail(Loc l, const char *s, ...) {
+  if (compiler_hooks) {
+    char message[4096];
+    va_list args;
+    va_start(args, s);
+    vsnprintf(message, sizeof(message), s, args);
+    va_end(args);
+    compiler_hooks->error(l, message);
+  }
   fprintf(stderr, "%s:%d:%d: error: ", l.file ? l.file : "rhat", l.line, l.col);
   va_list a;
   va_start(a, s);
@@ -717,6 +729,7 @@ static Expr *primary(Parser *p) {
       Expr *n = node(E_MEMBER, e->loc);
       n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?.");
       n->a = e;
+      n->name_loc = tok(p)->loc;
       n->text = word(p);
       e = n;
     }
@@ -1709,9 +1722,11 @@ static void definition(Parser *p) {
         over = true;
       }
     }
+    Loc declaration = tok(p)->loc;
     char *name = decl_word(p);
     need(p, abstr ? ":" : "=");
     Function *f = function(p, name, d, abstr);
+    f->declaration = declaration;
     f->priv = priv;
     f->override = over;
     add(&d->own_methods, f);
@@ -1719,18 +1734,37 @@ static void definition(Parser *p) {
 }
 void parse_file(Program *p, const char *path, Module *module) {
   p->path = path;
-  FILE *f = fopen(path, "rb");
-  if (!f)
-    fail((Loc){path, 1, 1}, "cannot open source");
-  fseek(f, 0, SEEK_END);
-  long n = ftell(f);
-  if (n < 0 || n > 16 * 1024 * 1024)
-    fail((Loc){path, 1, 1}, "source too large");
-  rewind(f);
-  p->source = mem((size_t)n + 1);
-  if (fread(p->source, 1, (size_t)n, f) != (size_t)n)
-    fail((Loc){path, 1, 1}, "cannot read source");
-  fclose(f);
+  const char *overlay = source_override(p, path);
+  if (overlay) {
+    if (strlen(overlay) > 16 * 1024 * 1024) {
+      fail((Loc){path, 1, 1}, "source too large");
+    }
+    p->source = str(overlay);
+  }
+  else {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+      fail((Loc){path, 1, 1}, "cannot open source");
+    }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    if (n < 0 || n > 16 * 1024 * 1024) {
+      fclose(f);
+      fail((Loc){path, 1, 1}, "source too large");
+    }
+    rewind(f);
+    p->source = mem((size_t)n + 1);
+    bool okay = fread(p->source, 1, (size_t)n, f) == (size_t)n;
+    fclose(f);
+    if (!okay) {
+      fail((Loc){path, 1, 1}, "cannot read source");
+    }
+  }
+  if (p->tooling) {
+    ToolSource *source = mem(sizeof(*source));
+    *source = (ToolSource){path, p->source};
+    add(&p->sources, source);
+  }
   Parser q = {0};
   q.p = p;
   q.module = module;
@@ -1848,6 +1882,7 @@ void parse_file(Program *p, const char *path, Module *module) {
     }
     int binding_start = q.at;
     need(&q, "let^");
+    Loc declaration = tok(&q)->loc;
     char *name = decl_word(&q);
     need(&q, "=");
     Function *parsed_function = function(&q, name, NULL, false);
@@ -1859,6 +1894,7 @@ void parse_file(Program *p, const char *path, Module *module) {
       add(&p->entry->body, stmt(&q));
       continue;
     }
+    parsed_function->declaration = declaration;
     parsed_function->module = module;
     parsed_function->public = public;
     add(&module->functions, parsed_function);

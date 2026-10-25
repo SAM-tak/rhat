@@ -1,0 +1,43 @@
+// L^ (lhat) -- LSP server: a place in a file, as a client wants it.
+//
+// lhat's line/column count Unicode code points (src/lexer.c). LSP's
+// Position.character counts UTF-16 code units. 03-compilation-pipeline.md's
+// 1.3節 already keeps two counts of a column apart -- what a diagnostic
+// names (code points) and where a terminal's mark lands (cells, UAX #11).
+// This is the third, and every byte offset the server hands out passes
+// through it.
+//
+// The wire form is here too. Every request that names a place says it the
+// one way -- a diagnostic, a symbol, a definition, a hover, the edit a
+// completion carries -- so the shape is written once rather than assembled
+// at each of them.
+
+#ifndef LSP_POSITION_H
+#define LSP_POSITION_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "cJSON.h"
+
+typedef struct {
+  int line;      // 0-based
+  int character; // 0-based, UTF-16 code units
+} LspPosition;
+
+// `byte_offset` is clamped to `text_length` rather than read out of bounds.
+LspPosition lsp_position_at(const char *text, size_t text_length,
+                            uint32_t byte_offset);
+
+// The other way: LSP gives a line and a UTF-16 character, and lhat counts
+// bytes. A position past the end of its line stops at the line's end rather
+// than running into the next.
+uint32_t lsp_offset_at(const char *text, size_t text_length, int line,
+                       int character);
+
+// The caller owns what comes back, which in practice means handing it
+// straight to cJSON_AddItemToObject.
+cJSON *lsp_position_json(LspPosition at);
+cJSON *lsp_range_json(LspPosition from, LspPosition to);
+
+#endif
