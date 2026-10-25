@@ -106,6 +106,49 @@ public^ let^ wrap=template^f^ n {return^ try^ read(n)+1}
 print((lib.wrap(2) catch^ 0),lib.read(0) catch^ 12)
 do^{print(try^ lib.wrap(-1)) catch^ lib.Error.Missing: print(20) catch^: print(30)}
 '''}, '3 12\n20\n')
+    positive('module_body_parameter_inference', {
+        'lib/body.rh': """module^ lib.body
+let^ typed=f^ x:i64^ {x+1}
+public^ let^ twice=f^ x {typed(x)*2}
+public^ let^ boolean=f^ x {if^ x: 42 el^: 0;}
+public^ def^ Box {
+ self^{value:i32^=1}
+ add=p^ self^,delta {self^.value+=delta}
+}
+""", 'main.rh': """import^ lib.body
+print(lib.body.twice(20),lib.body.boolean(true^))
+var^ b=lib.body.Box{}
+b.add(41)
+print(b.value)
+"""}, '42 42\n42\n')
+
+    positive('module_local_call_inference', {
+        'lib/inferred.rh': '''module^ lib.inferred
+let^ twice=f^ x {x*2}
+public^ let^ run=f^ x:i32^ {twice(x)}
+public^ let^ generic=template^f^ x {twice(x)}
+''', 'main.rh': '''import^ lib.inferred
+print(lib.inferred.run(21),lib.inferred.generic(i64^(22)))
+'''}, '42 44\n')
+    positive('module_private_method_inference', {
+        'lib/inferred.rh': '''module^ lib.inferred
+public^ def^ Box {
+ private^ identity=f^ self^,x {x}
+ run=f^ self^,x:i32^ {self^.identity(x)}
+}
+''', 'main.rh': '''import^ lib.inferred
+let^ box=lib.inferred.Box{}
+print(box.run(42))
+'''}, '42\n')
+    negative('module_public_untyped', {
+        'lib/inferred.rh': 'module^ lib.inferred\npublic^ let^ id=f^ x {x}',
+        'main.rh': 'import^ lib.inferred\nprint(lib.inferred.id(42))'}, 'or explicit template^')
+    negative('module_public_untyped_method', {
+        'lib/inferred.rh': 'module^ lib.inferred\npublic^ def^ Box {id=f^ self^,x {x}}',
+        'main.rh': 'import^ lib.inferred'}, 'or explicit template^')
+    negative('module_public_inherited_untyped', {
+        'lib/inferred.rh': 'module^ lib.inferred\ndef^ Base {id=f^ self^,x {x}} public^ def^ Box:Base {}',
+        'main.rh': 'import^ lib.inferred'}, 'or explicit template^')
     positive('modules_nominal_distinct', {
         'lib/a.rh': 'module^ lib.a\npublic^ def^ Item { self^{ value:i32^=1 } }',
         'lib/b.rh': 'module^ lib.b\npublic^ def^ Item { self^{ value:i32^=2 } }',

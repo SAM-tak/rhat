@@ -1610,8 +1610,9 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
         fail(a->loc, "self^ must be the first parameter of a method");
       if (take(p, ":"))
         a->spec = spec(p);
-      if (!a->self && !a->spec && !templ)
-        fail(a->loc, "untyped parameter requires template^");
+      if (!a->self && !a->spec && abstr && !templ) {
+        fail(a->loc, "abstract method parameter requires a type annotation");
+      }
       add(&f->params, a);
     } while (take(p, ","));
   }

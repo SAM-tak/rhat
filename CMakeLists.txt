@@ -3,7 +3,7 @@ project(rhat VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
-add_executable(rhat src/main.c src/front.c src/modules.c src/build.c src/digest.c src/sema.c src/llvm.c src/llvm_builtins.c src/numeric.c src/stacks.c src/arrays.c src/ranges.c)
+add_executable(rhat src/main.c src/front.c src/modules.c src/build.c src/digest.c src/sema.c src/check.c src/llvm.c src/llvm_builtins.c src/numeric.c src/stacks.c src/arrays.c src/ranges.c)
 if(NOT WIN32)
   target_link_libraries(rhat PRIVATE m)
 endif()
@@ -42,6 +42,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
   add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
+  add_test(NAME inference COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inference.py"
+    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/inference-tests")
   add_test(NAME errors COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/errors.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/error-tests")
 endif()

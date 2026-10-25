@@ -1,8 +1,9 @@
-#include "rhat.h"
+#include "sema_internal.h"
 #include <errno.h>
 #include <limits.h>
 
-static Def *lookup_def(Program *p, const char *n) {
+Def *lookup_def(Program *p, const char *n)
+{
   for (int i = 0; i < p->defs.n; i++) {
     Def *d = p->defs.v[i];
     if (!strcmp(d->name, n))
@@ -93,8 +94,8 @@ static int union_order(Type *a, Type *b)
   }
   return strcmp(type_name(a), type_name(b));
 }
-static bool nullable(Type *t);
-static Type *type_union(Program *p, Type *a, Type *b, Loc loc)
+bool nullable(Type *t);
+Type *type_union(Program *p, Type *a, Type *b, Loc loc)
 {
   if (a->kind == T_NEVER) {
     return b;
@@ -223,7 +224,7 @@ static int union_alternative(Type *sum, Type *arm) {
         return i;
   return -1;
 }
-static bool sum_accepts(Type *to, Type *from)
+bool sum_accepts(Type *to, Type *from)
 {
   if (to == from || union_alternative(to, from) >= 0) {
     return true;
@@ -239,11 +240,11 @@ static bool sum_accepts(Type *to, Type *from)
   }
   return true;
 }
-static Type *nil_subject(Type *t)
+Type *nil_subject(Type *t)
 {
   return t->kind == T_REF && t->elem->kind == T_UNION ? t->elem : t;
 }
-static bool nullable(Type *t)
+bool nullable(Type *t)
 {
   if (t->kind == T_NIL) {
     return true;
@@ -257,7 +258,7 @@ static bool nullable(Type *t)
   }
   return false;
 }
-static Type *without_nil(Program *p, Type *t, Loc loc)
+Type *without_nil(Program *p, Type *t, Loc loc)
 {
   if (t->kind == T_NIL) {
     return NULL;
@@ -287,7 +288,7 @@ static bool fits_type(Type *from, Type *to)
          derives(from->elem->def, to->elem->def);
 }
 /* Preserve concrete alternatives: a base-type test does not slice a value. */
-static Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
+Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
 {
   if (fits_type(from, to)) {
     return yes ? from : NULL;
@@ -306,7 +307,7 @@ static Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
   }
   return count == from->def->alternatives.n ? from : subset;
 }
-static bool has_error(Type *t)
+bool has_error(Type *t)
 {
   if (t->kind == T_STRUCT) {
     return t->def->error_variant;
@@ -320,7 +321,7 @@ static bool has_error(Type *t)
   }
   return false;
 }
-static bool only_errors(Type *t)
+bool only_errors(Type *t)
 {
   if (t->kind != T_UNION) {
     return t->kind == T_STRUCT && t->def->error_variant;
@@ -332,11 +333,11 @@ static bool only_errors(Type *t)
   }
   return true;
 }
-static Type *error_join(Program *p, Type *a, Type *b, Loc loc)
+Type *error_join(Program *p, Type *a, Type *b, Loc loc)
 {
   return !a ? b : !b ? a : type_union(p, a, b, loc);
 }
-static Type *error_leaves(Program *p, Type *t, Loc loc)
+Type *error_leaves(Program *p, Type *t, Loc loc)
 {
   if (t->kind != T_UNION) {
     return only_errors(t) ? t : NULL;
@@ -348,7 +349,7 @@ static Type *error_leaves(Program *p, Type *t, Loc loc)
   }
   return out;
 }
-static Type *success_type(Program *p, Type *t, Loc loc)
+Type *success_type(Program *p, Type *t, Loc loc)
 {
   if (only_errors(t)) {
     return type_builtin(p, T_NEVER);
@@ -403,7 +404,8 @@ static bool error_overlap(Type *to, Type *from)
   }
   return only_errors(from) && error_accepts(to, from);
 }
-static Field *field(Def *d, const char *n) {
+Field *field(Def *d, const char *n)
+{
   for (int i = 0; i < d->fields.n; i++) {
     Field *f = d->fields.v[i];
     if (!strcmp(f->name, n))
@@ -411,7 +413,8 @@ static Field *field(Def *d, const char *n) {
   }
   return NULL;
 }
-static Function *method(Def *d, const char *n) {
+Function *method(Def *d, const char *n)
+{
   for (int i = 0; i < d->methods.n; i++) {
     Function *f = d->methods.v[i];
     if (!strcmp(f->name, n))
@@ -608,7 +611,8 @@ static void compose(Program *p, Def *d) {
       d->abstract = true;
   d->state = 2;
 }
-static void layout(Type *t, Loc l) {
+void layout(Type *t, Loc l)
+{
   if (t->kind == T_GROW) {
     layout(t->elem, l);
     if (t->elem->owned || !t->elem->size)
@@ -682,14 +686,14 @@ static void layout(Type *t, Loc l) {
     t->size = 1;
 }
 
-static bool guarded_chain(Expr *e)
+bool guarded_chain(Expr *e)
 {
   return e &&
          (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_CALL) &&
          (e->optional || guarded_chain(e->a));
 }
 /* A method name is not a first-class value; keep it with its call. */
-static Expr *chain_parts(Expr *e, List *steps)
+Expr *chain_parts(Expr *e, List *steps)
 {
   if (e->kind == E_MEMBER || e->kind == E_INDEX ||
       (e->kind == E_CALL && e->a->kind == E_MEMBER)) {
@@ -699,11 +703,11 @@ static Expr *chain_parts(Expr *e, List *steps)
   }
   return e;
 }
-static bool step_optional(Expr *e)
+bool step_optional(Expr *e)
 {
   return e->kind == E_CALL ? e->a->optional : e->optional;
 }
-static Expr step_expression(Expr *step, Expr *receiver, Expr *member)
+Expr step_expression(Expr *step, Expr *receiver, Expr *member)
 {
   Expr copy = *step;
   copy.optional = false;
@@ -718,91 +722,13 @@ static Expr step_expression(Expr *step, Expr *receiver, Expr *member)
   }
   return copy;
 }
-typedef struct Var Var;
-typedef struct {
-  char *path;
-  Type *type;
-} PathFact;
-struct Var {
-  char *name;
-  Type *type;
-  int slot, depth, lexical;
-  uint64_t root, deps;
-  bool mut, parameter, unavailable, pending, hidden;
-  unsigned version, path_version;
-  Var *alias;     /* Inference-only direct reference target. */
-  Type *narrowed; /* A branch-local view; the storage type never changes. */
-  List paths;     /* Stable member paths proven within the current branch. */
-  bool path_sensitive; /* Guards on this root can depend on aliased storage. */
-  Var *source; /* Match snapshots only: valid until the original changes. */
-  unsigned source_version;
-};
-typedef struct {
-  int id;
-  Type *type;
-  uint64_t deps, storage;
-  Var *var;
-  bool addressable, guarded_copy;
-} Value;
-typedef struct {
-  int end, update, bindings, phase, outside;
-  List focuses, saved, first;
-} Loop; /* Jump targets carry the ownership cleanup boundary. */
-typedef struct {
-  Expr *test;
-  Var *var;
-  unsigned version;
-  char *path;
-  Type *yes, *no;
-  int known; /* One for true, minus one for false, zero for a runtime test. */
-} NilGuard;
-typedef struct {
-  List guards;
-} NilFlow;
-typedef struct {
-  Type *type;
-  unsigned version, path_version;
-  List paths;
-} NilFact;
-typedef struct {
-  Type *errors;
-  int slot, label, bindings, pending, checkpoint;
-  uint64_t deps;
-  List facts;
-} ErrorTarget;
-typedef struct {
-  Program *p;
-  Instance *in;
-  Def *access;
-  List vars;
-  int depth, root_count, lexical;
-  int root_depth[64];
-  bool root_external[64];
-  bool terminated;
-  uint64_t self_roots;
-  List default_stack, loops;
-  List handlers, pending_owners;
-  bool building_result;
-  NilFlow flow;
-  bool raw_name;
-  Expr *raw_place;
-  bool in_default;
-} Context;
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
                              Loc at);
-static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
-                              Loc at);
-static void infer_results(Program *p);
-static Type *expression_type(Context *c, Expr *e, Type *expected);
 static void statements(Context *c, List *body, bool scope);
 static Value expression(Context *c, Expr *e, Type *expected);
 static Value construct(Context *c, Expr *e, Type *t, int dst);
-static List first_types(Context *c, Stmt *s);
-static Type *chain_type(Context *c, Expr *e);
-static Type *chain_place_type(Context *c, Expr *e);
 static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc);
 static void handle_statements(Context *c, Stmt *s);
-static Type *handler_errors(Context *c, Stmt *s);
 static Instr *emit(Context *c, int op, Loc l) {
   Instr *i = mem(sizeof(*i));
   i->op = op;
@@ -854,7 +780,8 @@ static Var *lookup(Context *c, const char *name) {
   }
   return NULL;
 }
-static Var *selected(Context *c, Expr *e) {
+Var *selected(Context *c, Expr *e)
+{
   if (!e->scope_kind) {
     Var *pending = NULL;
     for (int j = c->vars.n - 1; j >= 0; j--) {
@@ -890,7 +817,7 @@ static Var *selected(Context *c, Expr *e) {
   }
   return NULL;
 }
-static void forget_roots(List *vars, uint64_t roots, bool all)
+void forget_roots(List *vars, uint64_t roots, bool all)
 {
   for (int j = 0; j < vars->n; j++) {
     Var *v = vars->v[j];
@@ -905,7 +832,7 @@ static void forget_roots(List *vars, uint64_t roots, bool all)
     }
   }
 }
-static void forget_paths(List *vars)
+void forget_paths(List *vars)
 {
   for (int j = 0; j < vars->n; j++) {
     Var *v = vars->v[j];
@@ -915,7 +842,7 @@ static void forget_paths(List *vars)
     }
   }
 }
-static List save_facts(List *vars)
+List save_facts(List *vars)
 {
   List facts = {0};
   for (int j = 0; j < vars->n; j++) {
@@ -929,7 +856,7 @@ static List save_facts(List *vars)
   }
   return facts;
 }
-static void restore_facts(List *vars, List facts)
+void restore_facts(List *vars, List facts)
 {
   for (int j = 0; j < facts.n; j++) {
     Var *v = vars->v[j];
@@ -939,7 +866,7 @@ static void restore_facts(List *vars, List facts)
   }
 }
 /* Compile alternate branches from the same input, then merge mutations. */
-static void rewind_facts(List *vars, List facts)
+void rewind_facts(List *vars, List facts)
 {
   for (int j = 0; j < facts.n; j++) {
     Var *v = vars->v[j];
@@ -950,7 +877,7 @@ static void rewind_facts(List *vars, List facts)
     v->paths = f->paths;
   }
 }
-static void merge_facts(List *vars, List before, List yes)
+void merge_facts(List *vars, List before, List yes)
 {
   for (int j = 0; j < before.n; j++) {
     Var *v = vars->v[j];
@@ -970,7 +897,7 @@ static void merge_facts(List *vars, List before, List yes)
     v->paths = paths_changed ? (List){0} : old->paths;
   }
 }
-static bool stable_path(Context *c, Expr *e, Var **root, char **path)
+bool stable_path(Context *c, Expr *e, Var **root, char **path)
 {
   if (e->kind == E_NAME || e->kind == E_SELF) {
     *root = selected(c, e);
@@ -983,7 +910,7 @@ static bool stable_path(Context *c, Expr *e, Var **root, char **path)
   }
   return false;
 }
-static Type *path_type(Var *v, const char *path)
+Type *path_type(Var *v, const char *path)
 {
   if (!*path) {
     return v->narrowed;
@@ -996,8 +923,8 @@ static Type *path_type(Var *v, const char *path)
   }
   return NULL;
 }
-static void remember_test(NilFlow *flow, Context *context, Expr *test,
-                          Expr *value, Type *yes, Type *no)
+void remember_test(NilFlow *flow, Context *context, Expr *test, Expr *value,
+                   Type *yes, Type *no)
 {
   Var *v = NULL;
   char *path = NULL;
@@ -1032,8 +959,8 @@ static void remember_test(NilFlow *flow, Context *context, Expr *test,
                                                                   : NULL;
   } while (v);
 }
-static void remember_guard(NilFlow *flow, Context *context, Expr *test,
-                           Expr *value, bool positive)
+void remember_guard(NilFlow *flow, Context *context, Expr *test, Expr *value,
+                    bool positive)
 {
   Var *v = NULL;
   char *path = NULL;
@@ -1047,7 +974,7 @@ static void remember_guard(NilFlow *flow, Context *context, Expr *test,
   remember_test(flow, context, test, value, positive ? yes : no,
                 positive ? no : yes);
 }
-static int condition_truth(NilFlow *flow, Expr *e)
+int condition_truth(NilFlow *flow, Expr *e)
 {
   if (e->kind == E_SAVED && e->a) {
     return condition_truth(flow, e->a);
@@ -1074,12 +1001,12 @@ static int condition_truth(NilFlow *flow, Expr *e)
   }
   return 0;
 }
-static bool nil_name(Expr *e)
+bool nil_name(Expr *e)
 {
   return e && e->kind == E_NAME && !strcmp(e->text, "nil^");
 }
-static void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
-                             bool truth)
+void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
+                      bool truth)
 {
   if (e->kind == E_SAVED && e->a) {
     refine_condition(p, vars, flow, e->a, truth);
@@ -1854,7 +1781,8 @@ static Value literal_int(Context *c, Expr *e, Type *expected) {
   i->text = e->text;
   return v;
 }
-static int random_intrinsic(Instance *in, Expr *target) {
+int random_intrinsic(Instance *in, Expr *target)
+{
   if (target->kind != E_NAME)
     return -1;
   const char *names[] = {"__seed^", "__sqrt^",      "__log^",
@@ -1869,7 +1797,7 @@ static int random_intrinsic(Instance *in, Expr *target) {
   return -1;
 }
 /* this^ selects a declaration, independently of its runtime activation. */
-static Function *this_function(Program *p, Instance *in, Expr *target)
+Function *this_function(Program *p, Instance *in, Expr *target)
 {
   if (target->kind != E_NAME || strncmp(target->text, "this^", 5)) {
     return NULL;
@@ -1888,7 +1816,7 @@ static Function *this_function(Program *p, Instance *in, Expr *target)
   }
   return f;
 }
-static Def *outer_receiver(Function *f, Type *type, Loc loc)
+Def *outer_receiver(Function *f, Type *type, Loc loc)
 {
   if (type->kind != T_REF || type->elem->kind != T_STRUCT ||
       !derives(type->elem->def, f->owner)) {
@@ -2193,6 +2121,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   if (f->abstract)
     fail(e->loc, "cannot call abstract method '%s'", f->name);
+  inferred_call(c->in->fn, f, e->loc);
   int offset = values.n;
   if (f->params.n != e->args.n + offset)
     fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - offset);
@@ -2200,8 +2129,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     fail(e->loc, "f^ cannot call p^ '%s'", f->name);
   for (int j = 0; j < e->args.n; j++) {
     Param *param = f->params.v[j + offset];
-    Type *want = param->spec ? type_spec(p, param->spec) : NULL;
-    Value v = expression(c, e->args.v[j], want);
+    Type *want = parameter_type(p, param);
+    Value v = expression(c, e->args.v[j], parameter_hint(p, param, e->args.v[j]));
     if (c->terminated) {
       return abrupt(c);
     }
@@ -2210,11 +2139,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     if (want) {
       Type *a = v.type, *b = want;
       if (a != b) {
-        bool okay = (a->kind == T_STRUCT && b->kind == T_STRUCT &&
-                     derives(a->def, b->def)) ||
-                    (a->kind == T_REF && b->kind == T_REF &&
-                     a->elem->kind == T_STRUCT && b->elem->kind == T_STRUCT &&
-                     derives(a->elem->def, b->elem->def));
+        bool okay = parameter_accepts(b, a);
         if (!okay)
           fail(e->loc, "argument to '%s' requires nominal '%s', found '%s'",
                f->name, type_name(want), type_name(v.type));
@@ -2266,7 +2191,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   return out;
 }
-static Type *union_literal_hint(Type *t, Expr *e) {
+Type *union_literal_hint(Type *t, Expr *e)
+{
   if (!t || t->kind != T_UNION || e->constant_spec)
     return NULL;
   Expr *literal = e;
@@ -3498,7 +3424,7 @@ static void nil_assignment(Context *c, Stmt *s)
     nil_label(c, end, s->loc);
   }
 }
-static List join_exit_facts(List left, List right)
+List join_exit_facts(List left, List right)
 {
   if (!left.n) {
     return right;
@@ -4105,1226 +4031,6 @@ static void return_names(List *body, char **name, bool *valid) {
     }
   }
 }
-/* Return inference is a fixed point over concrete call instances. Unknown
-   results stay unknown across back edges until a return or operation seeds
-   them. */
-typedef struct {
-  Program *p;
-  Instance *in;
-  List vars;
-  List handlers, loops, initializers;
-  Type *propagated;
-  Type *returned;
-  Expr *return_expr;
-  bool value_return;
-  int lexical;
-  NilFlow flow;
-  bool raw_name;
-  Expr *raw_place;
-  bool terminated;
-} Infer;
-
-static Infer infer_context(Context *c)
-{
-  Infer out = {.p = c->p, .in = c->in, .lexical = c->lexical};
-  for (int j = 0; j < c->loops.n; j++) {
-    add(&out.loops, (void *)(intptr_t)(((Loop *)c->loops.v[j])->outside + 1));
-  }
-  for (int j = 0; j < c->vars.n; j++) {
-    Var *v = mem(sizeof(*v));
-    *v = *(Var *)c->vars.v[j];
-    v->alias = NULL;
-    v->source = NULL;
-    add(&out.vars, v);
-  }
-  for (int j = 0; j < c->vars.n; j++) {
-    Var *old = c->vars.v[j];
-    for (int k = 0; k < c->vars.n; k++) {
-      if (old->alias && old->alias == c->vars.v[k]) {
-        ((Var *)out.vars.v[j])->alias = out.vars.v[k];
-      }
-      if (old->source && old->source == c->vars.v[k]) {
-        ((Var *)out.vars.v[j])->source = out.vars.v[k];
-      }
-    }
-  }
-  for (int j = 0; j < c->flow.guards.n; j++) {
-    NilGuard *old = c->flow.guards.v[j], *g = mem(sizeof(*g));
-    *g = *old;
-    g->var = NULL;
-    for (int k = 0; k < c->vars.n; k++) {
-      if (old->var == c->vars.v[k]) {
-        g->var = out.vars.v[k];
-      }
-    }
-    add(&out.flow.guards, g);
-  }
-  return out;
-}
-static Var *infer_variable(Infer *c, Expr *e)
-{
-  Context scope = {.vars = c->vars, .lexical = c->lexical};
-  return e->kind == E_NAME ? selected(&scope, e) : NULL;
-}
-static void infer_guard(Infer *c, Expr *test, Expr *name, bool positive)
-{
-  Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
-  remember_guard(&c->flow, &scope, test, name, positive);
-}
-static Var *infer_alias(Infer *c, Expr *e)
-{
-  if (e->kind == E_UNARY && !strcmp(e->text, "&") && e->a->kind == E_NAME) {
-    return infer_variable(c, e->a);
-  }
-  Var *v = infer_variable(c, e);
-  return v ? v->alias : NULL;
-}
-static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
-{
-  if (offset && types->n) {
-    forget_paths(&c->vars);
-    Type *receiver = types->v[0];
-    if (receiver && receiver->kind == T_REF) {
-      layout(receiver->elem, call->loc);
-      if (receiver->elem->refs) {
-        forget_roots(&c->vars, 0, true);
-        return;
-      }
-    }
-  }
-  for (int j = 0; j < call->args.n; j++) {
-    Type *type = types->v[j + offset];
-    if (type) {
-      layout(type, call->loc);
-      if (!type->refs) {
-        continue;
-      }
-    }
-    Expr *arg = call->args.v[j];
-    Var *target = infer_alias(c, arg);
-    if (target) {
-      layout(target->type, arg->loc);
-      if (!target->type->refs) {
-        target->version++;
-        target->path_version++;
-        target->narrowed = NULL;
-        target->paths = (List){0};
-        forget_paths(&c->vars);
-        continue;
-      }
-    }
-    /* Unknown references may alias a local whose address was passed earlier. */
-    Var *v = infer_variable(c, arg);
-    if (target || !v || v->type->refs) {
-      forget_roots(&c->vars, 0, true);
-      return;
-    }
-  }
-}
-static Function *lookup_function(Program *p, const char *name, int arity) {
-  for (int j = 0; j < p->functions.n; j++) {
-    Function *f = p->functions.v[j];
-    if (!strcmp(f->name, name) && f->params.n == arity)
-      return f;
-  }
-  return NULL;
-}
-static Type *infer_expr(Infer *c, Expr *e, Type *expected);
-static Type *infer_lookup(Infer *c, const char *name) {
-  for (int j = c->vars.n - 1; j >= 0; j--) {
-    Var *v = c->vars.v[j];
-    if (v->hidden) {
-      continue;
-    }
-    if (!strcmp(v->name, name))
-      return !c->raw_name && v->narrowed ? v->narrowed : v->type;
-  }
-  return NULL;
-}
-static bool integer_literal(Expr *e) {
-  return e &&
-         (e->kind == E_INT ||
-          (e->kind == E_UNARY && !strcmp(e->text, "-") && e->a->kind == E_INT));
-}
-static bool numeric(Type *t) {
-  return t && (kind_integer(t->kind) || kind_float(t->kind));
-}
-static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
-                        Loc loc)
-{
-  if (a && a->kind == T_NEVER) {
-    return b;
-  }
-  if (b && b->kind == T_NEVER) {
-    return a;
-  }
-  if (!a)
-    return b;
-  if (!b || a == b)
-    return a;
-  if (has_error(a) || has_error(b)) {
-    if (a->kind == T_VOID) {
-      a = type_builtin(p, T_NIL);
-    }
-    if (b->kind == T_VOID) {
-      b = type_builtin(p, T_NIL);
-    }
-    return type_union(p, a, b, loc);
-  }
-  if (integer_literal(ae) && numeric(b))
-    return b;
-  if (integer_literal(be) && numeric(a))
-    return a;
-  if (ae && ae->kind == E_FLOAT && b && kind_float(b->kind))
-    return b;
-  if (be && be->kind == E_FLOAT && a && kind_float(a->kind))
-    return a;
-  if (sum_accepts(a, b)) {
-    return a;
-  }
-  if (sum_accepts(b, a)) {
-    return b;
-  }
-  if (a->kind == T_NIL || b->kind == T_NIL || a->structural || b->structural) {
-    return type_union(p, a, b, loc);
-  }
-  fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a),
-       type_name(b));
-}
-static Type *infer_call(Infer *c, Expr *e) {
-  Expr *target = e->a;
-  int native = random_intrinsic(c->in, target);
-  if (native >= 0) {
-    for (int j = 0; j < e->args.n; j++) {
-      infer_expr(c, e->args.v[j], NULL);
-    }
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    return type_builtin(c->p, native == 0 || native == 5 ? T_BOOL : T_F64);
-  }
-  Function *f = NULL;
-  Def *self = NULL;
-  List actual = {0};
-  if (target->kind == E_FUNCTION) {
-    f = target->function;
-  } else if (target->kind == E_NAME) {
-    for (int k = T_U8; k <= T_F64; k++)
-      if (!strcmp(target->text, builtin_name(k))) {
-        for (int j = 0; j < e->args.n; j++)
-          infer_expr(c, e->args.v[j], NULL);
-        if (c->terminated) {
-          return type_builtin(c->p, T_NEVER);
-        }
-        return type_builtin(c->p, k);
-      }
-    if (!strcmp(target->text, "print") || !strcmp(target->text, "assert")) {
-      for (int j = 0; j < e->args.n; j++)
-        infer_expr(c, e->args.v[j], NULL);
-      if (c->terminated) {
-        return type_builtin(c->p, T_NEVER);
-      }
-      if (!strcmp(target->text, "assert") && e->args.n == 1) {
-        refine_condition(c->p, &c->vars, &c->flow, e->args.v[0], true);
-      }
-      return type_builtin(c->p, T_VOID);
-    }
-    if ((f = this_function(c->p, c->in, target))) {
-      self = f == c->in->fn ? c->in->self : NULL;
-      if (self)
-        add(&actual, infer_lookup(c, "self^"));
-    }
-    else {
-      f = lookup_function(c->p, target->text, e->args.n);
-    }
-  } else if (target->kind == E_MEMBER) {
-    if (target->a->kind == E_NAME && !strcmp(target->text, "new")) {
-      Def *d = lookup_def(c->p, target->a->text);
-      if (d) {
-        Expr record = {.kind = E_RECORD, .loc = e->loc, .text = d->name};
-        return infer_expr(c, &record, NULL);
-      }
-    }
-    Type *base = infer_expr(c, target->a, NULL);
-    if (base && base->kind == T_NEVER) {
-      return base;
-    }
-    if (base && base->kind == T_REF)
-      base = base->elem;
-    if (base &&
-        (base->kind == T_ARRAY || base->kind == T_GROW ||
-         base->kind == T_SLICE || base->kind == T_STRING) &&
-        !strcmp(target->text, "slice")) {
-      for (int j = 0; j < e->args.n; j++) {
-        infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
-      }
-      return type_wrap(
-          c->p, T_SLICE,
-          base->kind == T_STRING ? type_builtin(c->p, T_U8) : base->elem, 0);
-    }
-    if (base && base->kind == T_GROW && !strcmp(target->text, "pop"))
-      return base->elem;
-    if (base && base->kind == T_GROW && !strcmp(target->text, "truncate")) {
-      for (int j = 0; j < e->args.n; j++) {
-        infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
-      }
-      return type_builtin(c->p, T_VOID);
-    }
-    if (base && base->kind == T_GROW && !strcmp(target->text, "append")) {
-      for (int j = 0; j < e->args.n; j++) {
-        infer_expr(c, e->args.v[j], NULL);
-      }
-      forget_paths(&c->vars);
-      return type_builtin(c->p, T_VOID);
-    }
-    if (base && base->kind == T_GROW && !strcmp(target->text, "clear"))
-      return type_builtin(c->p, T_VOID);
-    if (base && base->kind == T_GROW && !strcmp(target->text, "push")) {
-      for (int j = 0; j < e->args.n; j++)
-        infer_expr(c, e->args.v[j], base->elem);
-      forget_paths(&c->vars);
-      return type_wrap(c->p, T_REF, base->elem, 0);
-    }
-    if (base && base->kind == T_STRUCT) {
-      self = base->def;
-      f = method(self, target->text);
-      add(&actual, type_wrap(c->p, T_REF, base, 0));
-    }
-  }
-  if (!f)
-    return NULL;
-  int offset = actual.n;
-  bool known = true;
-  for (int j = 0; j < e->args.n; j++) {
-    Param *param = j + offset < f->params.n ? f->params.v[j + offset] : NULL;
-    Type *t =
-        infer_expr(c, e->args.v[j],
-                   param && param->spec ? type_spec(c->p, param->spec) : NULL);
-    Type *want = param && param->spec ? type_spec(c->p, param->spec) : NULL;
-    if (c->terminated || (t && t->kind == T_NEVER)) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (t && want && sum_accepts(want, t)) {
-      t = want;
-    }
-    if (!t)
-      known = false;
-    add(&actual, t);
-  }
-  if (f->procedure || f->mutable_self) {
-    infer_mutation(c, e, &actual, offset);
-  }
-  if (!known || actual.n != f->params.n)
-    return f->result ? type_spec(c->p, f->result) : f->required_result;
-  if (!self && f->owner && f->params.n && ((Param *)f->params.v[0])->self) {
-    self = outer_receiver(f, actual.v[0], e->loc);
-  }
-  return instance_for(c->p, f, self, &actual, e->loc)->result;
-}
-static Type *infer_chain(Infer *c, Expr *e, bool lift)
-{
-  List steps = {0};
-  Expr *root = chain_parts(e, &steps);
-  Type *base = infer_expr(c, root, NULL);
-  if (!base) {
-    return NULL;
-  }
-  if (base->kind == T_NEVER) {
-    return base;
-  }
-  bool can_skip = false;
-  for (int j = 0; j < steps.n; j++) {
-    Expr *step = steps.v[j];
-    if (step_optional(step)) {
-      Type *subject = nil_subject(base);
-      can_skip |= subject->kind == T_NIL || nullable(subject);
-      base = without_nil(c->p, subject, step->loc);
-      if (!base) {
-        return type_builtin(c->p, T_NIL);
-      }
-    }
-    Value value = {.id = -1, .type = base};
-    Expr receiver = {.kind = E_SAVED,
-                     .loc = step->loc,
-                     .compiler_value = &value},
-         member = {0};
-    Expr copy = step_expression(step, &receiver, &member);
-    base = infer_expr(c, &copy, NULL);
-    if (!base) {
-      return NULL;
-    }
-    if (c->terminated) {
-      if (lift && can_skip) {
-        c->terminated = false;
-        return type_builtin(c->p, T_NIL);
-      }
-      return type_builtin(c->p, T_NEVER);
-    }
-  }
-  return !lift || base->kind == T_VOID
-             ? base
-             : type_union(c->p, base, type_builtin(c->p, T_NIL), e->loc);
-}
-static void infer_statements(Infer *c, List *body, bool scoped);
-static void infer_route(Infer *c, Type *errors, Loc loc)
-{
-  if (!errors) {
-    return;
-  }
-  if (c->handlers.n) {
-    ErrorTarget *target = c->handlers.v[c->handlers.n - 1];
-    target->errors = error_join(c->p, target->errors, errors, loc);
-  }
-  else {
-    c->propagated = error_join(c->p, c->propagated, errors, loc);
-  }
-}
-static void infer_focus(Infer *c, Type *type)
-{
-  Var *v = mem(sizeof(*v));
-  v->name = "it^";
-  v->type = type;
-  v->lexical = c->lexical;
-  add(&c->vars, v);
-}
-static void infer_handle(Infer *c, Stmt *s)
-{
-  Stmt local = *s, branch = {0};
-  List body = {0};
-  Value head = {0};
-  Expr saved = {0};
-  if (s->a) {
-    head.type = infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
-    if (c->terminated) {
-      return;
-    }
-    saved = (Expr){
-        .kind = E_SAVED, .loc = s->a->loc, .compiler_value = &head, .a = s->a};
-    branch = *(Stmt *)s->body.v[0];
-    branch.a = &saved;
-    add(&body, &branch);
-    local.body = body;
-    local.a = NULL;
-    s = &local;
-  }
-  int base = c->vars.n, visible = base;
-  if (s->loop_handler && c->loops.n) {
-    visible = (int)(intptr_t)c->loops.v[c->loops.n - 1] - 1;
-  }
-  List before = save_facts(&c->vars);
-  ErrorTarget target = {0};
-  add(&c->handlers, &target);
-  infer_statements(c, &s->body, false);
-  bool normal = !c->terminated;
-  List exits = normal ? save_facts(&c->vars) : (List){0};
-  exits.n = normal ? base : 0;
-  c->vars.n = base;
-  c->handlers.n--;
-  c->terminated = false;
-  Type *remaining = target.errors;
-  bool *hidden = mem((size_t)(base + 1) * sizeof(*hidden));
-  for (int j = 0; j < base; j++) {
-    hidden[j] = ((Var *)c->vars.v[j])->hidden;
-  }
-  for (int k = 0; k < s->handlers.n; k++) {
-    CatchArm *arm = s->handlers.v[k];
-    Type *asked = arm->spec ? type_spec(c->p, arm->spec) : remaining;
-    if (asked && !only_errors(asked)) {
-      fail(arm->loc, "catch^ arm type must contain only declared errors");
-    }
-    if (!remaining) {
-      continue;
-    }
-    Type *yes = fits_subset(c->p, remaining, asked, true, arm->loc);
-    Type *no = fits_subset(c->p, remaining, asked, false, arm->loc);
-    if (yes) {
-      rewind_facts(&c->vars, before);
-      /* A failed try may follow a mutation on any path through the main body.
-       */
-      forget_roots(&c->vars, 0, true);
-      for (int j = visible; j < base; j++) {
-        ((Var *)c->vars.v[j])->hidden = true;
-      }
-      if (s->scoped_handlers) {
-        c->lexical++;
-      }
-      infer_focus(c, yes);
-      infer_statements(c, &arm->body, false);
-      if (!c->terminated) {
-        List exit = save_facts(&c->vars);
-        exit.n = base;
-        exits = normal ? join_exit_facts(exits, exit) : exit;
-        normal = true;
-      }
-      c->vars.n = base;
-      c->terminated = false;
-      if (s->scoped_handlers) {
-        c->lexical--;
-      }
-      for (int j = 0; j < base; j++) {
-        ((Var *)c->vars.v[j])->hidden = hidden[j];
-      }
-    }
-    remaining = no;
-  }
-  infer_route(c, remaining, s->loc);
-  c->vars.n = base;
-  c->terminated = !normal;
-  if (normal) {
-    rewind_facts(&c->vars, exits);
-  }
-}
-static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
-  if (c->terminated) {
-    return type_builtin(c->p, T_NEVER);
-  }
-  if (!e)
-    return type_builtin(c->p, T_VOID);
-  if (e->constant_spec)
-    return type_spec(c->p, e->constant_spec);
-  if (expected && expected->kind == T_UNION && e->kind != E_IF &&
-      e->kind != E_CATCH) {
-    Type *actual = infer_expr(c, e, union_literal_hint(expected, e));
-    return actual && sum_accepts(expected, actual) ? expected : actual;
-  }
-  if (guarded_chain(e)) {
-    return infer_chain(c, e, true);
-  }
-  switch (e->kind) {
-  case E_TRY: {
-    bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
-                   e->a->kind == E_RECORD || e->a->kind == E_ARRAY;
-    Type *type = infer_expr(c, e->a, literal ? expected : NULL);
-    if (!type || type->kind == T_NEVER) {
-      return type;
-    }
-    Type *plain = success_type(c->p, type, e->loc);
-    infer_route(c, error_leaves(c->p, type, e->loc), e->loc);
-    c->terminated = plain->kind == T_NEVER;
-    return plain;
-  }
-  case E_CATCH: {
-    Type *type = infer_expr(c, e->a, NULL);
-    if (!type || type->kind == T_NEVER) {
-      return type;
-    }
-    Type *plain = success_type(c->p, type, e->loc);
-    Type *errors = error_leaves(c->p, type, e->loc);
-    if (!errors) {
-      fail(e->loc, "catch^ requires an error alternative");
-    }
-    int begin = c->vars.n;
-    c->lexical++;
-    List facts = save_facts(&c->vars);
-    infer_focus(c, errors);
-    Type *fallback = infer_expr(c, e->b,
-                                expected                 ? expected
-                                : plain->kind == T_NEVER ? NULL
-                                                         : plain);
-    c->vars.n = begin;
-    c->lexical--;
-    restore_facts(&c->vars, facts);
-    c->terminated =
-        plain->kind == T_NEVER && fallback && fallback->kind == T_NEVER;
-    if (!fallback) {
-      return NULL;
-    }
-    if (fallback->kind == T_VOID) {
-      fail(e->loc,
-           "catch^ requires a value-producing fallback; use a catch^ clause");
-    }
-    if (plain->kind == T_NEVER) {
-      return fallback;
-    }
-    if (fallback->kind == T_NEVER) {
-      return plain;
-    }
-    if (plain->kind == T_VOID || fallback->kind == T_VOID) {
-      fail(e->loc, "catch^ requires value-producing alternatives; use nil^ for "
-                   "unit success");
-    }
-    return plain == fallback ? plain
-                             : type_union(c->p, plain, fallback, e->loc);
-  }
-  case E_FITS: {
-    Type *type = infer_expr(c, e->a, NULL);
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    Type *target = type_spec(c->p, e->test_spec);
-    if (target->kind == T_VOID || (type && type->kind == T_VOID)) {
-      fail(e->loc, "fits^ requires a value type");
-    }
-    if (type) {
-      Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
-      remember_test(&c->flow, &scope, e, e->a,
-                    fits_subset(c->p, type, target, true, e->loc),
-                    fits_subset(c->p, type, target, false, e->loc));
-    }
-    return type_builtin(c->p, T_BOOL);
-  }
-  case E_PRESENT: {
-    bool raw = c->raw_name;
-    c->raw_name = e->a->kind == E_NAME;
-    Type *type = infer_expr(c, e->a, NULL);
-    c->raw_name = raw;
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (type && type->kind == T_VOID) {
-      fail(e->loc, "presence test requires a value");
-    }
-    infer_guard(c, e, e->a, true);
-    return type_builtin(c->p, T_BOOL);
-  }
-  case E_COALESCE: {
-    Type *base = infer_expr(c, e->a, NULL);
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (!base) {
-      return NULL;
-    }
-    if (!nullable(base)) {
-      fail(e->loc, "?? requires a nil alternative");
-    }
-    Type *plain = without_nil(c->p, base, e->loc);
-    Type *fallback = infer_expr(c, e->b, plain);
-    if (plain) {
-      c->terminated = false;
-    }
-    if (fallback && fallback->kind == T_VOID) {
-      fail(e->loc, "?? requires a value-producing fallback");
-    }
-    if (!plain) {
-      return fallback;
-    }
-    if (!fallback) {
-      return plain;
-    }
-    if (sum_accepts(plain, fallback)) {
-      return plain;
-    }
-    if (sum_accepts(fallback, plain)) {
-      return fallback;
-    }
-    return type_union(c->p, plain, fallback, e->loc);
-  }
-  case E_INT:
-    return numeric(expected) ? expected : type_builtin(c->p, T_I32);
-  case E_FLOAT:
-    return expected && kind_float(expected->kind) ? expected
-                                                  : type_builtin(c->p, T_F64);
-  case E_BOOL:
-    return type_builtin(c->p, T_BOOL);
-  case E_STRING:
-    return type_builtin(c->p, T_STRING);
-  case E_NAME:
-    if (e->scope_kind) {
-      Context scope = {.vars = c->vars, .lexical = c->lexical};
-      Var *v = selected(&scope, e);
-      return v ? (!c->raw_name && v->narrowed ? v->narrowed : v->type) : NULL;
-    }
-
-    if (!strcmp(e->text, "nil^"))
-      return type_builtin(c->p, T_NIL);
-    return infer_lookup(c, e->text);
-  case E_SELF:
-    return infer_lookup(c, e->text);
-  case E_FUNCTION:
-    fail(e->loc, "function values cannot escape; invoke the literal directly");
-  case E_CALL:
-    return infer_call(c, e);
-  case E_RECORD: {
-    Type *type = expected;
-    if (e->text) {
-      Def *d = lookup_def(c->p, e->text);
-      type = d ? d->type : NULL;
-      if (!type) {
-        return NULL;
-      }
-      if (type->kind == T_UNION) {
-        fail(e->loc, "cannot construct union directly; construct one of its "
-                     "alternatives");
-      }
-    }
-    if (!type || type->kind != T_STRUCT) {
-      fail(e->loc, "contextual construction requires a single nominal struct "
-                   "type; write Type{field=value}");
-    }
-    layout(type, e->loc);
-    for (int j = 0; j < type->def->fields.n; j++) {
-      Field *field = type->def->fields.v[j];
-      Expr *init = field->init;
-      for (int k = 0; k < e->names.n; k++) {
-        if (!strcmp(e->names.v[k], field->name)) {
-          init = e->args.v[k];
-        }
-      }
-      if (init) {
-        bool def = init == field->init;
-        if (def) {
-          for (int k = 0; k < c->initializers.n; k++) {
-            if (c->initializers.v[k] == init) {
-              fail(e->loc, "recursive default construction for '%s'",
-                   field->name);
-            }
-          }
-          add(&c->initializers, init);
-        }
-        infer_expr(c, init, field->type);
-        if (def) {
-          c->initializers.n--;
-        }
-      }
-      else if (field->type->kind == T_STRUCT) {
-        Expr empty = {
-            .kind = E_RECORD, .loc = e->loc, .text = field->type->def->name};
-        infer_expr(c, &empty, field->type);
-      }
-      if (c->terminated) {
-        return type_builtin(c->p, T_NEVER);
-      }
-    }
-    return type;
-  }
-  case E_ARRAY: {
-    if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW)) {
-      for (int j = 0; j < e->args.n; j++)
-        infer_expr(c, e->args.v[j], expected->elem);
-      if (c->terminated) {
-        return type_builtin(c->p, T_NEVER);
-      }
-      return expected;
-    }
-    Type *elem = e->args.n ? infer_expr(c, e->args.v[0], NULL) : NULL;
-    for (int j = 1; j < e->args.n; j++)
-      infer_expr(c, e->args.v[j], elem);
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    return elem ? type_wrap(c->p, T_ARRAY, elem, e->args.n) : NULL;
-  }
-  case E_MEMBER: {
-    Type *base = infer_expr(c, e->a, NULL);
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (base && base->kind == T_REF)
-      base = base->elem;
-    if (!base)
-      return NULL;
-    if ((base->kind == T_ARRAY || base->kind == T_GROW ||
-         base->kind == T_STRING || base->kind == T_SLICE) &&
-        !strcmp(e->text, "len"))
-      return type_builtin(c->p, T_I64);
-    Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
-    if (f && c->raw_place != e) {
-      Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
-      Var *root = NULL;
-      char *path = NULL;
-      if (stable_path(&scope, e, &root, &path)) {
-        Type *type = path_type(root, path);
-        if (type) {
-          return type;
-        }
-      }
-    }
-    return f ? f->type : NULL;
-  }
-  case E_INDEX: {
-    Type *base = infer_expr(c, e->a, NULL);
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (base && base->kind == T_REF)
-      base = base->elem;
-    infer_expr(c, e->b, type_builtin(c->p, T_I64));
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
-           : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
-                      base->kind == T_SLICE)
-               ? base->elem
-               : NULL;
-  }
-  case E_UNARY: {
-    bool raw = c->raw_name;
-    Expr *old_place = c->raw_place;
-    if (!strcmp(e->text, "&")) {
-      c->raw_name = e->a->kind == E_NAME;
-      c->raw_place = e->a;
-    }
-    Type *a = infer_expr(c, e->a,
-                         (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
-                             ? expected
-                             : NULL);
-    c->raw_name = raw;
-    c->raw_place = old_place;
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    if (!strcmp(e->text, "!"))
-      return type_builtin(c->p, T_BOOL);
-    if (!a)
-      return NULL;
-    if (!strcmp(e->text, "&"))
-      return type_wrap(c->p, T_REF, a, 0);
-    if (!strcmp(e->text, "*"))
-      return a->kind == T_REF ? a->elem : NULL;
-    return a;
-  }
-  case E_SCOPE: {
-    int begin = c->vars.n;
-    c->lexical++;
-    infer_statements(c, &e->bindings, false);
-    Type *t = infer_expr(c, e->a, expected);
-    c->vars.n = begin;
-    c->lexical--;
-    return t;
-  }
-  case E_EXPECT:
-    return infer_expr(c, e->a, infer_expr(c, e->b, NULL));
-  case E_SAVED:
-    if (e->compiler_value) {
-      return ((Value *)e->compiler_value)->type;
-    }
-    return ((Slot *)c->in->slots.v[e->saved_slot])->type;
-  case E_CHAIN: {
-    Type *t = infer_expr(c, e->args.v[0], NULL);
-    for (int j = 1; j < e->args.n; j++) {
-      Expr *operand = e->args.v[j];
-      if (!strcmp((char *)e->names.v[j - 1], "fits^")) {
-        Value value = {.type = t};
-        Expr saved = {.kind = E_SAVED, .compiler_value = &value};
-        Expr pair = *operand;
-        pair.a = &saved;
-        if (t) {
-          infer_expr(c, &pair, NULL);
-        }
-      }
-      else {
-        t = infer_expr(c, operand, t);
-      }
-    }
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    return type_builtin(c->p, T_BOOL);
-  }
-  case E_IF: {
-    infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    List facts = save_facts(&c->vars);
-    int known = condition_truth(&c->flow, e->a);
-    if (known) {
-      refine_condition(c->p, &c->vars, &c->flow, e->a, known > 0);
-      Type *type = infer_expr(c, known > 0 ? e->b : e->c, expected);
-      restore_facts(&c->vars, facts);
-      return type;
-    }
-    refine_condition(c->p, &c->vars, &c->flow, e->a, true);
-    Type *a = infer_expr(c, e->b, expected);
-    bool ended = c->terminated;
-    c->terminated = false;
-    List after_yes = save_facts(&c->vars);
-    rewind_facts(&c->vars, facts);
-    refine_condition(c->p, &c->vars, &c->flow, e->a, false);
-    Type *b = infer_expr(c, e->c, expected);
-    c->terminated &= ended;
-    merge_facts(&c->vars, facts, after_yes);
-    return join_types(c->p, a, e->b, b, e->c, e->loc);
-  }
-  case E_BIN: {
-    bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
-                 !strcmp(e->text, "&&") || !strcmp(e->text, "||");
-    bool comparison = strchr("=!<>", e->text[0]) != NULL;
-    Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
-    if (a && a->kind == T_NEVER) {
-      return a;
-    }
-    List facts = {0};
-    if (logic) {
-      int known = condition_truth(&c->flow, e->a);
-      bool andop = !strcmp(e->text, "and^") || !strcmp(e->text, "&&");
-      if (known && ((known > 0) != andop)) {
-        return type_builtin(c->p, T_BOOL);
-      }
-      facts = save_facts(&c->vars);
-      refine_condition(c->p, &c->vars, &c->flow, e->a,
-                       !strcmp(e->text, "and^"));
-    }
-    Type *b = infer_expr(c, e->b, !strcmp(e->text, "bitshift^") ? NULL : a);
-    if (b && b->kind == T_NEVER && !logic) {
-      return b;
-    }
-    if (logic) {
-      c->terminated = false;
-      restore_facts(&c->vars, facts);
-    }
-    if (comparison && (nil_name(e->a) || nil_name(e->b)) &&
-        (!strcmp(e->text, "=") || !strcmp(e->text, "!="))) {
-      infer_guard(c, e, nil_name(e->a) ? e->b : e->a, !strcmp(e->text, "!="));
-    }
-    if (comparison || logic)
-      return type_builtin(c->p, T_BOOL);
-    if (!strcmp(e->text, "bitshift^"))
-      return a;
-    return join_types(c->p, a, e->a, b, e->b, e->loc);
-  }
-  default:
-    return NULL;
-  }
-}
-static void infer_statements(Infer *c, List *body, bool scoped) {
-  int mark = c->vars.n;
-  if (scoped)
-    c->lexical++;
-  for (int j = 0; j < body->n; j++) {
-    if (c->terminated) {
-      break;
-    }
-    Stmt *s = body->v[j];
-    if (s->kind == S_HANDLE) {
-      infer_handle(c, s);
-    }
-    else if (s->kind == S_BIND) {
-      Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
-      Type *actual = infer_expr(c, s->a, t);
-      if (c->terminated && !t) {
-        break;
-      }
-      Var *v = mem(sizeof(*v));
-      v->name = s->name;
-      v->lexical = c->lexical;
-      v->type = t ? t : actual;
-      v->alias = infer_alias(c, s->a);
-      if (s->flow_alias && s->a->kind == E_NAME) {
-        v->source = infer_variable(c, s->a);
-        v->source_version = v->source ? v->source->version : 0;
-      }
-      add(&c->vars, v);
-    }
-    else if (s->kind == S_BIND_MANY) {
-      List pending = {0};
-      for (int k = 0; k < s->body.n; k++) {
-        Stmt *b = s->body.v[k];
-        Type *t = b->spec ? type_spec(c->p, b->spec) : NULL;
-        Type *actual = infer_expr(c, b->a, t);
-        Var *v = mem(sizeof(*v));
-        v->name = b->name;
-        v->lexical = c->lexical;
-        v->type = t ? t : actual;
-        v->alias = infer_alias(c, b->a);
-        add(&pending, v);
-      }
-      for (int k = 0; k < pending.n; k++)
-        add(&c->vars, pending.v[k]);
-    }
-    else if (s->kind == S_ASSIGN) {
-      int count = s->targets.n ? s->targets.n : 1;
-      for (int k = 0; k < count; k++) {
-        Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
-        Var *v = infer_variable(c, dst);
-        if (!v) {
-          infer_expr(c, dst, NULL);
-        }
-        Type *hint = v ? v->type : NULL;
-        if (s->op && v && v->narrowed) {
-          hint = v->narrowed;
-        }
-        if (s->op && s->optional && hint) {
-          hint = without_nil(c->p, hint, s->loc);
-        }
-        infer_expr(c, s->values.n ? s->values.v[k] : s->b, hint);
-        if (s->optional) {
-          c->terminated = false;
-        }
-      }
-      for (int k = 0; k < count; k++) {
-        Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
-        Var *v = infer_variable(c, dst);
-        if (v) {
-          Type *narrow = v->narrowed;
-          v->version++;
-          v->path_version++;
-          v->narrowed = s->op ? narrow : NULL;
-          v->paths = (List){0};
-          for (int q = 0; q < c->vars.n; q++) {
-            Var *alias = c->vars.v[q];
-            if (alias != v && alias->path_sensitive) {
-              alias->path_version++;
-              alias->paths = (List){0};
-            }
-          }
-          if (!s->op) {
-            v->alias = infer_alias(c, s->values.n ? s->values.v[k] : s->b);
-          }
-        }
-        else {
-          Context scope = {.vars = c->vars, .lexical = c->lexical};
-          Var *root = NULL;
-          char *path = NULL;
-          if (stable_path(&scope, dst, &root, &path) && *path) {
-            forget_paths(&c->vars);
-          }
-          else {
-            forget_roots(&c->vars, 0, true);
-          }
-        }
-      }
-    }
-    else if (s->kind == S_RETURN) {
-      Type *hint = c->in->fn->result ? type_spec(c->p, c->in->fn->result)
-                                     : c->in->fn->required_result;
-      Type *t = infer_expr(c, s->a, hint);
-      if (!s->a && hint && nullable(hint) && has_error(hint)) {
-        t = hint;
-      }
-      c->value_return |= s->a != NULL;
-      c->returned =
-          join_types(c->p, c->returned, c->return_expr, t, s->a, s->loc);
-      if (!c->return_expr || !integer_literal(s->a))
-        c->return_expr = s->a;
-      c->terminated = true;
-    }
-    else if (s->kind == S_WHILE) {
-      int begin = c->vars.n;
-      add(&c->loops, (void *)(intptr_t)(begin + 1));
-      List loop_facts = save_facts(&c->vars);
-      infer_statements(c, &s->prolog, false);
-      if (c->terminated) {
-        c->vars.n = begin;
-        c->loops.n--;
-        continue;
-      }
-      infer_statements(c, &s->pre, false);
-      if (!c->terminated) {
-        infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
-      }
-      if (c->terminated) {
-        c->vars.n = begin;
-        c->loops.n--;
-        restore_facts(&c->vars, loop_facts);
-        continue;
-      }
-      bool live = condition_truth(&c->flow, s->a) >= 0;
-      refine_condition(c->p, &c->vars, &c->flow, s->a, true);
-      if (live) {
-        infer_statements(c, &s->first, false);
-      }
-      c->lexical--;
-      if (live) {
-        infer_statements(c, &s->body, true);
-      }
-      c->lexical++;
-      c->lexical--;
-      c->terminated = false;
-      if (live) {
-        infer_statements(c, &s->update, true);
-      }
-      restore_facts(&c->vars, loop_facts);
-      infer_statements(c, &s->last, true);
-      c->terminated = false;
-      infer_statements(c, &s->epilog, true);
-      c->lexical++;
-      c->vars.n = begin;
-      restore_facts(&c->vars, loop_facts);
-      c->terminated = false;
-      c->loops.n--;
-    }
-    else if (s->kind == S_IF) {
-      infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
-      if (c->terminated) {
-        break;
-      }
-      if (s->internal)
-        c->lexical--;
-      List facts = save_facts(&c->vars);
-      int known = condition_truth(&c->flow, s->a);
-      if (known) {
-        refine_condition(c->p, &c->vars, &c->flow, s->a, known > 0);
-        infer_statements(c, known > 0 ? &s->body : &s->other, true);
-        restore_facts(&c->vars, facts);
-        if (s->internal) {
-          c->lexical++;
-        }
-        continue;
-      }
-      refine_condition(c->p, &c->vars, &c->flow, s->a, true);
-      infer_statements(c, &s->body, true);
-      bool a = c->terminated;
-      c->terminated = false;
-      List after_yes = save_facts(&c->vars);
-      rewind_facts(&c->vars, facts);
-      refine_condition(c->p, &c->vars, &c->flow, s->a, false);
-      infer_statements(c, &s->other, true);
-      if (!a && c->terminated) {
-        rewind_facts(&c->vars, after_yes);
-      }
-      else if (!a && !c->terminated) {
-        merge_facts(&c->vars, facts, after_yes);
-      }
-      c->terminated &= a;
-      if (s->internal)
-        c->lexical++;
-      infer_statements(c, &s->update, true);
-    }
-    else if (s->kind == S_BLOCK) {
-      infer_statements(c, &s->body, true);
-    }
-    else {
-      infer_expr(c, s->a, NULL);
-      if (s->b)
-        infer_expr(c, s->b, NULL);
-    }
-  }
-  if (scoped) {
-    c->vars.n = mark;
-    c->lexical--;
-  }
-}
-static List first_types(Context *c, Stmt *s) {
-  Infer infer = infer_context(c);
-  infer_statements(&infer, &s->pre, false);
-  infer_expr(&infer, s->a, type_builtin(c->p, T_BOOL));
-  if (condition_truth(&infer.flow, s->a) < 0) {
-    return (List){0};
-  }
-  refine_condition(c->p, &infer.vars, &infer.flow, s->a, true);
-  int begin = infer.vars.n;
-  infer_statements(&infer, &s->first, false);
-  List out = {0};
-  for (int j = begin; j < infer.vars.n; j++) {
-    Var *v = infer.vars.v[j];
-    for (int k = c->vars.n - 1; k >= 0; k--) {
-      Var *old = c->vars.v[k];
-      if (old->depth < c->depth)
-        break;
-      if (!strcmp(old->name, v->name))
-        fail(s->loc, "duplicate binding '%s'", v->name);
-    }
-    for (int k = 0; k < out.n; k++)
-      if (!strcmp(((Var *)out.v[k])->name, v->name))
-        fail(s->loc, "duplicate binding '%s'", v->name);
-    for (int k = 0; k < s->first.n; k++) {
-      Stmt *b = s->first.v[k];
-      if (b->kind == S_BIND && !strcmp(b->name, v->name))
-        v->mut = b->mut;
-      if (b->kind == S_BIND_MANY)
-        for (int q = 0; q < b->body.n; q++) {
-          Stmt *part = b->body.v[q];
-          if (!strcmp(part->name, v->name))
-            v->mut = part->mut;
-        }
-    }
-    add(&out, v);
-  }
-  return out;
-}
-static void infer_results(Program *p) {
-  for (int round = 0; round < 1024; round++) {
-    bool changed = false;
-    int count = p->instances.n;
-    for (int j = 0; j < p->instances.n; j++) {
-      Instance *in = p->instances.v[j];
-      Infer c = {
-          .p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
-      for (int k = 0; k < in->fn->params.n; k++) {
-        Param *param = in->fn->params.v[k];
-        Var *v = mem(sizeof(*v));
-        v->name = param->name;
-        v->lexical = c.lexical;
-        v->type = in->params.v[k];
-        add(&c.vars, v);
-      }
-      infer_statements(&c, &in->fn->body, false);
-      Type *result = c.returned;
-      if (c.propagated) {
-        if (result && result->kind == T_VOID) {
-          result = type_builtin(p, T_NIL);
-        }
-        else if (!result || result->kind == T_NEVER) {
-          result = c.terminated ? NULL : type_builtin(p, T_NIL);
-        }
-        result = error_join(p, result, c.propagated, in->fn->loc);
-      }
-      if (!result && !c.value_return)
-        result = type_builtin(p, T_VOID);
-      if (!in->fn->result && !in->fn->required_result && result &&
-          result != in->result) {
-        if (in->state)
-          fail(in->fn->loc, "return inference changed after code generation");
-        in->result = result;
-        changed = true;
-      }
-    }
-    if (count != p->instances.n)
-      changed = true;
-    if (!changed)
-      return;
-  }
-  fail((Loc){p->path, 1, 1}, "return type inference did not converge");
-}
-static Type *handler_errors(Context *c, Stmt *s)
-{
-  Infer infer = infer_context(c);
-  ErrorTarget target = {0};
-  add(&infer.handlers, &target);
-  infer_statements(&infer, &s->body, false);
-  return target.errors;
-}
-static Type *chain_type(Context *c, Expr *e)
-{
-  Infer in = infer_context(c);
-  return infer_chain(&in, e, true);
-}
-static Type *chain_place_type(Context *c, Expr *e)
-{
-  Infer in = infer_context(c);
-  return infer_chain(&in, e, false);
-}
-static Type *expression_type(Context *c, Expr *e, Type *expected) {
-  Infer inference = infer_context(c);
-  return infer_expr(&inference, e, expected);
-}
-static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
-                              Loc at) {
-  for (int j = 0; j < p->instances.n; j++) {
-    Instance *in = p->instances.v[j];
-    if (in->fn != f || in->self != self || in->params.n != actual->n)
-      continue;
-    bool same = true;
-    for (int k = 0; k < actual->n; k++)
-      if (in->params.v[k] != actual->v[k])
-        same = false;
-    if (same)
-      return in;
-  }
-  if (p->instances.n >= 512)
-    fail(at, "template specialization limit exceeded");
-  Instance *in = mem(sizeof(*in));
-  in->fn = f;
-  in->self = self;
-  in->params = *actual;
-  in->result = f->result ? type_spec(p, f->result) : f->required_result;
-  in->id = p->instances.n;
-  in->symbol = fmt("rh_fn_%d", in->id);
-  if (p->modules.n > 1 && f != p->entry) {
-    char *identity = fmt(
-        "%s:%s:%s", f->module && f->module->name ? f->module->name : "<entry>",
-        f->name, self ? self->name : "");
-    for (int j = 0; j < actual->n; j++)
-      identity = fmt("%s:%s", identity, type_name(actual->v[j]));
-    in->symbol = fmt("rh_fn_%s", link_identity(identity));
-  }
-  in->result_slot = -1;
-  add(&p->instances, in);
-  return in;
-}
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
                              Loc at) {
   Instance *in = instance_for(p, f, self, actual, at);
@@ -5432,18 +4138,36 @@ void analyze(Program *p) {
         fail(f->loc, "duplicate function '%s' with %d arguments", f->name,
              f->params.n);
   }
+  infer_parameters(p);
+  for (int j = 0; j < p->functions.n; j++) {
+    Function *f = p->functions.v[j];
+    if (f->public) {
+      inferred_export(f);
+    }
+  }
+  for (int j = 0; j < p->defs.n; j++) {
+    Def *d = p->defs.v[j];
+    if (d->public) {
+      for (int k = 0; k < d->methods.n; k++) {
+        Function *f = d->methods.v[k];
+        if (!f->priv) {
+          inferred_export(f);
+        }
+      }
+    }
+  }
   List none = {0};
   p->entry->required_result = type_builtin(p, T_VOID);
   instantiate(p, p->entry, NULL, &none, p->entry->loc);
   /* Abstract nominal parameters require a concrete call-site specialization. */
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
-    if (!f->templ) {
+    if (!f->templ && !inferred_parameter(f) && declaration_instance_needed(p, f)) {
       List types = {0};
       bool concrete = true;
       for (int k = 0; k < f->params.n; k++) {
         Param *a = f->params.v[k];
-        Type *t = type_spec(p, a->spec);
+        Type *t = parameter_type(p, a);
         Type *base = t->kind == T_REF ? t->elem : t;
         if (base->kind == T_STRUCT && base->def->abstract)
           concrete = false;
@@ -5459,15 +4183,25 @@ void analyze(Program *p) {
       continue;
     for (int k = 0; k < d->methods.n; k++) {
       Function *f = d->methods.v[k];
-      if (f->templ)
+      if (f->templ || inferred_parameter(f) || !declaration_instance_needed(p, f)) {
         continue;
+      }
       List types = {0};
       for (int n = 0; n < f->params.n; n++) {
         Param *a = f->params.v[n];
         add(&types,
-            a->self ? type_wrap(p, T_REF, d->type, 0) : type_spec(p, a->spec));
+            a->self ? type_wrap(p, T_REF, d->type, 0) : parameter_type(p, a));
       }
       instantiate(p, f, d, &types, f->loc);
+    }
+  }
+  for (int j = 0; j < p->functions.n; j++) {
+    inferred_unused(p, p->functions.v[j]);
+  }
+  for (int j = 0; j < p->defs.n; j++) {
+    Def *d = p->defs.v[j];
+    for (int k = 0; k < d->own_methods.n; k++) {
+      inferred_unused(p, d->own_methods.v[k]);
     }
   }
   for (int j = 0; j < p->types.n; j++) {

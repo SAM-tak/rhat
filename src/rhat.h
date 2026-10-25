@@ -159,6 +159,7 @@ typedef struct {
   char *name;
   Spec *spec;
   bool self;
+  Type *inferred; /* Body-derived constraint, independent of call sites. */
 } Param;
 struct Function {
   Function *enclosing; /* Lexical enclosing function, without a captured

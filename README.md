@@ -113,6 +113,7 @@ print(value.a, value.b, value.c)
 - [examples/layout.rh](examples/layout.rh): 抽象フィールドを含む合成と配置。
 - [examples/nominal_template.rh](examples/nominal_template.rh): 明示的な公称の適合、デフォルト実装、private、構造によるテンプレート検査。
 - [examples/regions.rh](examples/regions.rh): 呼び出し側への配列構築、伸長後も有効な参照、スコープでの領域回収。
+- [examples/inference.rh](examples/inference.rh): 無注釈引数の呼び出し形ごとの具体化と返り値推論。
 - [examples/factorial.rh](examples/factorial.rh): 無名関数の即時呼び出し、返り値の推論、`if^` 式、`this^` による再帰。10! を `i64^` で計算します。
 - [examples/errors.rh](examples/errors.rh): エラー値、伝播、遅延代替、型付きの捕捉。
 - [examples/numeric.rh](examples/numeric.rh): 組み込み型と同じ通常識別子、128ビット整数、低精度浮動小数点。
@@ -150,7 +151,10 @@ print(value.a, value.b, value.c)
 - 詳細と、型・所有権の判断を残した構文は [構文対応](docs/syntax.md) を参照。
 - `f^`・`p^` の返り値の型推論、式一つの `f^` の暗黙の返却、`if^ condition: value el^: value;`。
 - キャプチャなしの無名関数の即時呼び出し、`this^` による自己再帰、`this^^` / `this^^^` による外側の関数の呼び出し、名前付き関数間の再帰。
-  通常の引数の型注釈は引き続き必要です。無注釈の引数を実型で具体化する場合は `template^` を使います。
+  通常の `f^` / `p^` も、無注釈引数を同一モジュール内の呼び出し形ごとに具体化します。
+  型付きの呼び先・返却先・ローカル変数・真偽条件など、本体の要求からも引数型を推論します。
+  公開関数も本体だけで型が決まれば注釈を省略可能。未確定の公開引数には注釈か `template^`、
+  未確定のローカル引数には呼び出し形が必要です。`x+1` だけでは数値の幅を固定しません。
 - 型の一致を要求する算術・比較、短絡評価する `and^` / `or^`、`&value`, `*ref`、メンバと添字。
 - 整数の `bitand^` / `bitor^` / `bitxor^` / `bitshift^`、前置 `bitnot^`。
   L^ と同じ優先順位で、`bitshift^` は正で左、負で論理右シフトし、型の幅以上ならゼロになります。
