@@ -65,9 +65,102 @@ Type *type_wrap(Program *p, int k, Type *e, int n) {
   add(&p->types, t);
   return t;
 }
+static void union_arms(List *arms, Type *t)
+{
+  if (t->kind == T_UNION && t->structural) {
+    for (int j = 0; j < t->def->alternatives.n; j++) {
+      union_arms(arms, t->def->alternatives.v[j]);
+    }
+    return;
+  }
+  for (int j = 0; j < arms->n; j++) {
+    if (arms->v[j] == t) {
+      return;
+    }
+  }
+  add(arms, t);
+}
+static int union_order(Type *a, Type *b)
+{
+  int ak = a->kind == T_NIL ? INT_MAX : a->kind;
+  int bk = b->kind == T_NIL ? INT_MAX : b->kind;
+  if (ak != bk) {
+    return ak < bk ? -1 : 1;
+  }
+  if (a->structural != b->structural) {
+    return a->structural ? 1 : -1;
+  }
+  return strcmp(type_name(a), type_name(b));
+}
+static bool nullable(Type *t);
+static Type *type_union(Program *p, Type *a, Type *b, Loc loc)
+{
+  if (a->kind == T_NIL && nullable(b)) {
+    return b;
+  }
+  if (b->kind == T_NIL && nullable(a)) {
+    return a;
+  }
+  List arms = {0};
+  union_arms(&arms, a);
+  union_arms(&arms, b);
+  if (arms.n == 1) {
+    return arms.v[0];
+  }
+  for (int j = 1; j < arms.n; j++) {
+    Type *t = arms.v[j];
+    int k = j;
+    while (k && union_order(t, arms.v[k - 1]) < 0) {
+      arms.v[k] = arms.v[k - 1];
+      k--;
+    }
+    arms.v[k] = t;
+  }
+  for (int j = 0; j < p->types.n; j++) {
+    Type *t = p->types.v[j];
+    if (!t->structural || t->def->alternatives.n != arms.n) {
+      continue;
+    }
+    bool same = true;
+    for (int k = 0; k < arms.n; k++) {
+      same &= arms.v[k] == t->def->alternatives.v[k];
+    }
+    if (same) {
+      return t;
+    }
+  }
+  Type *t = mem(sizeof(*t));
+  Def *d = mem(sizeof(*d));
+  t->kind = T_UNION;
+  t->structural = true;
+  t->id = p->types.n;
+  t->def = d;
+  d->type = t;
+  d->loc = loc;
+  d->state = 2;
+  d->alternatives = arms;
+  char *identity = str("union");
+  d->name = str("");
+  for (int j = 0; j < arms.n; j++) {
+    Type *arm = arms.v[j];
+    if (arm->kind == T_VOID) {
+      fail(loc, "void cannot be a union alternative");
+    }
+    char *name = type_name(arm);
+    identity = fmt("%s:%d:%d:%zu:%s", identity, arm->kind, arm->structural,
+                   strlen(name), name);
+    d->name = fmt("%s%s%s", d->name, j ? " | " : "", name);
+  }
+  t->symbol = fmt("%%rh_sum_%s", link_identity(identity));
+  add(&p->types, t);
+  return t;
+}
 Type *type_spec(Program *p, Spec *s) {
   if (!s)
     return type_builtin(p, T_VOID);
+  if (s->kind == SPEC_UNION) {
+    return type_union(p, type_spec(p, s->elem), type_spec(p, s->other), s->loc);
+  }
   if (s->kind != SPEC_NAME)
     return type_wrap(p,
                      s->kind == SPEC_REF     ? T_REF
@@ -91,15 +184,19 @@ char *type_name(Type *t) {
   if (t->kind == T_STRUCT || t->kind == T_UNION)
     return t->def->name;
   if (t->kind == T_REF)
-    return fmt("&%s", type_name(t->elem));
+    return fmt(t->elem->kind == T_UNION ? "&(%s)" : "&%s", type_name(t->elem));
   if (t->kind == T_SLICE)
-    return fmt(t->elem->kind == T_REF ? "(%s)[:]" : "%s[:]",
+    return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[:]"
+                                                                    : "%s[:]",
                type_name(t->elem));
   if (t->kind == T_GROW)
-    return fmt(t->elem->kind == T_REF ? "(%s)[>..]" : "%s[>..]",
+    return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION)
+                   ? "(%s)[>..]"
+                   : "%s[>..]",
                type_name(t->elem));
-  return fmt(t->elem->kind == T_REF ? "(%s)[%d]" : "%s[%d]", type_name(t->elem),
-             t->count);
+  return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[%d]"
+                                                                  : "%s[%d]",
+             type_name(t->elem), t->count);
 }
 bool derives(Def *d, Def *b) {
   if (d == b)
@@ -115,6 +212,57 @@ static int union_alternative(Type *sum, Type *arm) {
       if (sum->def->alternatives.v[i] == arm)
         return i;
   return -1;
+}
+static bool sum_accepts(Type *to, Type *from)
+{
+  if (to == from || union_alternative(to, from) >= 0) {
+    return true;
+  }
+  if (to->kind != T_UNION || from->kind != T_UNION ||
+      (!to->structural && !from->structural)) {
+    return false;
+  }
+  for (int j = 0; j < from->def->alternatives.n; j++) {
+    if (union_alternative(to, from->def->alternatives.v[j]) < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+static Type *nil_subject(Type *t)
+{
+  return t->kind == T_REF && t->elem->kind == T_UNION ? t->elem : t;
+}
+static bool nullable(Type *t)
+{
+  if (t->kind == T_NIL) {
+    return true;
+  }
+  if (t->kind == T_UNION) {
+    for (int j = 0; j < t->def->alternatives.n; j++) {
+      if (((Type *)t->def->alternatives.v[j])->kind == T_NIL) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+static Type *without_nil(Program *p, Type *t, Loc loc)
+{
+  if (t->kind == T_NIL) {
+    return NULL;
+  }
+  if (t->kind != T_UNION || union_alternative(t, type_builtin(p, T_NIL)) < 0) {
+    return t;
+  }
+  Type *out = NULL;
+  for (int j = 0; j < t->def->alternatives.n; j++) {
+    Type *arm = t->def->alternatives.v[j];
+    if (arm->kind != T_NIL) {
+      out = out ? type_union(p, out, arm, loc) : arm;
+    }
+  }
+  return out;
 }
 static Field *field(Def *d, const char *n) {
   for (int i = 0; i < d->fields.n; i++) {
@@ -162,27 +310,31 @@ static void compose(Program *p, Def *d) {
   if (d->state == 1)
     fail(d->loc, "cyclic def^ composition at '%s'", d->name);
   d->state = 1;
-  if (d->union_names.n) {
-    for (int i = 0; i < d->union_names.n; i++) {
-      char *name = d->union_names.v[i];
-      Def *arm = lookup_def(p, name);
-      Type *at = NULL;
+  if (d->union_specs.n) {
+    for (int i = 0; i < d->union_specs.n; i++) {
+      Spec *alternative = d->union_specs.v[i];
+      Def *arm = alternative->kind == SPEC_NAME
+                     ? lookup_def(p, alternative->name)
+                     : NULL;
       if (arm) {
         compose(p, arm);
-        at = arm->type;
-        if (arm->abstract)
-          fail(d->loc, "union alternative '%s' must be concrete", name);
-      } else {
+        if (arm->abstract) {
+          fail(d->loc, "union alternative '%s' must be concrete", arm->name);
+        }
+      }
+      if (alternative->kind == SPEC_NAME && !arm) {
         bool builtin = false;
-        for (int k = 0; k < T_STRUCT; k++)
-          if (!strcmp(name, builtin_name(k)))
-            builtin = true;
-        if (!builtin)
-          fail(d->loc, "unknown union alternative '%s'", name);
-        Spec spec = {.kind = SPEC_NAME, .name = name, .loc = d->loc};
-        at = type_spec(p, &spec);
-        if (at->kind == T_VOID)
-          fail(d->loc, "void cannot be a union alternative");
+        for (int k = 0; k < T_STRUCT; k++) {
+          builtin |= !strcmp(alternative->name, builtin_name(k));
+        }
+        if (!builtin) {
+          fail(d->loc, "unknown union alternative '%s'", alternative->name);
+        }
+      }
+      Type *at = type_spec(p, alternative);
+      char *name = type_name(at);
+      if (at->kind == T_VOID) {
+        fail(d->loc, "void cannot be a union alternative");
       }
       for (int j = 0; j < d->alternatives.n; j++)
         if (d->alternatives.v[j] == at)
@@ -337,6 +489,9 @@ static void layout(Type *t, Loc l) {
     for (int j = 0; j < t->def->alternatives.n; j++) {
       Type *arm = t->def->alternatives.v[j];
       layout(arm, l);
+      if (arm->kind == T_STRUCT && arm->def->abstract) {
+        fail(l, "union alternative '%s' must be concrete", type_name(arm));
+      }
       if (arm->owned)
         fail(l, "union alternatives must be non-owning fixed-size values");
       if (arm->size > size)
@@ -388,6 +543,42 @@ static void layout(Type *t, Loc l) {
     t->size = 1;
 }
 
+static bool guarded_chain(Expr *e)
+{
+  return e &&
+         (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_CALL) &&
+         (e->optional || guarded_chain(e->a));
+}
+/* A method name is not a first-class value; keep it with its call. */
+static Expr *chain_parts(Expr *e, List *steps)
+{
+  if (e->kind == E_MEMBER || e->kind == E_INDEX ||
+      (e->kind == E_CALL && e->a->kind == E_MEMBER)) {
+    Expr *base = chain_parts(e->kind == E_CALL ? e->a->a : e->a, steps);
+    add(steps, e);
+    return base;
+  }
+  return e;
+}
+static bool step_optional(Expr *e)
+{
+  return e->kind == E_CALL ? e->a->optional : e->optional;
+}
+static Expr step_expression(Expr *step, Expr *receiver, Expr *member)
+{
+  Expr copy = *step;
+  copy.optional = false;
+  if (step->kind == E_CALL) {
+    *member = *step->a;
+    member->optional = false;
+    member->a = receiver;
+    copy.a = member;
+  }
+  else {
+    copy.a = receiver;
+  }
+  return copy;
+}
 typedef struct Var Var;
 struct Var {
   char *name;
@@ -395,18 +586,34 @@ struct Var {
   int slot, depth, lexical;
   uint64_t root, deps;
   bool mut, parameter, unavailable, pending;
+  unsigned version;
+  Var *alias;     /* Inference-only direct reference target. */
+  Type *narrowed; /* A branch-local view; the storage type never changes. */
 };
 typedef struct {
   int id;
   Type *type;
   uint64_t deps, storage;
   Var *var;
-  bool addressable;
+  bool addressable, guarded_copy;
 } Value;
 typedef struct {
   int end, update, bindings, phase;
   List focuses, saved, first;
 } Loop; /* Jump targets carry the ownership cleanup boundary. */
+typedef struct {
+  Expr *test;
+  Var *var;
+  unsigned version;
+  bool positive;
+} NilGuard;
+typedef struct {
+  List guards;
+} NilFlow;
+typedef struct {
+  Type *type;
+  unsigned version;
+} NilFact;
 typedef struct {
   Program *p;
   Instance *in;
@@ -418,6 +625,8 @@ typedef struct {
   bool terminated;
   uint64_t self_roots;
   List default_stack, loops;
+  NilFlow flow;
+  bool raw_name;
   bool in_default;
 } Context;
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
@@ -430,6 +639,9 @@ static void statements(Context *c, List *body, bool scope);
 static Value expression(Context *c, Expr *e, Type *expected);
 static Value construct(Context *c, Expr *e, Type *t, int dst);
 static List first_types(Context *c, Stmt *s);
+static Type *chain_type(Context *c, Expr *e);
+static Type *chain_place_type(Context *c, Expr *e);
+static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc);
 static Instr *emit(Context *c, int op, Loc l) {
   Instr *i = mem(sizeof(*i));
   i->op = op;
@@ -439,6 +651,7 @@ static Instr *emit(Context *c, int op, Loc l) {
   return i;
 }
 static int slot(Context *c, Type *t, bool alias) {
+  layout(t, c->in->fn->loc);
   Slot *s = mem(sizeof(*s));
   s->type = t;
   s->alias = alias;
@@ -499,6 +712,101 @@ static Var *selected(Context *c, Expr *e) {
   }
   return NULL;
 }
+static void forget_roots(List *vars, uint64_t roots, bool all)
+{
+  for (int j = 0; j < vars->n; j++) {
+    Var *v = vars->v[j];
+    if (all || (v->root & roots)) {
+      v->version++;
+      v->narrowed = NULL;
+    }
+  }
+}
+static List save_facts(List *vars)
+{
+  List facts = {0};
+  for (int j = 0; j < vars->n; j++) {
+    Var *v = vars->v[j];
+    NilFact *f = mem(sizeof(*f));
+    f->type = v->narrowed;
+    f->version = v->version;
+    add(&facts, f);
+  }
+  return facts;
+}
+static void restore_facts(List *vars, List facts)
+{
+  for (int j = 0; j < facts.n; j++) {
+    Var *v = vars->v[j];
+    NilFact *f = facts.v[j];
+    v->narrowed = v->version == f->version ? f->type : NULL;
+  }
+}
+static void remember_guard(NilFlow *flow, Context *context, Expr *test,
+                           Expr *value, bool positive)
+{
+  if (value->kind != E_NAME) {
+    return;
+  }
+  Var *v = selected(context, value);
+  if (!v || v->type->kind != T_UNION || !nullable(v->type)) {
+    return;
+  }
+  NilGuard *guard = NULL;
+  for (int j = 0; j < flow->guards.n; j++) {
+    NilGuard *g = flow->guards.v[j];
+    if (g->test == test) {
+      guard = g;
+      break;
+    }
+  }
+  if (!guard) {
+    guard = mem(sizeof(*guard));
+    add(&flow->guards, guard);
+  }
+  *guard = (NilGuard){
+      .test = test, .var = v, .version = v->version, .positive = positive};
+}
+static bool nil_name(Expr *e)
+{
+  return e && e->kind == E_NAME && !strcmp(e->text, "nil^");
+}
+static void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
+                             bool truth)
+{
+  if (e->kind == E_UNARY && !strcmp(e->text, "!")) {
+    refine_condition(p, vars, flow, e->a, !truth);
+    return;
+  }
+  if (e->kind == E_BIN && ((!strcmp(e->text, "and^") && truth) ||
+                           (!strcmp(e->text, "or^") && !truth))) {
+    refine_condition(p, vars, flow, e->a, truth);
+    refine_condition(p, vars, flow, e->b, truth);
+    return;
+  }
+  for (int j = 0; j < flow->guards.n; j++) {
+    NilGuard *g = flow->guards.v[j];
+    if (g->test != e || g->version != g->var->version) {
+      continue;
+    }
+    for (int k = 0; k < vars->n; k++) {
+      if (vars->v[k] == g->var) {
+        g->var->narrowed = truth == g->positive
+                               ? without_nil(p, g->var->type, e->loc)
+                               : type_builtin(p, T_NIL);
+        break;
+      }
+    }
+  }
+}
+static Value place_expression(Context *c, Expr *e)
+{
+  bool raw = c->raw_name;
+  c->raw_name = e->kind == E_NAME;
+  Value v = expression(c, e, NULL);
+  c->raw_name = raw;
+  return v;
+}
 static Value variable(Var *v) {
   return (Value){v->slot, v->type, v->type->refs ? v->deps : 0,
                  v->root, v,       true};
@@ -551,14 +859,19 @@ static void store_check(Context *c, Value dst, Value src, Loc l) {
     dst.var->deps |= src.deps;
 }
 static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
+  if (dst.type != src.type && sum_accepts(dst.type, src.type)) {
+    src = convert_value(c, src, dst.type, -1, l);
+  }
   if (dst.type != src.type)
     fail(l, "expected '%s', found '%s'", type_name(dst.type),
          type_name(src.type));
   if (src.type->owned)
     fail(l, "owned region values cannot be copied; construct at the "
             "destination or borrow with '&'");
-  if (!init)
+  if (!init) {
     store_check(c, dst, src, l);
+    forget_roots(&c->vars, dst.storage, false);
+  }
   Instr *i = emit(c, I_COPY, l);
   i->dst = dst.id;
   i->a = src.id;
@@ -574,6 +887,239 @@ static Value snapshot(Context *c, Value src, Loc l) {
   Value dst = value(c, src.type);
   return copy_to(c, dst, src, l, true);
 }
+static Value case_value(Context *c, Value src, Type *arm, Loc loc)
+{
+  layout(arm, loc);
+  Value out = value(c, arm);
+  out.deps = arm->refs ? src.deps : 0;
+  out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
+  Instr *i = emit(c, I_CASE_GET, loc);
+  i->dst = out.id;
+  i->a = src.id;
+  i->type = src.type;
+  i->label = union_alternative(src.type, arm);
+  if (i->label < 0) {
+    fail(loc, "internal: invalid union projection");
+  }
+  return out;
+}
+/* This also projects a proven subset for nil narrowing. Callers validate all
+   ordinary implicit conversions with sum_accepts before entering here. */
+static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
+{
+  layout(to, loc);
+  if (src.type == to && dst < 0) {
+    return src;
+  }
+  Value out = {.id = dst >= 0 ? dst : slot(c, to, false),
+               .type = to,
+               .deps = to->refs ? src.deps : 0};
+  if (src.type == to) {
+    return copy_to(c, out, src, loc, true);
+  }
+  int tag = union_alternative(to, src.type);
+  if (tag >= 0) {
+    Instr *i = emit(c, I_UNION, loc);
+    i->dst = out.id;
+    i->a = src.id;
+    i->type = to;
+    i->label = tag;
+    return out;
+  }
+  if (src.type->kind != T_UNION) {
+    fail(loc, "expected '%s', found '%s'", type_name(to), type_name(src.type));
+  }
+  List selected = {0};
+  for (int j = 0; j < src.type->def->alternatives.n; j++) {
+    Type *arm = src.type->def->alternatives.v[j];
+    if (arm == to || union_alternative(to, arm) >= 0) {
+      add(&selected, arm);
+    }
+  }
+  if (!selected.n) {
+    fail(loc, "cannot project '%s' to '%s'", type_name(src.type),
+         type_name(to));
+  }
+  int end = ++c->in->labels;
+  for (int j = 0; j < selected.n; j++) {
+    Type *arm = selected.v[j];
+    int next = 0;
+    if (j + 1 < selected.n) {
+      Value test = value(c, type_builtin(c->p, T_BOOL));
+      Instr *i = emit(c, I_CASE_IS, loc);
+      i->dst = test.id;
+      i->a = src.id;
+      i->type = src.type;
+      i->label = union_alternative(src.type, arm);
+      int yes = ++c->in->labels;
+      next = ++c->in->labels;
+      i = emit(c, I_CBR, loc);
+      i->a = test.id;
+      i->label = yes;
+      i->other = next;
+      i = emit(c, I_LABEL, loc);
+      i->label = yes;
+    }
+    Value part = case_value(c, src, arm, loc);
+    convert_value(c, part, to, out.id, loc);
+    Instr *i = emit(c, I_BR, loc);
+    i->label = end;
+    if (next) {
+      i = emit(c, I_LABEL, loc);
+      i->label = next;
+    }
+  }
+  Instr *i = emit(c, I_LABEL, loc);
+  i->label = end;
+  out.guarded_copy = to->kind == T_STRUCT || to->kind == T_ARRAY;
+  return out;
+}
+static Value nil_base(Context *c, Value value, Loc loc)
+{
+  return value.type->kind == T_REF && value.type->elem->kind == T_UNION
+             ? deref(c, value, loc)
+             : value;
+}
+static Value present_value(Context *c, Value src, Loc loc)
+{
+  if (src.type->kind == T_VOID) {
+    fail(loc, "presence test requires a value");
+  }
+  Value out = value(c, type_builtin(c->p, T_BOOL));
+  if (src.type->kind != T_UNION || !nullable(src.type)) {
+    Instr *i = emit(c, I_CONST, loc);
+    i->dst = out.id;
+    i->type = out.type;
+    i->text = src.type->kind == T_NIL ? "0" : "1";
+    return out;
+  }
+  Value absent = value(c, out.type);
+  Instr *i = emit(c, I_CASE_IS, loc);
+  i->dst = absent.id;
+  i->a = src.id;
+  i->type = src.type;
+  i->label = union_alternative(src.type, type_builtin(c->p, T_NIL));
+  i = emit(c, I_UNARY, loc);
+  i->dst = out.id;
+  i->a = absent.id;
+  i->type = out.type;
+  i->text = "!";
+  return out;
+}
+static Expr *saved_value(Value value, Loc loc)
+{
+  Expr *e = mem(sizeof(*e));
+  e->kind = E_SAVED;
+  e->loc = loc;
+  Value *v = mem(sizeof(*v));
+  *v = value;
+  e->compiler_value = v;
+  return e;
+}
+static void nil_branch(Context *c, Value condition, int yes, int no, Loc loc)
+{
+  Instr *i = emit(c, I_CBR, loc);
+  i->a = condition.id;
+  i->label = yes;
+  i->other = no;
+}
+static void nil_label(Context *c, int label, Loc loc)
+{
+  Instr *i = emit(c, I_LABEL, loc);
+  i->label = label;
+}
+static void nil_jump(Context *c, int label, Loc loc)
+{
+  Instr *i = emit(c, I_BR, loc);
+  i->label = label;
+}
+static Value nil_literal(Context *c, Loc loc)
+{
+  Expr e = {.kind = E_NAME, .loc = loc, .text = "nil^"};
+  return expression(c, &e, NULL);
+}
+static Value chain_walk(Context *c, Expr *e, int absent, bool *never)
+{
+  List steps = {0};
+  Expr *root = chain_parts(e, &steps);
+  Value base = expression(c, root, NULL);
+  *never = false;
+  for (int j = 0; j < steps.n; j++) {
+    Expr *step = steps.v[j];
+    if (step_optional(step)) {
+      base = nil_base(c, base, step->loc);
+      Type *plain = without_nil(c->p, base.type, step->loc);
+      if (!plain) {
+        nil_jump(c, absent, step->loc);
+        *never = true;
+        break;
+      }
+      if (nullable(base.type)) {
+        int yes = ++c->in->labels;
+        nil_branch(c, present_value(c, base, step->loc), yes, absent,
+                   step->loc);
+        nil_label(c, yes, step->loc);
+        base = convert_value(c, base, plain, -1, step->loc);
+      }
+    }
+    Expr member = {0},
+         copy = step_expression(step, saved_value(base, step->loc), &member);
+    base = expression(c, &copy, NULL);
+  }
+  return base;
+}
+static Value chain_value(Context *c, Expr *e)
+{
+  Type *result = chain_type(c, e);
+  if (!result) {
+    fail(e->loc, "cannot infer nil-propagating chain");
+  }
+  layout(result, e->loc);
+  Value out = {.id = result->kind == T_VOID ? -1 : slot(c, result, false),
+               .type = result};
+  int absent = ++c->in->labels, end = ++c->in->labels;
+  bool never = false;
+  Value base = chain_walk(c, e, absent, &never);
+  if (!never) {
+    if (result->kind != T_VOID) {
+      out.deps |= convert_value(c, base, result, out.id, e->loc).deps;
+    }
+    nil_jump(c, end, e->loc);
+  }
+  nil_label(c, absent, e->loc);
+  if (result->kind != T_VOID) {
+    convert_value(c, nil_literal(c, e->loc), result, out.id, e->loc);
+  }
+  nil_jump(c, end, e->loc);
+  nil_label(c, end, e->loc);
+  return out;
+}
+static Value coalesce_value(Context *c, Expr *e)
+{
+  Value base = expression(c, e->a, NULL);
+  if (!nullable(base.type)) {
+    fail(e->loc, "?? requires a nil alternative");
+  }
+  Type *result = expression_type(c, e, NULL);
+  layout(result, e->loc);
+  Value out = value(c, result);
+  Type *plain = without_nil(c->p, base.type, e->loc);
+  if (!plain) {
+    return construct(c, e->b, result, out.id);
+  }
+  int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
+  nil_branch(c, present_value(c, base, e->loc), yes, no, e->loc);
+  nil_label(c, yes, e->loc);
+  out.deps |= convert_value(c, convert_value(c, base, plain, -1, e->loc),
+                            result, out.id, e->loc)
+                  .deps;
+  nil_jump(c, end, e->loc);
+  nil_label(c, no, e->loc);
+  out.deps |= construct(c, e->b, result, out.id).deps;
+  nil_jump(c, end, e->loc);
+  nil_label(c, end, e->loc);
+  return out;
+}
 static Value field_value(Context *c, Value base, Field *f, Loc l) {
   access_check(c, f->priv, f->owner, l, f->name);
   Value r = {0};
@@ -583,6 +1129,7 @@ static Value field_value(Context *c, Value base, Field *f, Loc l) {
   r.deps = r.type->refs ? base.deps : 0;
   r.var = base.var;
   r.addressable = base.addressable;
+  r.guarded_copy = base.guarded_copy;
   Instr *i = emit(c, I_FIELD, l);
   i->dst = r.id;
   i->a = base.id;
@@ -636,6 +1183,35 @@ static int random_intrinsic(Instance *in, Expr *target) {
       return j;
     }
   return -1;
+}
+/* this^ selects a declaration, independently of its runtime activation. */
+static Function *this_function(Program *p, Instance *in, Expr *target)
+{
+  if (target->kind != E_NAME || strncmp(target->text, "this^", 5)) {
+    return NULL;
+  }
+  Function *f = in->fn;
+  for (const char *q = target->text + 5; *q; q++) {
+    if (*q != '^') {
+      return NULL;
+    }
+    f = f ? f->enclosing : NULL;
+  }
+  if (!f || f == p->entry) {
+    fail(target->loc,
+         "%s requires an enclosing function or procedure at that nesting depth",
+         target->text);
+  }
+  return f;
+}
+static Def *outer_receiver(Function *f, Type *type, Loc loc)
+{
+  if (type->kind != T_REF || type->elem->kind != T_STRUCT ||
+      !derives(type->elem->def, f->owner)) {
+    fail(loc, "outer method call requires an explicit '&%s' receiver",
+         f->owner->name);
+  }
+  return type->elem->def;
 }
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
@@ -875,6 +1451,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     if (!f)
       fail(e->loc, "'%s' has no method '%s'", self->name, target->text);
     access_check(c, f->priv, f->owner, e->loc, f->name);
+    if (base.guarded_copy && (f->procedure || f->mutable_self)) {
+      fail(e->loc,
+           "mutable nil-propagating receiver requires an optional reference");
+    }
     if (f->procedure || f->mutable_self)
       store_check(c, base, (Value){0}, e->loc);
     Value ref = value(c, type_wrap(p, T_REF, base.type, 0));
@@ -891,11 +1471,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     add(&actual, ref.type);
   } else if (target->kind == E_FUNCTION) {
     f = target->function;
-  } else if (target->kind == E_NAME && !strcmp(target->text, "this^")) {
-    if (c->in->fn == p->entry)
-      fail(e->loc, "this^ requires an enclosing function or procedure");
-    f = c->in->fn;
-    self = c->in->self;
+  }
+  else if ((f = this_function(p, c->in, target))) {
+    self = f == c->in->fn ? c->in->self : NULL;
     if (self) {
       Var *receiver = lookup(c, "self^");
       Value ref = snapshot(c, variable(receiver), e->loc);
@@ -904,7 +1482,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       add(&values, saved);
       add(&actual, ref.type);
     }
-  } else if (target->kind == E_NAME) {
+  }
+  else if (target->kind == E_NAME) {
     for (int j = 0; j < p->functions.n; j++) {
       Function *candidate = p->functions.v[j];
       if (!strcmp(candidate->name, target->text) &&
@@ -915,8 +1494,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     }
     if (!f)
       fail(e->loc, "unknown function '%s'", target->text);
-  } else
+  }
+  else {
     fail(e->loc, "function values and escaping closures are not supported");
+  }
   if (f->abstract)
     fail(e->loc, "cannot call abstract method '%s'", f->name);
   int offset = values.n;
@@ -941,6 +1522,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
         if (!okay)
           fail(e->loc, "argument to '%s' requires nominal '%s', found '%s'",
                f->name, type_name(want), type_name(v.type));
+      }
+    }
+    if (!self && f->owner && param->self) {
+      self = outer_receiver(f, v.type, e->loc);
+      if (f->procedure || f->mutable_self) {
+        store_check(c, deref(c, v, e->loc), (Value){0}, e->loc);
       }
     }
     if (v.type->owned)
@@ -978,6 +1565,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     Value *v = values.v[j];
     add(&i->args, (void *)(intptr_t)(v->id + 1));
   }
+  if (f->procedure || f->mutable_self) {
+    forget_roots(&c->vars, deps, false);
+  }
   return out;
 }
 static Type *union_literal_hint(Type *t, Expr *e) {
@@ -986,13 +1576,17 @@ static Type *union_literal_hint(Type *t, Expr *e) {
   Expr *literal = e;
   if (literal->kind == E_UNARY && !strcmp(literal->text, "-"))
     literal = literal->a;
-  if (literal->kind != E_INT && literal->kind != E_FLOAT)
+  if (literal->kind != E_INT && literal->kind != E_FLOAT &&
+      literal->kind != E_ARRAY) {
     return NULL;
+  }
   Type *hint = NULL;
   for (int j = 0; j < t->def->alternatives.n; j++) {
     Type *a = t->def->alternatives.v[j];
     if ((literal->kind == E_INT && kind_integer(a->kind)) ||
-        (literal->kind == E_FLOAT && kind_float(a->kind))) {
+        (literal->kind == E_FLOAT && kind_float(a->kind)) ||
+        (literal->kind == E_ARRAY &&
+         (a->kind == T_ARRAY || a->kind == T_GROW))) {
       if (hint)
         return NULL;
       hint = a;
@@ -1022,20 +1616,11 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       fail(e->loc, "construct union '%s' from a named alternative",
            type_name(t));
     Value arm = expression(c, e, union_literal_hint(t, e));
-    Value out = {
-        .id = dst >= 0 ? dst : slot(c, t, false), .type = t, .deps = arm.deps};
-    if (arm.type == t)
-      return copy_to(c, out, arm, e->loc, true);
-    int tag = union_alternative(t, arm.type);
-    if (tag < 0)
+    if (!sum_accepts(t, arm.type)) {
       fail(e->loc, "'%s' is not an alternative of nominal union '%s'",
            type_name(arm.type), type_name(t));
-    Instr *i = emit(c, I_UNION, e->loc);
-    i->dst = out.id;
-    i->a = arm.id;
-    i->type = t;
-    i->label = tag;
-    return out;
+    }
+    return convert_value(c, arm, t, dst, e->loc);
   }
   if (e->kind == E_CALL)
     return call(c, e, t, dst);
@@ -1057,12 +1642,17 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     i->other = no;
     i = emit(c, I_LABEL, e->loc);
     i->label = yes;
+    List facts = save_facts(&c->vars);
+    refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Value a = construct(c, e->b, t, out.id);
+    restore_facts(&c->vars, facts);
     i = emit(c, I_BR, e->loc);
     i->label = end;
     i = emit(c, I_LABEL, e->loc);
     i->label = no;
+    refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Value b = construct(c, e->c, t, out.id);
+    restore_facts(&c->vars, facts);
     i = emit(c, I_BR, e->loc);
     i->label = end;
     i = emit(c, I_LABEL, e->loc);
@@ -1250,6 +1840,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   if (e->kind == E_EXPECT)
     return expression(c, e->a, expression_type(c, e->b, NULL));
   if (e->kind == E_SAVED) {
+    if (e->compiler_value) {
+      return *(Value *)e->compiler_value;
+    }
     out.id = e->saved_slot;
     out.type = ((Slot *)c->in->slots.v[out.id])->type;
     return out;
@@ -1286,6 +1879,19 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Instr *lab = emit(c, I_LABEL, e->loc);
     lab->label = end;
     return out;
+  }
+  if (e->kind == E_PRESENT) {
+    Value src = e->a->kind == E_NAME ? place_expression(c, e->a)
+                                     : expression(c, e->a, NULL);
+    Value result = present_value(c, src, e->loc);
+    remember_guard(&c->flow, c, e, e->a, true);
+    return result;
+  }
+  if (e->kind == E_COALESCE) {
+    return coalesce_value(c, e);
+  }
+  if (guarded_chain(e)) {
+    return chain_value(c, e);
   }
   if (e->kind == E_FUNCTION)
     fail(e->loc, "function values cannot escape; invoke the literal directly");
@@ -1330,7 +1936,11 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (v->unavailable)
       fail(e->loc, "first^ binding '%s' is not definitely initialized here",
            v->name);
-    return variable(v);
+    Value result = variable(v);
+    if (v->narrowed && !c->raw_name) {
+      return convert_value(c, result, v->narrowed, -1, e->loc);
+    }
+    return result;
   }
   if (e->kind == E_CALL)
     return call(c, e, expected, -1);
@@ -1374,6 +1984,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     out.deps = out.type->refs ? base.deps | (view ? 0 : base.storage) : 0;
     out.var = base.var;
     out.addressable = base.addressable;
+    out.guarded_copy = base.guarded_copy;
     Instr *i = emit(c, I_INDEX, e->loc);
     i->dst = out.id;
     i->a = base.id;
@@ -1387,7 +1998,10 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       neg.text = fmt("-%s", neg.text);
       return literal_int(c, &neg, expected);
     }
-    Value a = expression(c, e->a,
+    Value a =
+        !strcmp(e->text, "&") && e->a->kind == E_NAME
+            ? place_expression(c, e->a)
+            : expression(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
                              ? expected
                              : NULL);
@@ -1430,10 +2044,18 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
     bool shift = !strcmp(e->text, "bitshift^");
     bool bitwise = !strncmp(e->text, "bit", 3);
-    Value a = expression(c, e->a,
-                         logic        ? type_builtin(p, T_BOOL)
-                         : comparison ? NULL
-                                      : expected);
+    Type *rhs_kind = comparison && e->b->kind != E_INT &&
+                             e->b->kind != E_FLOAT && e->b->kind != E_BOOL &&
+                             e->b->kind != E_STRING
+                         ? expression_type(c, e->b, NULL)
+                         : NULL;
+    bool nil_rhs = nil_name(e->b) || (rhs_kind && rhs_kind->kind == T_NIL);
+    Value a = comparison && nil_rhs && e->a->kind == E_NAME
+                  ? place_expression(c, e->a)
+                  : expression(c, e->a,
+                               logic        ? type_builtin(p, T_BOOL)
+                               : comparison ? NULL
+                                            : expected);
     if (logic) {
       if (a.type->kind != T_BOOL)
         fail(e->loc, "logical operands must be bool");
@@ -1447,7 +2069,10 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       br->other = andop ? end : rhs;
       Instr *lab = emit(c, I_LABEL, e->loc);
       lab->label = rhs;
+      List facts = save_facts(&c->vars);
+      refine_condition(p, &c->vars, &c->flow, e->a, andop);
       Value b = expression(c, e->b, a.type);
+      restore_facts(&c->vars, facts);
       copy_to(c, out, b, e->loc, true);
       br = emit(c, I_BR, e->loc);
       br->label = end;
@@ -1456,9 +2081,31 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return out;
     }
     a = snapshot(c, a, e->loc);
-    Value b = expression(c, e->b, shift ? NULL : a.type);
+    Value b = comparison && nil_name(e->a) && e->b->kind == E_NAME
+                  ? place_expression(c, e->b)
+                  : expression(c, e->b, shift || nil_rhs ? NULL : a.type);
     if (bitwise && (!kind_integer(a.type->kind) || !kind_integer(b.type->kind)))
       fail(e->loc, "bitwise operands must be integers");
+    if (comparison && (a.type->kind == T_NIL || b.type->kind == T_NIL)) {
+      if (strcmp(e->text, "=") && strcmp(e->text, "!=")) {
+        fail(e->loc, "nil supports only equality comparisons");
+      }
+      if (nil_name(e->a) || nil_name(e->b)) {
+        remember_guard(&c->flow, c, e, nil_name(e->a) ? e->b : e->a,
+                       !strcmp(e->text, "!="));
+      }
+      Value test = present_value(c, a.type->kind == T_NIL ? b : a, e->loc);
+      if (!strcmp(e->text, "!=")) {
+        return test;
+      }
+      Value result = value(c, test.type);
+      Instr *i = emit(c, I_UNARY, e->loc);
+      i->dst = result.id;
+      i->a = test.id;
+      i->type = test.type;
+      i->text = "!";
+      return result;
+    }
     if (!shift && a.type != b.type)
       fail(e->loc, "binary operands have different types");
     bool cmp = strchr("=!<>", e->text[0]) != NULL;
@@ -1516,7 +2163,12 @@ static void plain_loop(Context *c, Stmt *s) {
   int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels,
       roots = c->root_count;
   int bindings = c->vars.n;
+  List entry_facts = save_facts(&c->vars);
   for (;;) {
+    Type *before_fact[64];
+    for (int j = 0; j < bindings; j++) {
+      before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
+    }
     uint64_t before[64];
     for (int j = 0; j < bindings; j++)
       before[j] = ((Var *)c->vars.v[j])->deps;
@@ -1527,6 +2179,7 @@ static void plain_loop(Context *c, Stmt *s) {
       fail(s->loc, "condition requires bool");
     conditional(c, cond, body, end, s->loc);
     label_at(c, body, s->loc);
+    refine_condition(c->p, &c->vars, &c->flow, s->a, true);
     c->lexical--;
     statements(c, &s->body, true);
     c->lexical++;
@@ -1554,7 +2207,8 @@ static void plain_loop(Context *c, Stmt *s) {
     c->terminated = false;
     bool changed = false;
     for (int j = 0; j < bindings; j++)
-      changed |= before[j] != ((Var *)c->vars.v[j])->deps;
+      changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
+                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed);
     if (!changed)
       break;
     c->in->code.n = code;
@@ -1564,6 +2218,7 @@ static void plain_loop(Context *c, Stmt *s) {
   }
   c->loops.n--;
   label_at(c, end, s->loc);
+  restore_facts(&c->vars, entry_facts);
 }
 static void loop_code(Context *c, Stmt *s) {
   bool simple = !s->prolog.n && !s->first.n && !s->last.n && !s->epilog.n;
@@ -1574,6 +2229,7 @@ static void loop_code(Context *c, Stmt *s) {
     return;
   }
   int scope = c->vars.n;
+  List entry_facts = save_facts(&c->vars);
   c->depth++;
   Loop opening = {.phase = -1};
   add(&c->loops, &opening);
@@ -1582,6 +2238,7 @@ static void loop_code(Context *c, Stmt *s) {
   if (c->terminated) {
     c->vars.n = scope;
     c->depth--;
+    restore_facts(&c->vars, entry_facts);
     return;
   }
   List first = first_types(c, s);
@@ -1636,6 +2293,10 @@ static void loop_code(Context *c, Stmt *s) {
       roots = c->root_count;
   int persistent = c->vars.n;
   for (;;) {
+    Type *before_fact[64];
+    for (int j = 0; j < persistent; j++) {
+      before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
+    }
     uint64_t before[64];
     for (int j = 0; j < persistent; j++)
       before[j] = ((Var *)c->vars.v[j])->deps;
@@ -1656,6 +2317,7 @@ static void loop_code(Context *c, Stmt *s) {
       fail(s->loc, "condition requires bool");
     conditional(c, cond, yes, no, s->loc);
     label_at(c, yes, s->loc);
+    refine_condition(c->p, &c->vars, &c->flow, s->a, true);
     target.phase = 1;
     remember_focus(c, &target, s->loc, false);
     i = emit(c, I_CONST, s->loc);
@@ -1725,7 +2387,8 @@ static void loop_code(Context *c, Stmt *s) {
     branch_to(c, finish, s->loc);
     bool changed = false;
     for (int j = 0; j < persistent; j++)
-      changed |= before[j] != ((Var *)c->vars.v[j])->deps;
+      changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
+                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed);
     if (!changed)
       break;
     c->in->code.n = code;
@@ -1756,6 +2419,134 @@ static void loop_code(Context *c, Stmt *s) {
     cleanup(c, scope, s->loc);
   c->vars.n = scope;
   c->depth--;
+  restore_facts(&c->vars, entry_facts);
+}
+typedef struct {
+  Value location, pointer, active, old, pending;
+  Type *prior_fact;
+  bool indirect;
+} NilAssignment;
+static Value assignment_location(Context *c, NilAssignment *pair, Loc loc)
+{
+  if (!pair->indirect) {
+    return pair->location;
+  }
+  Value place = deref(c, pair->pointer, loc);
+  Value out = pair->location;
+  out.id = place.id;
+  return out;
+}
+static void nil_assignment(Context *c, Stmt *s)
+{
+  int count = s->targets.n ? s->targets.n : 1;
+  NilAssignment *pairs = mem((size_t)count * sizeof(*pairs));
+  for (int j = 0; j < count; j++) {
+    Expr *target = s->targets.n ? s->targets.v[j] : s->a;
+    NilAssignment *pair = &pairs[j];
+    if (target->kind == E_NAME && !strcmp(target->text, "_^")) {
+      fail(target->loc, "discard is not a nil-guarded assignment destination");
+    }
+    pair->active = value(c, type_builtin(c->p, T_BOOL));
+    Instr *zero = emit(c, I_CONST, s->loc);
+    zero->dst = pair->active.id;
+    zero->type = pair->active.type;
+    zero->text = "0";
+    int absent = ++c->in->labels, end = ++c->in->labels;
+    if (guarded_chain(target)) {
+      Type *t = chain_place_type(c, target);
+      if (!t) {
+        fail(target->loc, "cannot infer nil-guarded assignment destination");
+      }
+      layout(t, target->loc);
+      pair->pointer = value(c, type_wrap(c->p, T_REF, t, 0));
+      pair->indirect = true;
+      bool never = false;
+      pair->location = chain_walk(c, target, absent, &never);
+      if (never) {
+        fail(target->loc, "nil-only chain has no assignment destination");
+      }
+      if (!pair->location.addressable) {
+        fail(target->loc, "nil-guarded destination must refer to existing "
+                          "storage; use an optional reference");
+      }
+      Instr *address = emit(c, I_ADDR, target->loc);
+      address->dst = pair->pointer.id;
+      address->a = pair->location.id;
+      address->type = pair->pointer.type;
+      pair->pointer.deps = pair->location.storage | pair->location.deps;
+    }
+    else {
+      pair->location = place_expression(c, target);
+      if (!pair->location.addressable) {
+        fail(target->loc, "assignment destination is not addressable");
+      }
+    }
+    if (pair->location.var && pair->location.type->kind == T_UNION) {
+      pair->prior_fact = pair->location.var->narrowed;
+    }
+    if (pair->location.type->owned) {
+      fail(target->loc,
+           "owned values cannot be reassigned while references may exist");
+    }
+    store_check(c, pair->location, (Value){0}, s->loc);
+    Value test = present_value(c, pair->location, s->loc);
+    copy_to(c, pair->active, test, s->loc, true);
+    if (s->op) {
+      Type *plain = without_nil(c->p, pair->location.type, s->loc);
+      if (!plain || (!kind_integer(plain->kind) && !kind_float(plain->kind))) {
+        fail(s->loc, "nil-guarded compound assignment requires one non-nil "
+                     "numeric type");
+      }
+      int yes = ++c->in->labels;
+      nil_branch(c, test, yes, absent, s->loc);
+      nil_label(c, yes, s->loc);
+      pair->old = snapshot(
+          c, convert_value(c, pair->location, plain, -1, s->loc), s->loc);
+    }
+    nil_jump(c, end, s->loc);
+    nil_label(c, absent, s->loc);
+    nil_jump(c, end, s->loc);
+    nil_label(c, end, s->loc);
+  }
+  /* Preserve parallel assignment: snapshot every enabled RHS before any write.
+   */
+  for (int j = 0; j < count; j++) {
+    NilAssignment *pair = &pairs[j];
+    int yes = ++c->in->labels, end = ++c->in->labels;
+    nil_branch(c, pair->active, yes, end, s->loc);
+    nil_label(c, yes, s->loc);
+    Expr *rhs = s->values.n ? s->values.v[j] : s->b;
+    if (s->op) {
+      Value b = expression(c, rhs, pair->old.type);
+      Expr binary = {.kind = E_BIN,
+                     .loc = s->loc,
+                     .text = s->op,
+                     .a = saved_value(pair->old, s->loc),
+                     .b = saved_value(b, s->loc)};
+      pair->pending = convert_value(c, expression(c, &binary, pair->old.type),
+                                    pair->location.type, -1, s->loc);
+    }
+    else {
+      pair->pending = expression(c, rhs, pair->location.type);
+    }
+    pair->pending = snapshot(c, pair->pending, s->loc);
+    nil_jump(c, end, s->loc);
+    nil_label(c, end, s->loc);
+  }
+  for (int j = 0; j < count; j++) {
+    NilAssignment *pair = &pairs[j];
+    int yes = ++c->in->labels, end = ++c->in->labels;
+    nil_branch(c, pair->active, yes, end, s->loc);
+    nil_label(c, yes, s->loc);
+    copy_to(c, assignment_location(c, pair, s->loc), pair->pending, s->loc,
+            false);
+    if (s->op && pair->prior_fact && pair->prior_fact->kind != T_NIL &&
+        pair->location.var) {
+      pair->location.var->narrowed = pair->prior_fact;
+    }
+    nil_jump(c, end, s->loc);
+    nil_label(c, end, s->loc);
+  }
 }
 static void binding_name(Context *c, Stmt *s) {
   if (c->in->fn == c->p->entry && c->depth == 1) {
@@ -1892,7 +2683,11 @@ static void statements(Context *c, List *body, bool scope) {
       for (int j = 0; j < s->body.n; j++)
         if (strcmp(((Stmt *)s->body.v[j])->name, "_^"))
           ((Var *)c->vars.v[begin + j])->name = ((Stmt *)s->body.v[j])->name;
-    } else if (s->kind == S_ASSIGN) {
+    }
+    else if (s->kind == S_ASSIGN && s->optional) {
+      nil_assignment(c, s);
+    }
+    else if (s->kind == S_ASSIGN) {
       int count = s->targets.n ? s->targets.n : 1;
       Value *dest = mem(sizeof(*dest) * count),
             *old = mem(sizeof(*old) * count), *src = mem(sizeof(*src) * count);
@@ -1903,14 +2698,21 @@ static void statements(Context *c, List *body, bool scope) {
             fail(s->loc, "discard cannot be a compound assignment target");
           continue;
         }
-        dest[j] = expression(c, s->targets.n ? s->targets.v[j] : s->a, NULL);
+        dest[j] = place_expression(c, s->targets.n ? s->targets.v[j] : s->a);
         if (!dest[j].addressable)
           fail(s->loc, "assignment destination is not addressable");
         if (dest[j].type->owned)
           fail(s->loc,
                "owned values cannot be reassigned while references may exist");
-        if (s->op)
-          old[j] = snapshot(c, dest[j], s->loc);
+        if (s->op) {
+          Value previous = dest[j];
+          if (previous.var && previous.var->narrowed &&
+              previous.type->kind == T_UNION) {
+            previous =
+                convert_value(c, previous, previous.var->narrowed, -1, s->loc);
+          }
+          old[j] = snapshot(c, previous, s->loc);
+        }
       }
       for (int j = 0; j < count; j++) {
         if (!dest[j].type) {
@@ -1923,9 +2725,10 @@ static void statements(Context *c, List *body, bool scope) {
           statements(c, &one, false);
           continue;
         }
-        src[j] = snapshot(
-            c, expression(c, s->values.n ? s->values.v[j] : s->b, dest[j].type),
-            s->loc);
+        src[j] = snapshot(c,
+                          expression(c, s->values.n ? s->values.v[j] : s->b,
+                                     s->op ? old[j].type : dest[j].type),
+                          s->loc);
         if (s->op) {
           Expr left = {.kind = E_SAVED, .loc = s->loc, .saved_slot = old[j].id};
           Expr right = {
@@ -1935,7 +2738,7 @@ static void statements(Context *c, List *body, bool scope) {
                          .text = s->op,
                          .a = &left,
                          .b = &right};
-          src[j] = expression(c, &binary, dest[j].type);
+          src[j] = expression(c, &binary, old[j].type);
         }
       }
       for (int j = 0; j < count; j++) {
@@ -1945,10 +2748,15 @@ static void statements(Context *c, List *body, bool scope) {
         if (s->internal && dest[j].var)
           dest[j].var->mut = true;
         copy_to(c, dest[j], src[j], s->loc, false);
+        if (s->op && dest[j].var && dest[j].type->kind == T_UNION &&
+            union_alternative(dest[j].type, src[j].type) >= 0) {
+          dest[j].var->narrowed = src[j].type;
+        }
         if (s->internal && dest[j].var)
           dest[j].var->mut = mut;
       }
-    } else if (s->kind == S_BREAK || s->kind == S_NEXT) {
+    }
+    else if (s->kind == S_BREAK || s->kind == S_NEXT) {
       if (s->depth > c->loops.n)
         fail(s->loc, "jump depth exceeds enclosing loops");
       Loop *loop = c->loops.v[c->loops.n - s->depth];
@@ -1965,13 +2773,15 @@ static void statements(Context *c, List *body, bool scope) {
       Instr *br = emit(c, I_BR, s->loc);
       br->label = s->kind == S_BREAK ? loop->end : loop->update;
       c->terminated = true;
-    } else if (s->kind == S_EXPR) {
+    }
+    else if (s->kind == S_EXPR) {
       Value v = expression(c, s->a, NULL);
       if (v.type->owned)
         fail(s->loc, "owned temporary requires a binding");
       if (s->a->kind != E_CALL)
         fail(s->loc, "only calls can be expression statements");
-    } else if (s->kind == S_RETURN) {
+    }
+    else if (s->kind == S_RETURN) {
       Type *t = c->in->result;
       Value v = {.id = -1, .type = type_builtin(c->p, T_VOID)};
       if (s->a) {
@@ -1999,8 +2809,10 @@ static void statements(Context *c, List *body, bool scope) {
       Instr *i = emit(c, I_RETURN, s->loc);
       i->type = t;
       c->terminated = true;
-    } else if (s->kind == S_BLOCK)
+    }
+    else if (s->kind == S_BLOCK) {
       statements(c, &s->body, true);
+    }
     else if (s->kind == S_IF) {
       Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
       if (cond.type->kind != T_BOOL)
@@ -2014,7 +2826,10 @@ static void statements(Context *c, List *body, bool scope) {
       i->label = yes;
       if (s->internal)
         c->lexical--;
+      List facts = save_facts(&c->vars);
+      refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       statements(c, &s->body, true);
+      restore_facts(&c->vars, facts);
       if (s->internal)
         c->lexical++;
       bool a = c->terminated;
@@ -2027,7 +2842,9 @@ static void statements(Context *c, List *body, bool scope) {
       i->label = no;
       if (s->internal)
         c->lexical--;
+      refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       statements(c, &s->other, true);
+      restore_facts(&c->vars, facts);
       if (s->internal)
         c->lexical++;
       bool b = c->terminated;
@@ -2086,8 +2903,85 @@ typedef struct {
   Expr *return_expr;
   bool value_return;
   int lexical;
+  NilFlow flow;
+  bool raw_name;
 } Infer;
 
+static Infer infer_context(Context *c)
+{
+  Infer out = {.p = c->p, .in = c->in, .lexical = c->lexical};
+  for (int j = 0; j < c->vars.n; j++) {
+    Var *v = mem(sizeof(*v));
+    *v = *(Var *)c->vars.v[j];
+    v->alias = NULL;
+    add(&out.vars, v);
+  }
+  for (int j = 0; j < c->vars.n; j++) {
+    Var *old = c->vars.v[j];
+    for (int k = 0; k < c->vars.n; k++) {
+      if (old->alias && old->alias == c->vars.v[k]) {
+        ((Var *)out.vars.v[j])->alias = out.vars.v[k];
+      }
+    }
+  }
+  return out;
+}
+static Var *infer_variable(Infer *c, Expr *e)
+{
+  Context scope = {.vars = c->vars, .lexical = c->lexical};
+  return e->kind == E_NAME ? selected(&scope, e) : NULL;
+}
+static void infer_guard(Infer *c, Expr *test, Expr *name, bool positive)
+{
+  Context scope = {.vars = c->vars, .lexical = c->lexical};
+  remember_guard(&c->flow, &scope, test, name, positive);
+}
+static Var *infer_alias(Infer *c, Expr *e)
+{
+  if (e->kind == E_UNARY && !strcmp(e->text, "&") && e->a->kind == E_NAME) {
+    return infer_variable(c, e->a);
+  }
+  Var *v = infer_variable(c, e);
+  return v ? v->alias : NULL;
+}
+static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
+{
+  if (offset && types->n) {
+    Type *receiver = types->v[0];
+    if (receiver && receiver->kind == T_REF) {
+      layout(receiver->elem, call->loc);
+      if (receiver->elem->refs) {
+        forget_roots(&c->vars, 0, true);
+        return;
+      }
+    }
+  }
+  for (int j = 0; j < call->args.n; j++) {
+    Type *type = types->v[j + offset];
+    if (type) {
+      layout(type, call->loc);
+      if (!type->refs) {
+        continue;
+      }
+    }
+    Expr *arg = call->args.v[j];
+    Var *target = infer_alias(c, arg);
+    if (target) {
+      layout(target->type, arg->loc);
+      if (!target->type->refs) {
+        target->version++;
+        target->narrowed = NULL;
+        continue;
+      }
+    }
+    /* Unknown references may alias a local whose address was passed earlier. */
+    Var *v = infer_variable(c, arg);
+    if (target || !v || v->type->refs) {
+      forget_roots(&c->vars, 0, true);
+      return;
+    }
+  }
+}
 static Function *lookup_function(Program *p, const char *name, int arity) {
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
@@ -2101,7 +2995,7 @@ static Type *infer_lookup(Infer *c, const char *name) {
   for (int j = c->vars.n - 1; j >= 0; j--) {
     Var *v = c->vars.v[j];
     if (!strcmp(v->name, name))
-      return v->type;
+      return !c->raw_name && v->narrowed ? v->narrowed : v->type;
   }
   return NULL;
 }
@@ -2113,7 +3007,9 @@ static bool integer_literal(Expr *e) {
 static bool numeric(Type *t) {
   return t && (kind_integer(t->kind) || kind_float(t->kind));
 }
-static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
+static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
+                        Loc loc)
+{
   if (!a)
     return b;
   if (!b || a == b)
@@ -2126,6 +3022,15 @@ static Type *join_types(Type *a, Expr *ae, Type *b, Expr *be, Loc loc) {
     return b;
   if (be && be->kind == E_FLOAT && a && kind_float(a->kind))
     return a;
+  if (sum_accepts(a, b)) {
+    return a;
+  }
+  if (sum_accepts(b, a)) {
+    return b;
+  }
+  if (a->kind == T_NIL || b->kind == T_NIL || a->structural || b->structural) {
+    return type_union(p, a, b, loc);
+  }
   fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a),
        type_name(b));
 }
@@ -2151,15 +3056,14 @@ static Type *infer_call(Infer *c, Expr *e) {
         infer_expr(c, e->args.v[j], NULL);
       return type_builtin(c->p, T_VOID);
     }
-    if (!strcmp(target->text, "this^")) {
-      if (c->in->fn == c->p->entry)
-        fail(e->loc, "this^ requires an enclosing function or procedure");
-      f = c->in->fn;
-      self = c->in->self;
+    if ((f = this_function(c->p, c->in, target))) {
+      self = f == c->in->fn ? c->in->self : NULL;
       if (self)
         add(&actual, infer_lookup(c, "self^"));
-    } else
+    }
+    else {
       f = lookup_function(c->p, target->text, e->args.n);
+    }
   } else if (target->kind == E_MEMBER) {
     if (target->a->kind == E_NAME && !strcmp(target->text, "new")) {
       Def *d = lookup_def(c->p, target->a->text);
@@ -2217,15 +3121,53 @@ static Type *infer_call(Infer *c, Expr *e) {
         infer_expr(c, e->args.v[j],
                    param && param->spec ? type_spec(c->p, param->spec) : NULL);
     Type *want = param && param->spec ? type_spec(c->p, param->spec) : NULL;
-    if (t && want && union_alternative(want, t) >= 0)
+    if (t && want && sum_accepts(want, t)) {
       t = want;
+    }
     if (!t)
       known = false;
     add(&actual, t);
   }
+  if (f->procedure || f->mutable_self) {
+    infer_mutation(c, e, &actual, offset);
+  }
   if (!known || actual.n != f->params.n)
     return f->result ? type_spec(c->p, f->result) : f->required_result;
+  if (!self && f->owner && f->params.n && ((Param *)f->params.v[0])->self) {
+    self = outer_receiver(f, actual.v[0], e->loc);
+  }
   return instance_for(c->p, f, self, &actual, e->loc)->result;
+}
+static Type *infer_chain(Infer *c, Expr *e, bool lift)
+{
+  List steps = {0};
+  Expr *root = chain_parts(e, &steps);
+  Type *base = infer_expr(c, root, NULL);
+  if (!base) {
+    return NULL;
+  }
+  for (int j = 0; j < steps.n; j++) {
+    Expr *step = steps.v[j];
+    if (step_optional(step)) {
+      base = without_nil(c->p, nil_subject(base), step->loc);
+      if (!base) {
+        return type_builtin(c->p, T_NIL);
+      }
+    }
+    Value value = {.id = -1, .type = base};
+    Expr receiver = {.kind = E_SAVED,
+                     .loc = step->loc,
+                     .compiler_value = &value},
+         member = {0};
+    Expr copy = step_expression(step, &receiver, &member);
+    base = infer_expr(c, &copy, NULL);
+    if (!base) {
+      return NULL;
+    }
+  }
+  return !lift || base->kind == T_VOID
+             ? base
+             : type_union(c->p, base, type_builtin(c->p, T_NIL), e->loc);
 }
 static void infer_statements(Infer *c, List *body, bool scoped);
 static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
@@ -2235,12 +3177,50 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     return type_spec(c->p, e->constant_spec);
   if (expected && expected->kind == T_UNION && e->kind != E_IF) {
     Type *actual = infer_expr(c, e, union_literal_hint(expected, e));
-    return actual && (actual == expected ||
-                      union_alternative(expected, actual) >= 0)
-               ? expected
-               : actual;
+    return actual && sum_accepts(expected, actual) ? expected : actual;
+  }
+  if (guarded_chain(e)) {
+    return infer_chain(c, e, true);
   }
   switch (e->kind) {
+  case E_PRESENT: {
+    bool raw = c->raw_name;
+    c->raw_name = e->a->kind == E_NAME;
+    Type *type = infer_expr(c, e->a, NULL);
+    c->raw_name = raw;
+    if (type && type->kind == T_VOID) {
+      fail(e->loc, "presence test requires a value");
+    }
+    infer_guard(c, e, e->a, true);
+    return type_builtin(c->p, T_BOOL);
+  }
+  case E_COALESCE: {
+    Type *base = infer_expr(c, e->a, NULL);
+    if (!base) {
+      return NULL;
+    }
+    if (!nullable(base)) {
+      fail(e->loc, "?? requires a nil alternative");
+    }
+    Type *plain = without_nil(c->p, base, e->loc);
+    Type *fallback = infer_expr(c, e->b, plain);
+    if (fallback && fallback->kind == T_VOID) {
+      fail(e->loc, "?? requires a value-producing fallback");
+    }
+    if (!plain) {
+      return fallback;
+    }
+    if (!fallback) {
+      return plain;
+    }
+    if (sum_accepts(plain, fallback)) {
+      return plain;
+    }
+    if (sum_accepts(fallback, plain)) {
+      return fallback;
+    }
+    return type_union(c->p, plain, fallback, e->loc);
+  }
   case E_INT:
     return numeric(expected) ? expected : type_builtin(c->p, T_I32);
   case E_FLOAT:
@@ -2254,7 +3234,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     if (e->scope_kind) {
       Context scope = {.vars = c->vars, .lexical = c->lexical};
       Var *v = selected(&scope, e);
-      return v ? v->type : NULL;
+      return v ? (!c->raw_name && v->narrowed ? v->narrowed : v->type) : NULL;
     }
 
     if (!strcmp(e->text, "nil^"))
@@ -2309,10 +3289,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                : NULL;
   }
   case E_UNARY: {
+    bool raw = c->raw_name;
+    if (!strcmp(e->text, "&") && e->a->kind == E_NAME) {
+      c->raw_name = true;
+    }
     Type *a = infer_expr(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
                              ? expected
                              : NULL);
+    c->raw_name = raw;
     if (!strcmp(e->text, "!"))
       return type_builtin(c->p, T_BOOL);
     if (!a)
@@ -2335,6 +3320,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   case E_EXPECT:
     return infer_expr(c, e->a, infer_expr(c, e->b, NULL));
   case E_SAVED:
+    if (e->compiler_value) {
+      return ((Value *)e->compiler_value)->type;
+    }
     return ((Slot *)c->in->slots.v[e->saved_slot])->type;
   case E_CHAIN: {
     Type *t = infer_expr(c, e->args.v[0], NULL);
@@ -2344,21 +3332,39 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   }
   case E_IF: {
     infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
+    List facts = save_facts(&c->vars);
+    refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Type *a = infer_expr(c, e->b, expected);
+    restore_facts(&c->vars, facts);
+    refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Type *b = infer_expr(c, e->c, expected);
-    return join_types(a, e->b, b, e->c, e->loc);
+    restore_facts(&c->vars, facts);
+    return join_types(c->p, a, e->b, b, e->c, e->loc);
   }
   case E_BIN: {
     bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
                  !strcmp(e->text, "&&") || !strcmp(e->text, "||");
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
     Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
+    List facts = {0};
+    if (logic) {
+      facts = save_facts(&c->vars);
+      refine_condition(c->p, &c->vars, &c->flow, e->a,
+                       !strcmp(e->text, "and^"));
+    }
     Type *b = infer_expr(c, e->b, !strcmp(e->text, "bitshift^") ? NULL : a);
+    if (logic) {
+      restore_facts(&c->vars, facts);
+    }
+    if (comparison && (nil_name(e->a) || nil_name(e->b)) &&
+        (!strcmp(e->text, "=") || !strcmp(e->text, "!="))) {
+      infer_guard(c, e, nil_name(e->a) ? e->b : e->a, !strcmp(e->text, "!="));
+    }
     if (comparison || logic)
       return type_builtin(c->p, T_BOOL);
     if (!strcmp(e->text, "bitshift^"))
       return a;
-    return join_types(a, e->a, b, e->b, e->loc);
+    return join_types(c->p, a, e->a, b, e->b, e->loc);
   }
   default:
     return NULL;
@@ -2377,6 +3383,7 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       v->name = s->name;
       v->lexical = c->lexical;
       v->type = t ? t : actual;
+      v->alias = infer_alias(c, s->a);
       add(&c->vars, v);
     } else if (s->kind == S_BIND_MANY) {
       List pending = {0};
@@ -2388,23 +3395,59 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
         v->name = b->name;
         v->lexical = c->lexical;
         v->type = t ? t : actual;
+        v->alias = infer_alias(c, b->a);
         add(&pending, v);
       }
       for (int k = 0; k < pending.n; k++)
         add(&c->vars, pending.v[k]);
-    } else if (s->kind == S_RETURN) {
+    }
+    else if (s->kind == S_ASSIGN) {
+      int count = s->targets.n ? s->targets.n : 1;
+      for (int k = 0; k < count; k++) {
+        Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
+        Var *v = infer_variable(c, dst);
+        Type *hint = v ? v->type : NULL;
+        if (s->op && v && v->narrowed) {
+          hint = v->narrowed;
+        }
+        if (s->op && s->optional && hint) {
+          hint = without_nil(c->p, hint, s->loc);
+        }
+        infer_expr(c, s->values.n ? s->values.v[k] : s->b, hint);
+      }
+      for (int k = 0; k < count; k++) {
+        Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
+        Var *v = infer_variable(c, dst);
+        if (v) {
+          Type *narrow = v->narrowed;
+          v->version++;
+          v->narrowed = s->op ? narrow : NULL;
+          if (!s->op) {
+            v->alias = infer_alias(c, s->values.n ? s->values.v[k] : s->b);
+          }
+        }
+        else {
+          forget_roots(&c->vars, 0, true);
+        }
+      }
+    }
+    else if (s->kind == S_RETURN) {
       Type *hint = c->in->fn->result ? type_spec(c->p, c->in->fn->result)
                                      : c->in->fn->required_result;
       Type *t = infer_expr(c, s->a, hint);
       c->value_return |= s->a != NULL;
-      c->returned = join_types(c->returned, c->return_expr, t, s->a, s->loc);
+      c->returned =
+          join_types(c->p, c->returned, c->return_expr, t, s->a, s->loc);
       if (!c->return_expr || !integer_literal(s->a))
         c->return_expr = s->a;
-    } else if (s->kind == S_WHILE) {
+    }
+    else if (s->kind == S_WHILE) {
       int begin = c->vars.n;
+      List loop_facts = save_facts(&c->vars);
       infer_statements(c, &s->prolog, false);
       infer_statements(c, &s->pre, false);
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       infer_statements(c, &s->first, false);
       c->lexical--;
       infer_statements(c, &s->body, true);
@@ -2415,17 +3458,26 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       infer_statements(c, &s->epilog, true);
       c->lexical++;
       c->vars.n = begin;
-    } else if (s->kind == S_IF) {
+      restore_facts(&c->vars, loop_facts);
+    }
+    else if (s->kind == S_IF) {
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
       if (s->internal)
         c->lexical--;
+      List facts = save_facts(&c->vars);
+      refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       infer_statements(c, &s->body, true);
+      restore_facts(&c->vars, facts);
+      refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       infer_statements(c, &s->other, true);
+      restore_facts(&c->vars, facts);
       if (s->internal)
         c->lexical++;
       infer_statements(c, &s->update, true);
-    } else if (s->kind == S_BLOCK)
+    }
+    else if (s->kind == S_BLOCK) {
       infer_statements(c, &s->body, true);
+    }
     else {
       infer_expr(c, s->a, NULL);
       if (s->b)
@@ -2438,9 +3490,7 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
   }
 }
 static List first_types(Context *c, Stmt *s) {
-  Infer infer = {.p = c->p, .in = c->in, .lexical = c->lexical};
-  for (int j = 0; j < c->vars.n; j++)
-    add(&infer.vars, c->vars.v[j]);
+  Infer infer = infer_context(c);
   infer_statements(&infer, &s->pre, false);
   int begin = infer.vars.n;
   infer_statements(&infer, &s->first, false);
@@ -2507,9 +3557,18 @@ static void infer_results(Program *p) {
   }
   fail((Loc){p->path, 1, 1}, "return type inference did not converge");
 }
+static Type *chain_type(Context *c, Expr *e)
+{
+  Infer in = infer_context(c);
+  return infer_chain(&in, e, true);
+}
+static Type *chain_place_type(Context *c, Expr *e)
+{
+  Infer in = infer_context(c);
+  return infer_chain(&in, e, false);
+}
 static Type *expression_type(Context *c, Expr *e, Type *expected) {
-  Infer inference = {
-      .p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+  Infer inference = infer_context(c);
   return infer_expr(&inference, e, expected);
 }
 static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
@@ -2619,7 +3678,7 @@ void analyze(Program *p) {
       if (!strcmp(d->name, ((Def *)p->defs.v[k])->name))
         fail(d->loc, "duplicate def^ '%s'", d->name);
     Type *t = mem(sizeof(*t));
-    t->kind = d->union_names.n ? T_UNION : T_STRUCT;
+    t->kind = d->union_specs.n ? T_UNION : T_STRUCT;
     t->def = d;
     if (p->modules.n > 1 || (d->module && d->module->name))
       t->symbol =
@@ -2684,6 +3743,12 @@ void analyze(Program *p) {
             a->self ? type_wrap(p, T_REF, d->type, 0) : type_spec(p, a->spec));
       }
       instantiate(p, f, d, &types, f->loc);
+    }
+  }
+  for (int j = 0; j < p->types.n; j++) {
+    Type *t = p->types.v[j];
+    if (t->kind == T_UNION) {
+      layout(t, t->def->loc);
     }
   }
 }

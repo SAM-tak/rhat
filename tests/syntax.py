@@ -73,6 +73,61 @@ early()
 ''', '1\n')
     positive('return_eof', 'return^', '')
 
+    positive('outer_this', '''
+print(f^ n:i64^ {
+ if^ n<2: 1 el^: n * f^ m:i64^ { this^^(m) }(n-1);
+}(6))
+let^ walk=f^ n:i32^ ->i32^ {
+ if^ n=0 {return^ 0}
+ return^ f^ m:i32^ ->i32^ {
+   { return^ f^ q:i32^ ->i32^ {this^^^(q-1)}(m) }
+ }(n)+1
+}
+print(walk(5))
+print(f^ n:i64^ {
+ if^ n<2: 1 el^: f^ m:i64^ {if^ m=0: 0 el^: 1+this^(m-1);}(2)*this^(n-1);
+}(4))
+''', '720\n5\n8\n')
+
+    positive('outer_this_owned', '''
+let^ make=f^ n:i32^ ->i32^[>..] {
+ if^ n=0 {return^ [7,8]}
+ return^ f^ m:i32^ ->i32^[>..] {this^^(m-1)}(n)
+}
+var^ result=make(4)
+print(result.len,result[1])
+let^ fill=p^ a:&i32^[>..],n:i32^ ->i64^ {
+ if^ n=0 {return^ a.len}
+ return^ p^ b:&i32^[>..],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
+}
+var^ values:i32^[>..]=[]
+print(fill(&values,3),values[0],values[2])
+''', '2 8\n3 3 1\n')
+
+    positive('outer_this_method', '''
+def^ Counter {
+ self^{base:i32^=3}
+ sum=f^ self^,n:i32^ ->i32^ {
+  if^ n=0 {return^ self^.base}
+  return^ f^ obj:&Counter,m:i32^ ->i32^ {this^^(obj,m-1)}(self^,n)+1
+ }
+ current=f^ self^,n:i32^ ->i32^ {if^ n=0: self^.base el^: 1+this^(n-1);}
+}
+def^ Derived:Counter {self^{marker:i32^=77}}
+var^ value=Derived.new()
+print(value.sum(4),value.current(2),value.marker)
+def^ Mutable {
+ self^{count:i32^=0}
+ run=p^ self^,n:i32^ ->i32^ {
+  if^ n=0 {return^ self^.count}
+  self^.count+=1
+  return^ p^ obj:&Mutable,m:i32^ ->i32^ {return^ this^^(obj,m-1)}(self^,n)
+ }
+}
+var^ counter=Mutable.new()
+print(counter.run(4))
+''', '7 5 77\n4\n')
+
     positive('assignments', '''
 let^ index=p^ calls:&i32^ ->i64^ { *calls+=1 return^ 0 }
 let^ change=p^ a:&i32^[2] ->i32^ { a[0]:=100 return^ 3 }
@@ -271,8 +326,34 @@ public^ let^ select=template^f^ value { for^ value: when^ 1: left+right other^: 
 ''')
     positive('module_syntax', 'import^ syntaxlib\nprint(syntaxlib.select(1))', '42\n')
     source('discardlib', 'module^ discardlib\nlet^ _^=print(1)')
+    source('outerthislib', '''module^ outerthislib
+public^ let^ sum=template^f^ n {
+ if^ n=0: 0 el^: n+template^f^ m {this^^(m)}(n-1);
+}
+''')
+    positive('outer_this_module', '''import^ outerthislib
+let^ wide:i64^=20
+print(outerthislib.sum(10),outerthislib.sum(wide))
+''', '55 210\n')
 
     cases = [
+        ('outer_this_top', 'this^^()', 'at that nesting depth'),
+        ('outer_this_depth', 'print(f^ ->i32^ {this^^()}())', 'at that nesting depth'),
+        ('outer_this_sibling', 'let^ first=f^ {1} print(f^ ->i32^ {this^^()}())', 'at that nesting depth'),
+        ('outer_this_arity', 'print(f^ n:i32^ ->i32^ {f^ {this^^()}()}(1))', 'expects 1 arguments'),
+        ('outer_this_type', 'print(f^ n:i32^ ->i32^ {f^ {this^^("bad")}()}(1))', "requires nominal 'i32^'"),
+        ('outer_this_capture', 'print(f^ n:i32^ ->i32^ {f^ {this^^(n-1)}()}(1))', "unknown value 'n'"),
+        ('outer_this_effect', 'let^ run=p^ n:i32^ {f^ {this^^(0)}()} run(1)', 'f^ cannot call p^'),
+        ('outer_this_local_owner', '''let^ run=f^ n:i32^ ->i32^ {
+var^ scratch:i32^[>..]=[n]
+if^ n=0 {return^ scratch[0]}
+return^ f^ m:i32^ ->i32^ {this^^(m-1)}(n)
+} print(run(3))''', 'holds local owned value'),
+        ('outer_this_receiver', '''def^ A {run=f^ self^,n:i32^ ->i32^ {f^ {this^^(1,0)}()}}
+var^ a=A.new() print(a.run(1))''', 'explicit'),
+        ('outer_this_mutable_effect', '''def^ A {run=f^ mutable^ self^,n:i32^ ->i32^ {
+f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
+}} var^ a=A.new() print(a.run(1))''', 'cannot mutate borrowed storage'),
         ('old_else', 'if^ true^ {} else^ {}', 'else^'),
         ('old_while', 'while^ false^ {}', 'driving clause'),
         ('bare_record', 'def^ P {self^{x:i32^}} let^ p:P={x=1}', 'bare braces'),

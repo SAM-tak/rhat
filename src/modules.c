@@ -186,8 +186,10 @@ static void resolve_spec(Module *m, Spec *s) {
   s->resolved = true;
   if (s->kind == SPEC_NAME)
     s->name = resolve_type_name(m, s->name, s->loc);
-  else
+  else {
     resolve_spec(m, s->elem);
+    resolve_spec(m, s->other);
+  }
 }
 static bool local(List *names, const char *name) {
   size_t n = strcspn(name, ".");
@@ -201,7 +203,7 @@ static char *path_of(Expr *e) {
     return NULL;
   if (e->kind == E_NAME)
     return e->text;
-  if (e->kind == E_MEMBER) {
+  if (e->kind == E_MEMBER && !e->optional) {
     char *a = path_of(e->a);
     if (a)
       return fmt("%s.%s", a, e->text);
@@ -463,8 +465,9 @@ void resolve_modules(Program *p) {
       Def *d = m->defs.v[k];
       for (int n = 0; n < d->base_names.n; n++)
         d->base_names.v[n] = resolve_type_name(m, d->base_names.v[n], d->loc);
-      for (int n = 0; n < d->union_names.n; n++)
-        d->union_names.v[n] = resolve_type_name(m, d->union_names.v[n], d->loc);
+      for (int n = 0; n < d->union_specs.n; n++) {
+        resolve_spec(m, d->union_specs.v[n]);
+      }
       for (int n = 0; n < d->own_fields.n; n++) {
         Field *f = d->own_fields.v[n];
         resolve_spec(m, f->spec);

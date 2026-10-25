@@ -363,6 +363,44 @@ print("ok")
     passed += 1
     print('PASS std_random_integer_rejection_and_normal_oracles',flush=True)
 
+    optional_root = positive('module_optional_types', {
+        'lib/value.rh': '''module^ lib.value
+public^ def^ Item {self^{value:i32^=42}}
+public^ def^ Result = Item | nil^
+public^ let^ maybe=f^ yes:bool^ ->Item|nil^ {if^ yes: Item.new() el^: nil^;}
+public^ let^ read=f^ item:nil^|Item ->i32^ {item?.value??0}
+public^ let^ templateRead=template^f^ item {item?.value??0}
+public^ let^ borrow=f^ value:&i32^ ->&i32^|nil^ {value}
+''',
+        'main.rh': '''let^ lib=import^ lib.value
+let^ yes=lib.maybe(true^)
+let^ no:lib.Item|nil^=lib.maybe(false^)
+let^ named:lib.Result=yes
+let^ anonymous:nil^|lib.Item=named
+print(lib.read(yes),lib.read(no),anonymous?.value??0)
+print(lib.templateRead(yes),lib.templateRead(no))
+var^ number=7
+let^ ref=lib.borrow(&number)
+print(*(ref??&number))
+''',
+    }, '42 0 42\n42 0\n7\n')
+    optional_ir = optional_root/'single.ll'
+    run([compiler, 'emit', optional_root/'main.rh', '-o', optional_ir])
+    run([clang, '-Wno-override-module', '-O2', optional_ir,
+         repo/'runtime/rhat_runtime.c', '-o', optional_root/'single.exe'])
+    assert run([optional_root/'single.exe']).stdout == '42 0 42\n42 0\n7\n'
+    passed += 1
+    print('PASS optional_union_single_ir_matches_modules', flush=True)
+
+    negative('module_optional_nominal_identity', {
+        'lib/a.rh': 'module^ lib.a\npublic^ def^ Item {self^{value:i32^}}',
+        'lib/b.rh': 'module^ lib.b\npublic^ def^ Item {self^{value:i32^}}',
+        'main.rh': '''import^ lib.a
+import^ lib.b
+let^ item:lib.a.Item|nil^=lib.b.Item.new()
+''',
+    }, 'not an alternative')
+
     # Recreate the install layout, add a marker to prove that packaged resources
     # take precedence over the build-time source-tree fallback.
     package=work/'package'

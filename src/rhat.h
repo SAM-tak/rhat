@@ -53,10 +53,17 @@ struct Spec {
   bool resolved;
   Loc loc;
   char *name;
-  Spec *elem;
+  Spec *elem, *other; /* Union specifications retain both alternative types. */
   int kind, count;
 };
-enum { SPEC_NAME, SPEC_REF, SPEC_ARRAY, SPEC_GROW, SPEC_SLICE };
+enum {
+  SPEC_NAME,
+  SPEC_REF,
+  SPEC_ARRAY,
+  SPEC_GROW,
+  SPEC_SLICE,
+  SPEC_UNION /* An inline set of alternative types. */
+};
 enum {
   E_INT,
   E_FLOAT,
@@ -73,14 +80,19 @@ enum {
   E_ARRAY,
   E_FUNCTION,
   E_IF,
-  E_SAVED,  /* A compiler-owned scalar snapshot, never parsed from source. */
-  E_SCOPE,  /* A lexical focus scope producing one value. */
-  E_EXPECT, /* Infer a contextual numeric type without evaluating the hint. */
-  E_CHAIN   /* Comparisons share operands and short-circuit left to right. */
+  E_SAVED,    /* A compiler-owned value snapshot, never parsed from source. */
+  E_SCOPE,    /* A lexical focus scope producing one value. */
+  E_EXPECT,   /* Infer a contextual numeric type without evaluating the hint. */
+  E_PRESENT,  /* Postfix nil presence test; it does not unwrap a value. */
+  E_COALESCE, /* Lazy nil replacement, below unary and above binary operators.
+               */
+  E_CHAIN     /* Comparisons share operands and short-circuit left to right. */
 };
 struct Expr {
   Spec *constant_spec;
   bool error_constructor;
+  bool optional;        /* This postfix link starts a nil-propagating guard. */
+  void *compiler_value; /* Internal full Value, retaining borrow provenance. */
   int kind;
   Loc loc;
   char *text;
@@ -124,6 +136,7 @@ struct Stmt {
   List prolog, pre, first, last, epilog; /* Ordered loop sections. */
   List focuses; /* Header bindings whose last successful values are retained. */
   bool integer; /* A compiler-generated counted-loop integer requirement. */
+  bool optional; /* Nil-guarded assignment evaluates only present pairs. */
   bool internal; /* A compiler-generated write to a read-only focus. */
   int depth;     /* A jump counts enclosing loops, starting at one. */
 };
@@ -134,6 +147,8 @@ typedef struct {
   bool self;
 } Param;
 struct Function {
+  Function *enclosing; /* Lexical enclosing function, without a captured
+                          activation. */
   Module *module;
   bool public;
   Loc loc;
@@ -162,7 +177,8 @@ struct Def {
   Loc loc;
   char *name;
   List base_names, bases, own_fields, own_methods;
-  List union_names, alternatives;
+  List union_specs,
+      alternatives; /* Declared union alternatives and resolved types. */
   List fields, methods;
   int state, id;
   bool abstract;
@@ -202,6 +218,8 @@ struct Type {
   size_t size, align;
   size_t payload_align, payload_bytes, payload_offset;
   bool refs, owned;
+  bool structural; /* Anonymous union identity is its canonical alternative set.
+                    */
 };
 typedef struct {
   List modules, module_paths;

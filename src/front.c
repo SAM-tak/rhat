@@ -66,6 +66,7 @@ enum {
 typedef struct {
   Program *p;
   Module *module;
+  Function *enclosing;
   List tokens;
   int at, serial, scope_depth;
   bool header;
@@ -451,7 +452,21 @@ static void lex(Parser *p) {
       t->kind = TOK_STRING;
       t->text = out;
       t->length = n;
-    } else {
+    }
+    else if (*s == '?') {
+      const char *ops[] = {
+          "?:=", "?+=", "?-=", "?*=", "?/=", "?%=", "?.", "?[", "?(", "??"};
+      t->kind = '?';
+      s++;
+      for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++) {
+        size_t n = strlen(ops[j]);
+        if (!strncmp(start, ops[j], n)) {
+          s = start + n;
+          break;
+        }
+      }
+    }
+    else {
       t->kind = (unsigned char)*s++;
       if ((strchr("+-*/%", start[0]) && *s == '=') ||
           (start[0] == '=' && *s == '/') || (start[0] == ':' && *s == '=') ||
@@ -485,7 +500,9 @@ static void lex(Parser *p) {
   end->loc = (Loc){p->p->path, line, col};
   add(&p->tokens, end);
 }
-static Spec *spec(Parser *p) {
+static Spec *spec(Parser *p);
+static Spec *spec_part(Parser *p)
+{
   Spec *s = mem(sizeof(*s));
   s->loc = tok(p)->loc;
   if (take(p, "&&")) {
@@ -493,13 +510,13 @@ static Spec *spec(Parser *p) {
     Spec *inner = mem(sizeof(*inner));
     inner->kind = SPEC_REF;
     inner->loc = s->loc;
-    inner->elem = spec(p);
+    inner->elem = spec_part(p);
     s->elem = inner;
     return s;
   }
   if (take(p, "&")) {
     s->kind = SPEC_REF;
-    s->elem = spec(p);
+    s->elem = spec_part(p);
     return s;
   }
   if (take(p, "(")) {
@@ -531,6 +548,19 @@ static Spec *spec(Parser *p) {
     }
     need(p, "]");
     s = w;
+  }
+  return s;
+}
+static Spec *spec(Parser *p)
+{
+  Spec *s = spec_part(p);
+  while (take(p, "|")) {
+    Spec *sum = mem(sizeof(*sum));
+    sum->kind = SPEC_UNION;
+    sum->loc = s->loc;
+    sum->elem = s;
+    sum->other = spec_part(p);
+    s = sum;
   }
   return s;
 }
@@ -669,35 +699,54 @@ static Expr *primary(Parser *p) {
   } else
     fail(t->loc, "expected an expression, found '%s'", t->text);
   for (;;) {
-    if (take(p, ".")) {
+    if (take(p, ".") || take(p, "?.")) {
       Expr *n = node(E_MEMBER, e->loc);
+      n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?.");
       n->a = e;
       n->text = word(p);
       e = n;
-    } else if (is(p, "(") && ((Token *)p->tokens.v[p->at - 1])->loc.line ==
-                                 tok(p)->loc.line) {
+    }
+    else if (is(p, "(") &&
+             ((Token *)p->tokens.v[p->at - 1])->loc.line == tok(p)->loc.line) {
       next(p);
       Expr *n = node(E_CALL, e->loc);
       n->a = e;
       entries(p, n, ")", false);
       e = n;
-    } else if (take(p, "[")) {
+    }
+    else if (take(p, "[") || take(p, "?[")) {
       Expr *n = node(E_INDEX, e->loc);
+      n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?[");
       n->a = e;
       n->b = expr(p, 0);
       need(p, "]");
       e = n;
-    } else if (!p->header && type_constructor(p, e) && take(p, "{")) {
+    }
+    else if (take(p, "?")) {
+      Expr *n = node(E_PRESENT, e->loc);
+      n->a = e;
+      e = n;
+    }
+    else if (is(p, "?(")) {
+      fail(tok(p)->loc, "optional callable values are not supported; use an "
+                        "optional receiver?.method(...)");
+    }
+    else if (!p->header && type_constructor(p, e) && take(p, "{")) {
       Expr *n = node(E_RECORD, e->loc);
       n->text = expression_path(e);
       entries(p, n, "}", true);
       e = n;
-    } else
+    }
+    else {
       break;
+    }
   }
   return e;
 }
 static int prec(const char *s) {
+  if (!strcmp(s, "??")) {
+    return 6;
+  }
   if (!strcmp(s, "or^"))
     return 1;
   if (!strcmp(s, "and^"))
@@ -744,7 +793,7 @@ static Expr *expr(Parser *p, int min) {
       } else
         e = chain;
     } else {
-      Expr *binary = node(E_BIN, t->loc);
+      Expr *binary = node(!strcmp(t->text, "??") ? E_COALESCE : E_BIN, t->loc);
       binary->text = t->text;
       binary->a = e;
       binary->b = expr(p, pr + 1);
@@ -787,7 +836,8 @@ static Stmt *if_statement(Parser *p, Expr *condition, Loc loc) {
   return s;
 }
 static const char *assignment_operator(Parser *p) {
-  const char *ops[] = {":=", "+=", "-=", "*=", "/=", "%="};
+  const char *ops[] = {":=",  "+=",  "-=",  "*=",  "/=",  "%=",
+                       "?:=", "?+=", "?-=", "?*=", "?/=", "?%="};
   for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++)
     if (is(p, ops[j]))
       return ops[j];
@@ -1333,6 +1383,10 @@ static Stmt *stmt(Parser *p) {
     if (op) {
       next(p);
       s->kind = S_ASSIGN;
+      if (*op == '?') {
+        s->optional = true;
+        op++;
+      }
       if (strcmp(op, ":="))
         s->op = slice(op, strlen(op) - 1);
       do {
@@ -1366,6 +1420,7 @@ static void block(Parser *p, List *out) {
 static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
   Function *f = mem(sizeof(*f));
   f->loc = tok(p)->loc;
+  f->enclosing = p->enclosing;
   f->lexical = p->scope_depth + 2;
   f->name = name;
   f->owner = owner;
@@ -1403,7 +1458,10 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
   if (abstr)
     need(p, ";");
   else {
+    Function *enclosing = p->enclosing;
+    p->enclosing = f;
     block(p, &f->body);
+    p->enclosing = enclosing;
     if (!f->procedure && f->body.n == 1) {
       Stmt *only = f->body.v[0];
       if (only->kind == S_EXPR)
@@ -1420,7 +1478,7 @@ static void definition(Parser *p) {
   add(&p->p->defs, d);
   if (take(p, "=")) {
     do {
-      add(&d->union_names, qualified_word(p));
+      add(&d->union_specs, spec_part(p));
     } while (take(p, "|"));
     take(p, ";");
     return;
@@ -1553,11 +1611,16 @@ void parse_file(Program *p, const char *path, Module *module) {
         arm->id = p->defs.n;
         add(&p->defs, arm);
         add(&module->defs, arm);
-        add(&group->union_names, arm->name);
+        Spec *alternative = mem(sizeof(*alternative));
+        alternative->kind = SPEC_NAME;
+        alternative->loc = arm->loc;
+        alternative->name = arm->name;
+        add(&group->union_specs, alternative);
       } while (take(&q, ","));
       need(&q, "}");
-      if (!group->union_names.n)
+      if (!group->union_specs.n) {
         fail(group->loc, "errordef^ requires a variant");
+      }
       continue;
     }
     if (take(&q, "def^")) {
