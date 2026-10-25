@@ -32,9 +32,7 @@ let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
     r := this^(text,depth-1,r)
     let^ op=(r bitshift^ -16) % 4
     text.push(32)
-    if^ op = 0 { text.push(43) }
-    else^ { if^ op = 1 { text.push(45) }
-        else^ { if^ op = 2 { text.push(42) } else^ { text.push(47) } } }
+    if^ op = 0 { text.push(43) else^: if^ op = 1 { text.push(45) else^: if^ op = 2 { text.push(42) else^: text.push(47) } } }
     text.push(32)
     return^ this^(text,depth-1,std.random.xorshift64(r))
 }
@@ -42,7 +40,7 @@ let^ corrupt=p^ text:&u8^[>..], seed:u64^ {
     let^ kind=seed % 16
     if^ kind = 0 {
         var^ i=text.len
-        while^ i > 0 {
+        repeat^ while^ i > 0 {
             i := i-1
             if^ text[i] = 41 { text[i] := 32; return^ }
         }
@@ -54,7 +52,7 @@ let^ corrupt=p^ text:&u8^[>..], seed:u64^ {
     if^ kind = 3 { text.append(" / 0") }
 }
 let^ skip=p^ text:u8^[:], c:&Cursor {
-    while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
+    repeat^ while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
 }
 let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     skip(text,c)
@@ -62,7 +60,7 @@ let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     let^ ch=text[c.pos]
     if^ ch >= 48 and^ ch <= 57 {
         var^ value:i64^=0
-        while^ c.pos < text.len and^ text[c.pos] >= 48 and^ text[c.pos] <= 57 {
+        repeat^ while^ c.pos < text.len and^ text[c.pos] >= 48 and^ text[c.pos] <= 57 {
             value := value*10+i64^(text[c.pos])-48
             c.pos := c.pos+1
         }
@@ -89,7 +87,7 @@ let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
 let^ parse_term=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     var^ lhs=parse_factor(text,c,pool)
     if^ lhs.is(Failure) { return^ lhs }
-    while^ true^ {
+    repeat^ while^ true^ {
         skip(text,c)
         if^ c.pos >= text.len { return^ lhs }
         let^ op=text[c.pos]
@@ -105,7 +103,7 @@ let^ parse_term=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
 let^ parse_expr=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     var^ lhs=parse_term(text,c,pool)
     if^ lhs.is(Failure) { return^ lhs }
-    while^ true^ {
+    repeat^ while^ true^ {
         skip(text,c)
         if^ c.pos >= text.len { return^ lhs }
         let^ op=text[c.pos]
@@ -154,7 +152,7 @@ var^ pool:Expr[>..]=[]
 var^ seed:u64^=12345
 var^ stats=Stats{}
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     seed := std.random.xorshift64(seed)
     text.clear()
     let^ depth=i64^(seed % 4)+3
@@ -167,7 +165,7 @@ while^ i < n {
     if^ result.is(Ok) {
         stats.ok := stats.ok+1
         stats.sum := stats.sum*31+result.get(Ok).value
-    } else^ {
+    else^:
         let^ error=result.get(Failure).code
         stats.errors[error] := stats.errors[error]+1
     }

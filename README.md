@@ -132,8 +132,14 @@ print(value.a, value.b, value.c)
   組み込み型の末尾の `^` は必須です。通常の `bool` や `u8` はユーザー定義名として使用できます。
   `f8^` は E4M3FN、`f16^` / `f32^` / `f64^` は IEEE binary16 / binary32 / binary64 です。
   固定長配列 `T[N]`、伸長配列 `T[>..]`、読み取り用の借用スライス `T[:]`、参照 `&T` にもこれらの型を使えます。
-- `Type.new()`、`Type{ field = expr }`、型の分かる位置の `{ field = expr }`、配列リテラル `[ ... ]`。
-- `let^`, `var^`, `:=`, `return^`, ブロック、`if^ ... { ... } else^ { ... }`, `while^`。
+- `Type.new()`、`Type{ field = expr }`、配列リテラル `[ ... ]`。
+- `let^`, `var^`, `:=`, `+=` / `-=` / `*=` / `/=` / `%=`、並列代入、`return^`、ブロック。
+- 分岐は `if^ condition { ... elseif^ condition: ... else^: ... }`。波括弧は分岐全体で一組です。
+- `for^ var^ i=0 while^ i<8 next^ i+=1 { ... }`、`for^ i from^ 1 to^ 8 { ... }`、`downto^` / `step^`。
+- `repeat^ n { ... }`、`repeat^ while^ condition { ... }`、`repeat^ until^ condition { ... }`、無限 `repeat^ { ... }`。
+- `prolog^` / `pre^` / `first^` / `main^` / `last^` / `epilog^`、`break^` / `next^` と多段脱出。
+- 値マッチ `for^ value { when^ 1,2: ... when^ 3 to^ 5: ... other^: ... }` と式形。
+- 詳細と、型・所有権の判断を残した構文は [構文対応](docs/syntax.md) を参照。
 - `f^`・`p^` の返り値の型推論、式一つの `f^` の暗黙の返却、`if^ condition: value el^: value;`。
 - キャプチャなしの無名関数の即時呼び出し、`this^` による自己再帰、名前付き関数間の再帰。
   通常の引数の型注釈は引き続き必要です。無注釈の引数を実型で具体化する場合は `template^` を使います。

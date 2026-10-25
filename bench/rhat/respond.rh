@@ -9,12 +9,12 @@ let^ emit_int=p^ out:&u8^[>..], value:u64^ {
     var^ d=value
     var^ tmp=Digits{}
     var^ count:i64^=0
-    while^ d > 0 {
+    repeat^ while^ d > 0 {
         tmp.data[count] := u8^(d % 10)+48
         count := count+1
         d := d/10
     }
-    while^ count > 0 { count := count-1; out.push(tmp.data[count]) }
+    repeat^ while^ count > 0 { count := count-1; out.push(tmp.data[count]) }
 }
 let^ emit_name=p^ out:&u8^[>..], seed:u64^ {
     var^ r=std.random.xorshift64(seed)
@@ -22,12 +22,12 @@ let^ emit_name=p^ out:&u8^[>..], seed:u64^ {
     let^ odd=(r bitshift^ -8) % 8 = 0
     out.push(34)
     var^ i:i64^=0
-    while^ i < n {
+    repeat^ while^ i < n {
         r := std.random.xorshift64(r)
         if^ odd and^ i = 1 {
             out.push(92)
             out.push(if^ r % 2 = 0: 34 el^: 92;)
-        } else^ { out.push(u8^(r % 26)+97) }
+        else^: out.push(u8^(r % 26)+97) }
         i := i+1
     }
     out.push(34)
@@ -38,13 +38,13 @@ let^ emit_sku=p^ out:&u8^[>..], seed:u64^ {
     out.push(u8^(r % 26)+65)
     out.push(u8^((r bitshift^ -8) % 26)+65)
     var^ i:i32^=0
-    while^ i < 4 { r := std.random.xorshift64(r); out.push(u8^(r % 10)+48); i := i+1 }
+    repeat^ while^ i < 4 { r := std.random.xorshift64(r); out.push(u8^(r % 10)+48); i := i+1 }
     out.push(34)
 }
 let^ hash=f^ bytes:u8^[:] -> u64^ {
     var^ h:u64^=14695981039346656037
     var^ i:i64^=0
-    while^ i < bytes.len { h := (h bitxor^ u64^(bytes[i]))*1099511628211; i := i+1 }
+    repeat^ while^ i < bytes.len { h := (h bitxor^ u64^(bytes[i]))*1099511628211; i := i+1 }
     return^ h
 }
 let^ handle=p^ out:&u8^[>..], seed:u64^ -> Result {
@@ -59,7 +59,7 @@ let^ handle=p^ out:&u8^[>..], seed:u64^ -> Result {
     var^ total:u64^=0
     var^ r=r0 bitshift^ -16
     var^ i:i64^=0
-    while^ i < n {
+    repeat^ while^ i < n {
         r := std.random.xorshift64(r)
         if^ i > 0 { out.push(44) }
         let^ qty=1+(r bitshift^ -8) % 5
@@ -85,7 +85,7 @@ var^ seed:u64^=12345
 var^ h:u64^=0
 var^ bytes:i64^=0
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     seed := std.random.xorshift64(seed)
     let^ result=handle(&out,seed)
     h := h bitxor^ (result.hash*31+u64^(i))

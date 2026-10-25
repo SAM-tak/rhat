@@ -13,21 +13,19 @@ let^ rotation=f^ seed:u64^ -> f32^[9] {
     let^ quarter=(seed bitshift^ -8) % 4
     var^ c:f32^=1
     var^ s:f32^=0
-    if^ quarter = 1 { c := 0; s := 1 }
-    else^ { if^ quarter = 2 { c := -1; s := 0 }
-            else^ { if^ quarter = 3 { c := 0; s := -1 } } }
+    if^ quarter = 1 { c := 0; s := 1 else^: if^ quarter = 2 { c := -1; s := 0 else^: if^ quarter = 3 { c := 0; s := -1 } } }
     if^ axis = 0 { return^ [1,0,0,0,c,-s,0,s,c] }
     if^ axis = 1 { return^ [c,0,s,0,1,0,-s,0,c] }
     return^ [c,-s,0,s,c,0,0,0,1]
 }
 let^ compose=p^ p:&Xf, l:&Xf, w:&Xf {
     var^ i:i32^=0
-    while^ i < 3 {
+    repeat^ while^ i < 3 {
         var^ j:i32^=0
-        while^ j < 3 {
+        repeat^ while^ j < 3 {
             var^ s:f32^=0
             var^ k:i32^=0
-            while^ k < 3 { s := s+p.m[i*3+k]*l.m[k*3+j]; k := k+1 }
+            repeat^ while^ k < 3 { s := s+p.m[i*3+k]*l.m[k*3+j]; k := k+1 }
             w.m[i*3+j] := s
             j := j+1
         }
@@ -46,7 +44,7 @@ let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
     if^ depth = 0 { return^ self }
     let^ n=1+(r bitshift^ -40) % 4
     var^ i:u64^=0
-    while^ i < n {
+    repeat^ while^ i < n {
         let^ child=this^(pool,depth-1,std.random.xorshift64(r+i))
         let^ k=pool[self].nkids
         pool[self].kids[k] := child
@@ -59,7 +57,7 @@ let^ update=p^ pool:&Node[>..], index:u32^, parent:&Xf {
     let^ nd=&pool[index]
     compose(parent,&nd.local,&nd.world)
     var^ k:u8^=0
-    while^ k < nd.nkids {
+    repeat^ while^ k < nd.nkids {
         this^(pool,nd.kids[k],&nd.world)
         k := k+1
     }
@@ -70,18 +68,18 @@ let^ root=make(&pool,depth,12345)
 var^ ident=identity()
 var^ total:i64^=0
 var^ frame:i64^=0
-while^ frame < 16 {
+repeat^ while^ frame < 16 {
     let^ phase=i32^(frame % 7)
     let^ step=f32^(frame % 5)
     var^ i:i64^=0
-    while^ i < pool.len {
+    repeat^ while^ i < pool.len {
         let^ nd=&pool[i]
         if^ nd.id % 7 = phase { nd.local.t.x := step; nd.local.t.z := 8-step }
         i := i+1
     }
     update(&pool,root,&ident)
     i := 0
-    while^ i < pool.len {
+    repeat^ while^ i < pool.len {
         let^ t=pool[i].world.t
         total := total+i64^(t.x+t.y+t.z)
         i := i+1

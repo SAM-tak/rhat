@@ -7,7 +7,7 @@ let^ makeNumbers = f^ -> i32^[>..] {
 var^ numbers : i32^[>..] = makeNumbers()
 let^ first = &numbers[0]
 var^ i : i64^ = 0
-while^ i < 2000 {
+repeat^ while^ i < 2000 {
     numbers.push(7)
     i := i + 1
 }

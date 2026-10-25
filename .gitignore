@@ -7,3 +7,6 @@
 __pycache__/
 
 .rhat-cache/
+
+CLAUDE.md
+AGENT.md

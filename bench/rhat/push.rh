@@ -10,7 +10,7 @@ var^ items:Item[>..]=[]
 var^ marks:(&Item)[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     let^ element=items.push(Item{ key=i32^(r % 1000000), val=i32^(i % 97) })
     if^ i % 64 = 0 { marks.push(element) }
@@ -18,13 +18,13 @@ while^ i < n {
 }
 var^ total:i64^=0
 i := 0
-while^ i < items.len {
+repeat^ while^ i < items.len {
     total := total+i64^(items[i].key)
     i := i+1
 }
 var^ marked_total:i64^=0
 i := 0
-while^ i < marks.len {
+repeat^ while^ i < marks.len {
     marked_total := marked_total+i64^(marks[i].val)
     i := i+1
 }

@@ -21,8 +21,7 @@ let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
     }
     let^ a=this^(pool,depth-1,s)
     let^ b=this^(pool,depth-1,std.random.xorshift64(s))
-    if^ k < 5 { pool.push(Add{l=a,r=b}) }
-    else^ { pool.push(Mul{l=a,r=b}) }
+    if^ k < 5 { pool.push(Add{l=a,r=b}) else^: pool.push(Mul{l=a,r=b}) }
     return^ u32^(pool.len-1)
 }
 let^ eval=f^ pool:&Expr[>..], index:u32^, pass:i64^ -> i64^ {
@@ -43,7 +42,7 @@ var^ pool:Expr[>..]=[]
 let^ root=make(&pool,depth,12345)
 var^ total:i64^=0
 var^ pass:i64^=0
-while^ pass < 8 {
+repeat^ while^ pass < 8 {
     total := (total+eval(&pool,root,pass)) % 1000003
     pass := pass+1
 }

@@ -392,9 +392,9 @@ typedef struct Var Var;
 struct Var {
   char *name;
   Type *type;
-  int slot, depth;
+  int slot, depth, lexical;
   uint64_t root, deps;
-  bool mut, parameter;
+  bool mut, parameter, unavailable, pending;
 };
 typedef struct {
   int id;
@@ -404,16 +404,20 @@ typedef struct {
   bool addressable;
 } Value;
 typedef struct {
+  int end, update, bindings, phase;
+  List focuses, saved, first;
+} Loop; /* Jump targets carry the ownership cleanup boundary. */
+typedef struct {
   Program *p;
   Instance *in;
   Def *access;
   List vars;
-  int depth, root_count;
+  int depth, root_count, lexical;
   int root_depth[64];
   bool root_external[64];
   bool terminated;
   uint64_t self_roots;
-  List default_stack;
+  List default_stack, loops;
   bool in_default;
 } Context;
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
@@ -425,6 +429,7 @@ static Type *expression_type(Context *c, Expr *e, Type *expected);
 static void statements(Context *c, List *body, bool scope);
 static Value expression(Context *c, Expr *e, Type *expected);
 static Value construct(Context *c, Expr *e, Type *t, int dst);
+static List first_types(Context *c, Stmt *s);
 static Instr *emit(Context *c, int op, Loc l) {
   Instr *i = mem(sizeof(*i));
   i->op = op;
@@ -460,6 +465,36 @@ static Var *lookup(Context *c, const char *name) {
   for (int i = c->vars.n - 1; i >= 0; i--) {
     Var *v = c->vars.v[i];
     if (!strcmp(v->name, name))
+      return v;
+  }
+  return NULL;
+}
+static Var *selected(Context *c, Expr *e) {
+  if (!e->scope_kind) {
+    Var *pending = NULL;
+    for (int j = c->vars.n - 1; j >= 0; j--) {
+      Var *v = c->vars.v[j];
+      if (strcmp(v->name, e->text))
+        continue;
+      if (!v->pending)
+        return v;
+      pending = v;
+    }
+    return pending;
+  }
+  int target =
+      e->scope_kind == 1 ? e->scope_count + 1 : c->lexical - e->scope_count;
+  if (e->scope_kind != 3 && (target < 1 || target > c->lexical))
+    fail(e->loc, "scope selector is outside the current function");
+  int skip = e->scope_count;
+  for (int j = c->vars.n - 1; j >= 0; j--) {
+    Var *v = c->vars.v[j];
+    if (strcmp(v->name, e->text))
+      continue;
+    if (e->scope_kind == 3) {
+      if (skip-- == 0)
+        return v;
+    } else if (v->lexical <= target)
       return v;
   }
   return NULL;
@@ -966,6 +1001,22 @@ static Type *union_literal_hint(Type *t, Expr *e) {
   return hint;
 }
 static Value construct(Context *c, Expr *e, Type *t, int dst) {
+  if (e->kind == E_SCOPE) {
+    int begin = c->vars.n, depth = c->depth++;
+    c->lexical++;
+    statements(c, &e->bindings, false);
+    Value out = construct(c, e->a, t, dst);
+    for (int j = 0; j < c->root_count; j++)
+      if ((out.deps & (UINT64_C(1) << j)) && c->root_depth[j] > depth)
+        fail(e->loc, "scoped expression cannot escape a local owner");
+    if (dst < 0)
+      out = snapshot(c, out, e->loc);
+    cleanup(c, begin, e->loc);
+    c->vars.n = begin;
+    c->depth = depth;
+    c->lexical--;
+    return out;
+  }
   if (t && t->kind == T_UNION && e->kind != E_IF) {
     if (e->kind == E_RECORD && (!e->text || !strcmp(e->text, t->def->name)))
       fail(e->loc, "construct union '%s' from a named alternative",
@@ -1196,6 +1247,46 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return v;
   }
   Value out = {0};
+  if (e->kind == E_EXPECT)
+    return expression(c, e->a, expression_type(c, e->b, NULL));
+  if (e->kind == E_SAVED) {
+    out.id = e->saved_slot;
+    out.type = ((Slot *)c->in->slots.v[out.id])->type;
+    return out;
+  }
+  if (e->kind == E_CHAIN) {
+    Value previous = snapshot(c, expression(c, e->args.v[0], NULL), e->loc);
+    out = value(c, type_builtin(p, T_BOOL));
+    int end = ++c->in->labels;
+    for (int j = 0; j < e->names.n; j++) {
+      Value current =
+          snapshot(c, expression(c, e->args.v[j + 1], previous.type), e->loc);
+      Expr left = {.kind = E_SAVED, .loc = e->loc, .saved_slot = previous.id};
+      Expr right = {.kind = E_SAVED, .loc = e->loc, .saved_slot = current.id};
+      Expr pair = {.kind = E_BIN,
+                   .loc = e->loc,
+                   .text = e->names.v[j],
+                   .a = &left,
+                   .b = &right};
+      Value test = expression(c, &pair, NULL);
+      copy_to(c, out, test, e->loc, true);
+      if (j + 1 < e->names.n) {
+        int next = ++c->in->labels;
+        Instr *br = emit(c, I_CBR, e->loc);
+        br->a = test.id;
+        br->label = next;
+        br->other = end;
+        Instr *lab = emit(c, I_LABEL, e->loc);
+        lab->label = next;
+      }
+      previous = current;
+    }
+    Instr *br = emit(c, I_BR, e->loc);
+    br->label = end;
+    Instr *lab = emit(c, I_LABEL, e->loc);
+    lab->label = end;
+    return out;
+  }
   if (e->kind == E_FUNCTION)
     fail(e->loc, "function values cannot escape; invoke the literal directly");
   if (e->kind == E_INT)
@@ -1211,6 +1302,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Instr *i = emit(c, e->kind == E_STRING ? I_STRING : I_CONST, e->loc);
     i->dst = out.id;
     i->type = t;
+    i->length = e->length;
     i->text = e->kind == E_BOOL    ? (!strcmp(e->text, "true^") ? "1" : "0")
               : e->kind == E_FLOAT ? float_constant(e->text, t->kind, e->loc)
                                    : e->text;
@@ -1226,18 +1318,24 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return v;
   }
   if (e->kind == E_NAME || e->kind == E_SELF) {
+    if (!strcmp(e->text, "_^"))
+      fail(e->loc, "_^ discards a value and cannot be read");
     if (c->in_default)
       fail(e->loc, "default initializer cannot capture caller locals or self^");
-    Var *v = lookup(c, e->text);
+    Var *v = selected(c, e);
     if (!v)
       fail(e->loc,
            "unknown value '%s' (closures and global values are not supported)",
            e->text);
+    if (v->unavailable)
+      fail(e->loc, "first^ binding '%s' is not definitely initialized here",
+           v->name);
     return variable(v);
   }
   if (e->kind == E_CALL)
     return call(c, e, expected, -1);
-  if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF)
+  if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF ||
+      e->kind == E_SCOPE)
     return construct(c, e, expected, -1);
   if (e->kind == E_MEMBER) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
@@ -1381,32 +1479,348 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   fail(e->loc, "unsupported expression");
 }
+static void branch_to(Context *c, int target, Loc loc) {
+  Instr *i = emit(c, I_BR, loc);
+  i->label = target;
+}
+static void label_at(Context *c, int label, Loc loc) {
+  Instr *i = emit(c, I_LABEL, loc);
+  i->label = label;
+}
+static void conditional(Context *c, Value value, int yes, int no, Loc loc) {
+  Instr *i = emit(c, I_CBR, loc);
+  i->a = value.id;
+  i->label = yes;
+  i->other = no;
+}
+static void remember_focus(Context *c, Loop *loop, Loc loc, bool restore) {
+  for (int j = 0; j < loop->focuses.n; j++) {
+    Var *v = loop->focuses.v[j];
+    Value *save = loop->saved.v[j];
+    bool mut = v->mut;
+    v->mut = true;
+    if (restore)
+      copy_to(c, variable(v), *save, loc, false);
+    else
+      *save = copy_to(c, *save, variable(v), loc, true);
+    v->mut = mut;
+  }
+}
+static void plain_loop(Context *c, Stmt *s) {
+  int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
+  int update = s->update.n ? ++c->in->labels : test;
+  Loop target = {
+      .end = end, .update = update, .bindings = c->vars.n, .phase = 1};
+  add(&c->loops, &target);
+  branch_to(c, test, s->loc);
+  int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels,
+      roots = c->root_count;
+  int bindings = c->vars.n;
+  for (;;) {
+    uint64_t before[64];
+    for (int j = 0; j < bindings; j++)
+      before[j] = ((Var *)c->vars.v[j])->deps;
+    label_at(c, test, s->loc);
+    statements(c, &s->pre, false);
+    Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+    if (cond.type->kind != T_BOOL)
+      fail(s->loc, "condition requires bool");
+    conditional(c, cond, body, end, s->loc);
+    label_at(c, body, s->loc);
+    c->lexical--;
+    statements(c, &s->body, true);
+    c->lexical++;
+    if (s->update.n) {
+      bool targeted = false;
+      for (int j = code; j < c->in->code.n; j++) {
+        Instr *edge = c->in->code.v[j];
+        targeted |= (edge->op == I_BR && edge->label == update) ||
+                    (edge->op == I_CBR &&
+                     (edge->label == update || edge->other == update));
+      }
+      /* Keep an ordinary header update in the canonical straight-line loop. */
+      if (targeted || c->terminated) {
+        if (!c->terminated)
+          branch_to(c, update, s->loc);
+        c->terminated = false;
+        label_at(c, update, s->loc);
+      }
+      c->lexical--;
+      statements(c, &s->update, true);
+      c->lexical++;
+    }
+    if (!c->terminated)
+      branch_to(c, test, s->loc);
+    c->terminated = false;
+    bool changed = false;
+    for (int j = 0; j < bindings; j++)
+      changed |= before[j] != ((Var *)c->vars.v[j])->deps;
+    if (!changed)
+      break;
+    c->in->code.n = code;
+    c->in->slots.n = slots;
+    c->in->labels = labels;
+    c->root_count = roots;
+  }
+  c->loops.n--;
+  label_at(c, end, s->loc);
+}
+static void loop_code(Context *c, Stmt *s) {
+  bool simple = !s->prolog.n && !s->first.n && !s->last.n && !s->epilog.n;
+  for (int j = 0; j < s->pre.n; j++)
+    simple &= ((Stmt *)s->pre.v[j])->internal;
+  if (simple) {
+    plain_loop(c, s);
+    return;
+  }
+  int scope = c->vars.n;
+  c->depth++;
+  Loop opening = {.phase = -1};
+  add(&c->loops, &opening);
+  statements(c, &s->prolog, false);
+  c->loops.n--;
+  if (c->terminated) {
+    c->vars.n = scope;
+    c->depth--;
+    return;
+  }
+  List first = first_types(c, s);
+  for (int j = 0; j < first.n; j++) {
+    Var *v = first.v[j];
+    if (!v->type)
+      fail(s->loc, "cannot infer first^ binding '%s'", v->name);
+    layout(v->type, s->loc);
+    v->depth = c->depth;
+    v->lexical = c->lexical;
+    v->root = root(c, c->depth, false, s->loc);
+    v->slot = slot(c, v->type, false);
+    v->unavailable = v->pending = true;
+    if (v->type->owned) {
+      Instr *i = emit(c, I_STACK_BEGIN, s->loc);
+      i->dst = v->slot;
+      i->type = v->type;
+      i->text = v->name;
+    }
+    add(&c->vars, v);
+  }
+  Value initial = value(c, type_builtin(c->p, T_BOOL)),
+        ran = value(c, type_builtin(c->p, T_BOOL));
+  Instr *i = emit(c, I_CONST, s->loc);
+  i->dst = initial.id;
+  i->type = initial.type;
+  i->text = "1";
+  i = emit(c, I_CONST, s->loc);
+  i->dst = ran.id;
+  i->type = ran.type;
+  i->text = "0";
+  int test = ++c->in->labels, yes = ++c->in->labels, no = ++c->in->labels,
+      once = ++c->in->labels;
+  int main = ++c->in->labels, update = ++c->in->labels,
+      finish = ++c->in->labels;
+  int last = ++c->in->labels, epilog = ++c->in->labels;
+  Loop target = {
+      .end = finish, .update = update, .bindings = c->vars.n, .first = first};
+  for (int j = 0; j < s->focuses.n; j++) {
+    Expr name = {.kind = E_NAME, .loc = s->loc, .text = s->focuses.v[j]};
+    Var *v = selected(c, &name);
+    if (v && !v->type->owned) {
+      add(&target.focuses, v);
+      Value *save = mem(sizeof(*save));
+      *save = snapshot(c, variable(v), s->loc);
+      add(&target.saved, save);
+    }
+  }
+  add(&c->loops, &target);
+  branch_to(c, test, s->loc);
+  int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels,
+      roots = c->root_count;
+  int persistent = c->vars.n;
+  for (;;) {
+    uint64_t before[64];
+    for (int j = 0; j < persistent; j++)
+      before[j] = ((Var *)c->vars.v[j])->deps;
+    for (int j = 0; j < first.n; j++) {
+      Var *v = first.v[j];
+      v->unavailable = v->pending = true;
+    }
+    target.phase = 0;
+    label_at(c, test, s->loc);
+    c->depth++;
+    statements(c, &s->pre, false);
+    if (c->terminated) {
+      c->terminated = false;
+      label_at(c, ++c->in->labels, s->loc);
+    }
+    Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+    if (cond.type->kind != T_BOOL)
+      fail(s->loc, "condition requires bool");
+    conditional(c, cond, yes, no, s->loc);
+    label_at(c, yes, s->loc);
+    target.phase = 1;
+    remember_focus(c, &target, s->loc, false);
+    i = emit(c, I_CONST, s->loc);
+    i->dst = ran.id;
+    i->type = ran.type;
+    i->text = "1";
+    conditional(c, initial, once, main, s->loc);
+    label_at(c, once, s->loc);
+    int turn = c->vars.n;
+    List pre_vars = {0};
+    for (int j = persistent; j < turn; j++)
+      add(&pre_vars, c->vars.v[j]);
+    List init = {0};
+    for (int j = 0; j < s->first.n; j++) {
+      Stmt *item = s->first.v[j], *copy = mem(sizeof(*copy));
+      *copy = *item;
+      if (copy->kind == S_BIND)
+        copy->kind = S_INIT;
+      if (copy->kind == S_BIND_MANY)
+        copy->kind = S_INIT_MANY;
+      add(&init, copy);
+    }
+    /* First-section declarations outlive the per-turn pre/main storage. */
+    int depth = c->depth;
+    c->depth--;
+    statements(c, &init, false);
+    c->depth = depth;
+    if (c->vars.n != turn)
+      fail(s->loc, "first^ must declare persistent values at its top level");
+    if (!c->terminated) {
+      i = emit(c, I_CONST, s->loc);
+      i->dst = initial.id;
+      i->type = initial.type;
+      i->text = "0";
+      branch_to(c, main, s->loc);
+    }
+    c->terminated = false;
+    label_at(c, main, s->loc);
+    for (int j = 0; j < first.n; j++)
+      ((Var *)first.v[j])->unavailable = false;
+    statements(c, &s->body, false);
+    if (!c->terminated) {
+      cleanup(c, persistent, s->loc);
+      remember_focus(c, &target, s->loc, false);
+      branch_to(c, update, s->loc);
+    }
+    c->vars.n = persistent;
+    c->depth--;
+    c->terminated = false;
+    label_at(c, update, s->loc);
+    c->lexical--;
+    statements(c, &s->update, true);
+    c->lexical++;
+    if (!c->terminated)
+      branch_to(c, test, s->loc);
+    c->terminated = false;
+    label_at(c, no, s->loc);
+    /* The failed test also owns the final pre-section activation. */
+    c->depth++;
+    int saved = c->vars.n;
+    /* Reuse the exact pre variables/slots from the emitted test. */
+    for (int j = 0; j < pre_vars.n; j++)
+      add(&c->vars, pre_vars.v[j]);
+    cleanup(c, persistent, s->loc);
+    c->vars.n = saved;
+    c->depth--;
+    branch_to(c, finish, s->loc);
+    bool changed = false;
+    for (int j = 0; j < persistent; j++)
+      changed |= before[j] != ((Var *)c->vars.v[j])->deps;
+    if (!changed)
+      break;
+    c->in->code.n = code;
+    c->in->slots.n = slots;
+    c->in->labels = labels;
+    c->root_count = roots;
+  }
+  label_at(c, finish, s->loc);
+  conditional(c, ran, last, epilog, s->loc);
+  label_at(c, last, s->loc);
+  target.phase = 2;
+  remember_focus(c, &target, s->loc, true);
+  c->lexical--;
+  statements(c, &s->last, true);
+  c->lexical++;
+  if (!c->terminated)
+    branch_to(c, epilog, s->loc);
+  c->terminated = false;
+  label_at(c, epilog, s->loc);
+  target.phase = 3;
+  for (int j = 0; j < first.n; j++)
+    ((Var *)first.v[j])->unavailable = true;
+  c->lexical--;
+  statements(c, &s->epilog, true);
+  c->lexical++;
+  c->loops.n--;
+  if (!c->terminated)
+    cleanup(c, scope, s->loc);
+  c->vars.n = scope;
+  c->depth--;
+}
+static void binding_name(Context *c, Stmt *s) {
+  if (c->in->fn == c->p->entry && c->depth == 1) {
+    if (lookup_def(c->p, s->name))
+      fail(s->loc, "top-level binding conflicts with def^ '%s'", s->name);
+    for (int j = 0; j < c->p->functions.n; j++) {
+      Function *f = c->p->functions.v[j];
+      if (!strcmp(s->name, f->name))
+        fail(s->loc, "top-level binding conflicts with function '%s'", s->name);
+    }
+  }
+  for (int j = c->vars.n - 1; j >= 0; j--) {
+    Var *v = c->vars.v[j];
+    if (v->depth < c->depth)
+      break;
+    if (!strcmp(v->name, s->name))
+      fail(s->loc, "duplicate binding '%s'", s->name);
+  }
+}
 static void statements(Context *c, List *body, bool scope) {
   int start = c->vars.n;
-  if (scope)
+  if (scope) {
     c->depth++;
+    c->lexical++;
+  }
   for (int n = 0; n < body->n; n++) {
     Stmt *s = body->v[n];
     if (c->terminated)
       fail(s->loc, "unreachable statement");
-    if (s->kind == S_BIND) {
-      if (c->in->fn == c->p->entry && c->depth == 1) {
-        if (lookup_def(c->p, s->name))
-          fail(s->loc, "top-level binding conflicts with def^ '%s'", s->name);
-        for (int j = 0; j < c->p->functions.n; j++) {
-          Function *f = c->p->functions.v[j];
-          if (!strcmp(s->name, f->name))
-            fail(s->loc, "top-level binding conflicts with function '%s'",
-                 s->name);
-        }
+    if (s->kind == S_INIT_MANY) {
+      for (int j = 0; j < s->body.n; j++) {
+        Stmt *b = s->body.v[j];
+        Var *v = lookup(c, b->name);
+        if (!v || !v->unavailable || !v->pending)
+          fail(b->loc, "first^ binding conflicts with a pre^ binding");
+        Value out = construct(c, b->a, v->type, v->slot);
+        Value dst = variable(v);
+        dst.var = NULL;
+        store_check(c, dst, out, b->loc);
+        v->deps |= out.deps;
       }
-      for (int j = c->vars.n - 1; j >= 0; j--) {
-        Var *v = c->vars.v[j];
-        if (v->depth < c->depth)
-          break;
-        if (!strcmp(v->name, s->name))
-          fail(s->loc, "duplicate binding '%s'", s->name);
+      for (int j = 0; j < s->body.n; j++) {
+        Var *v = lookup(c, ((Stmt *)s->body.v[j])->name);
+        v->unavailable = v->pending = false;
       }
+    } else if (s->kind == S_INIT) {
+      Var *var = lookup(c, s->name);
+      if (!var || !var->unavailable)
+        fail(s->loc, "invalid first^ initialization");
+      Value v = construct(c, s->a, var->type, var->slot);
+      Value dst = variable(var);
+      dst.var = NULL;
+      store_check(c, dst, v, s->loc);
+      var->deps |= v.deps;
+      var->unavailable = var->pending = false;
+    } else if (s->kind == S_BIND) {
+      if (!strcmp(s->name, "_^")) {
+        Stmt hidden = *s;
+        hidden.name = fmt("\001discard%d", c->in->slots.n);
+        List one = {0};
+        add(&one, &hidden);
+        statements(c, &one, false);
+        continue;
+      }
+      binding_name(c, s);
       Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
       if (!t)
         t = expression_type(c, s->a, NULL);
@@ -1439,11 +1853,14 @@ static void statements(Context *c, List *body, bool scope) {
         Value dst = {.id = d, .type = t};
         v = copy_to(c, dst, v, s->loc, true);
       }
+      if (s->integer && !kind_integer(t->kind))
+        fail(s->loc, "counted loops require an integer type");
       Var *var = mem(sizeof(*var));
       var->name = s->name;
       var->slot = v.id;
       var->type = t;
       var->depth = c->depth;
+      var->lexical = c->lexical;
       var->mut = s->mut;
       var->root = root(c, c->depth, false, s->loc);
       var->deps = v.deps;
@@ -1451,15 +1868,103 @@ static void statements(Context *c, List *body, bool scope) {
       dst.var = NULL;
       store_check(c, dst, v, s->loc);
       add(&c->vars, var);
+    } else if (s->kind == S_BIND_MANY) {
+      int begin = c->vars.n;
+      for (int j = 0; j < s->body.n; j++) {
+        Stmt *binding = s->body.v[j];
+        for (int k = 0; k < j; k++)
+          if (strcmp(binding->name, "_^") &&
+              !strcmp(binding->name, ((Stmt *)s->body.v[k])->name))
+            fail(binding->loc, "duplicate binding '%s'", binding->name);
+        binding_name(c, binding);
+        Stmt hidden = *binding;
+        hidden.name = fmt("\001parallel%d", c->in->slots.n);
+        List one = {0};
+        add(&one, &hidden);
+        /* Keep a parallel declaration's owned result at the caller destination.
+         */
+        char *result = c->in->result_local;
+        if (result && !strcmp(result, binding->name))
+          c->in->result_local = hidden.name;
+        statements(c, &one, false);
+        c->in->result_local = result;
+      }
+      for (int j = 0; j < s->body.n; j++)
+        if (strcmp(((Stmt *)s->body.v[j])->name, "_^"))
+          ((Var *)c->vars.v[begin + j])->name = ((Stmt *)s->body.v[j])->name;
     } else if (s->kind == S_ASSIGN) {
-      Value dst = expression(c, s->a, NULL);
-      if (!dst.addressable)
-        fail(s->loc, "assignment destination is not addressable");
-      if (dst.type->owned)
-        fail(s->loc,
-             "owned values cannot be reassigned while references may exist");
-      Value src = expression(c, s->b, dst.type);
-      copy_to(c, dst, src, s->loc, false);
+      int count = s->targets.n ? s->targets.n : 1;
+      Value *dest = mem(sizeof(*dest) * count),
+            *old = mem(sizeof(*old) * count), *src = mem(sizeof(*src) * count);
+      for (int j = 0; j < count; j++) {
+        Expr *target = s->targets.n ? s->targets.v[j] : s->a;
+        if (target->kind == E_NAME && !strcmp(target->text, "_^")) {
+          if (s->op)
+            fail(s->loc, "discard cannot be a compound assignment target");
+          continue;
+        }
+        dest[j] = expression(c, s->targets.n ? s->targets.v[j] : s->a, NULL);
+        if (!dest[j].addressable)
+          fail(s->loc, "assignment destination is not addressable");
+        if (dest[j].type->owned)
+          fail(s->loc,
+               "owned values cannot be reassigned while references may exist");
+        if (s->op)
+          old[j] = snapshot(c, dest[j], s->loc);
+      }
+      for (int j = 0; j < count; j++) {
+        if (!dest[j].type) {
+          Stmt discard = {.kind = S_BIND,
+                          .loc = s->loc,
+                          .name = "_^",
+                          .a = s->values.n ? s->values.v[j] : s->b};
+          List one = {0};
+          add(&one, &discard);
+          statements(c, &one, false);
+          continue;
+        }
+        src[j] = snapshot(
+            c, expression(c, s->values.n ? s->values.v[j] : s->b, dest[j].type),
+            s->loc);
+        if (s->op) {
+          Expr left = {.kind = E_SAVED, .loc = s->loc, .saved_slot = old[j].id};
+          Expr right = {
+              .kind = E_SAVED, .loc = s->loc, .saved_slot = src[j].id};
+          Expr binary = {.kind = E_BIN,
+                         .loc = s->loc,
+                         .text = s->op,
+                         .a = &left,
+                         .b = &right};
+          src[j] = expression(c, &binary, dest[j].type);
+        }
+      }
+      for (int j = 0; j < count; j++) {
+        if (!dest[j].type)
+          continue;
+        bool mut = dest[j].var && dest[j].var->mut;
+        if (s->internal && dest[j].var)
+          dest[j].var->mut = true;
+        copy_to(c, dest[j], src[j], s->loc, false);
+        if (s->internal && dest[j].var)
+          dest[j].var->mut = mut;
+      }
+    } else if (s->kind == S_BREAK || s->kind == S_NEXT) {
+      if (s->depth > c->loops.n)
+        fail(s->loc, "jump depth exceeds enclosing loops");
+      Loop *loop = c->loops.v[c->loops.n - s->depth];
+      if (loop->phase < 0 || loop->phase >= 2)
+        fail(s->loc, "prolog^/last^/epilog^ cannot jump to their own loop");
+      if (loop->phase == 1)
+        for (int j = 0; j < loop->first.n; j++)
+          if (((Var *)loop->first.v[j])->unavailable)
+            fail(s->loc,
+                 "cannot jump before all first^ bindings are initialized");
+      if (loop->phase == 1)
+        remember_focus(c, loop, s->loc, false);
+      cleanup(c, loop->bindings, s->loc);
+      Instr *br = emit(c, I_BR, s->loc);
+      br->label = s->kind == S_BREAK ? loop->end : loop->update;
+      c->terminated = true;
     } else if (s->kind == S_EXPR) {
       Value v = expression(c, s->a, NULL);
       if (v.type->owned)
@@ -1507,7 +2012,11 @@ static void statements(Context *c, List *body, bool scope) {
       i->other = no;
       i = emit(c, I_LABEL, s->loc);
       i->label = yes;
+      if (s->internal)
+        c->lexical--;
       statements(c, &s->body, true);
+      if (s->internal)
+        c->lexical++;
       bool a = c->terminated;
       if (!a) {
         i = emit(c, I_BR, s->loc);
@@ -1516,7 +2025,11 @@ static void statements(Context *c, List *body, bool scope) {
       c->terminated = false;
       i = emit(c, I_LABEL, s->loc);
       i->label = no;
+      if (s->internal)
+        c->lexical--;
       statements(c, &s->other, true);
+      if (s->internal)
+        c->lexical++;
       bool b = c->terminated;
       if (!b) {
         i = emit(c, I_BR, s->loc);
@@ -1527,53 +2040,8 @@ static void statements(Context *c, List *body, bool scope) {
         i = emit(c, I_LABEL, s->loc);
         i->label = end;
       }
-    } else if (s->kind == S_WHILE) { /* Conservative root history prevents
-                                        loop-carried reference escape. */
-      int test = ++c->in->labels, loop = ++c->in->labels, end = ++c->in->labels;
-      Instr *i = emit(c, I_BR, s->loc);
-      i->label = test;
-      i = emit(c, I_LABEL, s->loc);
-      i->label = test;
-      Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
-      if (cond.type->kind != T_BOOL)
-        fail(s->loc, "condition requires bool");
-      i = emit(c, I_CBR, s->loc);
-      i->a = cond.id;
-      i->label = loop;
-      i->other = end;
-      i = emit(c, I_LABEL, s->loc);
-      i->label = loop;
-      /* Revisit the body until every outer binding's reference history is
-         stable. A reference read before a later assignment may carry that
-         assignment's owner on the next iteration. Discard speculative IR,
-         and reuse root/slot/label identities for each visit. */
-      int code_start = c->in->code.n, slots_start = c->in->slots.n;
-      int labels_start = c->in->labels, roots_start = c->root_count;
-      int bindings = c->vars.n;
-      for (;;) {
-        uint64_t before[64];
-        for (int j = 0; j < bindings; j++)
-          before[j] = ((Var *)c->vars.v[j])->deps;
-        statements(c, &s->body, true);
-        bool changed = false;
-        for (int j = 0; j < bindings; j++)
-          changed |= before[j] != ((Var *)c->vars.v[j])->deps;
-        if (!changed)
-          break;
-        c->in->code.n = code_start;
-        c->in->slots.n = slots_start;
-        c->in->labels = labels_start;
-        c->root_count = roots_start;
-        c->terminated = false;
-      }
-      if (!c->terminated) {
-        i = emit(c, I_BR, s->loc);
-        i->label = test;
-      }
-      c->terminated = false;
-      i = emit(c, I_LABEL, s->loc);
-      i->label = end;
-    }
+    } else if (s->kind == S_WHILE)
+      loop_code(c, s);
   }
   if (scope) {
     if (!c->terminated)
@@ -1581,6 +2049,7 @@ static void statements(Context *c, List *body, bool scope) {
               body->n ? ((Stmt *)body->v[body->n - 1])->loc : c->in->fn->loc);
     c->vars.n = start;
     c->depth--;
+    c->lexical--;
   }
 }
 static void return_names(List *body, char **name, bool *valid) {
@@ -1598,6 +2067,12 @@ static void return_names(List *body, char **name, bool *valid) {
     }
     return_names(&s->body, name, valid);
     return_names(&s->other, name, valid);
+    return_names(&s->prolog, name, valid);
+    return_names(&s->pre, name, valid);
+    return_names(&s->first, name, valid);
+    return_names(&s->last, name, valid);
+    return_names(&s->epilog, name, valid);
+    return_names(&s->update, name, valid);
   }
 }
 /* Return inference is a fixed point over concrete call instances. Unknown
@@ -1610,6 +2085,7 @@ typedef struct {
   Type *returned;
   Expr *return_expr;
   bool value_return;
+  int lexical;
 } Infer;
 
 static Function *lookup_function(Program *p, const char *name, int arity) {
@@ -1751,6 +2227,7 @@ static Type *infer_call(Infer *c, Expr *e) {
     return f->result ? type_spec(c->p, f->result) : f->required_result;
   return instance_for(c->p, f, self, &actual, e->loc)->result;
 }
+static void infer_statements(Infer *c, List *body, bool scoped);
 static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   if (!e)
     return type_builtin(c->p, T_VOID);
@@ -1774,6 +2251,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   case E_STRING:
     return type_builtin(c->p, T_STRING);
   case E_NAME:
+    if (e->scope_kind) {
+      Context scope = {.vars = c->vars, .lexical = c->lexical};
+      Var *v = selected(&scope, e);
+      return v ? v->type : NULL;
+    }
+
     if (!strcmp(e->text, "nil^"))
       return type_builtin(c->p, T_NIL);
     return infer_lookup(c, e->text);
@@ -1840,6 +2323,25 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
       return a->kind == T_REF ? a->elem : NULL;
     return a;
   }
+  case E_SCOPE: {
+    int begin = c->vars.n;
+    c->lexical++;
+    infer_statements(c, &e->bindings, false);
+    Type *t = infer_expr(c, e->a, expected);
+    c->vars.n = begin;
+    c->lexical--;
+    return t;
+  }
+  case E_EXPECT:
+    return infer_expr(c, e->a, infer_expr(c, e->b, NULL));
+  case E_SAVED:
+    return ((Slot *)c->in->slots.v[e->saved_slot])->type;
+  case E_CHAIN: {
+    Type *t = infer_expr(c, e->args.v[0], NULL);
+    for (int j = 1; j < e->args.n; j++)
+      t = infer_expr(c, e->args.v[j], t);
+    return type_builtin(c->p, T_BOOL);
+  }
   case E_IF: {
     infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
     Type *a = infer_expr(c, e->b, expected);
@@ -1864,6 +2366,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
 }
 static void infer_statements(Infer *c, List *body, bool scoped) {
   int mark = c->vars.n;
+  if (scoped)
+    c->lexical++;
   for (int j = 0; j < body->n; j++) {
     Stmt *s = body->v[j];
     if (s->kind == S_BIND) {
@@ -1871,8 +2375,23 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       Type *actual = infer_expr(c, s->a, t);
       Var *v = mem(sizeof(*v));
       v->name = s->name;
+      v->lexical = c->lexical;
       v->type = t ? t : actual;
       add(&c->vars, v);
+    } else if (s->kind == S_BIND_MANY) {
+      List pending = {0};
+      for (int k = 0; k < s->body.n; k++) {
+        Stmt *b = s->body.v[k];
+        Type *t = b->spec ? type_spec(c->p, b->spec) : NULL;
+        Type *actual = infer_expr(c, b->a, t);
+        Var *v = mem(sizeof(*v));
+        v->name = b->name;
+        v->lexical = c->lexical;
+        v->type = t ? t : actual;
+        add(&pending, v);
+      }
+      for (int k = 0; k < pending.n; k++)
+        add(&c->vars, pending.v[k]);
     } else if (s->kind == S_RETURN) {
       Type *hint = c->in->fn->result ? type_spec(c->p, c->in->fn->result)
                                      : c->in->fn->required_result;
@@ -1881,10 +2400,30 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       c->returned = join_types(c->returned, c->return_expr, t, s->a, s->loc);
       if (!c->return_expr || !integer_literal(s->a))
         c->return_expr = s->a;
-    } else if (s->kind == S_IF || s->kind == S_WHILE) {
+    } else if (s->kind == S_WHILE) {
+      int begin = c->vars.n;
+      infer_statements(c, &s->prolog, false);
+      infer_statements(c, &s->pre, false);
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      infer_statements(c, &s->first, false);
+      c->lexical--;
+      infer_statements(c, &s->body, true);
+      c->lexical++;
+      c->lexical--;
+      infer_statements(c, &s->update, true);
+      infer_statements(c, &s->last, true);
+      infer_statements(c, &s->epilog, true);
+      c->lexical++;
+      c->vars.n = begin;
+    } else if (s->kind == S_IF) {
+      infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      if (s->internal)
+        c->lexical--;
       infer_statements(c, &s->body, true);
       infer_statements(c, &s->other, true);
+      if (s->internal)
+        c->lexical++;
+      infer_statements(c, &s->update, true);
     } else if (s->kind == S_BLOCK)
       infer_statements(c, &s->body, true);
     else {
@@ -1893,8 +2432,45 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
         infer_expr(c, s->b, NULL);
     }
   }
-  if (scoped)
+  if (scoped) {
     c->vars.n = mark;
+    c->lexical--;
+  }
+}
+static List first_types(Context *c, Stmt *s) {
+  Infer infer = {.p = c->p, .in = c->in, .lexical = c->lexical};
+  for (int j = 0; j < c->vars.n; j++)
+    add(&infer.vars, c->vars.v[j]);
+  infer_statements(&infer, &s->pre, false);
+  int begin = infer.vars.n;
+  infer_statements(&infer, &s->first, false);
+  List out = {0};
+  for (int j = begin; j < infer.vars.n; j++) {
+    Var *v = infer.vars.v[j];
+    for (int k = c->vars.n - 1; k >= 0; k--) {
+      Var *old = c->vars.v[k];
+      if (old->depth < c->depth)
+        break;
+      if (!strcmp(old->name, v->name))
+        fail(s->loc, "duplicate binding '%s'", v->name);
+    }
+    for (int k = 0; k < out.n; k++)
+      if (!strcmp(((Var *)out.v[k])->name, v->name))
+        fail(s->loc, "duplicate binding '%s'", v->name);
+    for (int k = 0; k < s->first.n; k++) {
+      Stmt *b = s->first.v[k];
+      if (b->kind == S_BIND && !strcmp(b->name, v->name))
+        v->mut = b->mut;
+      if (b->kind == S_BIND_MANY)
+        for (int q = 0; q < b->body.n; q++) {
+          Stmt *part = b->body.v[q];
+          if (!strcmp(part->name, v->name))
+            v->mut = part->mut;
+        }
+    }
+    add(&out, v);
+  }
+  return out;
 }
 static void infer_results(Program *p) {
   for (int round = 0; round < 1024; round++) {
@@ -1902,11 +2478,13 @@ static void infer_results(Program *p) {
     int count = p->instances.n;
     for (int j = 0; j < p->instances.n; j++) {
       Instance *in = p->instances.v[j];
-      Infer c = {.p = p, .in = in};
+      Infer c = {
+          .p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
       for (int k = 0; k < in->fn->params.n; k++) {
         Param *param = in->fn->params.v[k];
         Var *v = mem(sizeof(*v));
         v->name = param->name;
+        v->lexical = c.lexical;
         v->type = in->params.v[k];
         add(&c.vars, v);
       }
@@ -1930,7 +2508,8 @@ static void infer_results(Program *p) {
   fail((Loc){p->path, 1, 1}, "return type inference did not converge");
 }
 static Type *expression_type(Context *c, Expr *e, Type *expected) {
-  Infer inference = {.p = c->p, .in = c->in, .vars = c->vars};
+  Infer inference = {
+      .p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
   return infer_expr(&inference, e, expected);
 }
 static Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
@@ -1985,6 +2564,7 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
   c.in = in;
   c.access = f->owner;
   c.depth = 1;
+  c.lexical = f->lexical ? f->lexical : 1;
   if (in->result->kind != T_VOID) {
     in->result_slot = slot(&c, in->result, true);
     if (in->result->owned) {
@@ -1997,7 +2577,8 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
   for (int j = 0; j < f->params.n; j++) {
     Param *a = f->params.v[j];
     for (int k = 0; k < j; k++)
-      if (!strcmp(a->name, ((Param *)f->params.v[k])->name))
+      if (strcmp(a->name, "_^") &&
+          !strcmp(a->name, ((Param *)f->params.v[k])->name))
         fail(a->loc, "duplicate parameter '%s'", a->name);
     Type *t = actual->v[j];
     layout(t, a->loc);
@@ -2006,10 +2587,11 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     if (t->owned)
       fail(a->loc, "owned by-value parameters are not supported; use '&'");
     Var *v = mem(sizeof(*v));
-    v->name = a->name;
+    v->name = !strcmp(a->name, "_^") ? fmt("\001discard_param%d", j) : a->name;
     v->type = t;
     v->slot = slot(&c, t, false);
     v->depth = 1;
+    v->lexical = c.lexical;
     v->mut = true;
     v->parameter = true;
     v->root = root(&c, 1, false, a->loc);

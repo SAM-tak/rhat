@@ -97,7 +97,7 @@ print(lib.mem.total(&a),lib.mem.read(Item{}))
         'main.rh': 'import^ lib.a\nimport^ lib.b\nprint(lib.a.Item{}.value,lib.b.Item{}.value)'}, '1 2\n')
     for name, text, diagnostic in [
         ('private_function', 'import^ lib.example\nprint(lib.example.hidden())', 'does not export'),
-        ('private_type', 'import^ lib.example\nlet^ x:lib.example.Secret={}', 'unknown or unavailable type'),
+        ('private_type', 'import^ lib.example\nlet^ x:lib.example.Secret=lib.example.Secret{}', 'unknown or unavailable type'),
         ('unknown_module', 'import^ absent.module', 'cannot find module'),
         ('import_collision', 'def^ lib {}\nimport^ lib.example', 'conflicts'),
         ('error_constructor_wrong_type', 'def^ A {}\nlet^ x=error^A{}', 'errordef^ variant'),
@@ -122,8 +122,8 @@ print(lib.mem.total(&a),lib.mem.read(Item{}))
         'lib/b.rh': 'module^ lib.b\npublic^ let^ value=f^ { 1 }',
         'main.rh': 'import^ lib.a\nprint(lib.b.value())'}, 'unknown')
     for name, use in [
-        ('hidden_type_alias_bypass', 'let^ x:lib.b.Secret={}'),
-        ('hidden_type_namespace_bypass', 'def^ lib {}\nlet^ x:lib.b.Secret={}'),
+        ('hidden_type_alias_bypass', 'let^ x:lib.b.Secret=lib.b.Secret{}'),
+        ('hidden_type_namespace_bypass', 'def^ lib {}\nlet^ x:lib.b.Secret=lib.b.Secret{}'),
         ('hidden_constructor_alias_bypass', 'let^ x=lib.b.Secret{}'),
         ('hidden_composition_bypass', 'def^ X:lib.b.Secret {}'),
         ('hidden_union_bypass', 'def^ X=lib.b.Secret | i64^'),
@@ -262,7 +262,7 @@ public^ let^ fill=p^ a:&i32^[>..], n:i32^ {
 var^ r=std.random.new(12345)
 print(r.save())
 var^ i:i32^=0
-while^ i < 8 { print(r.next()); i:=i+1 }
+repeat^ while^ i < 8 { print(r.next()); i:=i+1 }
 let^ saved=r.save()
 let^ a=r.rangeint(-100,100).get(i64^)
 assert(r.load(saved).is(nil^))

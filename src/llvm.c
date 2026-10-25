@@ -116,10 +116,10 @@ static int integer64(Output *o, int id) {
   }
   return v;
 }
-static void bytes(FILE *f, const char *s) {
+static void bytes(FILE *f, const char *s, size_t length) {
   fputs("c\"", f);
-  for (const unsigned char *p = (const unsigned char *)s; *p; p++)
-    fprintf(f, "\\%02X", *p);
+  for (size_t j = 0; j < length; j++)
+    fprintf(f, "\\%02X", (unsigned char)s[j]);
   fputs("\\00\"", f);
 }
 typedef struct {
@@ -249,9 +249,9 @@ static void instruction(Output *o, Instr *i) {
     save(o, i->dst, t, i->text);
     break;
   case I_STRING:
-    save(o, i->dst, t,
-         fmt("{ ptr @%s_str_%d, i64 %zu }", o->in->symbol, i->label,
-             strlen(i->text)));
+    save(
+        o, i->dst, t,
+        fmt("{ ptr @%s_str_%d, i64 %zu }", o->in->symbol, i->label, i->length));
     break;
   case I_ZERO:
     save(o, i->dst, t, "zeroinitializer");
@@ -557,7 +557,7 @@ static void instruction(Output *o, Instr *i) {
         fprintf(f,
                 "  call void @rh_append_literal(ptr %%p%d, ptr @%s_str_%d, i64 "
                 "%zu, i32 %d)\n",
-                i->a, o->in->symbol, literal->label, strlen(literal->text),
+                i->a, o->in->symbol, literal->label, literal->length,
                 i->loc.line);
         return;
       }
@@ -1051,8 +1051,8 @@ void emit_llvm(Program *p, const char *path) {
       if (i->op == I_STRING) {
         i->label = count++;
         fprintf(f, "@%s_str_%d = private unnamed_addr constant [%zu x i8] ",
-                in->symbol, i->label, strlen(i->text) + 1);
-        bytes(f, i->text);
+                in->symbol, i->label, i->length + 1);
+        bytes(f, i->text, i->length);
         fputc('\n', f);
       }
     }

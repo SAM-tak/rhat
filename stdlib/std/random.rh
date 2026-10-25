@@ -39,7 +39,7 @@ public^ def^ Random {
         var^ bits = self^.raw()
         if^ span != 0 {
             let^ threshold = (u64^(0) - span) % span
-            while^ bits < threshold { bits := self^.raw() }
+            repeat^ while^ bits < threshold { bits := self^.raw() }
             bits := bits % span
         }
         return^ i64^(u64^(lo) + bits)
@@ -51,8 +51,7 @@ public^ def^ Random {
         if^ lo = hi { return^ lo }
         let^ u = self^.next()
         var^ v:f64^ = 0.0
-        if^ lo <= 0.0 and^ hi >= 0.0 { v := (1.0-u)*lo + u*hi }
-        else^ { v := lo + u*(hi-lo) }
+        if^ lo <= 0.0 and^ hi >= 0.0 { v := (1.0-u)*lo + u*hi else^: v := lo + u*(hi-lo) }
         if^ v >= hi { v := __nextafter^(hi,lo) }
         if^ v < lo { v := lo }
         return^ v

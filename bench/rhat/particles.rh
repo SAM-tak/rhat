@@ -9,7 +9,7 @@ let^ n:i64^=100000 # BENCH_N
 var^ ps:Particle[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     ps.push(Particle{
         x=f32^(r % 1024),
@@ -22,9 +22,9 @@ while^ i < n {
     i := i+1
 }
 var^ step:i32^=0
-while^ step < 200 {
+repeat^ while^ step < 200 {
     i := 0
-    while^ i < n {
+    repeat^ while^ i < n {
         let^ p=&ps[i]
         p.vy := p.vy - 0.0625
         p.x := p.x + p.vx
@@ -37,7 +37,7 @@ while^ step < 200 {
 }
 var^ total:i64^=0
 i := 0
-while^ i < n {
+repeat^ while^ i < n {
     total := total+i64^(ps[i].x*16.0)+i64^(ps[i].y*16.0)+i64^(ps[i].z*16.0)
     i := i+1
 }

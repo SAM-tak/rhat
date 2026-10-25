@@ -5,16 +5,16 @@ let^ n:i64^=1000000 # BENCH_N
 var^ data:i32^[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     data.push(i32^(r % 1000))
     i := i+1
 }
 var^ total:i64^=0
 var^ pass:i64^=0
-while^ pass < 8 {
+repeat^ while^ pass < 8 {
     i := 0
-    while^ i < n {
+    repeat^ while^ i < n {
         total := total + (i64^(data[i]) bitxor^ pass)
         i := i+1
     }

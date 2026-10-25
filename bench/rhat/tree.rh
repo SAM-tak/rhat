@@ -31,7 +31,7 @@ let^ root=make(&pool,depth,12345)
 let^ count=pool.len-1
 var^ total:i64^=0
 var^ pass:i64^=0
-while^ pass < 8 {
+repeat^ while^ pass < 8 {
     total := total+sum_tree(&pool,root,pass)
     pass := pass+1
 }

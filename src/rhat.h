@@ -72,7 +72,11 @@ enum {
   E_RECORD,
   E_ARRAY,
   E_FUNCTION,
-  E_IF
+  E_IF,
+  E_SAVED,  /* A compiler-owned scalar snapshot, never parsed from source. */
+  E_SCOPE,  /* A lexical focus scope producing one value. */
+  E_EXPECT, /* Infer a contextual numeric type without evaluating the hint. */
+  E_CHAIN   /* Comparisons share operands and short-circuit left to right. */
 };
 struct Expr {
   Spec *constant_spec;
@@ -83,8 +87,28 @@ struct Expr {
   Expr *a, *b, *c;
   Function *function;
   List args, names;
+  int saved_slot; /* Scalar slot referenced by compiler-generated E_SAVED. */
+  int scope_kind,
+      scope_count; /* Explicit lexical scope or enclosing it^ selection. */
+  size_t length; /* Byte length of a string literal, including embedded NULs. */
+  List bindings; /* Lexical declarations preceding a scoped expression. */
 };
-enum { S_BIND, S_ASSIGN, S_EXPR, S_RETURN, S_IF, S_WHILE, S_BLOCK };
+/* Statements include parallel declarations, loop jumps, and reserved first^
+ * initialization. */
+enum {
+  S_BIND,
+  S_ASSIGN,
+  S_EXPR,
+  S_RETURN,
+  S_IF,
+  S_WHILE,
+  S_BLOCK,
+  S_BIND_MANY,
+  S_BREAK,
+  S_NEXT,
+  S_INIT,
+  S_INIT_MANY
+};
 struct Stmt {
   int kind;
   Loc loc;
@@ -92,7 +116,16 @@ struct Stmt {
   bool mut;
   Spec *spec;
   Expr *a, *b;
+  char *op; /* The arithmetic operator of a compound assignment. */
+  List targets,
+      values; /* Parallel writes evaluate all addresses/values first. */
   List body, other;
+  List update; /* Loop updates also run after a targeted next^. */
+  List prolog, pre, first, last, epilog; /* Ordered loop sections. */
+  List focuses; /* Header bindings whose last successful values are retained. */
+  bool integer; /* A compiler-generated counted-loop integer requirement. */
+  bool internal; /* A compiler-generated write to a read-only focus. */
+  int depth;     /* A jump counts enclosing loops, starting at one. */
 };
 typedef struct {
   Loc loc;
@@ -104,6 +137,8 @@ struct Function {
   Module *module;
   bool public;
   Loc loc;
+  int lexical; /* Source lexical depth; noncapturing literals keep scope
+                  numbering. */
   char *name;
   Def *owner;
   List params, body;
@@ -258,6 +293,7 @@ typedef struct {
   Loc loc;
   int dst, a, b, label, other;
   char *text;
+  size_t length; /* Explicit byte length for I_STRING. */
   Type *type;
   Instance *callee;
   int stack_index;

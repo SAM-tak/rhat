@@ -35,7 +35,7 @@ let^ tree_check = p^ depth:i64^ -> i64^ {
 let^ power2 = f^ n:i64^ -> i64^ {
     var^ value:i64^=1
     var^ i:i64^=0
-    while^ i < n { value := value*2; i := i+1 }
+    repeat^ while^ i < n { value := value*2; i := i+1 }
     return^ value
 }
 
@@ -45,11 +45,11 @@ var^ long:Node[>..]=[]
 var^ count:i32^=0
 let^ root=make(&long,&count,maxdepth)
 var^ d:i64^=4
-while^ d <= maxdepth {
+repeat^ while^ d <= maxdepth {
     let^ iters=power2(maxdepth-d+4)
     var^ sum:i64^=0
     var^ i:i64^=0
-    while^ i < iters {
+    repeat^ while^ i < iters {
         sum := sum+tree_check(d)
         i := i+1
     }

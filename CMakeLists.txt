@@ -33,6 +33,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/tests")
   add_test(NAME modules COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/modules.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/module-tests")
+  add_test(NAME syntax COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/syntax.py"
+    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/syntax-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)

@@ -228,7 +228,7 @@ high_water("push_append_only_loop", '''
 let^ next=f^ n:i32^ -> i32^ { return^ n+1 }
 var^ a:i32^[>..]=[]
 var^ i:i32^=0
-while^ i<30 { a.push(next(i)); i:=i+1 }
+repeat^ while^ i<30 { a.push(next(i)); i:=i+1 }
 assert(a.len=30)
 print(a[29])
 ''', [120], "30\n", append_only=True)
@@ -272,12 +272,12 @@ high_water("push_shrink_loop_backedge", '''
 var^ a:i32^[>..]=[1,2,3,4]
 let^ view=a.slice(0,4)
 var^ i:i32^=0
-while^ i<3 { a.push(9); assert(true^); a.clear(); i:=i+1 }
+repeat^ while^ i<3 { a.push(9); assert(true^); a.clear(); i:=i+1 }
 print(view[3])
 ''', [20,20,20], "4\n")
 high_water("push_shrink_branch_join", '''
 var^ a:i32^[>..]=[1,2,3,4]
-if^ true^ { a.truncate(1) } else^ { print(0) }
+if^ true^ { a.truncate(1) else^: print(0) }
 a.push(9)
 assert(a.len=2)
 print(a[1])
@@ -302,7 +302,7 @@ print(*ref)
 ''', [16], "4\n")
 high_water("push_shrink_recursive_effect", '''
 let^ cut=p^ a:&i32^[>..], n:i32^ {
-    if^ n=0 { a.clear() } else^ { again(a,n-1) }
+    if^ n=0 { a.clear() else^: again(a,n-1) }
 }
 let^ again=p^ a:&i32^[>..], n:i32^ { cut(a,n) }
 var^ a:i32^[>..]=[1,2,3,4]
@@ -332,7 +332,7 @@ for name,decl,count,element in (
     ("byte", "var^ a:u8^[>..]=[]", 65536, "1"),
     ("triple", "def^ Triple { self^{x:u8^=1,y:u8^=2,z:u8^=3} } var^ a:Triple[>..]=[]", 21845, "Triple.new()"),
 ):
-    path=source("push_capacity_"+name, decl+f"; var^ i:i32^=0; while^ i<{count} {{ a.push({element}); i:=i+1 }} a.push({element})")
+    path=source("push_capacity_"+name, decl+f"; var^ i:i32^=0; repeat^ while^ i<{count} {{ a.push({element}); i:=i+1 }} a.push({element})")
     for opt in ("-O0","-O2"):
         exe=work/("push_capacity_"+name+opt[1:]+".exe")
         run([compiler,"build",str(path),"-o",str(exe),opt,"--clang",args.clang,"--runtime",str(small_runtime)])
@@ -671,7 +671,7 @@ var^ marks:(&Item)[>..]=[]
 let^ first=items.push(Item{key=7,val=11})
 marks.push(first)
 var^ i:i32^=0
-while^ i < 2000 {
+repeat^ while^ i < 2000 {
     let^ item=items.push(Item{key=i,val=i+1})
     if^ i % 64 = 0 { marks.push(item) }
     i := i+1
@@ -782,7 +782,7 @@ let^ bad=p^ source:&i32^ -> &i32^ {
     let^ alias=&refs
     var^ out=source
     var^ n:i32^=0
-    while^ n < 2 {
+    repeat^ while^ n < 2 {
         out := alias[0]
         refs[0] := &local
         n := n+1
@@ -802,7 +802,7 @@ let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
     var^ ref=source
     var^ marks:(&i32^)[>..]=[]
     var^ n:i32^=0
-    while^ n < 2 {
+    repeat^ while^ n < 2 {
         marks.push(ref)
         ref := &local
         n := n+1
@@ -815,7 +815,7 @@ let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
     var^ local:i32^=9
     var^ marks:(&i32^)[>..]=[]
     var^ n:i32^=0
-    while^ n < 2 { marks.push(source); source := &local; n := n+1 }
+    repeat^ while^ n < 2 { marks.push(source); source := &local; n := n+1 }
     return^ marks
 }
 ''', "cannot return a reference")
@@ -826,7 +826,7 @@ let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
     var^ second=source
     var^ marks:(&i32^)[>..]=[]
     var^ n:i32^=0
-    while^ n < 3 {
+    repeat^ while^ n < 3 {
         marks.push(first)
         first := second
         second := &local
@@ -842,7 +842,7 @@ let^ collect=p^ x:&i32^, y:&i32^ -> (&i32^)[>..] {
     var^ marks:(&i32^)[>..]=[]
     DECLARATIONS
     var^ n:i32^=0
-    while^ n < 12 {
+    repeat^ while^ n < 12 {
         marks.push(r0)
         ASSIGNMENTS
         r8 := y
@@ -974,7 +974,7 @@ var^ a:Triple[>..]=[]
 a.push(Triple.new())
 let^ first=&a[0].a
 var^ i:i32^=1
-while^ i<3000 { a.push(Triple.new()); i:=i+1 }
+repeat^ while^ i<3000 { a.push(Triple.new()); i:=i+1 }
 a[0].a:=9
 print(*first,a[2999].c,a.len)
 def^ Large { self^{ bytes:u8^[10000], marker:i32^=42 } }
@@ -1280,8 +1280,7 @@ positive("calc_errors_and_precedence",calc_helpers+"""
 let^ check=p^ text:string^, pool:&Expr[>..] {
     pool.clear()
     let^ result=run(text.slice(0,text.len),pool)
-    if^ result.is(Ok) { print(result.get(Ok).value) }
-    else^ { print(0-result.get(Failure).code) }
+    if^ result.is(Ok) { print(result.get(Ok).value) else^: print(0-result.get(Failure).code) }
 }
 var^ pool:Expr[>..]=[]
 check("",&pool)
@@ -1445,7 +1444,7 @@ template^ let^ use=p^ x {}
 """, "expected 'f^'")
 negative("template_old_method", """
 def^ A { template^ use=p^ self^,x {} }
-""", "expected '='")
+""", "hat identifiers cannot be declared")
 negative("template_requires_function", """
 let^ value=template^42
 """, "expected 'f^'")
@@ -1476,7 +1475,7 @@ var^ long:i32^[>..]=[99]
 let^ ref=&long[0]
 var^ total:i32^=0
 var^ i:i32^=0
-while^ i<100 { total:=total+outer(i); i:=i+1 }
+repeat^ while^ i<100 { total:=total+outer(i); i:=i+1 }
 print(total,*ref)
 """, "10000 99\n", stack_ir)
 positive("recursive_scratch_scope_ends", """
@@ -1554,8 +1553,7 @@ print(length(i64^(42)),length(i32^(9)))
 path=source("static_stack_report", """
 let^ leaf=f^ -> i32^ { var^ a:i32^[>..]=[1]; return^ a[0] }
 var^ x:i32^[>..]=[2]
-if^ true^ { var^ a:i32^[>..]=[3]; print(leaf()) }
-el^ { var^ b:i32^[>..]=[4]; print(leaf()) }
+if^ true^ { var^ a:i32^[>..]=[3]; print(leaf()) el^: var^ b:i32^[>..]=[4]; print(leaf()) }
 print(x[0])
 """)
 report=run([compiler,"check",str(path),"--stacks"]).stdout
@@ -1609,12 +1607,12 @@ negative("no_implicit_last_statement", "let^ bad=f^ -> i32^ { let^ n:i32^=1; n+1
 negative("no_implicit_procedure_return", "let^ bad=p^ -> i32^ { 1 }", "only calls can be expression statements")
 positive("control_arrays", """
 let^ choose = f^ n:i32^ -> i32^ {
-    if^ n < 0 { return^ -1 } else^ { return^ n * 2 }
+    if^ n < 0 { return^ -1 else^: return^ n * 2 }
 }
 var^ xs : i32^[3] = [1, 2, 3]
 xs[1] := choose(4)
 var^ i:i64^ = 0
-while^ i < xs.len { print(xs[i]); i := i + 1 }
+repeat^ while^ i < xs.len { print(xs[i]); i := i + 1 }
 assert(choose(-2) = -1)
 assert((false^ and^ (1 / 0 = 0)) = false^)
 assert(true^ or^ (1 / 0 = 0))

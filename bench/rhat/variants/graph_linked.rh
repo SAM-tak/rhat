@@ -8,8 +8,7 @@ def^ Edge { self^{ to:i32^, next:u32^ } }
 
 
 let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
-    if^ *tail < q.len { q[*tail] := vertex }
-    else^ { q.push(vertex) }
+    if^ *tail < q.len { q[*tail] := vertex else^: q.push(vertex) }
     *tail := *tail+1
 }
 
@@ -20,13 +19,13 @@ var^ dist:i32^[>..]=[]
 var^ q:i32^[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < nv {
+repeat^ while^ i < nv {
     pool.push(Edge{ to=-1, next=0 })
     dist.push(0)
     i := i+1
 }
 i := 0
-while^ i < ne {
+repeat^ while^ i < ne {
     r := std.random.xorshift64(r)
     let^ u=i64^(r % u64^(nv))
     let^ to=i32^((r bitshift^ -24) % u64^(nv))
@@ -39,22 +38,22 @@ while^ i < ne {
 var^ total:i64^=0
 var^ seed:u64^=999
 var^ source:i32^=0
-while^ source < 4 {
+repeat^ while^ source < 4 {
     seed := std.random.xorshift64(seed)
     let^ src=i32^(seed % u64^(nv))
     i := 0
-    while^ i < nv { dist[i] := -1; i := i+1 }
+    repeat^ while^ i < nv { dist[i] := -1; i := i+1 }
     dist[src] := 0
     var^ tail:i64^=0
     enqueue(&q,&tail,src)
     var^ head:i64^=0
-    while^ head < tail {
+    repeat^ while^ head < tail {
         let^ u=q[head]
         head := head+1
         let^ d=dist[u]
         total := total+i64^(d)
         var^ link=pool[u].next
-        while^ link != 0 {
+        repeat^ while^ link != 0 {
             let^ w=pool[link].to
             if^ dist[w] < 0 {
                 dist[w] := d+1

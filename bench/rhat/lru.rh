@@ -12,13 +12,13 @@ let^ home = f^ key:i32^, mask:i64^ -> i64^ {
 }
 let^ find = f^ slots:&Slot[>..], key:i32^, mask:i64^ -> i64^ {
     var^ i=home(key,mask)
-    while^ slots[i].idx >= 0 and^ slots[i].key != key { i := (i+1) bitand^ mask }
+    repeat^ while^ slots[i].idx >= 0 and^ slots[i].key != key { i := (i+1) bitand^ mask }
     return^ i
 }
 let^ remove = p^ slots:&Slot[>..], at:i64^, mask:i64^ {
     var^ i=at
     var^ j=at
-    while^ true^ {
+    repeat^ while^ true^ {
         j := (j+1) bitand^ mask
         let^ s=slots[j]
         if^ s.idx < 0 { slots[i].idx := -1; return^ }
@@ -98,13 +98,13 @@ let^ cap=n/8
 let^ keys=u64^(cap*2)
 assert(cap > 0)
 var^ nslots:i64^=16
-while^ nslots < cap*2 { nslots := nslots*2 }
+repeat^ while^ nslots < cap*2 { nslots := nslots*2 }
 let^ mask=nslots-1
 var^ slots:Slot[>..]=[]
 var^ pool:Node[>..]=[]
 var^ free:u32^[>..]=[]
 var^ i:i64^=0
-while^ i < nslots { slots.push(Slot{key=0,idx=-1}); i := i+1 }
+repeat^ while^ i < nslots { slots.push(Slot{key=0,idx=-1}); i := i+1 }
 let^ hi=alloc(&pool,&free,-1,0)
 let^ ti=alloc(&pool,&free,-1,0)
 pool[hi].next := ti
@@ -112,7 +112,7 @@ pool[ti].prev := hi
 var^ stats=Stats{}
 var^ r:u64^=12345
 i := 0
-while^ i < n {
+repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     step(&pool,&free,&slots,&stats,cap,keys,mask,r)
     i := i+1
@@ -122,7 +122,7 @@ assert(stats.count+free.len = pool.len-2)
 var^ hash:u64^=0
 var^ vals:i64^=0
 var^ cur=pool[hi].next
-while^ pool[cur].key >= 0 {
+repeat^ while^ pool[cur].key >= 0 {
     hash := hash*31+u64^(pool[cur].key)
     vals := vals+i64^(pool[cur].val)
     cur := pool[cur].next

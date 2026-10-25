@@ -233,6 +233,12 @@ static bool constant_expr(Expr *e) {
     return constant_expr(e->a);
   if (e->kind == E_BIN)
     return constant_expr(e->a) && constant_expr(e->b);
+  if (e->kind == E_CHAIN) {
+    for (int j = 0; j < e->args.n; j++)
+      if (!constant_expr(e->args.v[j]))
+        return false;
+    return true;
+  }
   return false;
 }
 static Expr *copy_expr(Expr *e) {
@@ -283,21 +289,76 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e) {
     resolve_function(p, m, e->function);
     return;
   }
+  if (e->kind == E_SCOPE) {
+    int begin = names->n;
+    resolve_body(p, m, names, &e->bindings);
+    for (int j = 0; j < e->bindings.n; j++)
+      add(names, ((Stmt *)e->bindings.v[j])->name);
+    resolve_expr(p, m, names, e->a);
+    names->n = begin;
+    return;
+  }
   resolve_expr(p, m, names, e->a);
   resolve_expr(p, m, names, e->b);
   resolve_expr(p, m, names, e->c);
   for (int j = 0; j < e->args.n; j++)
     resolve_expr(p, m, names, e->args.v[j]);
 }
+static void bound_names(List *names, List *body) {
+  for (int j = 0; j < body->n; j++) {
+    Stmt *s = body->v[j];
+    if (s->kind == S_BIND)
+      add(names, s->name);
+    else if (s->kind == S_BIND_MANY)
+      bound_names(names, &s->body);
+  }
+}
 static void resolve_body(Program *p, Module *m, List *names, List *body) {
   int old = names->n;
   for (int j = 0; j < body->n; j++) {
     Stmt *s = body->v[j];
+    if (s->kind == S_WHILE) {
+      int begin = names->n;
+      resolve_body(p, m, names, &s->prolog);
+      bound_names(names, &s->prolog);
+      int persistent = names->n;
+      resolve_body(p, m, names, &s->pre);
+      bound_names(names, &s->pre);
+      resolve_expr(p, m, names, s->a);
+      resolve_body(p, m, names, &s->first);
+      bound_names(names, &s->first);
+      resolve_body(p, m, names, &s->body);
+      names->n = persistent;
+      bound_names(names, &s->first);
+      resolve_body(p, m, names, &s->update);
+      resolve_body(p, m, names, &s->last);
+      resolve_body(p, m, names, &s->epilog);
+      names->n = begin;
+      continue;
+    }
+    if (s->kind == S_BIND_MANY) {
+      for (int k = 0; k < s->body.n; k++) {
+        Stmt *b = s->body.v[k];
+        resolve_spec(m, b->spec);
+        resolve_expr(p, m, names, b->a);
+      }
+      for (int k = 0; k < s->body.n; k++)
+        add(names, ((Stmt *)s->body.v[k])->name);
+      continue;
+    }
     resolve_spec(m, s->spec);
-    resolve_expr(p, m, names, s->a);
-    resolve_expr(p, m, names, s->b);
+    if (s->kind == S_ASSIGN && s->targets.n) {
+      for (int k = 0; k < s->targets.n; k++)
+        resolve_expr(p, m, names, s->targets.v[k]);
+      for (int k = 0; k < s->values.n; k++)
+        resolve_expr(p, m, names, s->values.v[k]);
+    } else {
+      resolve_expr(p, m, names, s->a);
+      resolve_expr(p, m, names, s->b);
+    }
     resolve_body(p, m, names, &s->body);
     resolve_body(p, m, names, &s->other);
+    resolve_body(p, m, names, &s->update);
     if (s->kind == S_BIND)
       add(names, s->name);
   }
@@ -333,6 +394,8 @@ static void check_names(Module *m) {
         fail(i->loc, "import namespace conflicts with declaration '%s'", name);
     }
   }
+  List bindings = {0};
+  bound_names(&bindings, &m->entry->body);
   for (int j = 0; j < m->imports.n; j++) {
     Import *i = m->imports.v[j];
     char *a = i->alias ? i->alias : i->name;
@@ -340,12 +403,9 @@ static void check_names(Module *m) {
     char *root_dot = strchr(root, '.');
     if (root_dot)
       *root_dot = 0;
-    for (int n = 0; n < m->entry->body.n; n++) {
-      Stmt *binding = m->entry->body.v[n];
-      if (binding->kind == S_BIND && !strcmp(binding->name, root))
-        fail(binding->loc, "binding conflicts with import namespace '%s'",
-             root);
-    }
+    for (int n = 0; n < bindings.n; n++)
+      if (!strcmp(bindings.v[n], root))
+        fail(i->loc, "binding conflicts with import namespace '%s'", root);
     for (int k = 0; k < j; k++) {
       Import *other = m->imports.v[k];
       char *b = other->alias ? other->alias : other->name;

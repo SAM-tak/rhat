@@ -13,7 +13,7 @@ let^ word=f^ seed:u64^ -> Text {
     var^ r=std.random.xorshift64(seed)
     out.len := u8^(r % 12)+4
     var^ i:u8^=0
-    while^ i < out.len {
+    repeat^ while^ i < out.len {
         r := std.random.xorshift64(r)
         out.bytes[i] := u8^(r % 26)+97
         i := i+1
@@ -37,22 +37,20 @@ let^ n:i64^=500000 # BENCH_N
 var^ log:Event[>..]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
-while^ i < n {
+repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     let^ k=r % 8
     let^ id=i32^((r bitshift^ -3) % 100000)
     if^ k < 4 {
         log.push(Move{id=id,dx=i16^((r bitshift^ -20) % 201)-100,dy=i16^((r bitshift^ -40) % 201)-100})
-    } else^ { if^ k < 6 { log.push(Say{id=id,text=word(r)}) }
-      else^ { if^ k < 7 { log.push(Quit{id=id,code=u8^((r bitshift^ -20) % 256)}) }
-        else^ { log.push(Tick{}) } } }
+    else^: if^ k < 6 { log.push(Say{id=id,text=word(r)}) else^: if^ k < 7 { log.push(Quit{id=id,code=u8^((r bitshift^ -20) % 256)}) else^: log.push(Tick{}) } } }
     i := i+1
 }
 var^ total:i64^=0
 var^ pass:i32^=0
-while^ pass < 4 {
+repeat^ while^ pass < 4 {
     i := 0
-    while^ i < log.len { total := total+score(log[i]); i := i+1 }
+    repeat^ while^ i < log.len { total := total+score(log[i]); i := i+1 }
     pass := pass+1
 }
 print(log.len)
