@@ -264,6 +264,38 @@ static Type *without_nil(Program *p, Type *t, Loc loc)
   }
   return out;
 }
+static bool fits_type(Type *from, Type *to)
+{
+  if (sum_accepts(to, from)) {
+    return true;
+  }
+  if (from->kind == T_STRUCT && to->kind == T_STRUCT) {
+    return derives(from->def, to->def);
+  }
+  return from->kind == T_REF && to->kind == T_REF &&
+         from->elem->kind == T_STRUCT && to->elem->kind == T_STRUCT &&
+         derives(from->elem->def, to->elem->def);
+}
+/* Preserve concrete alternatives: a base-type test does not slice a value. */
+static Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
+{
+  if (fits_type(from, to)) {
+    return yes ? from : NULL;
+  }
+  if (from->kind != T_UNION) {
+    return yes ? NULL : from;
+  }
+  Type *subset = NULL;
+  int count = 0;
+  for (int j = 0; j < from->def->alternatives.n; j++) {
+    Type *arm = from->def->alternatives.v[j];
+    if (fits_type(arm, to) == yes) {
+      subset = subset ? type_union(p, subset, arm, loc) : arm;
+      count++;
+    }
+  }
+  return count == from->def->alternatives.n ? from : subset;
+}
 static Field *field(Def *d, const char *n) {
   for (int i = 0; i < d->fields.n; i++) {
     Field *f = d->fields.v[i];
@@ -580,15 +612,23 @@ static Expr step_expression(Expr *step, Expr *receiver, Expr *member)
   return copy;
 }
 typedef struct Var Var;
+typedef struct {
+  char *path;
+  Type *type;
+} PathFact;
 struct Var {
   char *name;
   Type *type;
   int slot, depth, lexical;
   uint64_t root, deps;
   bool mut, parameter, unavailable, pending;
-  unsigned version;
+  unsigned version, path_version;
   Var *alias;     /* Inference-only direct reference target. */
   Type *narrowed; /* A branch-local view; the storage type never changes. */
+  List paths;     /* Stable member paths proven within the current branch. */
+  bool path_sensitive; /* Guards on this root can depend on aliased storage. */
+  Var *source; /* Match snapshots only: valid until the original changes. */
+  unsigned source_version;
 };
 typedef struct {
   int id;
@@ -605,14 +645,17 @@ typedef struct {
   Expr *test;
   Var *var;
   unsigned version;
-  bool positive;
+  char *path;
+  Type *yes, *no;
+  int known; /* One for true, minus one for false, zero for a runtime test. */
 } NilGuard;
 typedef struct {
   List guards;
 } NilFlow;
 typedef struct {
   Type *type;
-  unsigned version;
+  unsigned version, path_version;
+  List paths;
 } NilFact;
 typedef struct {
   Program *p;
@@ -627,6 +670,7 @@ typedef struct {
   List default_stack, loops;
   NilFlow flow;
   bool raw_name;
+  Expr *raw_place;
   bool in_default;
 } Context;
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
@@ -716,9 +760,24 @@ static void forget_roots(List *vars, uint64_t roots, bool all)
 {
   for (int j = 0; j < vars->n; j++) {
     Var *v = vars->v[j];
-    if (all || (v->root & roots)) {
+    bool direct = all || (v->root & roots);
+    if (direct) {
       v->version++;
       v->narrowed = NULL;
+    }
+    if (direct || (v->path_sensitive && (v->deps & roots))) {
+      v->path_version++;
+      v->paths = (List){0};
+    }
+  }
+}
+static void forget_paths(List *vars)
+{
+  for (int j = 0; j < vars->n; j++) {
+    Var *v = vars->v[j];
+    if (v->path_sensitive) {
+      v->path_version++;
+      v->paths = (List){0};
     }
   }
 }
@@ -730,6 +789,8 @@ static List save_facts(List *vars)
     NilFact *f = mem(sizeof(*f));
     f->type = v->narrowed;
     f->version = v->version;
+    f->path_version = v->path_version;
+    f->paths = v->paths;
     add(&facts, f);
   }
   return facts;
@@ -740,32 +801,141 @@ static void restore_facts(List *vars, List facts)
     Var *v = vars->v[j];
     NilFact *f = facts.v[j];
     v->narrowed = v->version == f->version ? f->type : NULL;
+    v->paths = v->path_version == f->path_version ? f->paths : (List){0};
   }
+}
+/* Compile alternate branches from the same input, then merge mutations. */
+static void rewind_facts(List *vars, List facts)
+{
+  for (int j = 0; j < facts.n; j++) {
+    Var *v = vars->v[j];
+    NilFact *f = facts.v[j];
+    v->version = f->version;
+    v->path_version = f->path_version;
+    v->narrowed = f->type;
+    v->paths = f->paths;
+  }
+}
+static void merge_facts(List *vars, List before, List yes)
+{
+  for (int j = 0; j < before.n; j++) {
+    Var *v = vars->v[j];
+    NilFact *old = before.v[j], *a = yes.v[j];
+    bool changed = v->version != old->version || a->version != old->version;
+    bool paths_changed = v->path_version != old->path_version ||
+                         a->path_version != old->path_version;
+    if (changed) {
+      v->version = (v->version > a->version ? v->version : a->version) + 1;
+    }
+    v->narrowed = changed ? NULL : old->type;
+    if (paths_changed) {
+      v->path_version = (v->path_version > a->path_version ? v->path_version
+                                                           : a->path_version) +
+                        1;
+    }
+    v->paths = paths_changed ? (List){0} : old->paths;
+  }
+}
+static bool stable_path(Context *c, Expr *e, Var **root, char **path)
+{
+  if (e->kind == E_NAME || e->kind == E_SELF) {
+    *root = selected(c, e);
+    *path = str("");
+    return *root != NULL;
+  }
+  if (e->kind == E_MEMBER && !e->optional && stable_path(c, e->a, root, path)) {
+    *path = fmt("%s.%zu:%s", *path, strlen(e->text), e->text);
+    return true;
+  }
+  return false;
+}
+static Type *path_type(Var *v, const char *path)
+{
+  if (!*path) {
+    return v->narrowed;
+  }
+  for (int j = v->paths.n - 1; j >= 0; j--) {
+    PathFact *f = v->paths.v[j];
+    if (!strcmp(f->path, path)) {
+      return f->type;
+    }
+  }
+  return NULL;
+}
+static void remember_test(NilFlow *flow, Context *context, Expr *test,
+                          Expr *value, Type *yes, Type *no)
+{
+  Var *v = NULL;
+  char *path = NULL;
+  stable_path(context, value, &v, &path);
+  do {
+    if (v && path && *path) {
+      v->path_sensitive = true;
+    }
+    NilGuard *guard = NULL;
+    for (int j = 0; j < flow->guards.n; j++) {
+      NilGuard *g = flow->guards.v[j];
+      if (g->test == test && g->var == v) {
+        guard = g;
+        break;
+      }
+    }
+    if (!guard) {
+      guard = mem(sizeof(*guard));
+      add(&flow->guards, guard);
+    }
+    *guard =
+        (NilGuard){.test = test,
+                   .var = v,
+                   .path = path,
+                   .version = v ? (*path ? v->path_version : v->version) : 0,
+                   .yes = yes,
+                   .no = no,
+                   .known = !yes  ? -1
+                            : !no ? 1
+                                  : 0};
+    v = v && v->source && v->source->version == v->source_version ? v->source
+                                                                  : NULL;
+  } while (v);
 }
 static void remember_guard(NilFlow *flow, Context *context, Expr *test,
                            Expr *value, bool positive)
 {
-  if (value->kind != E_NAME) {
+  Var *v = NULL;
+  char *path = NULL;
+  if (!stable_path(context, value, &v, &path) || *path ||
+      v->type->kind != T_UNION || !nullable(v->type)) {
     return;
   }
-  Var *v = selected(context, value);
-  if (!v || v->type->kind != T_UNION || !nullable(v->type)) {
-    return;
+  Type *type = v->narrowed ? v->narrowed : v->type;
+  Type *yes = without_nil(context->p, type, test->loc);
+  Type *no = nullable(type) ? type_builtin(context->p, T_NIL) : NULL;
+  remember_test(flow, context, test, value, positive ? yes : no,
+                positive ? no : yes);
+}
+static int condition_truth(NilFlow *flow, Expr *e)
+{
+  if (e->kind == E_UNARY && !strcmp(e->text, "!")) {
+    return -condition_truth(flow, e->a);
   }
-  NilGuard *guard = NULL;
-  for (int j = 0; j < flow->guards.n; j++) {
-    NilGuard *g = flow->guards.v[j];
-    if (g->test == test) {
-      guard = g;
-      break;
+  if (e->kind == E_BIN &&
+      (!strcmp(e->text, "and^") || !strcmp(e->text, "or^"))) {
+    int a = condition_truth(flow, e->a), b = condition_truth(flow, e->b);
+    if (!strcmp(e->text, "and^")) {
+      return a < 0 || b < 0 ? -1 : a > 0 && b > 0 ? 1 : 0;
+    }
+    return a > 0 || b > 0 ? 1 : a < 0 && b < 0 ? -1 : 0;
+  }
+  /* Keep existing non-fits condition checking unchanged. */
+  if (e->kind == E_FITS) {
+    for (int j = flow->guards.n - 1; j >= 0; j--) {
+      NilGuard *g = flow->guards.v[j];
+      if (g->test == e) {
+        return g->known;
+      }
     }
   }
-  if (!guard) {
-    guard = mem(sizeof(*guard));
-    add(&flow->guards, guard);
-  }
-  *guard = (NilGuard){
-      .test = test, .var = v, .version = v->version, .positive = positive};
+  return 0;
 }
 static bool nil_name(Expr *e)
 {
@@ -786,14 +956,29 @@ static void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
   }
   for (int j = 0; j < flow->guards.n; j++) {
     NilGuard *g = flow->guards.v[j];
-    if (g->test != e || g->version != g->var->version) {
+    if (g->test != e || !g->var ||
+        g->version != (*g->path ? g->var->path_version : g->var->version)) {
       continue;
     }
     for (int k = 0; k < vars->n; k++) {
       if (vars->v[k] == g->var) {
-        g->var->narrowed = truth == g->positive
-                               ? without_nil(p, g->var->type, e->loc)
-                               : type_builtin(p, T_NIL);
+        Type *type = truth ? g->yes : g->no;
+        if (!type) {
+          break;
+        }
+        if (!*g->path) {
+          g->var->narrowed = type;
+        }
+        else {
+          PathFact *fact = mem(sizeof(*fact));
+          *fact = (PathFact){g->path, type};
+          List copy = {0};
+          for (int q = 0; q < g->var->paths.n; q++) {
+            add(&copy, g->var->paths.v[q]);
+          }
+          add(&copy, fact);
+          g->var->paths = copy;
+        }
         break;
       }
     }
@@ -802,9 +987,12 @@ static void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
 static Value place_expression(Context *c, Expr *e)
 {
   bool raw = c->raw_name;
+  Expr *old_place = c->raw_place;
+  c->raw_place = e;
   c->raw_name = e->kind == E_NAME;
   Value v = expression(c, e, NULL);
   c->raw_name = raw;
+  c->raw_place = old_place;
   return v;
 }
 static Value variable(Var *v) {
@@ -894,6 +1082,7 @@ static Value case_value(Context *c, Value src, Type *arm, Loc loc)
   out.deps = arm->refs ? src.deps : 0;
   out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
   Instr *i = emit(c, I_CASE_GET, loc);
+  i->case_proven = true;
   i->dst = out.id;
   i->a = src.id;
   i->type = src.type;
@@ -1037,6 +1226,54 @@ static Value nil_literal(Context *c, Loc loc)
 {
   Expr e = {.kind = E_NAME, .loc = loc, .text = "nil^"};
   return expression(c, &e, NULL);
+}
+static Value fits_value(Context *c, Expr *e)
+{
+  Value src = expression(c, e->a, NULL);
+  Type *target = type_spec(c->p, e->test_spec);
+  if (src.type->kind == T_VOID || target->kind == T_VOID) {
+    fail(e->loc, "fits^ requires a value type");
+  }
+  layout(target, e->loc);
+  Type *yes = fits_subset(c->p, src.type, target, true, e->loc);
+  Type *no = fits_subset(c->p, src.type, target, false, e->loc);
+  remember_test(&c->flow, c, e, e->a, yes, no);
+  Value out = value(c, type_builtin(c->p, T_BOOL));
+  if (!yes || !no) {
+    Instr *i = emit(c, I_CONST, e->loc);
+    i->dst = out.id;
+    i->type = out.type;
+    i->text = yes ? "1" : "0";
+    return out;
+  }
+  bool first = true;
+  for (int j = 0; j < src.type->def->alternatives.n; j++) {
+    Type *arm = src.type->def->alternatives.v[j];
+    if (!fits_type(arm, target)) {
+      continue;
+    }
+    Value test = value(c, out.type);
+    Instr *i = emit(c, I_CASE_IS, e->loc);
+    i->dst = test.id;
+    i->a = src.id;
+    i->type = src.type;
+    i->label = j;
+    if (first) {
+      copy_to(c, out, test, e->loc, true);
+    }
+    else {
+      /* Both operands are pure tag predicates, so a boolean OR is sufficient.
+       */
+      i = emit(c, I_BIN, e->loc);
+      i->dst = out.id;
+      i->a = out.id;
+      i->b = test.id;
+      i->type = out.type;
+      i->text = "bitor^";
+    }
+    first = false;
+  }
+  return out;
 }
 static Value chain_walk(Context *c, Expr *e, int absent, bool *never)
 {
@@ -1394,6 +1631,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
         fail(e->loc, "append needs a slice with the same element type");
       Value dependencies = {.deps = base.type->elem->refs ? src.deps : 0};
       store_check(c, base, dependencies, e->loc);
+      forget_roots(&c->vars, base.storage | base.deps, false);
       Type *t = type_builtin(p, T_VOID);
       if (expected && expected != t)
         fail(e->loc, "append returns void^");
@@ -1430,6 +1668,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (v.type != base.type->elem)
         fail(e->loc, "push element type mismatch");
       store_check(c, base, v, e->loc);
+      forget_roots(&c->vars, base.storage | base.deps, false);
       Type *t = type_wrap(p, T_REF, base.type->elem, 0);
       if (expected && expected != t)
         fail(e->loc, "push returns '%s', expected '%s'", type_name(t),
@@ -1635,6 +1874,14 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     Value condition = expression(c, e->a, type_builtin(c->p, T_BOOL));
     if (condition.type->kind != T_BOOL)
       fail(e->loc, "condition requires bool");
+    int known = condition_truth(&c->flow, e->a);
+    if (known) {
+      List facts = save_facts(&c->vars);
+      refine_condition(c->p, &c->vars, &c->flow, e->a, known > 0);
+      Value result = construct(c, known > 0 ? e->b : e->c, t, out.id);
+      restore_facts(&c->vars, facts);
+      return result;
+    }
     int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
     Instr *i = emit(c, I_CBR, e->loc);
     i->a = condition.id;
@@ -1645,14 +1892,15 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     List facts = save_facts(&c->vars);
     refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Value a = construct(c, e->b, t, out.id);
-    restore_facts(&c->vars, facts);
+    List after_yes = save_facts(&c->vars);
+    rewind_facts(&c->vars, facts);
     i = emit(c, I_BR, e->loc);
     i->label = end;
     i = emit(c, I_LABEL, e->loc);
     i->label = no;
     refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Value b = construct(c, e->c, t, out.id);
-    restore_facts(&c->vars, facts);
+    merge_facts(&c->vars, facts, after_yes);
     i = emit(c, I_BR, e->loc);
     i->label = end;
     i = emit(c, I_LABEL, e->loc);
@@ -1852,16 +2100,25 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     out = value(c, type_builtin(p, T_BOOL));
     int end = ++c->in->labels;
     for (int j = 0; j < e->names.n; j++) {
-      Value current =
-          snapshot(c, expression(c, e->args.v[j + 1], previous.type), e->loc);
-      Expr left = {.kind = E_SAVED, .loc = e->loc, .saved_slot = previous.id};
-      Expr right = {.kind = E_SAVED, .loc = e->loc, .saved_slot = current.id};
-      Expr pair = {.kind = E_BIN,
-                   .loc = e->loc,
-                   .text = e->names.v[j],
-                   .a = &left,
-                   .b = &right};
-      Value test = expression(c, &pair, NULL);
+      Expr *operand = e->args.v[j + 1];
+      bool fits = !strcmp((char *)e->names.v[j], "fits^");
+      Value current = previous, test;
+      if (fits) {
+        Expr pair = *operand;
+        pair.a = saved_value(previous, e->loc);
+        test = fits_value(c, &pair);
+      }
+      else {
+        current = snapshot(c, expression(c, operand, previous.type), e->loc);
+        Expr left = {.kind = E_SAVED, .loc = e->loc, .saved_slot = previous.id};
+        Expr right = {.kind = E_SAVED, .loc = e->loc, .saved_slot = current.id};
+        Expr pair = {.kind = E_BIN,
+                     .loc = e->loc,
+                     .text = e->names.v[j],
+                     .a = &left,
+                     .b = &right};
+        test = expression(c, &pair, NULL);
+      }
       copy_to(c, out, test, e->loc, true);
       if (j + 1 < e->names.n) {
         int next = ++c->in->labels;
@@ -1886,6 +2143,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Value result = present_value(c, src, e->loc);
     remember_guard(&c->flow, c, e, e->a, true);
     return result;
+  }
+  if (e->kind == E_FITS) {
+    return fits_value(c, e);
   }
   if (e->kind == E_COALESCE) {
     return coalesce_value(c, e);
@@ -1964,7 +2224,16 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Field *f = field(base.type->def, e->text);
     if (!f)
       fail(e->loc, "'%s' has no field '%s'", base.type->def->name, e->text);
-    return field_value(c, base, f, e->loc);
+    Value result = field_value(c, base, f, e->loc);
+    Var *root = NULL;
+    char *path = NULL;
+    if (c->raw_place != e && stable_path(c, e, &root, &path)) {
+      Type *type = path_type(root, path);
+      if (type) {
+        result = convert_value(c, result, type, -1, e->loc);
+      }
+    }
+    return result;
   }
   if (e->kind == E_INDEX) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
@@ -1999,7 +2268,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return literal_int(c, &neg, expected);
     }
     Value a =
-        !strcmp(e->text, "&") && e->a->kind == E_NAME
+        !strcmp(e->text, "&")
             ? place_expression(c, e->a)
             : expression(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
@@ -2059,12 +2328,26 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (logic) {
       if (a.type->kind != T_BOOL)
         fail(e->loc, "logical operands must be bool");
+      bool andop = !strcmp(e->text, "and^") || !strcmp(e->text, "&&");
+      int known = condition_truth(&c->flow, e->a);
+      if (known) {
+        if ((known > 0) != andop) {
+          return a;
+        }
+        List facts = save_facts(&c->vars);
+        refine_condition(p, &c->vars, &c->flow, e->a, andop);
+        Value b = expression(c, e->b, a.type);
+        restore_facts(&c->vars, facts);
+        if (b.type->kind != T_BOOL) {
+          fail(e->loc, "logical operands must be bool");
+        }
+        return b;
+      }
       out = value(c, a.type);
       copy_to(c, out, a, e->loc, true);
       int rhs = ++c->in->labels, end = ++c->in->labels;
       Instr *br = emit(c, I_CBR, e->loc);
       br->a = a.id;
-      bool andop = !strcmp(e->text, "and^") || !strcmp(e->text, "&&");
       br->label = andop ? rhs : end;
       br->other = andop ? end : rhs;
       Instr *lab = emit(c, I_LABEL, e->loc);
@@ -2165,9 +2448,12 @@ static void plain_loop(Context *c, Stmt *s) {
   int bindings = c->vars.n;
   List entry_facts = save_facts(&c->vars);
   for (;;) {
+    List turn_facts = save_facts(&c->vars);
     Type *before_fact[64];
+    bool before_paths[64];
     for (int j = 0; j < bindings; j++) {
       before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
+      before_paths[j] = ((Var *)c->vars.v[j])->paths.n != 0;
     }
     uint64_t before[64];
     for (int j = 0; j < bindings; j++)
@@ -2181,7 +2467,10 @@ static void plain_loop(Context *c, Stmt *s) {
     label_at(c, body, s->loc);
     refine_condition(c->p, &c->vars, &c->flow, s->a, true);
     c->lexical--;
-    statements(c, &s->body, true);
+    bool live = condition_truth(&c->flow, s->a) >= 0;
+    if (live) {
+      statements(c, &s->body, true);
+    }
     c->lexical++;
     if (s->update.n) {
       bool targeted = false;
@@ -2199,16 +2488,20 @@ static void plain_loop(Context *c, Stmt *s) {
         label_at(c, update, s->loc);
       }
       c->lexical--;
-      statements(c, &s->update, true);
+      if (live) {
+        statements(c, &s->update, true);
+      }
       c->lexical++;
     }
     if (!c->terminated)
       branch_to(c, test, s->loc);
     c->terminated = false;
+    restore_facts(&c->vars, turn_facts);
     bool changed = false;
     for (int j = 0; j < bindings; j++)
       changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
-                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed);
+                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed) ||
+                 (before_paths[j] && !((Var *)c->vars.v[j])->paths.n);
     if (!changed)
       break;
     c->in->code.n = code;
@@ -2292,10 +2585,14 @@ static void loop_code(Context *c, Stmt *s) {
   int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels,
       roots = c->root_count;
   int persistent = c->vars.n;
+  List loop_inputs = save_facts(&c->vars);
   for (;;) {
+    List turn_facts = save_facts(&c->vars);
     Type *before_fact[64];
+    bool before_paths[64];
     for (int j = 0; j < persistent; j++) {
       before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
+      before_paths[j] = ((Var *)c->vars.v[j])->paths.n != 0;
     }
     uint64_t before[64];
     for (int j = 0; j < persistent; j++)
@@ -2315,6 +2612,7 @@ static void loop_code(Context *c, Stmt *s) {
     Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
     if (cond.type->kind != T_BOOL)
       fail(s->loc, "condition requires bool");
+    bool live = condition_truth(&c->flow, s->a) >= 0;
     conditional(c, cond, yes, no, s->loc);
     label_at(c, yes, s->loc);
     refine_condition(c->p, &c->vars, &c->flow, s->a, true);
@@ -2343,7 +2641,9 @@ static void loop_code(Context *c, Stmt *s) {
     /* First-section declarations outlive the per-turn pre/main storage. */
     int depth = c->depth;
     c->depth--;
-    statements(c, &init, false);
+    if (live) {
+      statements(c, &init, false);
+    }
     c->depth = depth;
     if (c->vars.n != turn)
       fail(s->loc, "first^ must declare persistent values at its top level");
@@ -2358,7 +2658,9 @@ static void loop_code(Context *c, Stmt *s) {
     label_at(c, main, s->loc);
     for (int j = 0; j < first.n; j++)
       ((Var *)first.v[j])->unavailable = false;
-    statements(c, &s->body, false);
+    if (live) {
+      statements(c, &s->body, false);
+    }
     if (!c->terminated) {
       cleanup(c, persistent, s->loc);
       remember_focus(c, &target, s->loc, false);
@@ -2369,7 +2671,9 @@ static void loop_code(Context *c, Stmt *s) {
     c->terminated = false;
     label_at(c, update, s->loc);
     c->lexical--;
-    statements(c, &s->update, true);
+    if (live) {
+      statements(c, &s->update, true);
+    }
     c->lexical++;
     if (!c->terminated)
       branch_to(c, test, s->loc);
@@ -2385,10 +2689,12 @@ static void loop_code(Context *c, Stmt *s) {
     c->vars.n = saved;
     c->depth--;
     branch_to(c, finish, s->loc);
+    restore_facts(&c->vars, turn_facts);
     bool changed = false;
     for (int j = 0; j < persistent; j++)
       changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
-                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed);
+                 (before_fact[j] && !((Var *)c->vars.v[j])->narrowed) ||
+                 (before_paths[j] && !((Var *)c->vars.v[j])->paths.n);
     if (!changed)
       break;
     c->in->code.n = code;
@@ -2396,6 +2702,7 @@ static void loop_code(Context *c, Stmt *s) {
     c->in->labels = labels;
     c->root_count = roots;
   }
+  restore_facts(&c->vars, loop_inputs);
   label_at(c, finish, s->loc);
   conditional(c, ran, last, epilog, s->loc);
   label_at(c, last, s->loc);
@@ -2655,6 +2962,10 @@ static void statements(Context *c, List *body, bool scope) {
       var->mut = s->mut;
       var->root = root(c, c->depth, false, s->loc);
       var->deps = v.deps;
+      if (s->flow_alias && s->a->kind == E_NAME) {
+        var->source = selected(c, s->a);
+        var->source_version = var->source ? var->source->version : 0;
+      }
       Value dst = variable(var);
       dst.var = NULL;
       store_check(c, dst, v, s->loc);
@@ -2706,10 +3017,14 @@ static void statements(Context *c, List *body, bool scope) {
                "owned values cannot be reassigned while references may exist");
         if (s->op) {
           Value previous = dest[j];
-          if (previous.var && previous.var->narrowed &&
-              previous.type->kind == T_UNION) {
-            previous =
-                convert_value(c, previous, previous.var->narrowed, -1, s->loc);
+          Var *root = NULL;
+          char *path = NULL;
+          if (previous.type->kind == T_UNION &&
+              stable_path(c, target, &root, &path)) {
+            Type *type = path_type(root, path);
+            if (type) {
+              previous = convert_value(c, previous, type, -1, s->loc);
+            }
           }
           old[j] = snapshot(c, previous, s->loc);
         }
@@ -2748,7 +3063,9 @@ static void statements(Context *c, List *body, bool scope) {
         if (s->internal && dest[j].var)
           dest[j].var->mut = true;
         copy_to(c, dest[j], src[j], s->loc, false);
-        if (s->op && dest[j].var && dest[j].type->kind == T_UNION &&
+        Expr *target = s->targets.n ? s->targets.v[j] : s->a;
+        if (s->op && target->kind == E_NAME && dest[j].var &&
+            dest[j].type->kind == T_UNION &&
             union_alternative(dest[j].type, src[j].type) >= 0) {
           dest[j].var->narrowed = src[j].type;
         }
@@ -2817,6 +3134,23 @@ static void statements(Context *c, List *body, bool scope) {
       Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
       if (cond.type->kind != T_BOOL)
         fail(s->loc, "condition requires bool");
+      int known = condition_truth(&c->flow, s->a);
+      if (known) {
+        List facts = save_facts(&c->vars);
+        refine_condition(c->p, &c->vars, &c->flow, s->a, known > 0);
+        if (s->internal) {
+          c->lexical--;
+        }
+        statements(c, known > 0 ? &s->body : &s->other, true);
+        if (s->internal) {
+          c->lexical++;
+        }
+        restore_facts(&c->vars, facts);
+        if (c->terminated) {
+          break;
+        }
+        continue;
+      }
       int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
       Instr *i = emit(c, I_CBR, s->loc);
       i->a = cond.id;
@@ -2829,7 +3163,8 @@ static void statements(Context *c, List *body, bool scope) {
       List facts = save_facts(&c->vars);
       refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       statements(c, &s->body, true);
-      restore_facts(&c->vars, facts);
+      List after_yes = save_facts(&c->vars);
+      rewind_facts(&c->vars, facts);
       if (s->internal)
         c->lexical++;
       bool a = c->terminated;
@@ -2844,7 +3179,7 @@ static void statements(Context *c, List *body, bool scope) {
         c->lexical--;
       refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       statements(c, &s->other, true);
-      restore_facts(&c->vars, facts);
+      merge_facts(&c->vars, facts, after_yes);
       if (s->internal)
         c->lexical++;
       bool b = c->terminated;
@@ -2905,6 +3240,8 @@ typedef struct {
   int lexical;
   NilFlow flow;
   bool raw_name;
+  Expr *raw_place;
+  bool terminated;
 } Infer;
 
 static Infer infer_context(Context *c)
@@ -2914,6 +3251,7 @@ static Infer infer_context(Context *c)
     Var *v = mem(sizeof(*v));
     *v = *(Var *)c->vars.v[j];
     v->alias = NULL;
+    v->source = NULL;
     add(&out.vars, v);
   }
   for (int j = 0; j < c->vars.n; j++) {
@@ -2921,6 +3259,9 @@ static Infer infer_context(Context *c)
     for (int k = 0; k < c->vars.n; k++) {
       if (old->alias && old->alias == c->vars.v[k]) {
         ((Var *)out.vars.v[j])->alias = out.vars.v[k];
+      }
+      if (old->source && old->source == c->vars.v[k]) {
+        ((Var *)out.vars.v[j])->source = out.vars.v[k];
       }
     }
   }
@@ -2933,7 +3274,7 @@ static Var *infer_variable(Infer *c, Expr *e)
 }
 static void infer_guard(Infer *c, Expr *test, Expr *name, bool positive)
 {
-  Context scope = {.vars = c->vars, .lexical = c->lexical};
+  Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
   remember_guard(&c->flow, &scope, test, name, positive);
 }
 static Var *infer_alias(Infer *c, Expr *e)
@@ -2947,6 +3288,7 @@ static Var *infer_alias(Infer *c, Expr *e)
 static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
 {
   if (offset && types->n) {
+    forget_paths(&c->vars);
     Type *receiver = types->v[0];
     if (receiver && receiver->kind == T_REF) {
       layout(receiver->elem, call->loc);
@@ -2970,7 +3312,10 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
       layout(target->type, arg->loc);
       if (!target->type->refs) {
         target->version++;
+        target->path_version++;
         target->narrowed = NULL;
+        target->paths = (List){0};
+        forget_paths(&c->vars);
         continue;
       }
     }
@@ -3088,21 +3433,35 @@ static Type *infer_call(Infer *c, Expr *e) {
     if (base &&
         (base->kind == T_ARRAY || base->kind == T_GROW ||
          base->kind == T_SLICE || base->kind == T_STRING) &&
-        !strcmp(target->text, "slice"))
+        !strcmp(target->text, "slice")) {
+      for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
+      }
       return type_wrap(
           c->p, T_SLICE,
           base->kind == T_STRING ? type_builtin(c->p, T_U8) : base->elem, 0);
+    }
     if (base && base->kind == T_GROW && !strcmp(target->text, "pop"))
       return base->elem;
-    if (base && base->kind == T_GROW && !strcmp(target->text, "truncate"))
+    if (base && base->kind == T_GROW && !strcmp(target->text, "truncate")) {
+      for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
+      }
       return type_builtin(c->p, T_VOID);
-    if (base && base->kind == T_GROW && !strcmp(target->text, "append"))
+    }
+    if (base && base->kind == T_GROW && !strcmp(target->text, "append")) {
+      for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], NULL);
+      }
+      forget_paths(&c->vars);
       return type_builtin(c->p, T_VOID);
+    }
     if (base && base->kind == T_GROW && !strcmp(target->text, "clear"))
       return type_builtin(c->p, T_VOID);
     if (base && base->kind == T_GROW && !strcmp(target->text, "push")) {
       for (int j = 0; j < e->args.n; j++)
         infer_expr(c, e->args.v[j], base->elem);
+      forget_paths(&c->vars);
       return type_wrap(c->p, T_REF, base->elem, 0);
     }
     if (base && base->kind == T_STRUCT) {
@@ -3183,6 +3542,20 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     return infer_chain(c, e, true);
   }
   switch (e->kind) {
+  case E_FITS: {
+    Type *type = infer_expr(c, e->a, NULL);
+    Type *target = type_spec(c->p, e->test_spec);
+    if (target->kind == T_VOID || (type && type->kind == T_VOID)) {
+      fail(e->loc, "fits^ requires a value type");
+    }
+    if (type) {
+      Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
+      remember_test(&c->flow, &scope, e, e->a,
+                    fits_subset(c->p, type, target, true, e->loc),
+                    fits_subset(c->p, type, target, false, e->loc));
+    }
+    return type_builtin(c->p, T_BOOL);
+  }
   case E_PRESENT: {
     bool raw = c->raw_name;
     c->raw_name = e->a->kind == E_NAME;
@@ -3275,6 +3648,17 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
         !strcmp(e->text, "len"))
       return type_builtin(c->p, T_I64);
     Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
+    if (f && c->raw_place != e) {
+      Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
+      Var *root = NULL;
+      char *path = NULL;
+      if (stable_path(&scope, e, &root, &path)) {
+        Type *type = path_type(root, path);
+        if (type) {
+          return type;
+        }
+      }
+    }
     return f ? f->type : NULL;
   }
   case E_INDEX: {
@@ -3290,14 +3674,17 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   }
   case E_UNARY: {
     bool raw = c->raw_name;
-    if (!strcmp(e->text, "&") && e->a->kind == E_NAME) {
-      c->raw_name = true;
+    Expr *old_place = c->raw_place;
+    if (!strcmp(e->text, "&")) {
+      c->raw_name = e->a->kind == E_NAME;
+      c->raw_place = e->a;
     }
     Type *a = infer_expr(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
                              ? expected
                              : NULL);
     c->raw_name = raw;
+    c->raw_place = old_place;
     if (!strcmp(e->text, "!"))
       return type_builtin(c->p, T_BOOL);
     if (!a)
@@ -3326,19 +3713,40 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     return ((Slot *)c->in->slots.v[e->saved_slot])->type;
   case E_CHAIN: {
     Type *t = infer_expr(c, e->args.v[0], NULL);
-    for (int j = 1; j < e->args.n; j++)
-      t = infer_expr(c, e->args.v[j], t);
+    for (int j = 1; j < e->args.n; j++) {
+      Expr *operand = e->args.v[j];
+      if (!strcmp((char *)e->names.v[j - 1], "fits^")) {
+        Value value = {.type = t};
+        Expr saved = {.kind = E_SAVED, .compiler_value = &value};
+        Expr pair = *operand;
+        pair.a = &saved;
+        if (t) {
+          infer_expr(c, &pair, NULL);
+        }
+      }
+      else {
+        t = infer_expr(c, operand, t);
+      }
+    }
     return type_builtin(c->p, T_BOOL);
   }
   case E_IF: {
     infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
     List facts = save_facts(&c->vars);
+    int known = condition_truth(&c->flow, e->a);
+    if (known) {
+      refine_condition(c->p, &c->vars, &c->flow, e->a, known > 0);
+      Type *type = infer_expr(c, known > 0 ? e->b : e->c, expected);
+      restore_facts(&c->vars, facts);
+      return type;
+    }
     refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Type *a = infer_expr(c, e->b, expected);
-    restore_facts(&c->vars, facts);
+    List after_yes = save_facts(&c->vars);
+    rewind_facts(&c->vars, facts);
     refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Type *b = infer_expr(c, e->c, expected);
-    restore_facts(&c->vars, facts);
+    merge_facts(&c->vars, facts, after_yes);
     return join_types(c->p, a, e->b, b, e->c, e->loc);
   }
   case E_BIN: {
@@ -3348,6 +3756,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
     List facts = {0};
     if (logic) {
+      int known = condition_truth(&c->flow, e->a);
+      bool andop = !strcmp(e->text, "and^") || !strcmp(e->text, "&&");
+      if (known && ((known > 0) != andop)) {
+        return type_builtin(c->p, T_BOOL);
+      }
       facts = save_facts(&c->vars);
       refine_condition(c->p, &c->vars, &c->flow, e->a,
                        !strcmp(e->text, "and^"));
@@ -3375,6 +3788,9 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
   if (scoped)
     c->lexical++;
   for (int j = 0; j < body->n; j++) {
+    if (c->terminated) {
+      break;
+    }
     Stmt *s = body->v[j];
     if (s->kind == S_BIND) {
       Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
@@ -3384,6 +3800,10 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       v->lexical = c->lexical;
       v->type = t ? t : actual;
       v->alias = infer_alias(c, s->a);
+      if (s->flow_alias && s->a->kind == E_NAME) {
+        v->source = infer_variable(c, s->a);
+        v->source_version = v->source ? v->source->version : 0;
+      }
       add(&c->vars, v);
     } else if (s->kind == S_BIND_MANY) {
       List pending = {0};
@@ -3406,6 +3826,9 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       for (int k = 0; k < count; k++) {
         Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
         Var *v = infer_variable(c, dst);
+        if (!v) {
+          infer_expr(c, dst, NULL);
+        }
         Type *hint = v ? v->type : NULL;
         if (s->op && v && v->narrowed) {
           hint = v->narrowed;
@@ -3421,13 +3844,30 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
         if (v) {
           Type *narrow = v->narrowed;
           v->version++;
+          v->path_version++;
           v->narrowed = s->op ? narrow : NULL;
+          v->paths = (List){0};
+          for (int q = 0; q < c->vars.n; q++) {
+            Var *alias = c->vars.v[q];
+            if (alias != v && alias->path_sensitive) {
+              alias->path_version++;
+              alias->paths = (List){0};
+            }
+          }
           if (!s->op) {
             v->alias = infer_alias(c, s->values.n ? s->values.v[k] : s->b);
           }
         }
         else {
-          forget_roots(&c->vars, 0, true);
+          Context scope = {.vars = c->vars, .lexical = c->lexical};
+          Var *root = NULL;
+          char *path = NULL;
+          if (stable_path(&scope, dst, &root, &path) && *path) {
+            forget_paths(&c->vars);
+          }
+          else {
+            forget_roots(&c->vars, 0, true);
+          }
         }
       }
     }
@@ -3440,37 +3880,67 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
           join_types(c->p, c->returned, c->return_expr, t, s->a, s->loc);
       if (!c->return_expr || !integer_literal(s->a))
         c->return_expr = s->a;
+      c->terminated = true;
     }
     else if (s->kind == S_WHILE) {
       int begin = c->vars.n;
       List loop_facts = save_facts(&c->vars);
       infer_statements(c, &s->prolog, false);
+      if (c->terminated) {
+        c->vars.n = begin;
+        continue;
+      }
       infer_statements(c, &s->pre, false);
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      bool live = condition_truth(&c->flow, s->a) >= 0;
       refine_condition(c->p, &c->vars, &c->flow, s->a, true);
-      infer_statements(c, &s->first, false);
+      if (live) {
+        infer_statements(c, &s->first, false);
+      }
       c->lexical--;
-      infer_statements(c, &s->body, true);
+      if (live) {
+        infer_statements(c, &s->body, true);
+      }
       c->lexical++;
       c->lexical--;
-      infer_statements(c, &s->update, true);
+      c->terminated = false;
+      if (live) {
+        infer_statements(c, &s->update, true);
+      }
+      restore_facts(&c->vars, loop_facts);
       infer_statements(c, &s->last, true);
+      c->terminated = false;
       infer_statements(c, &s->epilog, true);
       c->lexical++;
       c->vars.n = begin;
       restore_facts(&c->vars, loop_facts);
+      c->terminated = false;
     }
     else if (s->kind == S_IF) {
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
       if (s->internal)
         c->lexical--;
       List facts = save_facts(&c->vars);
+      int known = condition_truth(&c->flow, s->a);
+      if (known) {
+        refine_condition(c->p, &c->vars, &c->flow, s->a, known > 0);
+        infer_statements(c, known > 0 ? &s->body : &s->other, true);
+        restore_facts(&c->vars, facts);
+        if (s->internal) {
+          c->lexical++;
+        }
+        continue;
+      }
       refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       infer_statements(c, &s->body, true);
-      restore_facts(&c->vars, facts);
+      bool a = c->terminated;
+      c->terminated = false;
+      List after_yes = save_facts(&c->vars);
+      rewind_facts(&c->vars, facts);
       refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       infer_statements(c, &s->other, true);
-      restore_facts(&c->vars, facts);
+      merge_facts(&c->vars, facts, after_yes);
+      c->terminated &= a;
       if (s->internal)
         c->lexical++;
       infer_statements(c, &s->update, true);
@@ -3492,6 +3962,11 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
 static List first_types(Context *c, Stmt *s) {
   Infer infer = infer_context(c);
   infer_statements(&infer, &s->pre, false);
+  infer_expr(&infer, s->a, type_builtin(c->p, T_BOOL));
+  if (condition_truth(&infer.flow, s->a) < 0) {
+    return (List){0};
+  }
+  refine_condition(c->p, &infer.vars, &infer.flow, s->a, true);
   int begin = infer.vars.n;
   infer_statements(&infer, &s->first, false);
   List out = {0};

@@ -84,11 +84,13 @@ enum {
   E_SCOPE,    /* A lexical focus scope producing one value. */
   E_EXPECT,   /* Infer a contextual numeric type without evaluating the hint. */
   E_PRESENT,  /* Postfix nil presence test; it does not unwrap a value. */
+  E_FITS,     /* Type conformance predicate; its right operand is a Spec. */
   E_COALESCE, /* Lazy nil replacement, below unary and above binary operators.
                */
   E_CHAIN     /* Comparisons share operands and short-circuit left to right. */
 };
 struct Expr {
+  Spec *test_spec; /* The type operand of fits^, never evaluated as a value. */
   Spec *constant_spec;
   bool error_constructor;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
@@ -137,6 +139,7 @@ struct Stmt {
   List focuses; /* Header bindings whose last successful values are retained. */
   bool integer; /* A compiler-generated counted-loop integer requirement. */
   bool optional; /* Nil-guarded assignment evaluates only present pairs. */
+  bool flow_alias; /* A compiler-generated match snapshot shares type facts. */
   bool internal; /* A compiler-generated write to a read-only focus. */
   int depth;     /* A jump counts enclosing loops, starting at one. */
 };
@@ -317,6 +320,8 @@ typedef struct {
   int stack_index;
   bool push_at_top;
   bool index_proven;
+  bool
+      case_proven; /* A flow proof makes a union payload tag check redundant. */
   int index_data;
   RangePlan *range;
   List args;

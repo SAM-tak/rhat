@@ -753,8 +753,9 @@ static int prec(const char *s) {
     return 2;
   if (!strcmp(s, "=") || !strcmp(s, "==") || !strcmp(s, "!=") ||
       !strcmp(s, "<") || !strcmp(s, ">") || !strcmp(s, "<=") ||
-      !strcmp(s, ">="))
+      !strcmp(s, ">=") || !strcmp(s, "fits^")) {
     return 3;
+  }
   if (!strcmp(s, "+") || !strcmp(s, "-"))
     return 4;
   if (!strcmp(s, "*") || !strcmp(s, "/") || !strcmp(s, "%") ||
@@ -777,7 +778,14 @@ static Expr *expr(Parser *p, int min) {
       add(&chain->args, e);
       for (;;) {
         add(&chain->names, t->text);
-        add(&chain->args, expr(p, pr + 1));
+        if (!strcmp(t->text, "fits^")) {
+          Expr *test = node(E_FITS, t->loc);
+          test->test_spec = spec(p);
+          add(&chain->args, test);
+        }
+        else {
+          add(&chain->args, expr(p, pr + 1));
+        }
         t = tok(p);
         if (t->kind == TOK_STRING || t->kind == TOK_QUOTED ||
             prec(t->text) != 3)
@@ -785,10 +793,14 @@ static Expr *expr(Parser *p, int min) {
         next(p);
       }
       if (chain->names.n == 1) {
-        Expr *single = node(E_BIN, chain->loc);
+        Expr *single = !strcmp((char *)chain->names.v[0], "fits^")
+                           ? chain->args.v[1]
+                           : node(E_BIN, chain->loc);
         single->text = chain->names.v[0];
         single->a = chain->args.v[0];
-        single->b = chain->args.v[1];
+        if (single->kind != E_FITS) {
+          single->b = chain->args.v[1];
+        }
         e = single;
       } else
         e = chain;
@@ -884,12 +896,25 @@ static Stmt *assignment(Expr *target, Expr *value, char *op) {
   s->op = op;
   return s;
 }
+static Stmt *match_binding(char *name, Expr *value)
+{
+  Stmt *s = binding(name, value, false);
+  s->flow_alias = true;
+  return s;
+}
 static bool match_clause(Parser *p) {
   return is(p, "when^") || is(p, "other^") || is(p, "el^") || is(p, "else^");
 }
 static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no) {
   Expr *condition = NULL;
   do {
+    if (take(p, "fits^")) {
+      Expr *test = node(E_FITS, tok(p)->loc);
+      test->a = named("it^", test->loc);
+      test->test_spec = spec(p);
+      condition = condition ? binary("or^", condition, test) : test;
+      continue;
+    }
     Expr *low = expr(p, 0), *test = NULL;
     if (take(p, "to^")) {
       Expr *high = expr(p, 0);
@@ -919,8 +944,8 @@ static void match_body(Parser *p, List *out) {
 }
 static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject) {
   char *name = fmt("\001match%d", ++p->serial);
-  add(&scope->body, binding(name, subject, false));
-  add(&scope->body, binding("it^", named(name, subject->loc), false));
+  add(&scope->body, match_binding(name, subject));
+  add(&scope->body, match_binding("it^", named(name, subject->loc)));
   need(p, "{");
   if (!match_clause(p))
     fail(tok(p)->loc, "for^ requires a driving clause or when^/other^ arms");
@@ -947,8 +972,8 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject) {
 }
 static Expr *match_expression(Parser *p, Expr *scope, Expr *subject) {
   char *name = fmt("\001match%d", ++p->serial);
-  add(&scope->bindings, binding(name, subject, false));
-  add(&scope->bindings, binding("it^", named(name, subject->loc), false));
+  add(&scope->bindings, match_binding(name, subject));
+  add(&scope->bindings, match_binding("it^", named(name, subject->loc)));
   need(p, ":");
   Expr **arm = &scope->a, *last = NULL;
   bool yes = false, no = false;

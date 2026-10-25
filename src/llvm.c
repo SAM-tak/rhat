@@ -496,24 +496,28 @@ static void instruction(Output *o, Instr *i) {
   case I_CASE_IS:
   case I_CASE_GET: {
     int tagptr = ++o->tmp, tag = ++o->tmp;
-    fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n", tagptr,
-            llvm_type(t), i->a);
-    fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, tagptr);
+    if (!i->case_proven) {
+      fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n",
+              tagptr, llvm_type(t), i->a);
+      fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, tagptr);
+    }
     if (i->op == I_CASE_IS) {
       r = ++o->tmp;
       fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", r, tag, i->label);
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
     } else {
-      int valid = ++o->tmp;
-      fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", valid, tag, i->label);
-      fprintf(f,
-              "  br i1 %%t%d, label %%tag_ok_%d, label %%tag_bad_%d, !prof "
-              "!0\ntag_bad_%d:\n",
-              valid, valid, valid, valid);
-      fprintf(f,
-              "  call void @rh_union_fail(i32 %d)\n  "
-              "unreachable\ntag_ok_%d:\n",
-              i->loc.line, valid);
+      if (!i->case_proven) {
+        int valid = ++o->tmp;
+        fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", valid, tag, i->label);
+        fprintf(f,
+                "  br i1 %%t%d, label %%tag_ok_%d, label %%tag_bad_%d, !prof "
+                "!0\ntag_bad_%d:\n",
+                valid, valid, valid, valid);
+        fprintf(f,
+                "  call void @rh_union_fail(i32 %d)\n  "
+                "unreachable\ntag_ok_%d:\n",
+                i->loc.line, valid);
+      }
       int payload = ++o->tmp;
       Type *arm = slot_type(o, i->dst);
       fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
@@ -1259,6 +1263,9 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " label=%d other=%d", i->label, i->other);
       if (i->op == I_UNION || i->op == I_CASE_IS || i->op == I_CASE_GET)
         fprintf(f, " tag=%d", i->label);
+      if (i->case_proven) {
+        fputs(" proof=flow", f);
+      }
       if (i->op == I_SLICE)
         fprintf(f, " count=%%%d", i->other);
       if (i->op == I_FIELD)

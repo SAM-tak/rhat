@@ -37,6 +37,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/syntax-tests")
   add_test(NAME nil COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/nil.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
+  add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
+    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)

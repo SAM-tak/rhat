@@ -392,6 +392,29 @@ print(*(ref??&number))
     passed += 1
     print('PASS optional_union_single_ir_matches_modules', flush=True)
 
+    positive('module_fits_types_and_specializations', {
+        'lib/value.rh': '''module^ lib.value
+public^ def^ Item {self^{value:i32^=42}}
+public^ let^ read=f^ item:Item|nil^ {if^ item fits^ Item: item.value el^: 0;}
+public^ let^ structural=template^f^ item {if^ item fits^ Item: item.value el^: 0;}
+public^ let^ staticAnswer=1 fits^ i32^
+''',
+        'main.rh': '''let^ lib=import^ lib.value
+let^ yes:lib.Item|nil^=lib.Item.new()
+print(yes fits^ lib.Item,lib.read(yes),lib.read(nil^))
+print(lib.structural(lib.Item.new()),lib.structural(0))
+print(lib.staticAnswer)
+let^ random=import^ std.random
+var^ rng=random.new(12345)
+print(rng fits^ random.Random,rng.load(0) fits^ random.Error.InvalidState)
+''',
+    }, 'true 42 0\n42 0\ntrue\ntrue true\n')
+
+    negative('module_fits_private_type', {
+        'lib/value.rh': 'module^ lib.value\ndef^ Hidden {self^{value:i32^}}',
+        'main.rh': 'let^ lib=import^ lib.value\nprint(1 fits^ lib.Hidden)',
+    }, 'unknown or unavailable type')
+
     negative('module_optional_nominal_identity', {
         'lib/a.rh': 'module^ lib.a\npublic^ def^ Item {self^{value:i32^}}',
         'lib/b.rh': 'module^ lib.b\npublic^ def^ Item {self^{value:i32^}}',

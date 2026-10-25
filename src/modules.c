@@ -233,6 +233,9 @@ static bool constant_expr(Expr *e) {
     return true;
   if (e->kind == E_UNARY)
     return constant_expr(e->a);
+  if (e->kind == E_FITS) {
+    return !e->a || constant_expr(e->a);
+  }
   if (e->kind == E_BIN)
     return constant_expr(e->a) && constant_expr(e->b);
   if (e->kind == E_CHAIN) {
@@ -287,6 +290,9 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e) {
   }
   if (e->kind == E_RECORD && e->text)
     e->text = resolve_type_name(m, e->text, e->loc);
+  if (e->kind == E_FITS) {
+    resolve_spec(m, e->test_spec);
+  }
   if (e->kind == E_FUNCTION) {
     resolve_function(p, m, e->function);
     return;
