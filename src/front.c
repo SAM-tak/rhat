@@ -565,6 +565,7 @@ static Spec *spec(Parser *p)
   return s;
 }
 static Expr *expr(Parser *p, int min);
+static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
 static Expr *node(int k, Loc l) {
   Expr *e = mem(sizeof(*e));
@@ -573,8 +574,12 @@ static Expr *node(int k, Loc l) {
   return e;
 }
 static void entries(Parser *p, Expr *e, const char *end, bool named) {
-  if (take(p, end))
+  bool header = p->header;
+  p->header = false;
+  if (take(p, end)) {
+    p->header = header;
     return;
+  }
   do {
     if (named) {
       add(&e->names, word(p));
@@ -585,6 +590,7 @@ static void entries(Parser *p, Expr *e, const char *end, bool named) {
       break;
   } while (take(p, ","));
   need(p, end);
+  p->header = header;
 }
 static bool branch_word(Parser *p) {
   const char *words[] = {"elseif^", "elsif^", "elif^", "ei^", "else^", "el^"};
@@ -659,36 +665,46 @@ static Expr *primary(Parser *p) {
     e = node(E_ARRAY, t->loc);
     entries(p, e, "]", false);
   } else if (!strcmp(t->text, "{")) {
-    fail(t->loc, "bare braces are blocks; construct a nominal value with "
-                 "Type{field=value}");
-  } else if (!strcmp(t->text, "&") || !strcmp(t->text, "-") ||
-             !strcmp(t->text, "!") || !strcmp(t->text, "*") ||
-             !strcmp(t->text, "bitnot^")) {
-    e = node(E_UNARY, t->loc);
+    e = node(E_RECORD, t->loc);
+    entries(p, e, "}", true);
+  }
+  else if (!strcmp(t->text, "&") || !strcmp(t->text, "-") ||
+           !strcmp(t->text, "!") || !strcmp(t->text, "*") ||
+           !strcmp(t->text, "bitnot^") || !strcmp(t->text, "try^")) {
+    e = node(!strcmp(t->text, "try^") ? E_TRY : E_UNARY, t->loc);
     e->text = t->text;
     e->a = expr(p, 8);
-  } else if (!strcmp(t->text, "for^")) {
+  }
+  else if (!strcmp(t->text, "for^")) {
     e = for_expression(p, t->loc);
-  } else if (!strcmp(t->text, "if^")) {
+  }
+  else if (!strcmp(t->text, "if^")) {
     bool header = p->header;
     p->header = true;
     Expr *condition = expr(p, 0);
     p->header = header;
     need(p, ":");
     e = if_tail(p, condition, t->loc);
-  } else if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^") ||
-             !strcmp(t->text, "template^")) {
+  }
+  else if (!strcmp(t->text, "f^") || !strcmp(t->text, "p^") ||
+           !strcmp(t->text, "template^")) {
     p->at--;
     e = node(E_FUNCTION, t->loc);
     e->function = function(p, fmt("<anonymous@%d:%d>", t->loc.line, t->loc.col),
                            NULL, false);
-  } else if (!strcmp(t->text, "error^")) {
+  }
+  else if (!strcmp(t->text, "error^")) {
     e = node(E_RECORD, t->loc);
     e->error_constructor = true;
     e->text = qualified_word(p);
     need(p, "{");
     entries(p, e, "}", true);
-  } else if (t->kind == TOK_WORD) {
+  }
+  else if (!strcmp(t->text, "return^")) {
+    fail(t->loc,
+         "expected an expression; return^ belongs in a catch^ clause body");
+  }
+  else if (t->kind == TOK_WORD) {
     e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
     e->text = t->text;
     if (!strncmp(e->text, "it^^", 4)) {
@@ -696,8 +712,10 @@ static Expr *primary(Parser *p) {
       e->scope_count = (int)strlen(e->text) - 3;
       e->text = "it^";
     }
-  } else
+  }
+  else {
     fail(t->loc, "expected an expression, found '%s'", t->text);
+  }
   for (;;) {
     if (take(p, ".") || take(p, "?.")) {
       Expr *n = node(E_MEMBER, e->loc);
@@ -744,7 +762,7 @@ static Expr *primary(Parser *p) {
   return e;
 }
 static int prec(const char *s) {
-  if (!strcmp(s, "??")) {
+  if (!strcmp(s, "??") || !strcmp(s, "catch^")) {
     return 6;
   }
   if (!strcmp(s, "or^"))
@@ -772,6 +790,9 @@ static Expr *expr(Parser *p, int min) {
         t->kind == TOK_STRING || t->kind == TOK_QUOTED ? -1 : prec(t->text);
     if (pr < min)
       break;
+    if (!p->header && catch_head(p)) {
+      break;
+    }
     next(p);
     if (pr == 3) {
       Expr *chain = node(E_CHAIN, t->loc);
@@ -805,7 +826,10 @@ static Expr *expr(Parser *p, int min) {
       } else
         e = chain;
     } else {
-      Expr *binary = node(!strcmp(t->text, "??") ? E_COALESCE : E_BIN, t->loc);
+      Expr *binary = node(!strcmp(t->text, "??")       ? E_COALESCE
+                          : !strcmp(t->text, "catch^") ? E_CATCH
+                                                       : E_BIN,
+                          t->loc);
       binary->text = t->text;
       binary->a = e;
       binary->b = expr(p, pr + 1);
@@ -816,8 +840,94 @@ static Expr *expr(Parser *p, int min) {
 }
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
+static int loop_section(Parser *p);
+/* A clause head is syntactically a nominal type (possibly a union), then ':'.
+ */
+static bool catch_type(Parser *p)
+{
+  if (take(p, "&") || take(p, "&&")) {
+    return catch_type(p);
+  }
+  if (take(p, "(")) {
+    if (!catch_type(p)) {
+      return false;
+    }
+    while (take(p, "|")) {
+      if (!catch_type(p)) {
+        return false;
+      }
+    }
+    return take(p, ")");
+  }
+  if (tok(p)->kind != TOK_WORD && tok(p)->kind != TOK_QUOTED) {
+    return false;
+  }
+  next(p);
+  while (take(p, ".")) {
+    if (tok(p)->kind != TOK_WORD && tok(p)->kind != TOK_QUOTED) {
+      return false;
+    }
+    next(p);
+  }
+  return true;
+}
+static bool catch_head(Parser *p)
+{
+  if (!is(p, "catch^")) {
+    return false;
+  }
+  Parser q = *p;
+  next(&q);
+  if (take(&q, ":")) {
+    return true;
+  }
+  if (!catch_type(&q)) {
+    return false;
+  }
+  while (take(&q, "|")) {
+    if (!catch_type(&q)) {
+      return false;
+    }
+  }
+  return is(&q, ":");
+}
+static void catches(Parser *p, List *body, bool loop)
+{
+  if (!catch_head(p)) {
+    return;
+  }
+  Stmt *s = mem(sizeof(*s));
+  s->kind = S_HANDLE;
+  s->loc = tok(p)->loc;
+  s->body = *body;
+  s->loop_handler = loop;
+  bool final = false;
+  while (catch_head(p)) {
+    if (final) {
+      fail(tok(p)->loc, "catch^: must be the final catch arm");
+    }
+    CatchArm *arm = mem(sizeof(*arm));
+    arm->loc = next(p)->loc;
+    if (!is(p, ":")) {
+      arm->spec = spec(p);
+    }
+    final = !arm->spec;
+    need(p, ":");
+    while (!is(p, "}") && !catch_head(p) && (!loop || loop_section(p) < 0)) {
+      if (tok(p)->kind == TOK_EOF) {
+        fail(tok(p)->loc, "unterminated catch^ arm");
+      }
+      if (!take(p, ";")) {
+        add(&arm->body, stmt(p));
+      }
+    }
+    add(&s->handlers, arm);
+  }
+  *body = (List){0};
+  add(body, s);
+}
 static void clause_body(Parser *p, List *out) {
-  while (!is(p, "}") && !branch_word(p)) {
+  while (!is(p, "}") && !branch_word(p) && !catch_head(p)) {
     if (tok(p)->kind == TOK_EOF)
       fail(tok(p)->loc, "unterminated if^");
     if (take(p, ";"))
@@ -1056,6 +1166,15 @@ static void loop_body(Parser *p, Stmt *loop) {
     if (take(p, ";"))
       continue;
     int next_section = loop_section(p);
+    if (catch_head(p)) {
+      if (section >= 0 && section != 3) {
+        fail(tok(p)->loc, "loop catch^ arms must follow main^");
+      }
+      section = 3;
+      body = true;
+      catches(p, &loop->body, true);
+      continue;
+    }
     if (next_section >= 0) {
       if (next_section <= section)
         fail(tok(p)->loc, "loop sections must follow prolog^, pre^, first^, "
@@ -1314,6 +1433,12 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc) {
 }
 static Stmt *stmt(Parser *p) {
   Token *t = tok(p);
+  if (is(p, "catch^")) {
+    fail(t->loc, "catch^ clause must end an enclosing block; use do^{...}");
+  }
+  if (branch_word(p)) {
+    fail(t->loc, "%s belongs inside the preceding if^ braces", t->text);
+  }
   Stmt *s = mem(sizeof(*s));
   s->loc = t->loc;
   if (take(p, "let^") || take(p, "var^")) {
@@ -1375,9 +1500,10 @@ static Stmt *stmt(Parser *p) {
   } else if (take(p, "return^")) {
     s->kind = S_RETURN;
     if (tok(p)->kind != TOK_EOF && !is(p, "}") && !is(p, ";") &&
-        !branch_word(p) && !match_clause(p) && loop_section(p) < 0 &&
-        tok(p)->loc.line == t->loc.line)
+        !branch_word(p) && !match_clause(p) && !catch_head(p) &&
+        loop_section(p) < 0 && tok(p)->loc.line == t->loc.line) {
       s->a = expr(p, 0);
+    }
   } else if (take(p, "while^")) {
     fail(t->loc,
          "while^ is a driving clause; write repeat^ while^ or for^ ... while^");
@@ -1394,12 +1520,29 @@ static Stmt *stmt(Parser *p) {
     need(p, "{");
     p->scope_depth++;
     s = if_statement(p, s->a, t->loc);
+    if (catch_head(p)) {
+      List body = {0};
+      add(&body, s);
+      catches(p, &body, false);
+      s = body.v[0];
+      s->scoped_handlers = true;
+      s->a = ((Stmt *)s->body.v[0])->a;
+    }
     need(p, "}");
     p->scope_depth--;
-  } else if (is(p, "{")) {
+  }
+  else if (take(p, "do^")) {
     s->kind = S_BLOCK;
     block(p, &s->body);
-  } else {
+  }
+  else if (is(p, "{") &&
+           !(p->at + 1 < p->tokens.n &&
+             !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "}")) &&
+           !(p->at + 2 < p->tokens.n &&
+             !strcmp(((Token *)p->tokens.v[p->at + 2])->text, "="))) {
+    fail(t->loc, "standalone blocks require do^{...}");
+  }
+  else {
     s->a = expr(p, 0);
     add(&s->targets, s->a);
     while ((!p->header || s->a->kind != E_CALL) && take(p, ","))
@@ -1432,13 +1575,14 @@ static Stmt *stmt(Parser *p) {
 static void block(Parser *p, List *out) {
   need(p, "{");
   p->scope_depth++;
-  while (!is(p, "}")) {
+  while (!is(p, "}") && !catch_head(p)) {
     if (tok(p)->kind == TOK_EOF)
       fail(tok(p)->loc, "unterminated block");
     if (take(p, ";"))
       continue;
     add(out, stmt(p));
   }
+  catches(p, out, false);
   need(p, "}");
   p->scope_depth--;
 }
@@ -1491,6 +1635,17 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
       Stmt *only = f->body.v[0];
       if (only->kind == S_EXPR)
         only->kind = S_RETURN;
+      if (only->kind == S_HANDLE) {
+        if (only->body.n == 1 && ((Stmt *)only->body.v[0])->kind == S_EXPR) {
+          ((Stmt *)only->body.v[0])->kind = S_RETURN;
+        }
+        for (int j = 0; j < only->handlers.n; j++) {
+          CatchArm *arm = only->handlers.v[j];
+          if (arm->body.n == 1 && ((Stmt *)arm->body.v[0])->kind == S_EXPR) {
+            ((Stmt *)arm->body.v[0])->kind = S_RETURN;
+          }
+        }
+      }
     }
   }
   return f;

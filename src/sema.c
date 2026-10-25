@@ -13,8 +13,9 @@ static Def *lookup_def(Program *p, const char *n) {
 Type *type_builtin(Program *p, int k) {
   for (int i = 0; i < p->types.n; i++) {
     Type *t = p->types.v[i];
-    if (t->kind == k && k < T_STRUCT)
+    if (t->kind == k && (k < T_STRUCT || k == T_NEVER)) {
       return t;
+    }
   }
   Type *t = mem(sizeof(*t));
   t->kind = k;
@@ -95,6 +96,12 @@ static int union_order(Type *a, Type *b)
 static bool nullable(Type *t);
 static Type *type_union(Program *p, Type *a, Type *b, Loc loc)
 {
+  if (a->kind == T_NEVER) {
+    return b;
+  }
+  if (b->kind == T_NEVER) {
+    return a;
+  }
   if (a->kind == T_NIL && nullable(b)) {
     return b;
   }
@@ -179,6 +186,9 @@ Type *type_spec(Program *p, Spec *s) {
   return d->type;
 }
 char *type_name(Type *t) {
+  if (t->kind == T_NEVER) {
+    return "<never>";
+  }
   if (t->kind < T_STRUCT)
     return (char *)builtin_name(t->kind);
   if (t->kind == T_STRUCT || t->kind == T_UNION)
@@ -295,6 +305,103 @@ static Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
     }
   }
   return count == from->def->alternatives.n ? from : subset;
+}
+static bool has_error(Type *t)
+{
+  if (t->kind == T_STRUCT) {
+    return t->def->error_variant;
+  }
+  if (t->kind == T_UNION) {
+    for (int j = 0; j < t->def->alternatives.n; j++) {
+      if (has_error(t->def->alternatives.v[j])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+static bool only_errors(Type *t)
+{
+  if (t->kind != T_UNION) {
+    return t->kind == T_STRUCT && t->def->error_variant;
+  }
+  for (int j = 0; j < t->def->alternatives.n; j++) {
+    if (!only_errors(t->def->alternatives.v[j])) {
+      return false;
+    }
+  }
+  return true;
+}
+static Type *error_join(Program *p, Type *a, Type *b, Loc loc)
+{
+  return !a ? b : !b ? a : type_union(p, a, b, loc);
+}
+static Type *error_leaves(Program *p, Type *t, Loc loc)
+{
+  if (t->kind != T_UNION) {
+    return only_errors(t) ? t : NULL;
+  }
+  Type *out = NULL;
+  for (int j = 0; j < t->def->alternatives.n; j++) {
+    out = error_join(p, out, error_leaves(p, t->def->alternatives.v[j], loc),
+                     loc);
+  }
+  return out;
+}
+static Type *success_type(Program *p, Type *t, Loc loc)
+{
+  if (only_errors(t)) {
+    return type_builtin(p, T_NEVER);
+  }
+  if (t->kind != T_UNION) {
+    return t;
+  }
+  Type *out = NULL;
+  for (int j = 0; j < t->def->alternatives.n; j++) {
+    Type *arm = t->def->alternatives.v[j];
+    if (has_error(arm) && !only_errors(arm)) {
+      fail(loc, "try^/catch^ require errors at the outer union level; nested "
+                "mixed nominal unions must be unpacked explicitly");
+    }
+    if (!only_errors(arm)) {
+      out = error_join(p, out, arm, loc);
+    }
+  }
+  return out == NULL ? type_builtin(p, T_NEVER) : !has_error(t) ? t : out;
+}
+static bool error_accepts(Type *to, Type *from)
+{
+  if (sum_accepts(to, from)) {
+    return true;
+  }
+  if (from->kind == T_UNION) {
+    for (int j = 0; j < from->def->alternatives.n; j++) {
+      if (!error_accepts(to, from->def->alternatives.v[j])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (to->kind == T_UNION) {
+    for (int j = 0; j < to->def->alternatives.n; j++) {
+      if (error_accepts(to->def->alternatives.v[j], from)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+static bool error_overlap(Type *to, Type *from)
+{
+  if (from->kind == T_UNION) {
+    for (int j = 0; j < from->def->alternatives.n; j++) {
+      if (error_overlap(to, from->def->alternatives.v[j])) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return only_errors(from) && error_accepts(to, from);
 }
 static Field *field(Def *d, const char *n) {
   for (int i = 0; i < d->fields.n; i++) {
@@ -621,7 +728,7 @@ struct Var {
   Type *type;
   int slot, depth, lexical;
   uint64_t root, deps;
-  bool mut, parameter, unavailable, pending;
+  bool mut, parameter, unavailable, pending, hidden;
   unsigned version, path_version;
   Var *alias;     /* Inference-only direct reference target. */
   Type *narrowed; /* A branch-local view; the storage type never changes. */
@@ -638,7 +745,7 @@ typedef struct {
   bool addressable, guarded_copy;
 } Value;
 typedef struct {
-  int end, update, bindings, phase;
+  int end, update, bindings, phase, outside;
   List focuses, saved, first;
 } Loop; /* Jump targets carry the ownership cleanup boundary. */
 typedef struct {
@@ -658,6 +765,12 @@ typedef struct {
   List paths;
 } NilFact;
 typedef struct {
+  Type *errors;
+  int slot, label, bindings, pending, checkpoint;
+  uint64_t deps;
+  List facts;
+} ErrorTarget;
+typedef struct {
   Program *p;
   Instance *in;
   Def *access;
@@ -668,6 +781,8 @@ typedef struct {
   bool terminated;
   uint64_t self_roots;
   List default_stack, loops;
+  List handlers, pending_owners;
+  bool building_result;
   NilFlow flow;
   bool raw_name;
   Expr *raw_place;
@@ -686,6 +801,8 @@ static List first_types(Context *c, Stmt *s);
 static Type *chain_type(Context *c, Expr *e);
 static Type *chain_place_type(Context *c, Expr *e);
 static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc);
+static void handle_statements(Context *c, Stmt *s);
+static Type *handler_errors(Context *c, Stmt *s);
 static Instr *emit(Context *c, int op, Loc l) {
   Instr *i = mem(sizeof(*i));
   i->op = op;
@@ -710,6 +827,14 @@ static Value value(Context *c, Type *t) {
   v.type = t;
   return v;
 }
+static Value abrupt(Context *c)
+{
+  return (Value){.id = -1, .type = type_builtin(c->p, T_NEVER)};
+}
+static bool dead(Value v)
+{
+  return v.type->kind == T_NEVER;
+}
 static uint64_t root(Context *c, int depth, bool external, Loc l) {
   if (c->root_count == 64)
     fail(l, "function exceeds 64 provenance roots; split the function");
@@ -721,6 +846,9 @@ static uint64_t root(Context *c, int depth, bool external, Loc l) {
 static Var *lookup(Context *c, const char *name) {
   for (int i = c->vars.n - 1; i >= 0; i--) {
     Var *v = c->vars.v[i];
+    if (v->hidden) {
+      continue;
+    }
     if (!strcmp(v->name, name))
       return v;
   }
@@ -731,6 +859,9 @@ static Var *selected(Context *c, Expr *e) {
     Var *pending = NULL;
     for (int j = c->vars.n - 1; j >= 0; j--) {
       Var *v = c->vars.v[j];
+      if (v->hidden) {
+        continue;
+      }
       if (strcmp(v->name, e->text))
         continue;
       if (!v->pending)
@@ -746,6 +877,9 @@ static Var *selected(Context *c, Expr *e) {
   int skip = e->scope_count;
   for (int j = c->vars.n - 1; j >= 0; j--) {
     Var *v = c->vars.v[j];
+    if (v->hidden) {
+      continue;
+    }
     if (strcmp(v->name, e->text))
       continue;
     if (e->scope_kind == 3) {
@@ -915,6 +1049,9 @@ static void remember_guard(NilFlow *flow, Context *context, Expr *test,
 }
 static int condition_truth(NilFlow *flow, Expr *e)
 {
+  if (e->kind == E_SAVED && e->a) {
+    return condition_truth(flow, e->a);
+  }
   if (e->kind == E_UNARY && !strcmp(e->text, "!")) {
     return -condition_truth(flow, e->a);
   }
@@ -944,6 +1081,10 @@ static bool nil_name(Expr *e)
 static void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
                              bool truth)
 {
+  if (e->kind == E_SAVED && e->a) {
+    refine_condition(p, vars, flow, e->a, truth);
+    return;
+  }
   if (e->kind == E_UNARY && !strcmp(e->text, "!")) {
     refine_condition(p, vars, flow, e->a, !truth);
     return;
@@ -1005,6 +1146,9 @@ static void access_check(Context *c, bool priv, Def *owner, Loc l,
     fail(l, "private member '%s' belongs to '%s'", name, owner->name);
 }
 static Value deref(Context *c, Value v, Loc l) {
+  if (dead(v)) {
+    return v;
+  }
   if (v.type->kind != T_REF)
     return v;
   Value r = {0};
@@ -1047,6 +1191,9 @@ static void store_check(Context *c, Value dst, Value src, Loc l) {
     dst.var->deps |= src.deps;
 }
 static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
+  if (dead(src)) {
+    return src;
+  }
   if (dst.type != src.type && sum_accepts(dst.type, src.type)) {
     src = convert_value(c, src, dst.type, -1, l);
   }
@@ -1070,8 +1217,9 @@ static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
   return dst;
 }
 static Value snapshot(Context *c, Value src, Loc l) {
-  if (src.type->kind == T_VOID || src.type->owned)
+  if (dead(src) || src.type->kind == T_VOID || src.type->owned) {
     return src;
+  }
   Value dst = value(c, src.type);
   return copy_to(c, dst, src, l, true);
 }
@@ -1082,7 +1230,6 @@ static Value case_value(Context *c, Value src, Type *arm, Loc loc)
   out.deps = arm->refs ? src.deps : 0;
   out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
   Instr *i = emit(c, I_CASE_GET, loc);
-  i->case_proven = true;
   i->dst = out.id;
   i->a = src.id;
   i->type = src.type;
@@ -1171,6 +1318,9 @@ static Value nil_base(Context *c, Value value, Loc loc)
 }
 static Value present_value(Context *c, Value src, Loc loc)
 {
+  if (dead(src)) {
+    return src;
+  }
   if (src.type->kind == T_VOID) {
     fail(loc, "presence test requires a value");
   }
@@ -1230,6 +1380,9 @@ static Value nil_literal(Context *c, Loc loc)
 static Value fits_value(Context *c, Expr *e)
 {
   Value src = expression(c, e->a, NULL);
+  if (dead(src)) {
+    return src;
+  }
   Type *target = type_spec(c->p, e->test_spec);
   if (src.type->kind == T_VOID || target->kind == T_VOID) {
     fail(e->loc, "fits^ requires a value type");
@@ -1281,6 +1434,9 @@ static Value chain_walk(Context *c, Expr *e, int absent, bool *never)
   Expr *root = chain_parts(e, &steps);
   Value base = expression(c, root, NULL);
   *never = false;
+  if (dead(base)) {
+    return base;
+  }
   for (int j = 0; j < steps.n; j++) {
     Expr *step = steps.v[j];
     if (step_optional(step)) {
@@ -1302,6 +1458,9 @@ static Value chain_walk(Context *c, Expr *e, int absent, bool *never)
     Expr member = {0},
          copy = step_expression(step, saved_value(base, step->loc), &member);
     base = expression(c, &copy, NULL);
+    if (dead(base)) {
+      return base;
+    }
   }
   return base;
 }
@@ -1312,17 +1471,23 @@ static Value chain_value(Context *c, Expr *e)
     fail(e->loc, "cannot infer nil-propagating chain");
   }
   layout(result, e->loc);
-  Value out = {.id = result->kind == T_VOID ? -1 : slot(c, result, false),
+  Value out = {.id = result->kind == T_VOID || result->kind == T_NEVER
+                         ? -1
+                         : slot(c, result, false),
                .type = result};
   int absent = ++c->in->labels, end = ++c->in->labels;
   bool never = false;
   Value base = chain_walk(c, e, absent, &never);
-  if (!never) {
+  if (dead(base) && result->kind == T_NEVER) {
+    return base;
+  }
+  if (!never && !c->terminated) {
     if (result->kind != T_VOID) {
       out.deps |= convert_value(c, base, result, out.id, e->loc).deps;
     }
     nil_jump(c, end, e->loc);
   }
+  c->terminated = false;
   nil_label(c, absent, e->loc);
   if (result->kind != T_VOID) {
     convert_value(c, nil_literal(c, e->loc), result, out.id, e->loc);
@@ -1334,16 +1499,19 @@ static Value chain_value(Context *c, Expr *e)
 static Value coalesce_value(Context *c, Expr *e)
 {
   Value base = expression(c, e->a, NULL);
+  if (dead(base)) {
+    return base;
+  }
   if (!nullable(base.type)) {
     fail(e->loc, "?? requires a nil alternative");
   }
   Type *result = expression_type(c, e, NULL);
-  layout(result, e->loc);
-  Value out = value(c, result);
   Type *plain = without_nil(c->p, base.type, e->loc);
   if (!plain) {
-    return construct(c, e->b, result, out.id);
+    return construct(c, e->b, result, -1);
   }
+  layout(result, e->loc);
+  Value out = value(c, result);
   int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
   nil_branch(c, present_value(c, base, e->loc), yes, no, e->loc);
   nil_label(c, yes, e->loc);
@@ -1353,7 +1521,10 @@ static Value coalesce_value(Context *c, Expr *e)
   nil_jump(c, end, e->loc);
   nil_label(c, no, e->loc);
   out.deps |= construct(c, e->b, result, out.id).deps;
-  nil_jump(c, end, e->loc);
+  if (!c->terminated) {
+    nil_jump(c, end, e->loc);
+  }
+  c->terminated = false;
   nil_label(c, end, e->loc);
   return out;
 }
@@ -1385,6 +1556,282 @@ static void cleanup(Context *c, int from, Loc l) {
     if (v->type->owned && v->slot != c->in->result_slot)
       release(c, v->type, v->slot, l);
   }
+}
+static void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
+{
+  List ids = {0};
+  for (int j = bindings; j < c->vars.n; j++) {
+    Var *v = c->vars.v[j];
+    if (v->type->owned && v->slot != c->in->result_slot) {
+      add(&ids, (void *)(intptr_t)(v->slot + 1));
+    }
+  }
+  for (int j = pending; j < c->pending_owners.n; j++) {
+    add(&ids, c->pending_owners.v[j]);
+  }
+  for (int j = 1; j < ids.n; j++) {
+    void *id = ids.v[j];
+    int k = j;
+    while (k && (intptr_t)ids.v[k - 1] < (intptr_t)id) {
+      ids.v[k] = ids.v[k - 1];
+      k--;
+    }
+    ids.v[k] = id;
+  }
+  for (int j = 0; j < ids.n; j++) {
+    if (j && ids.v[j] == ids.v[j - 1]) {
+      continue;
+    }
+    int id = (int)(intptr_t)ids.v[j] - 1;
+    release(c, ((Slot *)c->in->slots.v[id])->type, id, loc);
+  }
+}
+static Value error_test(Context *c, Value src, Loc loc)
+{
+  Value out = value(c, type_builtin(c->p, T_BOOL));
+  if (only_errors(src.type) || !has_error(src.type)) {
+    Instr *i = emit(c, I_CONST, loc);
+    i->dst = out.id;
+    i->type = out.type;
+    i->text = only_errors(src.type) ? "1" : "0";
+    return out;
+  }
+  bool first = true;
+  for (int j = 0; j < src.type->def->alternatives.n; j++) {
+    if (!only_errors(src.type->def->alternatives.v[j])) {
+      continue;
+    }
+    Value test = value(c, out.type);
+    Instr *i = emit(c, I_CASE_IS, loc);
+    i->dst = test.id;
+    i->a = src.id;
+    i->type = src.type;
+    i->label = j;
+    if (first) {
+      copy_to(c, out, test, loc, true);
+    }
+    else {
+      i = emit(c, I_BIN, loc);
+      i->dst = out.id;
+      i->a = out.id;
+      i->b = test.id;
+      i->type = out.type;
+      i->text = "bitor^";
+    }
+    first = false;
+  }
+  return out;
+}
+static Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc)
+{
+  if (sum_accepts(to, src.type)) {
+    return convert_value(c, src, to, dst, loc);
+  }
+  Value out = {
+      .id = dst >= 0 ? dst : slot(c, to, false), .type = to, .deps = src.deps};
+  if (src.type->kind == T_UNION) {
+    List selected = {0};
+    for (int j = 0; j < src.type->def->alternatives.n; j++) {
+      if (error_overlap(to, src.type->def->alternatives.v[j])) {
+        add(&selected, src.type->def->alternatives.v[j]);
+      }
+    }
+    if (!selected.n) {
+      fail(loc, "error cannot be represented by '%s'", type_name(to));
+    }
+    int end = ++c->in->labels;
+    for (int j = 0; j < selected.n; j++) {
+      Type *arm = selected.v[j];
+      int next = 0;
+      if (j + 1 < selected.n) {
+        Value test = value(c, type_builtin(c->p, T_BOOL));
+        Instr *i = emit(c, I_CASE_IS, loc);
+        i->dst = test.id;
+        i->a = src.id;
+        i->type = src.type;
+        i->label = union_alternative(src.type, arm);
+        int yes = ++c->in->labels;
+        next = ++c->in->labels;
+        nil_branch(c, test, yes, next, loc);
+        nil_label(c, yes, loc);
+      }
+      pack_error(c, case_value(c, src, arm, loc), to, out.id, loc);
+      nil_jump(c, end, loc);
+      if (next) {
+        nil_label(c, next, loc);
+      }
+    }
+    nil_label(c, end, loc);
+    return out;
+  }
+  if (to->kind == T_UNION) {
+    for (int j = 0; j < to->def->alternatives.n; j++) {
+      Type *arm = to->def->alternatives.v[j];
+      if (only_errors(arm) && error_accepts(arm, src.type)) {
+        Value part = pack_error(c, src, arm, -1, loc);
+        return convert_value(c, part, to, out.id, loc);
+      }
+    }
+  }
+  fail(loc, "error '%s' is not included in '%s'", type_name(src.type),
+       type_name(to));
+}
+static void route_error(Context *c, Value error, Loc loc)
+{
+  if (c->handlers.n) {
+    ErrorTarget *target = c->handlers.v[c->handlers.n - 1];
+    target->deps |= error.deps;
+    pack_error(c, error, target->errors, target->slot, loc);
+    List edge = save_facts(&c->vars);
+    edge.n = target->bindings;
+    if (!target->facts.n) {
+      target->facts = edge;
+    }
+    else {
+      for (int j = 0; j < edge.n; j++) {
+        NilFact *a = target->facts.v[j], *b = edge.v[j];
+        if (a->type != b->type) {
+          a->type = NULL;
+        }
+        if (a->paths.v != b->paths.v) {
+          a->paths = (List){0};
+        }
+        if (a->version < b->version) {
+          a->version = b->version;
+        }
+        if (a->path_version < b->path_version) {
+          a->path_version = b->path_version;
+        }
+      }
+    }
+    escape_cleanup(c, target->bindings, target->pending, loc);
+    if (c->building_result && target->checkpoint >= 0) {
+      Instr *i = emit(c, I_STACK_REWIND, loc);
+      i->a = c->in->result_slot;
+      i->dst = target->checkpoint;
+      i->type = c->in->result;
+    }
+    nil_jump(c, target->label, loc);
+  }
+  else {
+    if (c->in->fn == c->p->entry) {
+      fail(loc, "unhandled try^ error at top level; add a catch^ clause");
+    }
+    if (!error_accepts(c->in->result, error.type)) {
+      fail(loc,
+           "try^ error '%s' is not included in the function result '%s'; add "
+           "catch^ or widen the result",
+           type_name(error.type), type_name(c->in->result));
+    }
+    Value out = pack_error(c, error, c->in->result, c->in->result_slot, loc);
+    for (int j = 0; j < c->root_count; j++) {
+      if ((out.deps & (UINT64_C(1) << j)) && !c->root_external[j]) {
+        fail(loc, "cannot return a reference rooted in a local owner");
+      }
+    }
+    escape_cleanup(c, 0, 0, loc);
+    Instr *i = emit(c, I_RETURN, loc);
+    i->type = c->in->result;
+  }
+  c->terminated = true;
+}
+static void error_focus(Context *c, Value error, Loc loc)
+{
+  Var *v = mem(sizeof(*v));
+  v->name = "it^";
+  v->type = error.type;
+  v->slot = error.id;
+  v->depth = c->depth;
+  v->lexical = c->lexical;
+  v->deps = error.deps;
+  v->root = root(c, c->depth, false, loc);
+  add(&c->vars, v);
+}
+static Value try_value(Context *c, Expr *e)
+{
+  Value src = snapshot(c, expression(c, e->a, NULL), e->loc);
+  if (dead(src)) {
+    return src;
+  }
+  Type *plain = success_type(c->p, src.type, e->loc);
+  Type *errors = error_leaves(c->p, src.type, e->loc);
+  if (!errors) {
+    return src;
+  }
+  if (plain->kind == T_NEVER) {
+    route_error(c, pack_error(c, src, errors, -1, e->loc), e->loc);
+    return abrupt(c);
+  }
+  int yes = ++c->in->labels, no = ++c->in->labels;
+  nil_branch(c, error_test(c, src, e->loc), no, yes, e->loc);
+  nil_label(c, no, e->loc);
+  route_error(c, pack_error(c, src, errors, -1, e->loc), e->loc);
+  c->terminated = false;
+  nil_label(c, yes, e->loc);
+  return convert_value(c, src, plain, -1, e->loc);
+}
+static Value catch_value(Context *c, Expr *e, Type *expected, int dst)
+{
+  Type *inferred = expression_type(c, e, expected);
+  if (!inferred) {
+    fail(e->loc, "cannot infer catch^ result type");
+  }
+  Type *result = expected ? expected : inferred;
+  if (result->owned && dst < 0) {
+    fail(e->loc, "owned catch^ result requires a construction destination");
+  }
+  Value src = snapshot(c, expression(c, e->a, NULL), e->loc);
+  if (dead(src)) {
+    return src;
+  }
+  Type *plain = success_type(c->p, src.type, e->loc);
+  Type *errors = error_leaves(c->p, src.type, e->loc);
+  if (!errors) {
+    fail(e->loc, "catch^ requires an error alternative");
+  }
+  Value out = result->kind == T_NEVER
+                  ? abrupt(c)
+                  : (Value){.id = dst >= 0 ? dst : slot(c, result, false),
+                            .type = result};
+  int failed = ++c->in->labels, end = ++c->in->labels;
+  List facts = save_facts(&c->vars);
+  if (plain->kind != T_NEVER) {
+    int yes = ++c->in->labels;
+    nil_branch(c, error_test(c, src, e->loc), failed, yes, e->loc);
+    nil_label(c, yes, e->loc);
+    Value normal = convert_value(c, src, plain, -1, e->loc);
+    out.deps |= convert_value(c, normal, result, out.id, e->loc).deps;
+    nil_jump(c, end, e->loc);
+  }
+  else {
+    nil_jump(c, failed, e->loc);
+  }
+  nil_label(c, failed, e->loc);
+  int begin = c->vars.n;
+  c->depth++;
+  c->lexical++;
+  error_focus(c, pack_error(c, src, errors, -1, e->loc), e->loc);
+  Value replacement = construct(c, e->b, expected ? expected : result, out.id);
+  out.deps |= replacement.deps;
+  bool ended = c->terminated;
+  if (!ended) {
+    for (int j = 0; j < c->root_count; j++) {
+      if ((replacement.deps & (UINT64_C(1) << j)) &&
+          c->root_depth[j] > c->depth - 1) {
+        fail(e->loc, "catch^ expression cannot escape a local error focus");
+      }
+    }
+    nil_jump(c, end, e->loc);
+  }
+  c->vars.n = begin;
+  c->depth--;
+  c->lexical--;
+  restore_facts(&c->vars, facts);
+  c->terminated = plain->kind == T_NEVER && ended;
+  if (!c->terminated) {
+    nil_label(c, end, e->loc);
+  }
+  return c->terminated ? abrupt(c) : out;
 }
 static Value literal_int(Context *c, Expr *e, Type *expected) {
   Type *t = expected;
@@ -1470,6 +1917,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     i->other = native;
     for (int j = 0; j < count; j++) {
       Value v = expression(c, e->args.v[j], input);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (v.type != input)
         fail(e->loc, "invalid intrinsic argument");
       v = snapshot(c, v, e->loc);
@@ -1486,6 +1936,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
         fail(e->loc, "numeric conversion expects one argument");
       Type *t = type_builtin(p, k);
       Value v = expression(c, e->args.v[0], NULL);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (!kind_integer(v.type->kind) && !kind_float(v.type->kind))
         fail(e->loc, "numeric conversion requires a number");
       if (expected && expected != t)
@@ -1514,6 +1967,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     for (int j = 0; j < e->args.n; j++) {
       Value v =
           expression(c, e->args.v[j], print ? NULL : type_builtin(p, T_BOOL));
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (print && !kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
           v.type->kind != T_STRING && v.type->kind != T_BOOL)
         fail(e->loc, "print does not support '%s'", type_name(v.type));
@@ -1523,6 +1979,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     add(&c->in->code, i);
+    if (!print) {
+      refine_condition(p, &c->vars, &c->flow, e->args.v[0], true);
+    }
     return (Value){.id = -1, .type = type_builtin(p, T_VOID)};
   }
   if (target->kind == E_MEMBER && target->a->kind == E_NAME &&
@@ -1544,33 +2003,13 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   List values = {0};
   if (target->kind == E_MEMBER) {
     Value receiver = expression(c, target->a, NULL);
-    Value base = deref(c, receiver, e->loc);
-    if (base.type->kind == T_UNION &&
-        (!strcmp(target->text, "is") || !strcmp(target->text, "get"))) {
-      if (e->args.n != 1 || ((Expr *)e->args.v[0])->kind != E_NAME)
-        fail(e->loc, "%s expects one alternative type name", target->text);
-      Expr *name = e->args.v[0];
-      Spec arm_spec = {.kind = SPEC_NAME, .name = name->text, .loc = name->loc};
-      Type *arm = type_spec(p, &arm_spec);
-      int tag = union_alternative(base.type, arm);
-      if (tag < 0)
-        fail(e->loc, "'%s' is not an alternative of '%s'", name->text,
-             type_name(base.type));
-      bool get = !strcmp(target->text, "get");
-      Type *t = get ? arm : type_builtin(p, T_BOOL);
-      if (expected && t != expected)
-        fail(e->loc, "%s returns '%s', expected '%s'", target->text,
-             type_name(t), type_name(expected));
-      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
-                   .type = t,
-                   .deps = t->refs ? base.deps : 0};
-      Instr *i = emit(c, get ? I_CASE_GET : I_CASE_IS, e->loc);
-      i->dst = out.id;
-      i->a = base.id;
-      i->type = base.type;
-      i->label = tag;
-      return out;
+    if (dead(receiver)) {
+      return receiver;
     }
+    if (c->terminated) {
+      return abrupt(c);
+    }
+    Value base = deref(c, receiver, e->loc);
     if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
          base.type->kind == T_SLICE || base.type->kind == T_STRING) &&
         !strcmp(target->text, "slice")) {
@@ -1582,8 +2021,14 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
              "slice source needs a binding; cannot borrow a temporary array");
       Value start = snapshot(
           c, expression(c, e->args.v[0], type_builtin(p, T_I64)), e->loc);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       Value count = snapshot(
           c, expression(c, e->args.v[1], type_builtin(p, T_I64)), e->loc);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (start.type->kind != T_I64 || count.type->kind != T_I64)
         fail(e->loc, "slice start and count must be i64^");
       Type *elem =
@@ -1610,6 +2055,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (e->args.n != 1)
         fail(e->loc, "truncate expects one new length");
       Value len = expression(c, e->args.v[0], type_builtin(p, T_I64));
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (len.type->kind != T_I64)
         fail(e->loc, "truncate length must be i64^");
       store_check(c, base, (Value){0}, e->loc);
@@ -1626,6 +2074,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (e->args.n != 1)
         fail(e->loc, "append expects one slice");
       Value src = expression(c, e->args.v[0], NULL);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (!((src.type->kind == T_SLICE && src.type->elem == base.type->elem) ||
             (src.type->kind == T_STRING && base.type->elem->kind == T_U8)))
         fail(e->loc, "append needs a slice with the same element type");
@@ -1665,6 +2116,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (e->args.n != 1)
         fail(e->loc, "push expects one element");
       Value v = expression(c, e->args.v[0], base.type->elem);
+      if (c->terminated) {
+        return abrupt(c);
+      }
       if (v.type != base.type->elem)
         fail(e->loc, "push element type mismatch");
       store_check(c, base, v, e->loc);
@@ -1748,6 +2202,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     Param *param = f->params.v[j + offset];
     Type *want = param->spec ? type_spec(p, param->spec) : NULL;
     Value v = expression(c, e->args.v[j], want);
+    if (c->terminated) {
+      return abrupt(c);
+    }
     if (v.type->kind == T_VOID)
       fail(e->loc, "void argument");
     if (want) {
@@ -1816,7 +2273,8 @@ static Type *union_literal_hint(Type *t, Expr *e) {
   if (literal->kind == E_UNARY && !strcmp(literal->text, "-"))
     literal = literal->a;
   if (literal->kind != E_INT && literal->kind != E_FLOAT &&
-      literal->kind != E_ARRAY) {
+      literal->kind != E_ARRAY &&
+      (literal->kind != E_RECORD || literal->text)) {
     return NULL;
   }
   Type *hint = NULL;
@@ -1824,6 +2282,7 @@ static Type *union_literal_hint(Type *t, Expr *e) {
     Type *a = t->def->alternatives.v[j];
     if ((literal->kind == E_INT && kind_integer(a->kind)) ||
         (literal->kind == E_FLOAT && kind_float(a->kind)) ||
+        (literal->kind == E_RECORD && a->kind == T_STRUCT) ||
         (literal->kind == E_ARRAY &&
          (a->kind == T_ARRAY || a->kind == T_GROW))) {
       if (hint)
@@ -1834,11 +2293,37 @@ static Type *union_literal_hint(Type *t, Expr *e) {
   return hint;
 }
 static Value construct(Context *c, Expr *e, Type *t, int dst) {
+  if (c->terminated) {
+    return abrupt(c);
+  }
+  if (e->kind == E_CATCH) {
+    return catch_value(c, e, t, dst);
+  }
+  if (e->kind == E_TRY) {
+    bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+                   e->a->kind == E_RECORD || e->a->kind == E_ARRAY;
+    Type *source = expression_type(c, e->a, literal ? t : NULL);
+    if (source && !has_error(source)) {
+      return construct(c, e->a, t, dst);
+    }
+    Value src = try_value(c, e);
+    if (dead(src) || !t) {
+      return src;
+    }
+    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+    return copy_to(c, out, src, e->loc, true);
+  }
   if (e->kind == E_SCOPE) {
     int begin = c->vars.n, depth = c->depth++;
     c->lexical++;
     statements(c, &e->bindings, false);
     Value out = construct(c, e->a, t, dst);
+    if (dead(out)) {
+      c->vars.n = begin;
+      c->depth = depth;
+      c->lexical--;
+      return out;
+    }
     for (int j = 0; j < c->root_count; j++)
       if ((out.deps & (UINT64_C(1) << j)) && c->root_depth[j] > depth)
         fail(e->loc, "scoped expression cannot escape a local owner");
@@ -1851,27 +2336,42 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     return out;
   }
   if (t && t->kind == T_UNION && e->kind != E_IF) {
-    if (e->kind == E_RECORD && (!e->text || !strcmp(e->text, t->def->name)))
+    if (e->kind == E_RECORD && e->text && !strcmp(e->text, t->def->name)) {
       fail(e->loc, "construct union '%s' from a named alternative",
            type_name(t));
+    }
+    if (e->kind == E_RECORD && !e->text && !union_literal_hint(t, e)) {
+      fail(e->loc, "contextual construction requires a single nominal struct "
+                   "type; write Type{field=value}");
+    }
     Value arm = expression(c, e, union_literal_hint(t, e));
+    if (dead(arm)) {
+      return arm;
+    }
     if (!sum_accepts(t, arm.type)) {
       fail(e->loc, "'%s' is not an alternative of nominal union '%s'",
            type_name(arm.type), type_name(t));
     }
     return convert_value(c, arm, t, dst, e->loc);
   }
-  if (e->kind == E_CALL)
+  if (e->kind == E_CALL && !guarded_chain(e)) {
     return call(c, e, t, dst);
+  }
   if (e->kind == E_IF) {
     if (!t)
       t = expression_type(c, e, NULL);
     if (!t || t->kind == T_VOID)
       fail(e->loc, "if^ expression must produce a value on every branch");
-    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+    Value out =
+        t->kind == T_NEVER
+            ? abrupt(c)
+            : (Value){.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     if (t->owned && dst < 0)
       fail(e->loc, "owned conditional requires a construction destination");
     Value condition = expression(c, e->a, type_builtin(c->p, T_BOOL));
+    if (dead(condition)) {
+      return condition;
+    }
     if (condition.type->kind != T_BOOL)
       fail(e->loc, "condition requires bool");
     int known = condition_truth(&c->flow, e->a);
@@ -1892,21 +2392,31 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     List facts = save_facts(&c->vars);
     refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Value a = construct(c, e->b, t, out.id);
+    bool a_end = c->terminated;
     List after_yes = save_facts(&c->vars);
     rewind_facts(&c->vars, facts);
-    i = emit(c, I_BR, e->loc);
-    i->label = end;
+    if (!a_end) {
+      i = emit(c, I_BR, e->loc);
+      i->label = end;
+    }
+    c->terminated = false;
     i = emit(c, I_LABEL, e->loc);
     i->label = no;
     refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Value b = construct(c, e->c, t, out.id);
+    bool b_end = c->terminated;
     merge_facts(&c->vars, facts, after_yes);
-    i = emit(c, I_BR, e->loc);
-    i->label = end;
-    i = emit(c, I_LABEL, e->loc);
-    i->label = end;
+    if (!b_end) {
+      i = emit(c, I_BR, e->loc);
+      i->label = end;
+    }
+    c->terminated = a_end && b_end;
+    if (!c->terminated) {
+      i = emit(c, I_LABEL, e->loc);
+      i->label = end;
+    }
     out.deps = a.deps | b.deps;
-    return out;
+    return c->terminated ? abrupt(c) : out;
   }
   if (e->kind == E_RECORD) {
     if (e->text) {
@@ -1919,7 +2429,15 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       t = d->type;
     }
     if (!t || t->kind != T_STRUCT)
-      fail(e->loc, "record construction needs a nominal type");
+      fail(e->loc, "contextual construction requires a nominal struct type; "
+                   "write Type{field=value}");
+    Module *scope =
+        c->in_default && c->access ? c->access->module : c->in->fn->module;
+    if (!e->text && t->def->module && t->def->module != scope &&
+        !t->def->public) {
+      fail(e->loc, "contextual construction requires a public type outside "
+                   "its module");
+    }
     if (t->kind == T_STRUCT && (e->error_constructor != t->def->error_variant))
       fail(e->loc, t->def->error_variant
                        ? "error variant requires error^ constructor"
@@ -1981,7 +2499,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
                (f->type->kind == T_ARRAY && f->type->refs))
         fail(e->loc, "field '%s' needs an initializer", f->name);
       else if (f->type->kind == T_STRUCT) {
-        Expr empty = {.kind = E_RECORD, .loc = e->loc};
+        Expr empty = {
+            .kind = E_RECORD, .loc = e->loc, .text = f->type->def->name};
         v = construct(c, &empty, f->type, dest.id);
       } else if (f->type->kind == T_GROW) {
         Expr empty = {.kind = E_ARRAY, .loc = e->loc};
@@ -1995,6 +2514,9 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       c->in_default = old_default;
       if (default_value)
         c->default_stack.n--;
+      if (c->terminated) {
+        return abrupt(c);
+      }
       out.deps |= v.deps;
     }
     return out;
@@ -2057,6 +2579,9 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
         ix->b = -1;
         ix->label = j;
         Value v = construct(c, e->args.v[j], t->elem, d);
+        if (c->terminated) {
+          return abrupt(c);
+        }
         out.deps |= v.deps;
       }
     }
@@ -2072,6 +2597,15 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
   return v;
 }
 static Value expression(Context *c, Expr *e, Type *expected) {
+  if (c->terminated) {
+    return abrupt(c);
+  }
+  if (e->kind == E_TRY) {
+    return construct(c, e, expected, -1);
+  }
+  if (e->kind == E_CATCH) {
+    return catch_value(c, e, expected, -1);
+  }
   if (expected && expected->kind == T_UNION)
     return construct(c, e, expected, -1);
   Program *p = c->p;
@@ -2097,6 +2631,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_CHAIN) {
     Value previous = snapshot(c, expression(c, e->args.v[0], NULL), e->loc);
+    if (dead(previous)) {
+      return previous;
+    }
     out = value(c, type_builtin(p, T_BOOL));
     int end = ++c->in->labels;
     for (int j = 0; j < e->names.n; j++) {
@@ -2110,6 +2647,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       }
       else {
         current = snapshot(c, expression(c, operand, previous.type), e->loc);
+        if (dead(current)) {
+          return current;
+        }
         Expr left = {.kind = E_SAVED, .loc = e->loc, .saved_slot = previous.id};
         Expr right = {.kind = E_SAVED, .loc = e->loc, .saved_slot = current.id};
         Expr pair = {.kind = E_BIN,
@@ -2209,6 +2749,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return construct(c, e, expected, -1);
   if (e->kind == E_MEMBER) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
+    if (dead(base)) {
+      return base;
+    }
     if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
          base.type->kind == T_STRING || base.type->kind == T_SLICE) &&
         !strcmp(e->text, "len")) {
@@ -2237,10 +2780,16 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_INDEX) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
+    if (dead(base)) {
+      return base;
+    }
     if (base.type->kind != T_ARRAY && base.type->kind != T_GROW &&
         base.type->kind != T_SLICE && base.type->kind != T_STRING)
       fail(e->loc, "indexing requires an array");
     Value index = expression(c, e->b, type_builtin(p, T_I64));
+    if (dead(index)) {
+      return index;
+    }
     if (!kind_integer(index.type->kind))
       fail(e->loc, "index must be an integer");
     bool view = base.type->kind == T_SLICE || base.type->kind == T_STRING;
@@ -2274,6 +2823,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
                              ? expected
                              : NULL);
+    if (dead(a)) {
+      return a;
+    }
     if (!strcmp(e->text, "&")) {
       if (!a.addressable)
         fail(e->loc, "cannot borrow a temporary; bind it first");
@@ -2325,6 +2877,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
                                logic        ? type_builtin(p, T_BOOL)
                                : comparison ? NULL
                                             : expected);
+    if (dead(a)) {
+      return a;
+    }
     if (logic) {
       if (a.type->kind != T_BOOL)
         fail(e->loc, "logical operands must be bool");
@@ -2338,6 +2893,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
         refine_condition(p, &c->vars, &c->flow, e->a, andop);
         Value b = expression(c, e->b, a.type);
         restore_facts(&c->vars, facts);
+        if (dead(b)) {
+          return b;
+        }
         if (b.type->kind != T_BOOL) {
           fail(e->loc, "logical operands must be bool");
         }
@@ -2356,9 +2914,12 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       refine_condition(p, &c->vars, &c->flow, e->a, andop);
       Value b = expression(c, e->b, a.type);
       restore_facts(&c->vars, facts);
-      copy_to(c, out, b, e->loc, true);
-      br = emit(c, I_BR, e->loc);
-      br->label = end;
+      if (!dead(b)) {
+        copy_to(c, out, b, e->loc, true);
+        br = emit(c, I_BR, e->loc);
+        br->label = end;
+      }
+      c->terminated = false;
       lab = emit(c, I_LABEL, e->loc);
       lab->label = end;
       return out;
@@ -2367,6 +2928,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     Value b = comparison && nil_name(e->a) && e->b->kind == E_NAME
                   ? place_expression(c, e->b)
                   : expression(c, e->b, shift || nil_rhs ? NULL : a.type);
+    if (dead(b)) {
+      return b;
+    }
     if (bitwise && (!kind_integer(a.type->kind) || !kind_integer(b.type->kind)))
       fail(e->loc, "bitwise operands must be integers");
     if (comparison && (a.type->kind == T_NIL || b.type->kind == T_NIL)) {
@@ -2439,8 +3003,11 @@ static void remember_focus(Context *c, Loop *loop, Loc loc, bool restore) {
 static void plain_loop(Context *c, Stmt *s) {
   int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
   int update = s->update.n ? ++c->in->labels : test;
-  Loop target = {
-      .end = end, .update = update, .bindings = c->vars.n, .phase = 1};
+  Loop target = {.end = end,
+                 .update = update,
+                 .bindings = c->vars.n,
+                 .outside = c->vars.n,
+                 .phase = 1};
   add(&c->loops, &target);
   branch_to(c, test, s->loc);
   int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels,
@@ -2461,6 +3028,11 @@ static void plain_loop(Context *c, Stmt *s) {
     label_at(c, test, s->loc);
     statements(c, &s->pre, false);
     Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+    if (dead(cond)) {
+      c->loops.n--;
+      c->vars.n = bindings;
+      return;
+    }
     if (cond.type->kind != T_BOOL)
       fail(s->loc, "condition requires bool");
     conditional(c, cond, body, end, s->loc);
@@ -2568,8 +3140,11 @@ static void loop_code(Context *c, Stmt *s) {
   int main = ++c->in->labels, update = ++c->in->labels,
       finish = ++c->in->labels;
   int last = ++c->in->labels, epilog = ++c->in->labels;
-  Loop target = {
-      .end = finish, .update = update, .bindings = c->vars.n, .first = first};
+  Loop target = {.end = finish,
+                 .update = update,
+                 .bindings = c->vars.n,
+                 .outside = scope,
+                 .first = first};
   for (int j = 0; j < s->focuses.n; j++) {
     Expr name = {.kind = E_NAME, .loc = s->loc, .text = s->focuses.v[j]};
     Var *v = selected(c, &name);
@@ -2605,11 +3180,52 @@ static void loop_code(Context *c, Stmt *s) {
     label_at(c, test, s->loc);
     c->depth++;
     statements(c, &s->pre, false);
-    if (c->terminated) {
-      c->terminated = false;
-      label_at(c, ++c->in->labels, s->loc);
+    Value cond = {0};
+    if (!c->terminated) {
+      cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
     }
-    Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+    if (c->terminated) {
+      /* Pre/test may transfer directly to this loop's update or epilog.
+       * Such paths never construct first^ values or execute last^. */
+      bool exits = false, updates = false;
+      for (int j = code; j < c->in->code.n; j++) {
+        Instr *edge = c->in->code.v[j];
+        if (edge->op == I_BR || edge->op == I_CBR) {
+          exits |= edge->label == finish ||
+                   (edge->op == I_CBR && edge->other == finish);
+          updates |= edge->label == update ||
+                     (edge->op == I_CBR && edge->other == update);
+        }
+      }
+      c->vars.n = persistent;
+      c->depth--;
+      if (updates) {
+        c->terminated = false;
+        label_at(c, update, s->loc);
+        c->lexical--;
+        statements(c, &s->update, true);
+        c->lexical++;
+        if (!c->terminated) {
+          branch_to(c, test, s->loc);
+        }
+      }
+      c->terminated = !exits;
+      if (exits) {
+        label_at(c, finish, s->loc);
+        target.phase = 3;
+        c->lexical--;
+        statements(c, &s->epilog, true);
+        c->lexical++;
+        if (!c->terminated) {
+          cleanup(c, scope, s->loc);
+        }
+      }
+      c->vars.n = scope;
+      c->depth--;
+      c->loops.n--;
+      restore_facts(&c->vars, entry_facts);
+      return;
+    }
     if (cond.type->kind != T_BOOL)
       fail(s->loc, "condition requires bool");
     bool live = condition_truth(&c->flow, s->a) >= 0;
@@ -2764,6 +3380,19 @@ static void nil_assignment(Context *c, Stmt *s)
       if (!t) {
         fail(target->loc, "cannot infer nil-guarded assignment destination");
       }
+      if (t->kind == T_NEVER) {
+        Type *normal = chain_type(c, target);
+        bool never = false;
+        pair->location = chain_walk(c, target, absent, &never);
+        if (normal && normal->kind == T_NEVER) {
+          return;
+        }
+        c->terminated = false;
+        nil_label(c, absent, s->loc);
+        nil_jump(c, end, s->loc);
+        nil_label(c, end, s->loc);
+        continue;
+      }
       layout(t, target->loc);
       pair->pointer = value(c, type_wrap(c->p, T_REF, t, 0));
       pair->indirect = true;
@@ -2784,6 +3413,9 @@ static void nil_assignment(Context *c, Stmt *s)
     }
     else {
       pair->location = place_expression(c, target);
+      if (dead(pair->location)) {
+        return;
+      }
       if (!pair->location.addressable) {
         fail(target->loc, "assignment destination is not addressable");
       }
@@ -2819,6 +3451,9 @@ static void nil_assignment(Context *c, Stmt *s)
    */
   for (int j = 0; j < count; j++) {
     NilAssignment *pair = &pairs[j];
+    if (dead(pair->location)) {
+      continue;
+    }
     int yes = ++c->in->labels, end = ++c->in->labels;
     nil_branch(c, pair->active, yes, end, s->loc);
     nil_label(c, yes, s->loc);
@@ -2830,18 +3465,26 @@ static void nil_assignment(Context *c, Stmt *s)
                      .text = s->op,
                      .a = saved_value(pair->old, s->loc),
                      .b = saved_value(b, s->loc)};
-      pair->pending = convert_value(c, expression(c, &binary, pair->old.type),
-                                    pair->location.type, -1, s->loc);
+      pair->pending =
+          dead(b) ? b
+                  : convert_value(c, expression(c, &binary, pair->old.type),
+                                  pair->location.type, -1, s->loc);
     }
     else {
       pair->pending = expression(c, rhs, pair->location.type);
     }
     pair->pending = snapshot(c, pair->pending, s->loc);
-    nil_jump(c, end, s->loc);
+    if (!dead(pair->pending)) {
+      nil_jump(c, end, s->loc);
+    }
+    c->terminated = false;
     nil_label(c, end, s->loc);
   }
   for (int j = 0; j < count; j++) {
     NilAssignment *pair = &pairs[j];
+    if (dead(pair->location) || dead(pair->pending)) {
+      continue;
+    }
     int yes = ++c->in->labels, end = ++c->in->labels;
     nil_branch(c, pair->active, yes, end, s->loc);
     nil_label(c, yes, s->loc);
@@ -2852,6 +3495,153 @@ static void nil_assignment(Context *c, Stmt *s)
       pair->location.var->narrowed = pair->prior_fact;
     }
     nil_jump(c, end, s->loc);
+    nil_label(c, end, s->loc);
+  }
+}
+static List join_exit_facts(List left, List right)
+{
+  if (!left.n) {
+    return right;
+  }
+  for (int j = 0; j < left.n; j++) {
+    NilFact *a = left.v[j], *b = right.v[j];
+    if (a->type != b->type || a->version != b->version) {
+      a->type = NULL;
+    }
+    if (a->paths.v != b->paths.v || a->path_version != b->path_version) {
+      a->paths = (List){0};
+    }
+    a->version = (a->version > b->version ? a->version : b->version) + 1;
+    a->path_version = (a->path_version > b->path_version ? a->path_version
+                                                         : b->path_version) +
+                      1;
+  }
+  return left;
+}
+static void handle_statements(Context *c, Stmt *s)
+{
+  Stmt local = *s, branch = {0};
+  List head_body = {0};
+  if (s->a) {
+    Value head =
+        snapshot(c, expression(c, s->a, type_builtin(c->p, T_BOOL)), s->loc);
+    if (dead(head)) {
+      return;
+    }
+    branch = *(Stmt *)s->body.v[0];
+    branch.a = saved_value(head, s->a->loc);
+    branch.a->a = s->a;
+    add(&head_body, &branch);
+    local.body = head_body;
+    local.a = NULL;
+    s = &local;
+  }
+  Type *errors = handler_errors(c, s);
+  if (!errors) {
+    fail(s->loc,
+         "catch^ clause requires an error-producing try^ before its arms");
+  }
+  int base = c->vars.n, visible = base;
+  if (s->loop_handler) {
+    visible = ((Loop *)c->loops.v[c->loops.n - 1])->outside;
+  }
+  List before = save_facts(&c->vars);
+  ErrorTarget target = {.errors = errors,
+                        .slot = slot(c, errors, false),
+                        .label = ++c->in->labels,
+                        .bindings = base,
+                        .pending = c->pending_owners.n,
+                        .checkpoint = -1};
+  if (c->in->result->owned) {
+    target.checkpoint = slot(c, type_builtin(c->p, T_U64), false);
+    Instr *i = emit(c, I_STACK_SAVE, s->loc);
+    i->a = c->in->result_slot;
+    i->dst = target.checkpoint;
+    i->type = c->in->result;
+  }
+  add(&c->handlers, &target);
+  statements(c, &s->body, false);
+  bool normal = !c->terminated;
+  List exits = normal ? save_facts(&c->vars) : (List){0};
+  exits.n = normal ? base : 0;
+  int end = ++c->in->labels;
+  if (normal) {
+    cleanup(c, base, s->loc);
+    nil_jump(c, end, s->loc);
+  }
+  c->vars.n = base;
+  c->handlers.n--;
+  c->terminated = false;
+  nil_label(c, target.label, s->loc);
+  Value remaining = {.id = target.slot, .type = errors, .deps = target.deps};
+  bool *hidden = mem((size_t)(base + 1) * sizeof(*hidden));
+  for (int j = 0; j < base; j++) {
+    hidden[j] = ((Var *)c->vars.v[j])->hidden;
+  }
+  for (int k = 0; k < s->handlers.n && remaining.type; k++) {
+    CatchArm *arm = s->handlers.v[k];
+    Type *asked = arm->spec ? type_spec(c->p, arm->spec) : remaining.type;
+    if (!only_errors(asked)) {
+      fail(arm->loc, "catch^ arm type must contain only declared errors");
+    }
+    Type *yes = fits_subset(c->p, remaining.type, asked, true, arm->loc);
+    Type *no = fits_subset(c->p, remaining.type, asked, false, arm->loc);
+    if (!yes) {
+      continue;
+    }
+    int next = 0;
+    if (no) {
+      int body = ++c->in->labels;
+      next = ++c->in->labels;
+      Expr test = {.kind = E_FITS,
+                   .loc = arm->loc,
+                   .a = saved_value(remaining, arm->loc),
+                   .test_spec = arm->spec};
+      nil_branch(c, fits_value(c, &test), body, next, arm->loc);
+      nil_label(c, body, arm->loc);
+    }
+    rewind_facts(&c->vars, target.facts.n ? target.facts : before);
+    for (int j = visible; j < base; j++) {
+      ((Var *)c->vars.v[j])->hidden = true;
+    }
+    if (s->scoped_handlers) {
+      c->depth++;
+      c->lexical++;
+    }
+    error_focus(c, pack_error(c, remaining, yes, -1, arm->loc), arm->loc);
+    statements(c, &arm->body, false);
+    if (!c->terminated) {
+      cleanup(c, base, arm->loc);
+      List exit = save_facts(&c->vars);
+      exit.n = base;
+      exits = normal ? join_exit_facts(exits, exit) : exit;
+      normal = true;
+      nil_jump(c, end, arm->loc);
+    }
+    c->vars.n = base;
+    if (s->scoped_handlers) {
+      c->depth--;
+      c->lexical--;
+    }
+    for (int j = 0; j < base; j++) {
+      ((Var *)c->vars.v[j])->hidden = hidden[j];
+    }
+    c->terminated = false;
+    if (next) {
+      nil_label(c, next, arm->loc);
+      remaining = pack_error(c, remaining, no, -1, arm->loc);
+    }
+    else {
+      remaining.type = NULL;
+    }
+  }
+  if (remaining.type) {
+    route_error(c, remaining, s->loc);
+  }
+  c->vars.n = base;
+  c->terminated = !normal;
+  if (normal) {
+    rewind_facts(&c->vars, exits);
     nil_label(c, end, s->loc);
   }
 }
@@ -2890,10 +3680,16 @@ static void statements(Context *c, List *body, bool scope) {
         if (!v || !v->unavailable || !v->pending)
           fail(b->loc, "first^ binding conflicts with a pre^ binding");
         Value out = construct(c, b->a, v->type, v->slot);
+        if (dead(out)) {
+          break;
+        }
         Value dst = variable(v);
         dst.var = NULL;
         store_check(c, dst, out, b->loc);
         v->deps |= out.deps;
+      }
+      if (c->terminated) {
+        break;
       }
       for (int j = 0; j < s->body.n; j++) {
         Var *v = lookup(c, ((Stmt *)s->body.v[j])->name);
@@ -2904,12 +3700,19 @@ static void statements(Context *c, List *body, bool scope) {
       if (!var || !var->unavailable)
         fail(s->loc, "invalid first^ initialization");
       Value v = construct(c, s->a, var->type, var->slot);
+      if (dead(v)) {
+        break;
+      }
       Value dst = variable(var);
       dst.var = NULL;
       store_check(c, dst, v, s->loc);
       var->deps |= v.deps;
       var->unavailable = var->pending = false;
-    } else if (s->kind == S_BIND) {
+    }
+    else if (s->kind == S_HANDLE) {
+      handle_statements(c, s);
+    }
+    else if (s->kind == S_BIND) {
       if (!strcmp(s->name, "_^")) {
         Stmt hidden = *s;
         hidden.name = fmt("\001discard%d", c->in->slots.n);
@@ -2929,6 +3732,10 @@ static void statements(Context *c, List *body, bool scope) {
       int dest = alias_result ? c->in->result_slot : -1;
       if (!t && alias_result)
         t = c->in->result;
+      if (t && t->kind == T_NEVER) {
+        expression(c, s->a, NULL);
+        break;
+      }
       if (t) {
         layout(t, s->loc);
         if (t->kind == T_VOID)
@@ -2941,9 +3748,25 @@ static void statements(Context *c, List *body, bool scope) {
           begin->type = t;
           begin->text = s->name;
         }
+        bool pending = t->owned && !alias_result;
+        if (pending) {
+          add(&c->pending_owners, (void *)(intptr_t)(dest + 1));
+        }
+        bool building = c->building_result;
+        c->building_result |= alias_result;
         v = construct(c, s->a, t, dest);
+        c->building_result = building;
+        if (pending) {
+          c->pending_owners.n--;
+        }
+        if (dead(v)) {
+          break;
+        }
       } else {
         v = expression(c, s->a, NULL);
+        if (dead(v)) {
+          break;
+        }
         t = v.type;
         if (t->kind == T_VOID)
           fail(s->loc, "binding cannot have void type");
@@ -2970,7 +3793,8 @@ static void statements(Context *c, List *body, bool scope) {
       dst.var = NULL;
       store_check(c, dst, v, s->loc);
       add(&c->vars, var);
-    } else if (s->kind == S_BIND_MANY) {
+    }
+    else if (s->kind == S_BIND_MANY) {
       int begin = c->vars.n;
       for (int j = 0; j < s->body.n; j++) {
         Stmt *binding = s->body.v[j];
@@ -2990,6 +3814,12 @@ static void statements(Context *c, List *body, bool scope) {
           c->in->result_local = hidden.name;
         statements(c, &one, false);
         c->in->result_local = result;
+        if (c->terminated) {
+          break;
+        }
+      }
+      if (c->terminated) {
+        break;
       }
       for (int j = 0; j < s->body.n; j++)
         if (strcmp(((Stmt *)s->body.v[j])->name, "_^"))
@@ -3010,6 +3840,9 @@ static void statements(Context *c, List *body, bool scope) {
           continue;
         }
         dest[j] = place_expression(c, s->targets.n ? s->targets.v[j] : s->a);
+        if (dead(dest[j])) {
+          break;
+        }
         if (!dest[j].addressable)
           fail(s->loc, "assignment destination is not addressable");
         if (dest[j].type->owned)
@@ -3028,6 +3861,9 @@ static void statements(Context *c, List *body, bool scope) {
           }
           old[j] = snapshot(c, previous, s->loc);
         }
+      }
+      if (c->terminated) {
+        break;
       }
       for (int j = 0; j < count; j++) {
         if (!dest[j].type) {
@@ -3055,6 +3891,12 @@ static void statements(Context *c, List *body, bool scope) {
                          .b = &right};
           src[j] = expression(c, &binary, old[j].type);
         }
+      }
+      if (c->terminated) {
+        break;
+      }
+      if (c->terminated) {
+        break;
       }
       for (int j = 0; j < count; j++) {
         if (!dest[j].type)
@@ -3093,17 +3935,25 @@ static void statements(Context *c, List *body, bool scope) {
     }
     else if (s->kind == S_EXPR) {
       Value v = expression(c, s->a, NULL);
+      if (dead(v)) {
+        break;
+      }
       if (v.type->owned)
         fail(s->loc, "owned temporary requires a binding");
-      if (s->a->kind != E_CALL)
+      if (s->a->kind != E_CALL && s->a->kind != E_TRY &&
+          s->a->kind != E_CATCH) {
         fail(s->loc, "only calls can be expression statements");
+      }
     }
     else if (s->kind == S_RETURN) {
       Type *t = c->in->result;
       Value v = {.id = -1, .type = type_builtin(c->p, T_VOID)};
       if (s->a) {
         if (t->kind == T_VOID) {
-          expression(c, s->a, NULL);
+          Value tested = expression(c, s->a, NULL);
+          if (dead(tested)) {
+            break;
+          }
           fail(s->loc, "procedure or void function cannot return a value");
         }
         if (t->owned && c->in->result_local) {
@@ -3115,10 +3965,27 @@ static void statements(Context *c, List *body, bool scope) {
           if (!r || r->slot != c->in->result_slot)
             fail(s->loc, "owned result binding was shadowed");
           v = variable(r);
-        } else
+        }
+        else {
+          bool building = c->building_result;
+          c->building_result |= t->owned;
           v = construct(c, s->a, t, c->in->result_slot);
-      } else if (t->kind != T_VOID)
-        fail(s->loc, "missing return value");
+          c->building_result = building;
+        }
+        if (dead(v)) {
+          break;
+        }
+      }
+      else if (t->kind != T_VOID) {
+        if (nullable(t) && has_error(t)) {
+          v = construct(c,
+                        &(Expr){.kind = E_NAME, .text = "nil^", .loc = s->loc},
+                        t, c->in->result_slot);
+        }
+        else {
+          fail(s->loc, "missing return value");
+        }
+      }
       for (int j = 0; j < c->root_count; j++)
         if ((v.deps & (UINT64_C(1) << j)) && !c->root_external[j])
           fail(s->loc, "cannot return a reference rooted in a local owner");
@@ -3132,6 +3999,9 @@ static void statements(Context *c, List *body, bool scope) {
     }
     else if (s->kind == S_IF) {
       Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+      if (dead(cond)) {
+        break;
+      }
       if (cond.type->kind != T_BOOL)
         fail(s->loc, "condition requires bool");
       int known = condition_truth(&c->flow, s->a);
@@ -3179,10 +4049,15 @@ static void statements(Context *c, List *body, bool scope) {
         c->lexical--;
       refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       statements(c, &s->other, true);
-      merge_facts(&c->vars, facts, after_yes);
+      bool b = c->terminated;
+      if (!a && b) {
+        rewind_facts(&c->vars, after_yes);
+      }
+      else if (!a && !b) {
+        merge_facts(&c->vars, facts, after_yes);
+      }
       if (s->internal)
         c->lexical++;
-      bool b = c->terminated;
       if (!b) {
         i = emit(c, I_BR, s->loc);
         i->label = end;
@@ -3225,6 +4100,9 @@ static void return_names(List *body, char **name, bool *valid) {
     return_names(&s->last, name, valid);
     return_names(&s->epilog, name, valid);
     return_names(&s->update, name, valid);
+    for (int k = 0; k < s->handlers.n; k++) {
+      return_names(&((CatchArm *)s->handlers.v[k])->body, name, valid);
+    }
   }
 }
 /* Return inference is a fixed point over concrete call instances. Unknown
@@ -3234,6 +4112,8 @@ typedef struct {
   Program *p;
   Instance *in;
   List vars;
+  List handlers, loops, initializers;
+  Type *propagated;
   Type *returned;
   Expr *return_expr;
   bool value_return;
@@ -3247,6 +4127,9 @@ typedef struct {
 static Infer infer_context(Context *c)
 {
   Infer out = {.p = c->p, .in = c->in, .lexical = c->lexical};
+  for (int j = 0; j < c->loops.n; j++) {
+    add(&out.loops, (void *)(intptr_t)(((Loop *)c->loops.v[j])->outside + 1));
+  }
   for (int j = 0; j < c->vars.n; j++) {
     Var *v = mem(sizeof(*v));
     *v = *(Var *)c->vars.v[j];
@@ -3264,6 +4147,17 @@ static Infer infer_context(Context *c)
         ((Var *)out.vars.v[j])->source = out.vars.v[k];
       }
     }
+  }
+  for (int j = 0; j < c->flow.guards.n; j++) {
+    NilGuard *old = c->flow.guards.v[j], *g = mem(sizeof(*g));
+    *g = *old;
+    g->var = NULL;
+    for (int k = 0; k < c->vars.n; k++) {
+      if (old->var == c->vars.v[k]) {
+        g->var = out.vars.v[k];
+      }
+    }
+    add(&out.flow.guards, g);
   }
   return out;
 }
@@ -3339,6 +4233,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected);
 static Type *infer_lookup(Infer *c, const char *name) {
   for (int j = c->vars.n - 1; j >= 0; j--) {
     Var *v = c->vars.v[j];
+    if (v->hidden) {
+      continue;
+    }
     if (!strcmp(v->name, name))
       return !c->raw_name && v->narrowed ? v->narrowed : v->type;
   }
@@ -3355,10 +4252,25 @@ static bool numeric(Type *t) {
 static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
                         Loc loc)
 {
+  if (a && a->kind == T_NEVER) {
+    return b;
+  }
+  if (b && b->kind == T_NEVER) {
+    return a;
+  }
   if (!a)
     return b;
   if (!b || a == b)
     return a;
+  if (has_error(a) || has_error(b)) {
+    if (a->kind == T_VOID) {
+      a = type_builtin(p, T_NIL);
+    }
+    if (b->kind == T_VOID) {
+      b = type_builtin(p, T_NIL);
+    }
+    return type_union(p, a, b, loc);
+  }
   if (integer_literal(ae) && numeric(b))
     return b;
   if (integer_literal(be) && numeric(a))
@@ -3382,8 +4294,15 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
 static Type *infer_call(Infer *c, Expr *e) {
   Expr *target = e->a;
   int native = random_intrinsic(c->in, target);
-  if (native >= 0)
+  if (native >= 0) {
+    for (int j = 0; j < e->args.n; j++) {
+      infer_expr(c, e->args.v[j], NULL);
+    }
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     return type_builtin(c->p, native == 0 || native == 5 ? T_BOOL : T_F64);
+  }
   Function *f = NULL;
   Def *self = NULL;
   List actual = {0};
@@ -3394,11 +4313,20 @@ static Type *infer_call(Infer *c, Expr *e) {
       if (!strcmp(target->text, builtin_name(k))) {
         for (int j = 0; j < e->args.n; j++)
           infer_expr(c, e->args.v[j], NULL);
+        if (c->terminated) {
+          return type_builtin(c->p, T_NEVER);
+        }
         return type_builtin(c->p, k);
       }
     if (!strcmp(target->text, "print") || !strcmp(target->text, "assert")) {
       for (int j = 0; j < e->args.n; j++)
         infer_expr(c, e->args.v[j], NULL);
+      if (c->terminated) {
+        return type_builtin(c->p, T_NEVER);
+      }
+      if (!strcmp(target->text, "assert") && e->args.n == 1) {
+        refine_condition(c->p, &c->vars, &c->flow, e->args.v[0], true);
+      }
       return type_builtin(c->p, T_VOID);
     }
     if ((f = this_function(c->p, c->in, target))) {
@@ -3412,24 +4340,17 @@ static Type *infer_call(Infer *c, Expr *e) {
   } else if (target->kind == E_MEMBER) {
     if (target->a->kind == E_NAME && !strcmp(target->text, "new")) {
       Def *d = lookup_def(c->p, target->a->text);
-      if (d)
-        return d->type;
+      if (d) {
+        Expr record = {.kind = E_RECORD, .loc = e->loc, .text = d->name};
+        return infer_expr(c, &record, NULL);
+      }
     }
     Type *base = infer_expr(c, target->a, NULL);
+    if (base && base->kind == T_NEVER) {
+      return base;
+    }
     if (base && base->kind == T_REF)
       base = base->elem;
-    if (base && base->kind == T_UNION &&
-        (!strcmp(target->text, "is") || !strcmp(target->text, "get"))) {
-      if (!strcmp(target->text, "is"))
-        return type_builtin(c->p, T_BOOL);
-      if (e->args.n == 1 && ((Expr *)e->args.v[0])->kind == E_NAME) {
-        Spec spec = {.kind = SPEC_NAME,
-                     .name = ((Expr *)e->args.v[0])->text,
-                     .loc = e->loc};
-        return type_spec(c->p, &spec);
-      }
-      return NULL;
-    }
     if (base &&
         (base->kind == T_ARRAY || base->kind == T_GROW ||
          base->kind == T_SLICE || base->kind == T_STRING) &&
@@ -3480,6 +4401,9 @@ static Type *infer_call(Infer *c, Expr *e) {
         infer_expr(c, e->args.v[j],
                    param && param->spec ? type_spec(c->p, param->spec) : NULL);
     Type *want = param && param->spec ? type_spec(c->p, param->spec) : NULL;
+    if (c->terminated || (t && t->kind == T_NEVER)) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (t && want && sum_accepts(want, t)) {
       t = want;
     }
@@ -3505,10 +4429,16 @@ static Type *infer_chain(Infer *c, Expr *e, bool lift)
   if (!base) {
     return NULL;
   }
+  if (base->kind == T_NEVER) {
+    return base;
+  }
+  bool can_skip = false;
   for (int j = 0; j < steps.n; j++) {
     Expr *step = steps.v[j];
     if (step_optional(step)) {
-      base = without_nil(c->p, nil_subject(base), step->loc);
+      Type *subject = nil_subject(base);
+      can_skip |= subject->kind == T_NIL || nullable(subject);
+      base = without_nil(c->p, subject, step->loc);
       if (!base) {
         return type_builtin(c->p, T_NIL);
       }
@@ -3523,18 +4453,137 @@ static Type *infer_chain(Infer *c, Expr *e, bool lift)
     if (!base) {
       return NULL;
     }
+    if (c->terminated) {
+      if (lift && can_skip) {
+        c->terminated = false;
+        return type_builtin(c->p, T_NIL);
+      }
+      return type_builtin(c->p, T_NEVER);
+    }
   }
   return !lift || base->kind == T_VOID
              ? base
              : type_union(c->p, base, type_builtin(c->p, T_NIL), e->loc);
 }
 static void infer_statements(Infer *c, List *body, bool scoped);
+static void infer_route(Infer *c, Type *errors, Loc loc)
+{
+  if (!errors) {
+    return;
+  }
+  if (c->handlers.n) {
+    ErrorTarget *target = c->handlers.v[c->handlers.n - 1];
+    target->errors = error_join(c->p, target->errors, errors, loc);
+  }
+  else {
+    c->propagated = error_join(c->p, c->propagated, errors, loc);
+  }
+}
+static void infer_focus(Infer *c, Type *type)
+{
+  Var *v = mem(sizeof(*v));
+  v->name = "it^";
+  v->type = type;
+  v->lexical = c->lexical;
+  add(&c->vars, v);
+}
+static void infer_handle(Infer *c, Stmt *s)
+{
+  Stmt local = *s, branch = {0};
+  List body = {0};
+  Value head = {0};
+  Expr saved = {0};
+  if (s->a) {
+    head.type = infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+    if (c->terminated) {
+      return;
+    }
+    saved = (Expr){
+        .kind = E_SAVED, .loc = s->a->loc, .compiler_value = &head, .a = s->a};
+    branch = *(Stmt *)s->body.v[0];
+    branch.a = &saved;
+    add(&body, &branch);
+    local.body = body;
+    local.a = NULL;
+    s = &local;
+  }
+  int base = c->vars.n, visible = base;
+  if (s->loop_handler && c->loops.n) {
+    visible = (int)(intptr_t)c->loops.v[c->loops.n - 1] - 1;
+  }
+  List before = save_facts(&c->vars);
+  ErrorTarget target = {0};
+  add(&c->handlers, &target);
+  infer_statements(c, &s->body, false);
+  bool normal = !c->terminated;
+  List exits = normal ? save_facts(&c->vars) : (List){0};
+  exits.n = normal ? base : 0;
+  c->vars.n = base;
+  c->handlers.n--;
+  c->terminated = false;
+  Type *remaining = target.errors;
+  bool *hidden = mem((size_t)(base + 1) * sizeof(*hidden));
+  for (int j = 0; j < base; j++) {
+    hidden[j] = ((Var *)c->vars.v[j])->hidden;
+  }
+  for (int k = 0; k < s->handlers.n; k++) {
+    CatchArm *arm = s->handlers.v[k];
+    Type *asked = arm->spec ? type_spec(c->p, arm->spec) : remaining;
+    if (asked && !only_errors(asked)) {
+      fail(arm->loc, "catch^ arm type must contain only declared errors");
+    }
+    if (!remaining) {
+      continue;
+    }
+    Type *yes = fits_subset(c->p, remaining, asked, true, arm->loc);
+    Type *no = fits_subset(c->p, remaining, asked, false, arm->loc);
+    if (yes) {
+      rewind_facts(&c->vars, before);
+      /* A failed try may follow a mutation on any path through the main body.
+       */
+      forget_roots(&c->vars, 0, true);
+      for (int j = visible; j < base; j++) {
+        ((Var *)c->vars.v[j])->hidden = true;
+      }
+      if (s->scoped_handlers) {
+        c->lexical++;
+      }
+      infer_focus(c, yes);
+      infer_statements(c, &arm->body, false);
+      if (!c->terminated) {
+        List exit = save_facts(&c->vars);
+        exit.n = base;
+        exits = normal ? join_exit_facts(exits, exit) : exit;
+        normal = true;
+      }
+      c->vars.n = base;
+      c->terminated = false;
+      if (s->scoped_handlers) {
+        c->lexical--;
+      }
+      for (int j = 0; j < base; j++) {
+        ((Var *)c->vars.v[j])->hidden = hidden[j];
+      }
+    }
+    remaining = no;
+  }
+  infer_route(c, remaining, s->loc);
+  c->vars.n = base;
+  c->terminated = !normal;
+  if (normal) {
+    rewind_facts(&c->vars, exits);
+  }
+}
 static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
+  if (c->terminated) {
+    return type_builtin(c->p, T_NEVER);
+  }
   if (!e)
     return type_builtin(c->p, T_VOID);
   if (e->constant_spec)
     return type_spec(c->p, e->constant_spec);
-  if (expected && expected->kind == T_UNION && e->kind != E_IF) {
+  if (expected && expected->kind == T_UNION && e->kind != E_IF &&
+      e->kind != E_CATCH) {
     Type *actual = infer_expr(c, e, union_literal_hint(expected, e));
     return actual && sum_accepts(expected, actual) ? expected : actual;
   }
@@ -3542,8 +4591,66 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     return infer_chain(c, e, true);
   }
   switch (e->kind) {
+  case E_TRY: {
+    bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+                   e->a->kind == E_RECORD || e->a->kind == E_ARRAY;
+    Type *type = infer_expr(c, e->a, literal ? expected : NULL);
+    if (!type || type->kind == T_NEVER) {
+      return type;
+    }
+    Type *plain = success_type(c->p, type, e->loc);
+    infer_route(c, error_leaves(c->p, type, e->loc), e->loc);
+    c->terminated = plain->kind == T_NEVER;
+    return plain;
+  }
+  case E_CATCH: {
+    Type *type = infer_expr(c, e->a, NULL);
+    if (!type || type->kind == T_NEVER) {
+      return type;
+    }
+    Type *plain = success_type(c->p, type, e->loc);
+    Type *errors = error_leaves(c->p, type, e->loc);
+    if (!errors) {
+      fail(e->loc, "catch^ requires an error alternative");
+    }
+    int begin = c->vars.n;
+    c->lexical++;
+    List facts = save_facts(&c->vars);
+    infer_focus(c, errors);
+    Type *fallback = infer_expr(c, e->b,
+                                expected                 ? expected
+                                : plain->kind == T_NEVER ? NULL
+                                                         : plain);
+    c->vars.n = begin;
+    c->lexical--;
+    restore_facts(&c->vars, facts);
+    c->terminated =
+        plain->kind == T_NEVER && fallback && fallback->kind == T_NEVER;
+    if (!fallback) {
+      return NULL;
+    }
+    if (fallback->kind == T_VOID) {
+      fail(e->loc,
+           "catch^ requires a value-producing fallback; use a catch^ clause");
+    }
+    if (plain->kind == T_NEVER) {
+      return fallback;
+    }
+    if (fallback->kind == T_NEVER) {
+      return plain;
+    }
+    if (plain->kind == T_VOID || fallback->kind == T_VOID) {
+      fail(e->loc, "catch^ requires value-producing alternatives; use nil^ for "
+                   "unit success");
+    }
+    return plain == fallback ? plain
+                             : type_union(c->p, plain, fallback, e->loc);
+  }
   case E_FITS: {
     Type *type = infer_expr(c, e->a, NULL);
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     Type *target = type_spec(c->p, e->test_spec);
     if (target->kind == T_VOID || (type && type->kind == T_VOID)) {
       fail(e->loc, "fits^ requires a value type");
@@ -3561,6 +4668,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     c->raw_name = e->a->kind == E_NAME;
     Type *type = infer_expr(c, e->a, NULL);
     c->raw_name = raw;
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (type && type->kind == T_VOID) {
       fail(e->loc, "presence test requires a value");
     }
@@ -3569,6 +4679,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   }
   case E_COALESCE: {
     Type *base = infer_expr(c, e->a, NULL);
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (!base) {
       return NULL;
     }
@@ -3577,6 +4690,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     }
     Type *plain = without_nil(c->p, base, e->loc);
     Type *fallback = infer_expr(c, e->b, plain);
+    if (plain) {
+      c->terminated = false;
+    }
     if (fallback && fallback->kind == T_VOID) {
       fail(e->loc, "?? requires a value-producing fallback");
     }
@@ -3620,25 +4736,80 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   case E_CALL:
     return infer_call(c, e);
   case E_RECORD: {
+    Type *type = expected;
     if (e->text) {
       Def *d = lookup_def(c->p, e->text);
-      return d ? d->type : NULL;
+      type = d ? d->type : NULL;
+      if (!type) {
+        return NULL;
+      }
+      if (type->kind == T_UNION) {
+        fail(e->loc, "cannot construct union directly; construct one of its "
+                     "alternatives");
+      }
     }
-    return expected;
+    if (!type || type->kind != T_STRUCT) {
+      fail(e->loc, "contextual construction requires a single nominal struct "
+                   "type; write Type{field=value}");
+    }
+    layout(type, e->loc);
+    for (int j = 0; j < type->def->fields.n; j++) {
+      Field *field = type->def->fields.v[j];
+      Expr *init = field->init;
+      for (int k = 0; k < e->names.n; k++) {
+        if (!strcmp(e->names.v[k], field->name)) {
+          init = e->args.v[k];
+        }
+      }
+      if (init) {
+        bool def = init == field->init;
+        if (def) {
+          for (int k = 0; k < c->initializers.n; k++) {
+            if (c->initializers.v[k] == init) {
+              fail(e->loc, "recursive default construction for '%s'",
+                   field->name);
+            }
+          }
+          add(&c->initializers, init);
+        }
+        infer_expr(c, init, field->type);
+        if (def) {
+          c->initializers.n--;
+        }
+      }
+      else if (field->type->kind == T_STRUCT) {
+        Expr empty = {
+            .kind = E_RECORD, .loc = e->loc, .text = field->type->def->name};
+        infer_expr(c, &empty, field->type);
+      }
+      if (c->terminated) {
+        return type_builtin(c->p, T_NEVER);
+      }
+    }
+    return type;
   }
   case E_ARRAY: {
     if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW)) {
       for (int j = 0; j < e->args.n; j++)
         infer_expr(c, e->args.v[j], expected->elem);
+      if (c->terminated) {
+        return type_builtin(c->p, T_NEVER);
+      }
       return expected;
     }
     Type *elem = e->args.n ? infer_expr(c, e->args.v[0], NULL) : NULL;
     for (int j = 1; j < e->args.n; j++)
       infer_expr(c, e->args.v[j], elem);
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     return elem ? type_wrap(c->p, T_ARRAY, elem, e->args.n) : NULL;
   }
   case E_MEMBER: {
     Type *base = infer_expr(c, e->a, NULL);
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (base && base->kind == T_REF)
       base = base->elem;
     if (!base)
@@ -3663,9 +4834,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
   }
   case E_INDEX: {
     Type *base = infer_expr(c, e->a, NULL);
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (base && base->kind == T_REF)
       base = base->elem;
     infer_expr(c, e->b, type_builtin(c->p, T_I64));
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
            : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
                       base->kind == T_SLICE)
@@ -3685,6 +4862,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                              : NULL);
     c->raw_name = raw;
     c->raw_place = old_place;
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     if (!strcmp(e->text, "!"))
       return type_builtin(c->p, T_BOOL);
     if (!a)
@@ -3728,10 +4908,16 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
         t = infer_expr(c, operand, t);
       }
     }
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     return type_builtin(c->p, T_BOOL);
   }
   case E_IF: {
     infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
     List facts = save_facts(&c->vars);
     int known = condition_truth(&c->flow, e->a);
     if (known) {
@@ -3742,10 +4928,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
     }
     refine_condition(c->p, &c->vars, &c->flow, e->a, true);
     Type *a = infer_expr(c, e->b, expected);
+    bool ended = c->terminated;
+    c->terminated = false;
     List after_yes = save_facts(&c->vars);
     rewind_facts(&c->vars, facts);
     refine_condition(c->p, &c->vars, &c->flow, e->a, false);
     Type *b = infer_expr(c, e->c, expected);
+    c->terminated &= ended;
     merge_facts(&c->vars, facts, after_yes);
     return join_types(c->p, a, e->b, b, e->c, e->loc);
   }
@@ -3754,6 +4943,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                  !strcmp(e->text, "&&") || !strcmp(e->text, "||");
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
     Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
+    if (a && a->kind == T_NEVER) {
+      return a;
+    }
     List facts = {0};
     if (logic) {
       int known = condition_truth(&c->flow, e->a);
@@ -3766,7 +4958,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected) {
                        !strcmp(e->text, "and^"));
     }
     Type *b = infer_expr(c, e->b, !strcmp(e->text, "bitshift^") ? NULL : a);
+    if (b && b->kind == T_NEVER && !logic) {
+      return b;
+    }
     if (logic) {
+      c->terminated = false;
       restore_facts(&c->vars, facts);
     }
     if (comparison && (nil_name(e->a) || nil_name(e->b)) &&
@@ -3792,9 +4988,15 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       break;
     }
     Stmt *s = body->v[j];
-    if (s->kind == S_BIND) {
+    if (s->kind == S_HANDLE) {
+      infer_handle(c, s);
+    }
+    else if (s->kind == S_BIND) {
       Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
       Type *actual = infer_expr(c, s->a, t);
+      if (c->terminated && !t) {
+        break;
+      }
       Var *v = mem(sizeof(*v));
       v->name = s->name;
       v->lexical = c->lexical;
@@ -3805,7 +5007,8 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
         v->source_version = v->source ? v->source->version : 0;
       }
       add(&c->vars, v);
-    } else if (s->kind == S_BIND_MANY) {
+    }
+    else if (s->kind == S_BIND_MANY) {
       List pending = {0};
       for (int k = 0; k < s->body.n; k++) {
         Stmt *b = s->body.v[k];
@@ -3837,6 +5040,9 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
           hint = without_nil(c->p, hint, s->loc);
         }
         infer_expr(c, s->values.n ? s->values.v[k] : s->b, hint);
+        if (s->optional) {
+          c->terminated = false;
+        }
       }
       for (int k = 0; k < count; k++) {
         Expr *dst = s->targets.n ? s->targets.v[k] : s->a;
@@ -3875,6 +5081,9 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       Type *hint = c->in->fn->result ? type_spec(c->p, c->in->fn->result)
                                      : c->in->fn->required_result;
       Type *t = infer_expr(c, s->a, hint);
+      if (!s->a && hint && nullable(hint) && has_error(hint)) {
+        t = hint;
+      }
       c->value_return |= s->a != NULL;
       c->returned =
           join_types(c->p, c->returned, c->return_expr, t, s->a, s->loc);
@@ -3884,14 +5093,24 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
     }
     else if (s->kind == S_WHILE) {
       int begin = c->vars.n;
+      add(&c->loops, (void *)(intptr_t)(begin + 1));
       List loop_facts = save_facts(&c->vars);
       infer_statements(c, &s->prolog, false);
       if (c->terminated) {
         c->vars.n = begin;
+        c->loops.n--;
         continue;
       }
       infer_statements(c, &s->pre, false);
-      infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      if (!c->terminated) {
+        infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      }
+      if (c->terminated) {
+        c->vars.n = begin;
+        c->loops.n--;
+        restore_facts(&c->vars, loop_facts);
+        continue;
+      }
       bool live = condition_truth(&c->flow, s->a) >= 0;
       refine_condition(c->p, &c->vars, &c->flow, s->a, true);
       if (live) {
@@ -3915,9 +5134,13 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       c->vars.n = begin;
       restore_facts(&c->vars, loop_facts);
       c->terminated = false;
+      c->loops.n--;
     }
     else if (s->kind == S_IF) {
       infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+      if (c->terminated) {
+        break;
+      }
       if (s->internal)
         c->lexical--;
       List facts = save_facts(&c->vars);
@@ -3939,7 +5162,12 @@ static void infer_statements(Infer *c, List *body, bool scoped) {
       rewind_facts(&c->vars, facts);
       refine_condition(c->p, &c->vars, &c->flow, s->a, false);
       infer_statements(c, &s->other, true);
-      merge_facts(&c->vars, facts, after_yes);
+      if (!a && c->terminated) {
+        rewind_facts(&c->vars, after_yes);
+      }
+      else if (!a && !c->terminated) {
+        merge_facts(&c->vars, facts, after_yes);
+      }
       c->terminated &= a;
       if (s->internal)
         c->lexical++;
@@ -4015,6 +5243,15 @@ static void infer_results(Program *p) {
       }
       infer_statements(&c, &in->fn->body, false);
       Type *result = c.returned;
+      if (c.propagated) {
+        if (result && result->kind == T_VOID) {
+          result = type_builtin(p, T_NIL);
+        }
+        else if (!result || result->kind == T_NEVER) {
+          result = c.terminated ? NULL : type_builtin(p, T_NIL);
+        }
+        result = error_join(p, result, c.propagated, in->fn->loc);
+      }
       if (!result && !c.value_return)
         result = type_builtin(p, T_VOID);
       if (!in->fn->result && !in->fn->required_result && result &&
@@ -4031,6 +5268,14 @@ static void infer_results(Program *p) {
       return;
   }
   fail((Loc){p->path, 1, 1}, "return type inference did not converge");
+}
+static Type *handler_errors(Context *c, Stmt *s)
+{
+  Infer infer = infer_context(c);
+  ErrorTarget target = {0};
+  add(&infer.handlers, &target);
+  infer_statements(&infer, &s->body, false);
+  return target.errors;
 }
 static Type *chain_type(Context *c, Expr *e)
 {
@@ -4137,8 +5382,13 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
   }
   statements(&c, &f->body, false);
   if (!c.terminated) {
-    if (in->result->kind != T_VOID)
+    if (nullable(in->result) && has_error(in->result)) {
+      construct(&c, &(Expr){.kind = E_NAME, .text = "nil^", .loc = f->loc},
+                in->result, in->result_slot);
+    }
+    else if (in->result->kind != T_VOID) {
       fail(f->loc, "not all paths return a value in '%s'", f->name);
+    }
     cleanup(&c, 0, f->loc);
     Instr *i = emit(&c, I_RETURN, f->loc);
     i->type = in->result;
@@ -4226,4 +5476,14 @@ void analyze(Program *p) {
       layout(t, t->def->loc);
     }
   }
+  /* Inference may inspect a specialization whose arguments never return. */
+  List materialized = {0};
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    if (in->state == 2) {
+      in->id = materialized.n;
+      add(&materialized, in);
+    }
+  }
+  p->instances = materialized;
 }

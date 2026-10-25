@@ -306,6 +306,14 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e) {
     names->n = begin;
     return;
   }
+  if (e->kind == E_CATCH) {
+    resolve_expr(p, m, names, e->a);
+    int begin = names->n;
+    add(names, "it^");
+    resolve_expr(p, m, names, e->b);
+    names->n = begin;
+    return;
+  }
   resolve_expr(p, m, names, e->a);
   resolve_expr(p, m, names, e->b);
   resolve_expr(p, m, names, e->c);
@@ -325,6 +333,18 @@ static void resolve_body(Program *p, Module *m, List *names, List *body) {
   int old = names->n;
   for (int j = 0; j < body->n; j++) {
     Stmt *s = body->v[j];
+    if (s->kind == S_HANDLE) {
+      resolve_body(p, m, names, &s->body);
+      for (int k = 0; k < s->handlers.n; k++) {
+        CatchArm *arm = s->handlers.v[k];
+        resolve_spec(m, arm->spec);
+        int begin = names->n;
+        add(names, "it^");
+        resolve_body(p, m, names, &arm->body);
+        names->n = begin;
+      }
+      continue;
+    }
     if (s->kind == S_WHILE) {
       int begin = names->n;
       resolve_body(p, m, names, &s->prolog);
@@ -335,7 +355,25 @@ static void resolve_body(Program *p, Module *m, List *names, List *body) {
       resolve_expr(p, m, names, s->a);
       resolve_body(p, m, names, &s->first);
       bound_names(names, &s->first);
-      resolve_body(p, m, names, &s->body);
+      if (s->body.n == 1 && ((Stmt *)s->body.v[0])->kind == S_HANDLE &&
+          ((Stmt *)s->body.v[0])->loop_handler) {
+        Stmt *handle = s->body.v[0];
+        resolve_body(p, m, names, &handle->body);
+        int saved = names->n;
+        names->n = begin;
+        for (int k = 0; k < handle->handlers.n; k++) {
+          CatchArm *arm = handle->handlers.v[k];
+          resolve_spec(m, arm->spec);
+          int outer = names->n;
+          add(names, "it^");
+          resolve_body(p, m, names, &arm->body);
+          names->n = outer;
+        }
+        names->n = saved;
+      }
+      else {
+        resolve_body(p, m, names, &s->body);
+      }
       names->n = persistent;
       bound_names(names, &s->first);
       resolve_body(p, m, names, &s->update);

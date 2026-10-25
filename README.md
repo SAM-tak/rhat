@@ -21,7 +21,7 @@ import^ std.random
 var^ rng = std.random.new(12345)
 print(rng.next())
 let^ result = rng.rangeint(1, 6)
-print(result.get(i64^))
+if^ result fits^ i64^ { print(result) }
 ```
 
 独立したファイルは `module^ lib.example` で名乗り、`public^` の付いた宣言を公開します。
@@ -114,17 +114,20 @@ print(value.a, value.b, value.c)
 - [examples/nominal_template.rh](examples/nominal_template.rh): 明示的な公称の適合、デフォルト実装、private、構造によるテンプレート検査。
 - [examples/regions.rh](examples/regions.rh): 呼び出し側への配列構築、伸長後も有効な参照、スコープでの領域回収。
 - [examples/factorial.rh](examples/factorial.rh): 無名関数の即時呼び出し、返り値の推論、`if^` 式、`this^` による再帰。10! を `i64^` で計算します。
+- [examples/errors.rh](examples/errors.rh): エラー値、伝播、遅延代替、型付きの捕捉。
 - [examples/numeric.rh](examples/numeric.rh): 組み込み型と同じ通常識別子、128ビット整数、低精度浮動小数点。
 
 ## 実装されている範囲
 
 - `def^ Name : Base1, Base2` による公称型と順序付きの合成。
 - `def^ Expr = Num | Add | Mul | Neg` による公称の合併型。タグと最大ペイロードをインライン配置します。
-  `.is(Num)` でタグを調べ、`.get(Num)` で検査付きの値コピーを取り出します。
+  `value fits^ Num` で判定し、真の分岐では `value.value` のように選択肢のメンバを使えます。
 - `T | nil^` の無名合併型、存在判定 `?`、ニル伝播 `?.` / `?[]`、遅延代替 `??`、
   条件付き代入 `?:=` / `?+=` など。[型・評価順・寿命の詳細](docs/nil.md)。
 - `value fits^ Type` と `when^ fits^ Type:` による適合判定・両側の型の絞り込み。
   静的に決まる判定は定数化し、一部だけが適合する合併型ではタグを検査します。[詳細](docs/fits.md)。
+- `try^` によるエラー伝播、遅延代替の `catch^`、型付き・既定の `catch^` 節。
+  返り値推論・スコープの回収と連携します。[詳細](docs/errors.md)。
 - `self^{ ... }` のフィールド、`abstract^` フィールド・メソッド、デフォルト実装、`override^`。
 - `private^` の宣言元に基づくアクセス検査。合成先やテンプレートからも無条件にはアクセスできません。
 - 通常の型付き引数は、同じ公称型または明示的な合成先の実型を受け取ります。
@@ -137,7 +140,8 @@ print(value.a, value.b, value.c)
   `f8^` は E4M3FN、`f16^` / `f32^` / `f64^` は IEEE binary16 / binary32 / binary64 です。
   固定長配列 `T[N]`、伸長配列 `T[>..]`、読み取り用の借用スライス `T[:]`、参照 `&T` にもこれらの型を使えます。
 - `Type.new()`、`Type{ field = expr }`、配列リテラル `[ ... ]`。
-- `let^`, `var^`, `:=`, `+=` / `-=` / `*=` / `/=` / `%=`、並列代入、`return^`、ブロック。
+- `let^`, `var^`, `:=`, `+=` / `-=` / `*=` / `/=` / `%=`、並列代入、`return^`、単独ブロック `do^{...}`。
+  引数など期待型のある位置では `{field=value}` で公称構造体を構築できます。[詳細](docs/syntax.md#ブロックと文脈付きの構築)。
 - 分岐は `if^ condition { ... elseif^ condition: ... else^: ... }`。波括弧は分岐全体で一組です。
 - `for^ var^ i=0 while^ i<8 next^ i+=1 { ... }`、`for^ i from^ 1 to^ 8 { ... }`、`downto^` / `step^`。
 - `repeat^ n { ... }`、`repeat^ while^ condition { ... }`、`repeat^ until^ condition { ... }`、無限 `repeat^ { ... }`。
@@ -170,7 +174,7 @@ Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
 ## 現在の制約
 
 これは L^ 全体の互換実装でも、Goose の完全な再実装でもありません。
-キャプチャを持つクロージャ、関数値の保存・受け渡し、コルーチン、`enum^`、エラーの付随情報と `try^` / `catch^`、`super^`、
+キャプチャを持つクロージャ、関数値の保存・受け渡し、コルーチン、`enum^`、エラーの付随情報、`super^`、
 演算子の多重定義、動的ディスパッチ、任意の C FFI、L^ バインド生成は未実装です。
 再帰の返り値に型を決める根拠がない場合は、明示的な返り値型が必要です。
 `number^` は未実装であり、数値の表現は `i64^` などで指定します。

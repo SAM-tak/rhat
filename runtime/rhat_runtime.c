@@ -150,9 +150,6 @@ _Noreturn void rh_truncate_fail(int32_t line) {
 _Noreturn void rh_slice_fail(int32_t line) {
   rh_panic("slice range out of bounds", line);
 }
-_Noreturn void rh_union_fail(int32_t line) {
-  rh_panic("union alternative mismatch", line);
-}
 _Noreturn void rh_assert_fail(int32_t line) {
   rh_panic("assertion failed", line);
 }

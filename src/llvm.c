@@ -381,6 +381,25 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  %%t%d = load ptr, ptr %%mark%d\n", a, i->a);
     fprintf(f, "  store ptr %%t%d, ptr %%markp%d\n", a, i->a);
     break;
+  case I_STACK_SAVE:
+  case I_STACK_REWIND: {
+    char *stack = stack_for(o, i->a);
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %s, i32 0, i32 1\n", a,
+            stack);
+    b = ++o->tmp;
+    if (i->op == I_STACK_SAVE) {
+      fprintf(f,
+              "  %%t%d = load ptr, ptr %%t%d\n  store ptr %%t%d, ptr %%p%d\n",
+              b, a, b, i->dst);
+    }
+    else {
+      fprintf(f,
+              "  %%t%d = load ptr, ptr %%p%d\n  store ptr %%t%d, ptr %%t%d\n",
+              b, i->dst, b, a);
+    }
+    break;
+  }
   case I_PUSH: {
     int desc = load(o, i->a);
     int data = ++o->tmp, len = ++o->tmp, stack = ++o->tmp;
@@ -495,29 +514,16 @@ static void instruction(Output *o, Instr *i) {
   }
   case I_CASE_IS:
   case I_CASE_GET: {
-    int tagptr = ++o->tmp, tag = ++o->tmp;
-    if (!i->case_proven) {
+    if (i->op == I_CASE_IS) {
+      int tagptr = ++o->tmp, tag = ++o->tmp;
       fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n",
               tagptr, llvm_type(t), i->a);
       fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, tagptr);
-    }
-    if (i->op == I_CASE_IS) {
       r = ++o->tmp;
       fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", r, tag, i->label);
       save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", r));
-    } else {
-      if (!i->case_proven) {
-        int valid = ++o->tmp;
-        fprintf(f, "  %%t%d = icmp eq i32 %%t%d, %d\n", valid, tag, i->label);
-        fprintf(f,
-                "  br i1 %%t%d, label %%tag_ok_%d, label %%tag_bad_%d, !prof "
-                "!0\ntag_bad_%d:\n",
-                valid, valid, valid, valid);
-        fprintf(f,
-                "  call void @rh_union_fail(i32 %d)\n  "
-                "unreachable\ntag_ok_%d:\n",
-                i->loc.line, valid);
-      }
+    }
+    else {
       int payload = ++o->tmp;
       Type *arm = slot_type(o, i->dst);
       fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n",
@@ -1096,9 +1102,9 @@ void emit_llvm(Program *p, const char *path) {
         "declare void @rh_print_integer(ptr, i32, i32)\n"
         "declare void @rh_division_fail(i32, i32) cold noreturn\n",
         f);
-  const char *failures[] = {"stack_overflow", "index_fail",      "pop_fail",
-                            "union_fail",     "float_cast_fail", "slice_fail",
-                            "truncate_fail",  "assert_fail"};
+  const char *failures[] = {"stack_overflow", "index_fail", "pop_fail",
+                            "float_cast_fail", "slice_fail", "truncate_fail",
+                            "assert_fail"};
   for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++)
     fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
   for (int j = 0; j < p->instances.n; j++) {
@@ -1202,9 +1208,11 @@ void dump_ir(Program *p, const char *path) {
                          "array.append",
                          "union.construct",
                          "union.is",
-                         "union.get.checked",
+                         "union.project",
                          "array.truncate",
                          "stack.save",
+                         "result.checkpoint",
+                         "result.rewind",
                          "range.guard"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
@@ -1263,7 +1271,7 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " label=%d other=%d", i->label, i->other);
       if (i->op == I_UNION || i->op == I_CASE_IS || i->op == I_CASE_GET)
         fprintf(f, " tag=%d", i->label);
-      if (i->case_proven) {
+      if (i->op == I_CASE_GET) {
         fputs(" proof=flow", f);
       }
       if (i->op == I_SLICE)

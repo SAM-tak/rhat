@@ -57,11 +57,11 @@ def main():
         print('PASS', name, flush=True)
 
     def static_ir(rir, llvm):
-        assert 'union.is ' not in rir and 'call void @rh_union_fail' not in llvm
+        assert 'union.is ' not in rir and '@rh_union_fail' not in llvm
 
     def narrowed_ir(rir, llvm):
         assert 'union.is ' in rir and 'proof=flow' in rir
-        assert 'call void @rh_union_fail' not in llvm
+        assert '@rh_union_fail' not in llvm
 
     positive('fits_static', '''
 print(1 fits^ i32^,1 fits^ string^,nil^ fits^ nil^)
@@ -250,8 +250,54 @@ let^ test=p^ x:i32^|nil^ {
 test(1) test(nil^)
 ''', 'true\ntrue\n')
 
+    positive('fits_replacement_guard_return', '\n'.join([
+        'def^ A {self^{a:i32^=7}} def^ B {self^{b:i32^=9}}',
+        'let^ read=f^ x:A|B|nil^ {',
+        ' if^ x fits^ nil^ {return^ 0}',
+        ' if^ x fits^ A {return^ x.a}',
+        ' return^ x.b',
+        '}',
+        'let^ reversed=f^ x:A|B {if^ x fits^ A {else^: return^ 0} return^ x.a}',
+        'print(read(nil^),read(A{}),read(B{}),reversed(A{}),reversed(B{}))',
+    ]), '0 7 9 7 0\n', inspect=narrowed_ir)
+
+    positive('fits_replacement_assert', '\n'.join([
+        'def^ A {self^{a:i32^=7}} def^ B {}',
+        'let^ read=f^ x:A|B {assert(x fits^ A) return^ x.a}',
+        'print(read(A{}))',
+    ]), '7\n', inspect=narrowed_ir)
+
+    positive('fits_replacement_assert_failure', '\n'.join([
+        'def^ A {self^{a:i32^=7}} def^ B {}',
+        'let^ read=p^ x:A|B {assert(x fits^ A) print(x.a)}',
+        'read(B{})',
+    ]), 'assertion failed', failure=True)
+
+    positive('fits_replacement_loop_guard', '\n'.join([
+        'def^ A {self^{a:i32^=7}} def^ B {self^{b:i32^=9}}',
+        'let^ test=p^ x:A|B {',
+        ' repeat^ 2 {if^ x fits^ A {next^} print(x.b)}',
+        ' repeat^ 2 {if^ x fits^ A {break^} print(x.b)}',
+        '}',
+        'test(A{}) test(B{})',
+    ]), '9\n9\n9\n9\n', inspect=narrowed_ir)
+
+    positive('fits_replacement_user_methods', '\n'.join([
+        'def^ Box {self^{value:i32^=42}',
+        ' is=f^ self^,x:i32^ ->bool^ {self^.value=x}',
+        ' get=f^ self^ ->i32^ {self^.value}',
+        '}',
+        'def^ Other {}',
+        'let^ show=p^ value:Box|Other {if^ value fits^ Box {print(value.is(42),value.get())}}',
+        'show(Box{})',
+    ]), 'true 42\n')
+
     prefix = 'def^ A {self^{a:i32^=7}}\ndef^ B {self^{b:i32^=9}}\n'
     cases = [
+        ('fits_replacement_removed_is','let^ value:A|B=A{} value.is(A)','method call requires a structure'),
+        ('fits_replacement_removed_get','let^ value:A|B=A{} value.get(A)','method call requires a structure'),
+        ('fits_replacement_assert_alias','let^ clear=p^ x:&(A|B) {*x:=B{}} var^ value:A|B=A{} assert(value fits^ A) clear(&value) print(value.a)','field access requires'),
+        ('fits_replacement_assert_mutation','var^ value:A|B=A{} assert(value fits^ A) value:=B{} print(value.a)','field access requires'),
         ('fits_unknown_type','print(1 fits^ Missing)','unknown type'),
         ('fits_value_rhs','let^ value=1 print(1 fits^ value)','unknown type'),
         ('fits_void_rhs','print(1 fits^ void^)','requires a value type'),

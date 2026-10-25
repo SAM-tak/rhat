@@ -31,6 +31,9 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME integration COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/tests")
+  # Hundreds of native builds run at both optimization levels; child commands
+  # retain their own short timeouts in tests/run.py.
+  set_tests_properties(integration PROPERTIES TIMEOUT 3600)
   add_test(NAME modules COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/modules.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/module-tests")
   add_test(NAME syntax COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/syntax.py"
@@ -39,6 +42,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
   add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
+  add_test(NAME errors COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/errors.py"
+    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/error-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)

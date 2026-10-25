@@ -70,68 +70,70 @@ let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     if^ ch = 45 {
         c.pos := c.pos+1
         let^ child=this^(text,c,pool)
-        if^ child.is(Failure) { return^ child }
-        pool.push(Neg{of=child.get(Parsed).index})
+        if^ child fits^ Failure { return^ child }
+        pool.push(Neg{of=child.index})
         return^ Parsed{index=u32^(pool.len-1)}
     }
     if^ ch != 40 { return^ Failure{code=3} }
     c.pos := c.pos+1
     let^ inside=parse_expr(text,c,pool)
-    if^ inside.is(Failure) { return^ inside }
+    if^ inside fits^ Failure { return^ inside }
     skip(text,c)
     if^ c.pos >= text.len or^ text[c.pos] != 41 { return^ Failure{code=2} }
     c.pos := c.pos+1
-    pool.push(Paren{of=inside.get(Parsed).index})
+    pool.push(Paren{of=inside.index})
     return^ Parsed{index=u32^(pool.len-1)}
 }
 let^ parse_term=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
-    var^ lhs=parse_factor(text,c,pool)
-    if^ lhs.is(Failure) { return^ lhs }
+    let^ lhs=parse_factor(text,c,pool)
+    if^ lhs fits^ Failure { return^ lhs }
+    var^ left=lhs.index
     repeat^ while^ true^ {
         skip(text,c)
-        if^ c.pos >= text.len { return^ lhs }
+        if^ c.pos >= text.len { return^ Parsed{index=left} }
         let^ op=text[c.pos]
-        if^ op != 42 and^ op != 47 { return^ lhs }
+        if^ op != 42 and^ op != 47 { return^ Parsed{index=left} }
         c.pos := c.pos+1
         let^ rhs=parse_factor(text,c,pool)
-        if^ rhs.is(Failure) { return^ rhs }
-        pool.push(Bin{op=op,l=lhs.get(Parsed).index,r=rhs.get(Parsed).index})
-        lhs := Parsed{index=u32^(pool.len-1)}
+        if^ rhs fits^ Failure { return^ rhs }
+        pool.push(Bin{op=op,l=left,r=rhs.index})
+        left := u32^(pool.len-1)
     }
-    return^ lhs
+    return^ Parsed{index=left}
 }
 let^ parse_expr=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
-    var^ lhs=parse_term(text,c,pool)
-    if^ lhs.is(Failure) { return^ lhs }
+    let^ lhs=parse_term(text,c,pool)
+    if^ lhs fits^ Failure { return^ lhs }
+    var^ left=lhs.index
     repeat^ while^ true^ {
         skip(text,c)
-        if^ c.pos >= text.len { return^ lhs }
+        if^ c.pos >= text.len { return^ Parsed{index=left} }
         let^ op=text[c.pos]
-        if^ op != 43 and^ op != 45 { return^ lhs }
+        if^ op != 43 and^ op != 45 { return^ Parsed{index=left} }
         c.pos := c.pos+1
         let^ rhs=parse_term(text,c,pool)
-        if^ rhs.is(Failure) { return^ rhs }
-        pool.push(Bin{op=op,l=lhs.get(Parsed).index,r=rhs.get(Parsed).index})
-        lhs := Parsed{index=u32^(pool.len-1)}
+        if^ rhs fits^ Failure { return^ rhs }
+        pool.push(Bin{op=op,l=left,r=rhs.index})
+        left := u32^(pool.len-1)
     }
-    return^ lhs
+    return^ Parsed{index=left}
 }
 let^ eval=f^ pool:&Expr[>..], index:u32^ -> EvalResult {
     let^ node=pool[index]
-    if^ node.is(Num) { return^ Ok{value=u64^(node.get(Num).value)} }
-    if^ node.is(Neg) {
-        let^ result=this^(pool,node.get(Neg).of)
-        if^ result.is(Failure) { return^ result }
-        return^ Ok{value=0-result.get(Ok).value}
+    if^ node fits^ Num { return^ Ok{value=u64^(node.value)} }
+    if^ node fits^ Neg {
+        let^ result=this^(pool,node.of)
+        if^ result fits^ Failure { return^ result }
+        return^ Ok{value=0-result.value}
     }
-    if^ node.is(Paren) { return^ this^(pool,node.get(Paren).of) }
-    let^ bin=node.get(Bin)
+    if^ node fits^ Paren { return^ this^(pool,node.of) }
+    let^ bin=node
     let^ left=this^(pool,bin.l)
-    if^ left.is(Failure) { return^ left }
+    if^ left fits^ Failure { return^ left }
     let^ right=this^(pool,bin.r)
-    if^ right.is(Failure) { return^ right }
-    let^ a=left.get(Ok).value
-    let^ b=right.get(Ok).value
+    if^ right fits^ Failure { return^ right }
+    let^ a=left.value
+    let^ b=right.value
     if^ bin.op = 43 { return^ Ok{value=a+b} }
     if^ bin.op = 45 { return^ Ok{value=a-b} }
     if^ bin.op = 42 { return^ Ok{value=a*b} }
@@ -141,10 +143,10 @@ let^ eval=f^ pool:&Expr[>..], index:u32^ -> EvalResult {
 let^ run=p^ text:u8^[:], pool:&Expr[>..] -> EvalResult {
     var^ c=Cursor{}
     let^ parsed=parse_expr(text,&c,pool)
-    if^ parsed.is(Failure) { return^ parsed.get(Failure) }
+    if^ parsed fits^ Failure { return^ parsed }
     skip(text,&c)
     if^ c.pos != text.len { return^ Failure{code=3} }
-    return^ eval(pool,parsed.get(Parsed).index)
+    return^ eval(pool,parsed.index)
 }
 let^ n:i64^=100000 # BENCH_N
 var^ text:u8^[>..]=[]
@@ -162,11 +164,11 @@ repeat^ while^ i < n {
     pool.clear()
     let^ result=run(text.slice(0,text.len),&pool)
     stats.nodes := stats.nodes+pool.len
-    if^ result.is(Ok) {
+    if^ result fits^ Ok {
         stats.ok := stats.ok+1
-        stats.sum := stats.sum*31+result.get(Ok).value
+        stats.sum := stats.sum*31+result.value
     else^:
-        let^ error=result.get(Failure).code
+        let^ error=result.code
         stats.errors[error] := stats.errors[error]+1
     }
     i := i+1

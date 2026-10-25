@@ -136,7 +136,8 @@ def^ Num { self^{ value:i32^ } }
 def^ Pair { self^{ left:u32^, right:u32^ } }
 def^ Expr = Num | Pair
 var^ values:Expr[>..]=[Num{value=42},Pair{left=1,right=2}]
-if^ values[0].is(Num) { print(values[0].get(Num).value) }
+let^ value=values[0]
+if^ value fits^ Num { print(value.value) }
 ```
 
 名前付き合併型自身は公称型です。同じ選択肢の組を持つ別宣言も別の型であり、相互に暗黙変換しません。
@@ -146,9 +147,11 @@ if^ values[0].is(Num) { print(values[0].get(Num).value) }
 名前付き合併型では重複・不明な型・循環した値配置を拒否します。
 入れ子の合併型も選択肢にできます。所有領域を含む選択肢は現在拒否し、固定サイズに限定します。
 
-`.is(Type)` は選択肢のタグを調べて bool^ を返します。`.get(Type)` はタグを検査してその型の値をコピーし、
-違う選択肢なら行番号付きの実行時診断になります。選択肢にない型名はコンパイル時に拒否します。
-どちらも型名を引数に取る組み込み操作であり、ユーザーの関数値は評価しません。
+`value fits^ Type` は適合を判定して bool^ を返し、分岐内で値の型を絞り込みます。
+`if^ value fits^ Num { print(value.value) }` と書けます。
+型の判別・取り出し用の組み込みメソッドはありません。
+型を証明せずに合併型の選択肢固有のメンバへアクセスすることはコンパイル時に拒否します。
+`assert(value fits^ Num)` も、正常に続く経路では型の証明になります。
 取り出した構造体の private^ メンバへのアクセスは通常の規則に従います。
 合併型自体から可変のペイロード参照は公開しません。値全体の再代入で選択肢を変更します。
 
@@ -156,7 +159,7 @@ if^ values[0].is(Num) { print(values[0].get(Num).value) }
 全体はタグと選択肢双方の自然アラインメントに丸めます。LLVM では整数チャンクの配列でペイロードを保持し、
 bool^ の i1 や特定の選択肢の型で他の値のビットを失わないようにします。
 構築時には保存領域をゼロ初期化して、タグと選択肢の値を書き込みます。
-中間表現の `union.construct`・`union.is`・`union.get.checked` はタグ番号と型を明示します。
+中間表現の `union.construct`・`union.is`・`union.project` はタグ番号と型を明示します。
 
 参照を含む選択肢は通常の寿命検査に参加します。値のコピーと取り出しでも由来を保ち、
 ローカルの所有者に束縛された参照を返すことや、長命な保存先へ書くことを拒否します。
@@ -432,11 +435,12 @@ let^ calculate=f^ x:i64^ ->Result {
     return^ x
 }
 let^ result=calculate(42)
-if^ result.is(i64^) { print(result.get(i64^)) }
+if^ result fits^ i64^ { print(result) }
 ```
 
 各種別は独立した公称型、宣言名は種別の公称合併型です。値は `error^Error.Invalid{}` で構築します。
-今回の種別は付随情報を持ちません。共通の `error^` 型、`try^`、`catch^`、`fits^`、メッセージと原因連鎖は未実装です。
+今回の種別は付随情報を持ちません。共通の `error^` 型、メッセージと原因連鎖は未実装です。
+`try^`・`catch^` は [エラー値・伝播・捕捉](errors.md)、`fits^` は [適合判定と絞り込み](fits.md) を参照してください。
 `nil^` は1バイトの単位型・値です。公称合併型は整数・実数・bool・文字列・nilも選択肢にでき、
 既存の所有領域・参照寿命の制限に従います。型を名指す `is/get` で判定・取得します。
 整数・実数リテラルには、対応する数値カテゴリの選択肢が一つだけの場合、その型を期待型として渡します。

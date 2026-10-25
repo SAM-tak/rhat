@@ -85,6 +85,8 @@ enum {
   E_EXPECT,   /* Infer a contextual numeric type without evaluating the hint. */
   E_PRESENT,  /* Postfix nil presence test; it does not unwrap a value. */
   E_FITS,     /* Type conformance predicate; its right operand is a Spec. */
+  E_TRY,      /* Unwrap success or transfer an explicitly returned error. */
+  E_CATCH,    /* Replace an error value with a lazily evaluated expression. */
   E_COALESCE, /* Lazy nil replacement, below unary and above binary operators.
                */
   E_CHAIN     /* Comparisons share operands and short-circuit left to right. */
@@ -121,9 +123,19 @@ enum {
   S_BREAK,
   S_NEXT,
   S_INIT,
-  S_INIT_MANY
+  S_INIT_MANY,
+  S_HANDLE /* A physical block body with ordered error handling arms. */
 };
+/* One ordered, typed or default arm of a physical block's catch^ clause. */
+typedef struct {
+  Loc loc;    /* Source location of the catch^ arm. */
+  Spec *spec; /* Error type filter, or NULL for the final default arm. */
+  List body;  /* Statements evaluated with the caught error as it^. */
+} CatchArm;
 struct Stmt {
+  List handlers;     /* Ordered CatchArm pointers for S_HANDLE. */
+  bool loop_handler; /* A loop catches main^ only, with outer names visible. */
+  bool scoped_handlers; /* If arms share the if^ body's lexical scope depth. */
   int kind;
   Loc loc;
   char *name;
@@ -211,7 +223,8 @@ enum {
   T_ARRAY,
   T_GROW,
   T_SLICE,
-  T_UNION
+  T_UNION,
+  T_NEVER /* Compiler-only type for an expression with no normal value path. */
 };
 struct Type {
   char *symbol;
@@ -285,6 +298,8 @@ enum {
   I_CASE_GET,
   I_TRUNCATE,
   I_STACK_BEGIN,
+  I_STACK_SAVE,   /* Save the caller-owned result stack frontier. */
+  I_STACK_REWIND, /* Restore a result construction checkpoint after an error. */
   I_RANGE_GUARD
 };
 enum {
@@ -320,8 +335,6 @@ typedef struct {
   int stack_index;
   bool push_at_top;
   bool index_proven;
-  bool
-      case_proven; /* A flow proof makes a union payload tag check redundant. */
   int index_data;
   RangePlan *range;
   List args;

@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--compiler", required=True)
 parser.add_argument("--clang", required=True)
 parser.add_argument("--work", required=True)
+parser.add_argument("--filter", default="", help="Run matching named cases (regular expression)")
 args = parser.parse_args()
 compiler = str(pathlib.Path(args.compiler).resolve())
 work = pathlib.Path(args.work).resolve()
@@ -36,6 +37,8 @@ def source(name, text):
 
 def positive(name, text, output, inspect=None):
     global passed
+    if args.filter and not re.search(args.filter, name):
+        return
     path = source(name, text)
     for opt in ("-O0", "-O2"):
         exe = work / f"{name}_{opt[1:]}.exe"
@@ -52,6 +55,8 @@ def positive(name, text, output, inspect=None):
 
 def negative(name, text, diagnostic):
     global passed
+    if args.filter and not re.search(args.filter, name):
+        return
     path = source(name, text)
     result = run([compiler, "check", str(path)], 1)
     assert diagnostic in result.stderr, (name, diagnostic, result.stderr)
@@ -62,6 +67,8 @@ def negative(name, text, diagnostic):
 
 def runtime_failure(name, text, diagnostic):
     global passed
+    if args.filter and not re.search(args.filter, name):
+        return
     path = source(name, text)
     for opt in ("-O0", "-O2"):
         exe = work / f"{name}_{opt[1:]}.exe"
@@ -166,6 +173,8 @@ def high_water(name, text, expected, output, append_only=False):
     The runtime assertions deliberately observe the hidden storage invariant.
     """
     global passed
+    if args.filter and not re.search(args.filter, name):
+        return
     wrapper = work / (name + "_runtime.c")
     expected_c = ",".join(map(str, expected))
     wrapper.write_text(f'''
@@ -203,7 +212,7 @@ void rh_runtime_shutdown(void) {{
     # Assertions no longer call the runtime on success. Observe a deliberate
     # print checkpoint instead, while keeping the assertion itself meaningful.
     text = re.sub(r"assert\(([^()]*)\)",
-                  r"assert(\1); { let^ top_marker:i64^=1234567890123456789; print(top_marker) }", text)
+                  r"assert(\1); do^{ let^ top_marker:i64^=1234567890123456789; print(top_marker) }", text)
     path = source(name, text)
     for opt in ("-O0", "-O2"):
         exe = work / (name + opt[1:] + ".exe")
@@ -382,8 +391,8 @@ def^ Expr = Num | Pair
 """
 positive("nominal_union", union_types+"""
 let^ get=f^ value:Expr {
-    if^ value.is(Num) { return^ value.get(Num).value }
-    let^ pair=value.get(Pair)
+    if^ value fits^ Num { return^ value.value }
+    let^ pair=value
     return^ i32^(pair.a+pair.b)
 }
 let^ choose=f^ n:i32^ -> Expr {
@@ -397,9 +406,9 @@ values.push(branch(true^))
 print(get(values[0]),get(values[1]),get(values[2]),get(Num{value=5}),get(branch(false^)))
 values[0] := Pair{a=7,b=8}
 let^ view=values.slice(0,1)
-print(get(view[0]),values[0].is(Num))
+print(get(view[0]),(values[0] fits^ Num))
 """, "42 7 9 5 11\n15 false\n",
-         lambda ir,ll: ("type Expr size=12 align=4" in ir and "union.get.checked" in ir
+         lambda ir,ll: ("type Expr size=12 align=4" in ir and "union.project" in ir
                         and "payload=+4 bytes=8" in ir and "[2 x i32]" in ll)
          or (_ for _ in ()).throw(AssertionError("union IR layout")))
 positive("union_bool_byte_payload", """
@@ -409,7 +418,9 @@ def^ Value = Bool | Byte
 let^ identity=f^ v:Value { return^ v }
 var^ values:Value[>..]=[Byte{value=255},Bool{value=true^},Byte{value=128}]
 let^ a=identity(values[0])
-print(a.get(Byte).value,values[1].get(Bool).value,values[2].get(Byte).value)
+let^ b=values[1] let^ c=values[2]
+assert(a fits^ Byte) assert(b fits^ Bool) assert(c fits^ Byte)
+print(a.value,b.value,c.value)
 """, "255 true 128\n")
 positive("union_high_alignment", """
 def^ Small { self^{ value:u8^ } }
@@ -422,7 +433,9 @@ var^ a:Value[>..]=[]
 a.append(fixed.slice(0,2))
 let^ copy=identity(a[0])
 var^ h=Holder{tag=7,value=copy,tail=9}
-print(copy.get(Wide).value,a[1].get(Small).value,h.tag,h.tail)
+let^ small=a[1]
+assert(copy fits^ Wide) assert(small fits^ Small)
+print(copy.value,small.value,h.tag,h.tail)
 """, "340282366920938463463374607431768211455 255 7 9\n",
          lambda ir,ll: ("type Value size=32 align=16" in ir and "payload=+16 bytes=16" in ir)
          or (_ for _ in ()).throw(AssertionError("wide union layout")))
@@ -431,7 +444,7 @@ def^ Ref { self^{ value:&i32^ } }
 def^ Empty {}
 def^ Value = Ref | Empty
 let^ make=f^ x:&i32^ -> Value { return^ Ref{value=x} }
-let^ get=f^ value:Value { return^ value.get(Ref).value }
+let^ get=f^ value:Value { assert(value fits^ Ref) return^ value.value }
 var^ x:i32^=42
 let^ value=make(&x)
 let^ out=get(value);
@@ -447,12 +460,15 @@ def^ Box { self^{ value:Inner=A{} } }
 let^ inner:Inner=A{}
 let^ outer:Outer=inner
 let^ box=Box{}
-print(outer.get(Inner).get(A).value,box.value.get(A).value)
+assert(!(outer fits^ B))
+let^ nested=outer let^ boxed=box.value
+assert(nested fits^ A) assert(boxed fits^ A)
+print(nested.value,boxed.value)
 """, "7 7\n")
-runtime_failure("union_wrong_alternative", union_types+"let^ value:Expr=Num{value=1}; print(value.get(Pair).a)", "union alternative mismatch")
+negative("union_unproven_access", union_types+"let^ value:Expr=Num{value=1}; print(value.a)", "field access requires a structure")
 negative("union_similar_is_nominal", union_types+"def^ Other { self^{value:i32^} } let^ value:Expr=Other{value=1}", "not an alternative")
-negative("union_get_unlisted", union_types+"def^ Other {} let^ value:Expr=Num{value=1}; value.get(Other)", "not an alternative")
-negative("union_is_value_argument", union_types+"let^ value:Expr=Num{value=1}; value.is(Num{})", "alternative type name")
+negative("union_removed_get", union_types+"let^ value:Expr=Num{value=1}; value.get(Num)", "method call requires a structure")
+negative("union_removed_is", union_types+"let^ value:Expr=Num{value=1}; value.is(Num)", "method call requires a structure")
 negative("union_duplicate", "def^ A {} def^ Value = A | A", "duplicate union alternative")
 negative("union_unknown", "def^ A {} def^ Value = A | Missing", "unknown union alternative")
 negative("union_cycle", "def^ A = B def^ B = A", "cyclic")
@@ -462,7 +478,7 @@ negative("union_composition", union_types+"def^ Bad : Expr {}", "composition bas
 negative("union_direct_constructor", union_types+"let^ value=Expr{}", "construct union")
 negative("union_missing_initializer", union_types+"def^ Box { self^{value:Expr} } let^ b=Box{}", "needs an initializer")
 negative("union_distinct_nominal_sum", union_types+"def^ Other = Num | Pair let^ a:Expr=Num{value=1}; let^ b:Other=a", "not an alternative")
-negative("union_private_access", "def^ A { self^{private^x:i32^=7} } def^ B {} def^ Value = A | B let^ v:Value=A{}; print(v.get(A).x)", "private member")
+negative("union_private_access", "def^ A { self^{private^x:i32^=7} } def^ B {} def^ Value = A | B let^ v:Value=A{}; assert(v fits^ A); print(v.x)", "private member")
 negative("union_local_reference_escape", """
 def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
 let^ bad=p^ -> Value { var^ x:i32^=1; return^ Ref{value=&x} }
@@ -470,7 +486,7 @@ let^ bad=p^ -> Value { var^ x:i32^=1; return^ Ref{value=&x} }
 negative("union_reference_storage_escape", """
 def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
 var^ v:Value=Empty{}
-{ var^ x:i32^=1; v := Ref{value=&x} }
+do^{ var^ x:i32^=1; v := Ref{value=&x} }
 """, "reference would outlive its owner")
 
 positive("slice_fixed_grow_string", """
@@ -541,7 +557,7 @@ for name,text in (
 runtime_failure("slice_index_bounds", "let^ a:i32^[2]=[1,2]; let^ v=a.slice(0,1); print(v[1])", "array index out of bounds")
 runtime_failure("string_index_bounds", 'print("abc"[3])', "array index out of bounds")
 negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a.slice(0,2) }", "cannot return a reference")
-negative("slice_outer_escape", "var^ v=\"abc\".slice(0,0); { var^ a:u8^[>..]=[1]; v := a.slice(0,1) }", "reference would outlive its owner")
+negative("slice_outer_escape", "var^ v=\"abc\".slice(0,0); do^{ var^ a:u8^[>..]=[1]; v := a.slice(0,1) }", "reference would outlive its owner")
 negative("slice_write", "var^ a:i32^[>..]=[1]; var^ v=a.slice(0,1); v[0] := 2", "not addressable")
 negative("slice_borrow_element", "var^ a:i32^[>..]=[1]; let^ v=a.slice(0,1); let^ p=&v[0]", "cannot borrow a temporary")
 negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[>..]=[Item{x=1}]; a.slice(0,1)[0].x := 2", "not addressable")
@@ -552,7 +568,7 @@ negative("slice_initializer", "def^ Box { self^{ view:i32^[:] } } let^ b=Box{}",
 negative("append_mismatch", 'var^ a:i32^[>..]=[]; a.append("hello")', "same element type")
 negative("append_immutable", 'let^ a:u8^[>..]=[]; a.append("hello")', "cannot modify let^")
 negative("append_pure_borrow", 'let^ bad=f^ a:&u8^[>..] { a.append("hello") }', "cannot mutate borrowed storage")
-negative("append_inner_owner", "var^ a:(&i32^)[>..]=[]; { var^ x:i32^=1; var^ b:(&i32^)[>..]=[&x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
+negative("append_inner_owner", "var^ a:(&i32^)[>..]=[]; do^{ var^ x:i32^=1; var^ b:(&i32^)[>..]=[&x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
 negative("append_borrowed_references", "let^ bad=p^ a:&(&i32^)[>..], b:(&i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
 
 def direct_pop_ir(ir, ll):
@@ -744,7 +760,7 @@ let^ bad=p^ -> (&i32^)[>..] {
 ''', "cannot return a reference")
 negative("push_inner_owner", '''
 var^ marks:(&i32^)[>..]=[]
-{ var^ x:i32^=1; marks.push(&x) }
+do^{ var^ x:i32^=1; marks.push(&x) }
 ''', "reference would outlive its owner")
 negative("push_return_local_element", '''
 let^ bad=p^ -> &i32^ { var^ a:i32^[>..]=[]; return^ a.push(1) }
@@ -863,20 +879,20 @@ bit_code, bit_output = [], []
 for name, bits, unsigned in integer_types:
     mask = (1 << bits) - 1
     value = mask if unsigned else -1
-    bit_code.append(f"{{ let^ x:{name}={value}; print(bitnot^ x, x bitand^ 3, x bitor^ 3, x bitxor^ 3) }}")
+    bit_code.append(f"do^{{ let^ x:{name}={value}; print(bitnot^ x, x bitand^ 3, x bitor^ 3, x bitxor^ 3) }}")
     bit_output.append(f"0 3 {value} {mask - 3 if unsigned else -4}")
     for count in (0, 1, -1, bits - 1, 1 - bits, bits, -bits, 2147483647, -2147483648):
         result = 0 if abs(count) >= bits else ((mask << count) & mask if count >= 0 else mask >> -count)
         if not unsigned and result >= 1 << (bits - 1):
             result -= 1 << bits
-        bit_code.append(f"{{ let^ x:{name}={value}; print(x bitshift^ {count}) }}")
+        bit_code.append(f"do^{{ let^ x:{name}={value}; print(x bitshift^ {count}) }}")
         bit_output.append(str(result))
     for count in ("u128^(340282366920938463463374607431768211455)",
                   "i128^(-170141183460469231731687303715884105728)"):
         # A typed literal is used below; conversion operands otherwise infer i32.
         literal = count.split("(", 1)[1][:-1]
         typ = count.split("(", 1)[0]
-        bit_code.append(f"{{ let^ x:{name}={value}; let^ n:{typ}={literal}; print(x bitshift^ n) }}")
+        bit_code.append(f"do^{{ let^ x:{name}={value}; let^ n:{typ}={literal}; print(x bitshift^ n) }}")
         bit_output.append("0")
 positive("integer_bits", "\n".join("(p^ {" + s + "})();" for s in bit_code), "\n".join(bit_output) + "\n")
 
@@ -888,7 +904,7 @@ for src, src_bits, src_unsigned in integer_types:
             result = v & ((1 << dst_bits) - 1)
             if not dst_unsigned and result >= 1 << (dst_bits - 1):
                 result -= 1 << dst_bits
-            conversion_code.append(f"{{ let^ x:{src}={v}; print({dst}(x)) }}")
+            conversion_code.append(f"do^{{ let^ x:{src}={v}; print({dst}(x)) }}")
             conversion_output.append(str(result))
 positive("integer_conversions", "\n".join("(p^ {" + s + "})();" for s in conversion_code), "\n".join(conversion_output) + "\n")
 
@@ -902,12 +918,12 @@ print(f64^(a), f64^(b))
 float_code = []
 for src in ("f8^", "f16^", "f32^", "f64^"):
     for dst in ("f8^", "f16^", "f32^", "f64^"):
-        float_code.append(f"{{ let^ x:{src}=1.5; print({dst}(x)) }}")
+        float_code.append(f"do^{{ let^ x:{src}=1.5; print({dst}(x)) }}")
     for dst, _, _ in integer_types:
-        float_code.append(f"{{ let^ x:{src}=12.0; print({dst}(x)) }}")
+        float_code.append(f"do^{{ let^ x:{src}=12.0; print({dst}(x)) }}")
 for src, _, unsigned in integer_types:
     for dst in ("f8^", "f16^", "f32^", "f64^"):
-        float_code.append(f"{{ let^ x:{src}={12 if unsigned else -12}; print({dst}(x)) }}")
+        float_code.append(f"do^{{ let^ x:{src}={12 if unsigned else -12}; print({dst}(x)) }}")
 positive("numeric_conversion_matrix", "\n".join("(p^ {" + s + "})();" for s in float_code),
          ("1.5\n" * 4 + "12\n" * 10) * 4 + "-12\n" * 20 + "12\n" * 20)
 positive("f8_direct_conversion", '''
@@ -1280,7 +1296,7 @@ positive("calc_errors_and_precedence",calc_helpers+"""
 let^ check=p^ text:string^, pool:&Expr[>..] {
     pool.clear()
     let^ result=run(text.slice(0,text.len),pool)
-    if^ result.is(Ok) { print(result.get(Ok).value) else^: print(0-result.get(Failure).code) }
+    if^ result fits^ Ok { print(result.value) else^: print(0-result.code) }
 }
 var^ pool:Expr[>..]=[]
 check("",&pool)
@@ -1301,7 +1317,8 @@ check("1/0 #",&pool)
 check("4294967296",&pool)
 pool.clear()
 let^ failed=run("1+(2*".slice(0,5),&pool)
-print(failed.get(Failure).code,pool.len)
+assert(failed fits^ Failure)
+print(failed.code,pool.len)
 """, "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
 sexp_helpers=(repo/"bench/rhat/sexp.rh").read_text().split("let^ n:i64^",1)[0]
 positive("sexp_copies_symbols_and_errors",sexp_helpers+"""
@@ -1642,7 +1659,7 @@ positive("early_cleanup", """
 let^ inspect = f^ n:i32^ -> i32^ {
     var^ scratch:i32^[>..] = [5]
     if^ n = 0 { return^ scratch[0] }
-    { var^ inner:i32^[>..] = [3]; assert(inner[0] = 3) }
+    do^{ var^ inner:i32^[>..] = [3]; assert(inner[0] = 3) }
     return^ 9
 }
 print(inspect(0),inspect(1))
@@ -1760,7 +1777,7 @@ negative("local_borrow_return", 'let^ bad=f^ -> &i32^ { var^ x:i32^=1; return^ &
 negative("inner_borrow_escape", """
 var^ outer:i32^=1
 var^ ref=&outer
-{ var^ inner:i32^=2; ref := &inner }
+do^{ var^ inner:i32^=2; ref := &inner }
 print(*ref)
 """, "reference would outlive its owner")
 negative("aggregate_borrow_return", """
@@ -1771,7 +1788,7 @@ let^ bad=f^ -> View { var^ x:i32^=1; return^ View{p=&x} }
 negative("argument_borrow_escape", """
 let^ id=f^ p:&i32^ -> &i32^ { return^ p }
 var^ a:i32^=1; var^ r=&a
-{ var^ b:i32^=2; r := id(&b) }
+do^{ var^ b:i32^=2; r := id(&b) }
 """, "reference would outlive its owner")
 negative("borrowed_store_escape", """
 def^ View { self^{ p:&i32^ } }
@@ -1786,7 +1803,7 @@ negative("pure_mutation", 'let^ bad=f^ x:&i32^ { *x := 2 }\n', "cannot mutate bo
 negative("pure_procedure", 'let^ bad=f^ { print(1) }\n', "print requires p^")
 negative("missing_return", 'let^ bad=f^ x:i32^ -> i32^ { if^ x=0 { return^ 1 } }\n', "not all paths return")
 negative("immutable", 'let^ x:i32^=1; x := 2', "cannot modify let^")
-negative("closure", '{ let^ f=f^ { return^ 1 } }', "function values")
+negative("closure", 'do^{ let^ f=f^ { return^ 1 } }', "function values")
 negative("literal_overflow", 'let^ x:i32^=2147483648', "does not fit")
 negative("unknown_type", 'let^ x:Missing=1', "unknown type")
 negative("recursive_default", 'def^ A { self^{ n:i32^=A.new().n } }\nlet^ a=A.new()', "recursive default construction")
@@ -1883,7 +1900,8 @@ let^ ary=id([1,2,3,4])
 let^ u:U=A{value=42}
 let^ got=id(u)
 let^ big=id(Big{a=1,b=2,c=3})
-print(pair.a+pair.b,*ref.p,text,view.len,ary[3],got.get(A).value,big.c)
+assert(got fits^ A)
+print(pair.a+pair.b,*ref.p,text,view.len,ary[3],got.value,big.c)
 ''', '42 42 abc 2 4 42 3\n',
 lambda ir,ll: ('define internal { ptr, i64 }' in ll and
               'define internal [4 x i32]' in ll and

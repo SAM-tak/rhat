@@ -1,0 +1,14 @@
+def^ Point { self^{ x:i32^=0,y:i32^=0 } }
+
+let^ show=p^ point:Point { print(point.x,point.y) }
+show({x=1,y=2})
+
+let^ point:Point={x=3,y=4}
+show(point)
+
+do^{
+    let^ point=Point{x=5,y=6}
+    show(point)
+}
+
+show(point)

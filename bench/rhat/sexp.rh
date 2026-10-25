@@ -59,8 +59,8 @@ let^ parse_node=p^ text:u8^[:], c:&Cursor, pool:&Node[>..], symbols:&u8^[>..], p
                 return^ Parsed{index=u32^(pool.len-1)}
             }
             let^ child=this^(text,c,pool,symbols,chain)
-            if^ child.is(ParseError) { return^ child }
-            chain := child.get(Parsed).index
+            if^ child fits^ ParseError { return^ child }
+            chain := child.index
         }
     }
     let^ start=c.pos
@@ -89,29 +89,29 @@ let^ parse_all=p^ text:u8^[:], pool:&Node[>..], symbols:&u8^[>..], roots:&u32^[>
         skip_space(text,&c)
         if^ c.pos >= text.len { return^ 0 }
         let^ result=parse_node(text,&c,pool,symbols,0)
-        if^ result.is(ParseError) {
-            let^ code=result.get(ParseError).code
+        if^ result fits^ ParseError {
+            let^ code=result.code
             if^ code = 1 { return^ 3 }
             if^ code = 2 { return^ 8 }
             return^ 5
         }
-        roots.push(result.get(Parsed).index)
+        roots.push(result.index)
     }
     return^ 0
 }
 let^ nextof=f^ node:Node -> u32^ {
-    if^ node.is(Sym) { return^ node.get(Sym).next }
-    if^ node.is(Num) { return^ node.get(Num).next }
-    return^ node.get(List).next
+    if^ node fits^ Sym { return^ node.next }
+    if^ node fits^ Num { return^ node.next }
+    return^ node.next
 }
 let^ walk=f^ pool:&Node[>..], symbols:&u8^[>..], index:u32^, pass:i64^ -> i64^ {
     let^ node=pool[index]
-    if^ node.is(Sym) {
-        let^ s=node.get(Sym)
+    if^ node fits^ Sym {
+        let^ s=node
         return^ i64^(s.len)+i64^(symbols[s.start])+pass
     }
-    if^ node.is(Num) { return^ i64^(node.get(Num).value) bitxor^ pass }
-    return^ 1+walk_chain(pool,symbols,node.get(List).first,pass)
+    if^ node fits^ Num { return^ i64^(node.value) bitxor^ pass }
+    return^ 1+walk_chain(pool,symbols,node.first,pass)
 }
 let^ walk_chain=f^ pool:&Node[>..], symbols:&u8^[>..], index:u32^, pass:i64^ -> i64^ {
     if^ index = 0 { return^ 0 }

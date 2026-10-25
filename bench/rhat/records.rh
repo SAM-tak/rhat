@@ -21,16 +21,16 @@ let^ word=f^ seed:u64^ -> Text {
     return^ out
 }
 let^ score=f^ event:Event -> i64^ {
-    if^ event.is(Tick) { return^ 1 }
-    if^ event.is(Move) {
-        let^ m=event.get(Move)
+    if^ event fits^ Tick { return^ 1 }
+    if^ event fits^ Move {
+        let^ m=event
         return^ i64^(m.id)+i64^(m.dx)+i64^(m.dy)
     }
-    if^ event.is(Say) {
-        let^ s=event.get(Say)
+    if^ event fits^ Say {
+        let^ s=event
         return^ i64^(s.id)+i64^(s.text.len)+i64^(s.text.bytes[0])
     }
-    let^ q=event.get(Quit)
+    let^ q=event
     return^ i64^(q.id)+i64^(q.code)
 }
 let^ n:i64^=500000 # BENCH_N

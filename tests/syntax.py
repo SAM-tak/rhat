@@ -49,6 +49,48 @@ def main():
         passed += 1
         print('PASS', name, flush=True)
 
+    positive('contextual_records', '''
+def^ Point {self^{x:i32^=10,y:i32^=20}}
+def^ Outer {self^{point:Point}}
+let^ show=p^ x:Point {print(x.x,x.y)}
+show({x=1,y=2})
+show({})
+let^ a:Point={x=3}
+show(a)
+let^ nested:Outer={point={x=4,y=5}}
+show(nested.point)
+let^ make=f^ ->Point {return^ {x=6,y=7}}
+let^ implicit=f^ ->Point {{x=8,y=9}}
+show(make()) show(implicit())
+var^ items:Point[2]=[{x=11},{y=12}]
+show(items[0]) show(items[1])
+let^ optional:Point|nil^={x=13,y=14}
+print(optional?.x??0)
+let^ flag=f^ x:Point ->bool^ {x.x>0}
+if^ flag({x=1}) {print(99)}
+let^ nestedFlag=f^ item:Outer {item.point.x>0}
+if^ nestedFlag({point=Point{x=1}}) {print(88)}
+''', '1 2\n10 20\n3 20\n4 5\n6 7\n8 9\n11 20\n10 12\n13\n99\n88\n')
+
+    positive('do_blocks', '''
+var^ x=1
+do^{}
+do^{var^ x=2 print(x) do^{var^ x=3 print(x)}}
+print(x)
+let^ early=p^ ->i32^ {do^{return^ 7}}
+print(early())
+repeat^ 1 {if^ true^ {do^{next^}} print(99)}
+''', '2\n3\n1\n7\n')
+
+    positive('contextual_owned_records', '''
+def^ Bag {self^{tag:i32^=0,items:i32^[>..]}}
+let^ make=f^ ->Bag {return^ {items=[1,2],tag=7}}
+var^ bag=make()
+print(bag.tag,bag.items[1])
+let^ read=f^ b:&Bag ->i32^ {b.tag}
+print(read(&bag))
+''', '7 2\n7\n')
+
     positive('branches', '''
 let^ choose=f^ x:i32^ {
  if^ x=0 { return^ 10
@@ -80,7 +122,7 @@ print(f^ n:i64^ {
 let^ walk=f^ n:i32^ ->i32^ {
  if^ n=0 {return^ 0}
  return^ f^ m:i32^ ->i32^ {
-   { return^ f^ q:i32^ ->i32^ {this^^^(q-1)}(m) }
+   do^{ return^ f^ q:i32^ ->i32^ {this^^^(q-1)}(m) }
  }(n)+1
 }
 print(walk(5))
@@ -141,7 +183,7 @@ var^ x,y=5,7
 x,y += y,x
 x-=2 x*=3 x/=2 x%=7
 print(x,y)
-{ let^ x,y=40,x print(x,y) }
+do^{ let^ x,y=40,x print(x,y) }
 var^ z:=9
 print(z)
 ''', '13 1\n20 13\n1 12\n40 1\n9\n')
@@ -262,7 +304,7 @@ main^: a.push(99)
 last^: print(98)
 epilog^: print(8)
 }
-let^ early=p^ ->i32^ { repeat^ 1 { pre^: return^ 9 main^: print(97) } return^ 0 }
+let^ early=p^ ->i32^ { repeat^ 1 { pre^: return^ 9 main^: print(97) } }
 print(early())
 repeat^ 1 {first^: let^ _^,_^=1,2 main^: print(10)}
 let^ limit:i64^=2
@@ -284,9 +326,9 @@ for^ let^ n=2 if^ n>1 { print(n) else^: print(0) }
 
     positive('lexical_scopes', '''
 var^ x=1
-{ var^ x=2 { var^ x=3 print($x,$$x,$$$x,$^x,$^^x) $^^x+=10 } }
+do^{ var^ x=2 do^{ var^ x=3 print($x,$$x,$$$x,$^x,$^^x) $^^x+=10 } }
 print(x)
-let^ select=f^ x:i32^ { { let^ x:i64^=9 return^ $^x } }
+let^ select=f^ x:i32^ { do^{ let^ x:i64^=9 return^ $^x } }
 print(select(42))
 for^ 1 to^ 2 { for^ 3 to^ 4 { print(it^,it^^) } }
 let^ _^=1 let^ _^=2 let^ _^,y,_^=3,4,5
@@ -356,7 +398,17 @@ f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
 }} var^ a=A.new() print(a.run(1))''', 'cannot mutate borrowed storage'),
         ('old_else', 'if^ true^ {} else^ {}', 'else^'),
         ('old_while', 'while^ false^ {}', 'driving clause'),
-        ('bare_record', 'def^ P {self^{x:i32^}} let^ p:P={x=1}', 'bare braces'),
+        ('bare_record_no_context', 'let^ p={x=1}', 'requires a single nominal struct'),
+        ('bare_block', '{let^ x=1}', 'standalone blocks require do^'),
+        ('bare_record_empty_no_context', 'let^ p={}', 'requires a single nominal struct'),
+        ('contextual_record_ambiguous', 'def^ A {self^{x:i32^}} def^ B {self^{y:i32^}} let^ a:A|B={x=1}', 'single nominal struct'),
+        ('contextual_record_numeric', 'let^ x:i32^={}', 'single nominal struct'),
+        ('contextual_record_unknown_field', 'def^ P {self^{x:i32^}} let^ p:P={y=1}', 'unknown field'),
+        ('contextual_record_duplicate', 'def^ P {self^{x:i32^}} let^ p:P={x=1,x=2}', 'duplicate field'),
+        ('contextual_record_private', 'def^ P {self^{private^ x:i32^=0}} let^ p:P={x=1}', 'private member'),
+        ('contextual_record_untyped_template', 'let^ f=template^p^ x {} f({x=1})', 'single nominal struct'),
+        ('contextual_record_error', 'errordef^ E {Bad} let^ bad:E.Bad={}', 'error variant requires'),
+        ('contextual_record_borrow_escape', 'def^ Ref {self^{p:&i32^}} let^ bad=f^ ->Ref {var^ n=1 return^ {p=&n}} let^ v=bad()', 'cannot return a reference'),
         ('let_colon_equal', 'let^ x:=1', "expected '='"),
         ('immutable_compound', 'let^ x=1 x+=1', 'cannot modify let^'),
         ('readonly_focus', 'for^ i from^ 1 to^ 2 {i+=1}', 'cannot modify let^'),

@@ -83,7 +83,7 @@ def^ Named = nil^ | i32^
 let^ a:i32^|nil^=12
 let^ b:Named=a
 let^ c:nil^|i32^=b
-print(b.is(i32^),c??0)
+print((b fits^ i32^),c??0)
 let^ empty:Named=nil^
 let^ again:i32^|nil^=empty
 print(again?,again??9)
@@ -99,11 +99,13 @@ print(*selected)
     positive('nil_multiple_alternatives', '''
 var^ x:i32^|i64^|nil^=i64^(99)
 let^ a=x??i32^(0)
-print(a.is(i64^),a.get(i64^))
+assert(a fits^ i64^)
+print(a fits^ i64^,a)
 x:=nil^
 let^ b=x??i32^(7)
-print(b.is(i32^),b.get(i32^))
-if^ x? {print(x.is(i64^)) else^: print(x?)}
+assert(b fits^ i32^)
+print(b fits^ i32^,b)
+if^ x? {print((x fits^ i64^)) else^: print(x?)}
 ''', 'true 99\ntrue 7\nfalse\n')
 
     positive('nil_chain', '''
@@ -317,8 +319,8 @@ print(ref?[-1]??0)
         ('nil_borrow_return', 'let^ bad=f^ ->&i32^|nil^ {var^ x=1 return^ &x} let^ r=bad()', 'cannot return a reference'),
         ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[:]|nil^ {var^ a:i32^[>..]=[1] let^ ref:&i32^[>..]|nil^=&a return^ ref?.slice(0,1)} let^ r=bad()', 'cannot return a reference'),
         ('nil_coalesce_borrow_return', 'let^ bad=f^ ->&i32^ {var^ a=1 var^ b=2 let^ x:&i32^|nil^=&a return^ x??&b} let^ r=bad()', 'cannot return a reference'),
-        ('nil_array_history', 'var^ a:(&i32^|nil^)[>..]=[] {var^ local=1 a.push(&local)}', 'outlive'),
-        ('nil_guard_store_borrow', 'var^ outer:&i32^|nil^=nil^ {var^ local=1 outer ?:= &local}', 'outlive'),
+        ('nil_array_history', 'var^ a:(&i32^|nil^)[>..]=[] do^{var^ local=1 a.push(&local)}', 'outlive'),
+        ('nil_guard_store_borrow', 'var^ outer:&i32^|nil^=nil^ do^{var^ local=1 outer ?:= &local}', 'outlive'),
         ('nil_compare_order', 'let^ x:i32^|nil^=1 print(x<nil^)', 'only equality'),
     ]
     for name, text, diagnostic in cases:

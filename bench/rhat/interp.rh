@@ -26,16 +26,16 @@ let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
 }
 let^ eval=f^ pool:&Expr[>..], index:u32^, pass:i64^ -> i64^ {
     let^ node=pool[index]
-    if^ node.is(Num) { return^ (i64^(node.get(Num).v)+pass) % 1000003 }
-    if^ node.is(Add) {
-        let^ a=node.get(Add)
+    if^ node fits^ Num { return^ (i64^(node.v)+pass) % 1000003 }
+    if^ node fits^ Add {
+        let^ a=node
         return^ (this^(pool,a.l,pass)+this^(pool,a.r,pass)) % 1000003
     }
-    if^ node.is(Mul) {
-        let^ m=node.get(Mul)
+    if^ node fits^ Mul {
+        let^ m=node
         return^ (this^(pool,m.l,pass)*this^(pool,m.r,pass)) % 1000003
     }
-    return^ (1000003-this^(pool,node.get(Neg).of,pass)) % 1000003
+    return^ (1000003-this^(pool,node.of,pass)) % 1000003
 }
 let^ depth:i64^=16 # BENCH_N
 var^ pool:Expr[>..]=[]

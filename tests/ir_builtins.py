@@ -64,7 +64,7 @@ print(x+y,f64^(x),i32^(3.5))
     assert exported==declared,(exported-declared,declared-exported)
     obsolete=('rh_bounds','rh_array_at','rh_array_write','rh_array_append','rh_array_pop',
               'rh_array_clear','rh_array_truncate','rh_make_slice','rh_view_at',
-              'rh_union_tag','rh_assert','rh_print_i64','rh_check_division',
+              'rh_union_tag','rh_union_fail','rh_assert','rh_print_i64','rh_check_division',
               'rh_index_integer','rh_check_float_cast','rh_div_i32','rh_div_i64',
               'rh_div_u8','rh_rem_i32','rh_rem_i64','rh_rem_u8')
     for name in obsolete:
