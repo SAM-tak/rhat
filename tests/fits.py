@@ -111,7 +111,7 @@ let^ show=p^ value:Result {
  if^ value fits^ Error {print(value fits^ Error.Missing)
  else^: print(value+1)}
 }
-show(3) show(error^Error.Missing{}) show(error^Error.Invalid{})
+show(3) show(Error.Missing{}) show(Error.Invalid{})
 ''', '4\ntrue\nfalse\n')
 
     positive('fits_false_subset', '''

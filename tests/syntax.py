@@ -407,7 +407,7 @@ f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
         ('contextual_record_duplicate', 'def^ P {self^{x:i32^}} let^ p:P={x=1,x=2}', 'duplicate field'),
         ('contextual_record_private', 'def^ P {self^{private^ x:i32^=0}} let^ p:P={x=1}', 'private member'),
         ('contextual_record_untyped_template', 'let^ f=template^p^ x {} f({x=1})', 'single nominal struct'),
-        ('contextual_record_error', 'errordef^ E {Bad} let^ bad:E.Bad={}', 'error variant requires'),
+        ('contextual_record_error_union', 'errordef^ E {Bad} let^ bad:i32^|E.Bad={}', 'contextual construction requires'),
         ('contextual_record_borrow_escape', 'def^ Ref {self^{p:&i32^}} let^ bad=f^ ->Ref {var^ n=1 return^ {p=&n}} let^ v=bad()', 'cannot return a reference'),
         ('let_colon_equal', 'let^ x:=1', "expected '='"),
         ('immutable_compound', 'let^ x=1 x+=1', 'cannot modify let^'),

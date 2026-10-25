@@ -694,11 +694,7 @@ static Expr *primary(Parser *p) {
                            NULL, false);
   }
   else if (!strcmp(t->text, "error^")) {
-    e = node(E_RECORD, t->loc);
-    e->error_constructor = true;
-    e->text = qualified_word(p);
-    need(p, "{");
-    entries(p, e, "}", true);
+    fail(t->loc, "error^ construction has been removed; write Type{...}");
   }
   else if (!strcmp(t->text, "return^")) {
     fail(t->loc,

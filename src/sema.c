@@ -2285,6 +2285,10 @@ static Type *union_literal_hint(Type *t, Expr *e) {
         (literal->kind == E_RECORD && a->kind == T_STRUCT) ||
         (literal->kind == E_ARRAY &&
          (a->kind == T_ARRAY || a->kind == T_GROW))) {
+      /* A mixed result must not implicitly choose an error constructor. */
+      if (literal->kind == E_RECORD && a->def->error_variant) {
+        return NULL;
+      }
       if (hint)
         return NULL;
       hint = a;
@@ -2438,10 +2442,6 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       fail(e->loc, "contextual construction requires a public type outside "
                    "its module");
     }
-    if (t->kind == T_STRUCT && (e->error_constructor != t->def->error_variant))
-      fail(e->loc, t->def->error_variant
-                       ? "error variant requires error^ constructor"
-                       : "error^ requires an errordef^ variant");
     if (t->def->abstract)
       fail(e->loc, "cannot construct abstract def^ '%s'", t->def->name);
     if (dst < 0 && t->owned)

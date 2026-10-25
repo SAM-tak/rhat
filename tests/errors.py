@@ -59,11 +59,22 @@ def main():
 
     prefix = '''errordef^ E {Bad,Missing}
 let^ read=f^ n:i32^ ->i32^|E.Bad|E.Missing {
- if^ n=0 {return^ error^E.Bad{}}
- if^ n<0 {return^ error^E.Missing{}}
+ if^ n=0 {return^ E.Bad{}}
+ if^ n<0 {return^ E.Missing{}}
  return^ n
 }
 '''
+    positive('error_plain_construction', '\n'.join([
+        'errordef^ E {Bad,Missing}',
+        'let^ a=E.Bad{}',
+        'let^ b:E.Bad={}',
+        'let^ c=E.Bad.new()',
+        'let^ accept=f^ value:E.Bad {value fits^ E.Bad}',
+        'print(a fits^ E.Bad,b fits^ E.Bad,c fits^ E.Bad,accept({}))',
+        'let^ read=f^ ->i32^|E.Bad {return^ E.Bad{}}',
+        'print(read() catch^ 42)',
+    ]), 'true true true true\n42\n')
+
     positive('error_replacement', prefix+'''
 print(read(2) catch^ 9,read(0) catch^ 9)
 print(10+read(0) catch^ 2,read(0) catch^ 2+10)
@@ -96,12 +107,12 @@ print((selective(2) catch^ 0),(selective(0) catch^ 0),(selective(-1) fits^ E.Mis
 ''', '2 true\n2 12 true\n')
 
     positive('error_bottom', prefix+'''
-let^ failed=f^ ->i32^|E.Bad {return^ (try^ error^E.Bad{})+1}
+let^ failed=f^ ->i32^|E.Bad {return^ (try^ E.Bad{})+1}
 let^ id=f^ n:i32^ {n}
-let^ argument=f^ ->i32^|E.Bad {return^ id(try^ error^E.Bad{})}
-let^ folded=f^ {try^ error^E.Bad{} catch^: 12}
+let^ argument=f^ ->i32^|E.Bad {return^ id(try^ E.Bad{})}
+let^ folded=f^ {try^ E.Bad{} catch^: 12}
 print((failed() fits^ E.Bad),(argument() fits^ E.Bad),folded())
-let^ choose=f^ flag:bool^ ->i32^|E.Bad {return^ if^ flag: 7 el^: try^ error^E.Bad{};}
+let^ choose=f^ flag:bool^ ->i32^|E.Bad {return^ if^ flag: 7 el^: try^ E.Bad{};}
 print((choose(true^) catch^ 0),(choose(false^) fits^ E.Bad))
 ''', 'true true 12\n7 true\n')
 
@@ -211,14 +222,14 @@ catch^: print(12)
 
     positive('error_focus_shadow', prefix+'''
 for^ 3 to^ 3 {
- let^ x=error^E.Bad{} catch^ (error^E.Missing{} catch^ if^ it^ fits^ E.Missing: it^^ fits^ E.Bad el^: false^;)
+ let^ x=E.Bad{} catch^ (E.Missing{} catch^ if^ it^ fits^ E.Missing: it^^ fits^ E.Bad el^: false^;)
  print(x)
 }
 ''', 'true\n')
 
     positive('error_unit_success', '''
 errordef^ E {Bad}
-let^ save=f^ n:i32^ ->nil^|E.Bad {if^ n>0: nil^ el^: error^E.Bad{};}
+let^ save=f^ n:i32^ ->nil^|E.Bad {if^ n>0: nil^ el^: E.Bad{};}
 let^ wrap=p^ n:i32^ {try^ save(n)}
 print(wrap(1) fits^ nil^,wrap(0) fits^ E.Bad)
 let^ explicit=p^ n:i32^ ->nil^|E.Bad {try^ save(n) return^}
@@ -264,7 +275,7 @@ errordef^ E {Bad,Missing}
 def^ Result = i32^ | E
 let^ read=f^ n:i32^ ->Result {
  if^ n>0 {return^ n}
- let^ error:E=error^E.Bad{}
+ let^ error:E=E.Bad{}
  return^ error
 }
 let^ wrap=f^ n:i32^ ->Result {return^ try^ read(n)+1}
@@ -284,13 +295,13 @@ do^{try^ rng.load(0) catch^ std.random.Error.InvalidState: print(12)}
 
     positive('error_bottom_sections', prefix+'''
 let^ pre=p^ ->i32^|E.Bad {
- repeat^ 2 {pre^: try^ error^E.Bad{} main^: print(99)}
+ repeat^ 2 {pre^: try^ E.Bad{} main^: print(99)}
 }
 let^ condition=p^ ->i32^|E.Bad {
- repeat^ while^ try^ error^E.Bad{} {first^: let^ n=1 main^: print(n)}
+ repeat^ while^ try^ (E.Bad{}) {first^: let^ n=1 main^: print(n)}
 }
 let^ first=p^ ->i32^|E.Bad {
- repeat^ 2 {first^: let^ n:i32^=try^ error^E.Bad{} main^: print(n)}
+ repeat^ 2 {first^: let^ n:i32^=try^ E.Bad{} main^: print(n)}
  return^ 1
 }
 print((pre() fits^ E.Bad),(condition() fits^ E.Bad),(first() fits^ E.Bad))
@@ -302,8 +313,8 @@ do^{let^ item=Item{} print(item.n) catch^: print(12)}
 ''', '12\n')
 
     positive('error_nullable_shortcircuit', prefix+'''
-let^ value=f^ n:i32^|nil^ ->i32^|E.Bad {return^ n ?? try^ error^E.Bad{}}
-let^ flag=f^ b:bool^ ->bool^|E.Bad {return^ b or^ try^ error^E.Bad{}}
+let^ value=f^ n:i32^|nil^ ->i32^|E.Bad {return^ n ?? try^ E.Bad{}}
+let^ flag=f^ b:bool^ ->bool^|E.Bad {return^ b or^ try^ E.Bad{}}
 let^ number=value(42)
 assert(number fits^ i32^)
 print(number,value(nil^) fits^ E.Bad)
@@ -384,7 +395,7 @@ print(42)
     positive('error_early_unit_return', prefix+'''
 let^ save=p^ flag:bool^ {
  if^ flag {return^}
- try^ error^E.Bad{}
+ try^ E.Bad{}
 }
 print(save(true^) fits^ nil^,save(false^) fits^ E.Bad)
 let^ handled=p^ {
@@ -398,11 +409,11 @@ handled()
 errordef^ E {Bad}
 def^ Item {run=f^ self^,n:i32^ ->i32^ {n}}
 let^ test=f^ item:&Item|nil^ {
- let^ result=item?.run(try^ error^E.Bad{})
+ let^ result=item?.run(try^ E.Bad{})
  return^ result
 }
 let^ index=f^ items:&i32^[2]|nil^ {
- let^ result=items?[try^ error^E.Bad{}]
+ let^ result=items?[try^ E.Bad{}]
  return^ result
 }
 var^ item=Item{}
@@ -414,27 +425,30 @@ print(index(nil^) fits^ nil^,index(&items) fits^ E.Bad)
     positive('error_optional_assignment', prefix+'''
 var^ a:i32^|nil^=nil^
 var^ b:i32^|nil^=1
-do^{a?:=try^ error^E.Bad{} print(10) catch^: print(99)}
-do^{b?:=try^ error^E.Bad{} print(99) catch^: print(20)}
-do^{b?+=try^ error^E.Bad{} print(99) catch^: print(30)}
+do^{a?:=try^ E.Bad{} print(10) catch^: print(99)}
+do^{b?:=try^ E.Bad{} print(99) catch^: print(20)}
+do^{b?+=try^ E.Bad{} print(99) catch^: print(30)}
 assert(b fits^ i32^)
 print(a fits^ nil^,b)
 ''', '10\n20\n30\ntrue 1\n')
 
     positive('error_destination_abort', prefix+'''
 var^ items:i32^[2]=[1,2]
-do^{items[try^ error^E.Bad{}]:=42 catch^: print(10)}
-do^{let^ a,b=1,try^ error^E.Bad{} catch^: print(20)}
-do^{let^ a,b,c=1,try^ error^E.Bad{},3 catch^: print(30)}
+do^{items[try^ E.Bad{}]:=42 catch^: print(10)}
+do^{let^ a,b=1,try^ E.Bad{} catch^: print(20)}
+do^{let^ a,b,c=1,try^ E.Bad{},3 catch^: print(30)}
 let^ update=p^ items:&i32^[2]|nil^ {
- items?[try^ error^E.Bad{}]?:=42
+ items?[try^ E.Bad{}]?:=42
 }
-let^ unguarded=p^ items:&i32^[2] {items?[try^ error^E.Bad{}]?:=42}
+let^ unguarded=p^ items:&i32^[2] {items?[try^ E.Bad{}]?:=42}
 print(update(nil^) fits^ nil^,update(&items) fits^ E.Bad,items[0])
 print(unguarded(&items) fits^ E.Bad)
 ''', '10\n20\n30\ntrue true 1\ntrue\n')
 
     negatives = [
+        ('error_implicit_union_constructor','let^ bad:i32^|E.Bad={}','contextual construction requires'),
+        ('error_implicit_union_argument','let^ accept=p^ value:i32^|E.Bad {} accept({})','contextual construction requires'),
+        ('error_legacy_prefix','let^ bad=error^E.Bad{}','error^ construction has been removed'),
         ('error_nested_mixed','def^ Inner=i32^|E.Bad def^ Outer=Inner|nil^ let^ inner:Inner=1 let^ v:Outer=inner print(try^ v)','nested mixed nominal unions'),
         ('error_catch_infallible','print(42 catch^ 0)','requires an error alternative'),
         ('error_catch_after_try','print(try^ read(0) catch^ 0)','requires an error alternative'),
@@ -448,7 +462,7 @@ print(unguarded(&items) fits^ E.Bad)
         ('error_hidden_body_local','do^{let^ secret=42 try^ read(0) catch^: print(secret)}','unknown value'),
         ('error_hidden_loop_local','repeat^ 1 {first^: let^ secret=42 main^: try^ read(0) catch^: print(secret)}','unknown value'),
         ('error_return_rhs','let^ n=read(0) catch^ return^ 0','expected'),
-        ('error_focus_escape','let^ bad=f^ ->&E.Bad {return^ (error^E.Bad{} catch^ &it^)} let^ ref=bad()',"borrowing storage requires var^"),
+        ('error_focus_escape','let^ bad=f^ ->&E.Bad {return^ (E.Bad{} catch^ &it^)} let^ ref=bad()',"borrowing storage requires var^"),
     ]
     for name, text, diagnostic in negatives:
         negative(name,prefix+text,diagnostic)

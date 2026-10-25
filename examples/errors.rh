@@ -1,6 +1,6 @@
 errordef^ Error { Invalid }
 let^ read=f^ n:i32^ ->i32^ | Error.Invalid {
-    if^ n<0 { return^ error^Error.Invalid{} }
+    if^ n<0 { return^ Error.Invalid{} }
     return^ n
 }
 let^ twice=f^ n:i32^ { return^ (try^ read(n))*2 }

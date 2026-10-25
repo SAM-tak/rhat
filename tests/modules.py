@@ -66,7 +66,7 @@ public^ let^ label:string^ = "module"
 public^ errordef^ Error { Bad, Worse }
 public^ def^ Result = i64^ | Error.Bad | nil^
 public^ let^ result=f^ x:i64^ ->Result {
-    if^ x < 0 { return^ error^Error.Bad{} }
+    if^ x < 0 { return^ Error.Bad{} }
     if^ x = 0 { return^ nil^ }
     return^ x
 }
@@ -97,8 +97,8 @@ print(lib.mem.total(&a),lib.mem.read(Item{}))
         'lib/fallible.rh': '''module^ lib.fallible
 public^ errordef^ Error {Bad,Missing}
 public^ let^ read=f^ n:i32^ ->i32^|Error.Bad|Error.Missing {
- if^ n=0 {return^ error^Error.Bad{}}
- if^ n<0 {return^ error^Error.Missing{}}
+ if^ n=0 {return^ Error.Bad{}}
+ if^ n<0 {return^ Error.Missing{}}
  return^ n
 }
 public^ let^ wrap=template^f^ n {return^ try^ read(n)+1}
@@ -115,8 +115,8 @@ do^{print(try^ lib.wrap(-1)) catch^ lib.Error.Missing: print(20) catch^: print(3
         ('private_type', 'import^ lib.example\nlet^ x:lib.example.Secret=lib.example.Secret{}', 'unknown or unavailable type'),
         ('unknown_module', 'import^ absent.module', 'cannot find module'),
         ('import_collision', 'def^ lib {}\nimport^ lib.example', 'conflicts'),
-        ('error_constructor_wrong_type', 'def^ A {}\nlet^ x=error^A{}', 'errordef^ variant'),
-        ('error_constructor_required', 'errordef^ E { Bad }\nlet^ x=E.Bad{}', 'error^ constructor'),
+        ('removed_error_prefix_struct', 'def^ A {}\nlet^ x=error^A{}', 'error^ construction has been removed'),
+        ('removed_error_prefix_variant', 'errordef^ E { Bad }\nlet^ x=error^E.Bad{}', 'error^ construction has been removed'),
         ('overload_same_arity', 'let^ f=f^ x:i32^ { x }\nlet^ f=f^ x:i64^ { x }', 'duplicate function'),
         ('module_not_first', 'print(1)\nmodule^ late.name', 'error:'),
     ]:

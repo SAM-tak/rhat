@@ -25,7 +25,7 @@ public^ def^ Random {
     reseed = p^ self^, seed:i64^ { self^.state := seeded(seed) }
     save = f^ self^ -> i64^ { i64^(self^.state) }
     load = f^ mutable^ self^, state:i64^ -> LoadResult {
-        if^ state = 0 { return^ error^Error.InvalidState{} }
+        if^ state = 0 { return^ Error.InvalidState{} }
         self^.state := u64^(state)
         return^ nil^
     }
@@ -33,7 +33,7 @@ public^ def^ Random {
         return^ f64^(self^.raw() bitshift^ -11) / 9007199254740992.0
     }
     rangeint = f^ mutable^ self^, lo:i64^, hi:i64^ -> IntResult {
-        if^ hi < lo { return^ error^Error.InvalidArgument{} }
+        if^ hi < lo { return^ Error.InvalidArgument{} }
         if^ hi = lo { return^ lo }
         let^ span = u64^(hi) - u64^(lo) + 1
         var^ bits = self^.raw()
@@ -46,7 +46,7 @@ public^ def^ Random {
     }
     uniform = f^ mutable^ self^, lo:f64^, hi:f64^ -> RealResult {
         if^ !__finite^(lo) or^ !__finite^(hi) or^ hi < lo {
-            return^ error^Error.InvalidArgument{}
+            return^ Error.InvalidArgument{}
         }
         if^ lo = hi { return^ lo }
         let^ u = self^.next()
@@ -58,7 +58,7 @@ public^ def^ Random {
     }
     normal = f^ mutable^ self^, mean:f64^, deviation:f64^ -> RealResult {
         if^ !__finite^(mean) or^ !__finite^(deviation) or^ deviation < 0.0 {
-            return^ error^Error.InvalidArgument{}
+            return^ Error.InvalidArgument{}
         }
         if^ deviation = 0.0 { return^ mean }
         let^ radius = __sqrt^(-2.0 * __log^(1.0 - self^.next()))
@@ -74,7 +74,7 @@ public^ let^ new = f^ seed:i64^ -> Random {
 }
 public^ let^ new = f^ -> NewResult {
     var^ state:u64^ = 0
-    if^ !__seed^(&state) { return^ error^Error.SeedUnavailable{} }
+    if^ !__seed^(&state) { return^ Error.SeedUnavailable{} }
     if^ state = 0 { state := seeded(0) }
     var^ r = Random.new()
     r.load(i64^(state))

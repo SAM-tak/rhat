@@ -431,14 +431,14 @@ Cランタイムは毎回プリプロセスし、ヘッダーとマクロの展�
 errordef^ Error { Invalid }
 def^ Result = i64^ | Error.Invalid | nil^
 let^ calculate=f^ x:i64^ ->Result {
-    if^ x < 0 { return^ error^Error.Invalid{} }
+    if^ x < 0 { return^ Error.Invalid{} }
     return^ x
 }
 let^ result=calculate(42)
 if^ result fits^ i64^ { print(result) }
 ```
 
-各種別は独立した公称型、宣言名は種別の公称合併型です。値は `error^Error.Invalid{}` で構築します。
+各種別は独立した公称型、宣言名は種別の公称合併型です。値は `Error.Invalid{}` で構築します。
 今回の種別は付随情報を持ちません。共通の `error^` 型、メッセージと原因連鎖は未実装です。
 `try^`・`catch^` は [エラー値・伝播・捕捉](errors.md)、`fits^` は [適合判定と絞り込み](fits.md) を参照してください。
 `nil^` は1バイトの単位型・値です。公称合併型は整数・実数・bool・文字列・nilも選択肢にでき、

@@ -4,11 +4,15 @@
 
 `errordef^` の各種別は独立した公称型です。宣言名は種別の合併型となります。
 成功値と同じく、タグ付き共用体の値として返します。ネイティブの例外機構は使いません。
+構築は通常の構造体と同じ `Error.Invalid{}` です。構築接頭辞の `error^` は廃止しました。
+エラーかどうかは `errordef^` の宣言元の型で決まり、構築の綴りには依存しません。
+具体的な種別型が期待される位置では `{}` も使えますが、合併型の文脈から裸の `{}` で
+エラー種別を暗黙に選ぶことはしません。その場合は種別名を明示します。
 
 ```rhat
 errordef^ Error { Invalid, Missing }
 let^ read=f^ n:i32^ ->i32^ | Error.Invalid {
-    if^ n<0 { return^ error^Error.Invalid{} }
+    if^ n<0 { return^ Error.Invalid{} }
     return^ n
 }
 ```

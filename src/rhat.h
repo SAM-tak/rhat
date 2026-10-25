@@ -94,7 +94,6 @@ enum {
 struct Expr {
   Spec *test_spec; /* The type operand of fits^, never evaluated as a value. */
   Spec *constant_spec;
-  bool error_constructor;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
   void *compiler_value; /* Internal full Value, retaining borrow provenance. */
   int kind;
