@@ -1,8 +1,11 @@
+[CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [switch]$Release,
     [switch]$Test
 )
 $ErrorActionPreference = 'Stop'
+if ($Release) { $Configuration = 'Release' }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\devshell.ps1" -Configuration $Configuration
 $clangPath = $env:RHAT_CLANG
