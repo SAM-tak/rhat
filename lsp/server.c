@@ -533,18 +533,15 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
     }
     if (c == '#') {
       at = skip_comment(buffer, at);
-      kind = 9;
     }
     else if (c == '"' || c == '\'' || c == '`') {
       at = skip_quoted(buffer, at);
-      kind = 8;
     }
     else if (isdigit(c)) {
       at++;
       while (identifier((unsigned char)buffer[at]) || buffer[at] == '.') {
         at++;
       }
-      kind = 7;
     }
     else if (identifier(c)) {
       at++;
@@ -552,7 +549,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         at++;
       }
       cJSON *s = symbol_at(index, uri, start);
-      if (s) {
+      if (s && buffer[at - 1] != '^') {
         int symbol_kind = number(s, "kind");
         kind = symbol_kind == 23               ? 1
                : symbol_kind == 12             ? 2
@@ -562,20 +559,14 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                                                : 5;
         modifiers = cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) ? 1 : 0;
       }
-      else {
-        kind = buffer[at - 1] == '^' ? 0 : 5;
-        for (int k = T_BOOL; k < T_STRUCT; k++) {
-          const char *name = builtin_name(k);
-          if (strlen(name) == at - start &&
-              !strncmp(buffer + start, name, at - start)) {
-            kind = 1;
-          }
-        }
-      }
     }
     else {
       at++;
-      kind = 10;
+    }
+    /* Let TextMate style lexical tokens, including the separately dimmed hat.
+       Semantic tokens describe resolved names only, as in the L^ client. */
+    if (kind < 0) {
+      continue;
     }
     /* LSP tokens are split at physical line boundaries, even inside strings. */
     while (start < at) {

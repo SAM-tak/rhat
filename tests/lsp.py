@@ -132,6 +132,17 @@ print(twice(point.x))
     assert {'Point','x','twice','point'} <= {x['name'] for x in outline}, outline
     tokens = client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=path.as_uri())))['data']
     assert len(tokens) % 5 == 0 and len(tokens) > 40
+    line = column = 0
+    semantic_names = []
+    for offset in range(0, len(tokens), 5):
+        delta_line, delta_column, length, kind, modifiers = tokens[offset:offset+5]
+        line += delta_line
+        column = delta_column if delta_line else column + delta_column
+        token = content.splitlines()[line][column:column+length]
+        assert kind in {1, 2, 3, 4, 5, 6}, (token, kind)
+        assert '^' not in token, token
+        semantic_names.append(token)
+    assert {'Point', 'twice', 'point', 'x'} <= set(semantic_names), semantic_names
     signature = request('signatureHelp','twice(point',shift=6)
     assert signature['signatures'][0]['parameters'][0]['label'] == 'n', signature
     completions = request('completion','point.x',shift=6)
