@@ -709,6 +709,7 @@ static Expr *if_tail(Parser *p, Expr *condition, Loc loc) {
   return e;
 }
 static Expr *for_expression(Parser *p, Loc loc);
+static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
@@ -719,6 +720,16 @@ static Expr *primary(Parser *p) {
   if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "...")) {
     e = node(E_NAME, t->loc); /* The collected variadic arguments. */
     e->text = "...";
+  } else if (t->kind == TOK_WORD && !strcmp(t->text, "print^")) {
+    /* print^ value, or print^(a, b) for several values. */
+    e = node(E_CALL, t->loc);
+    e->a = named("print^", t->loc);
+    if (take(p, "(")) {
+      entries(p, e, ")", false);
+    }
+    else {
+      add(&e->args, expr(p, 0));
+    }
   } else if (t->kind == TOK_WORD && !strcmp(t->text, "panic^")) {
     e = node(E_PANIC, t->loc);
     e->a = expr(p, 0);
@@ -1479,7 +1490,7 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc) {
            step->a->kind == E_INT))
         fail(step->loc, "step^ must be positive");
       Expr *check = node(E_CALL, loc);
-      check->a = named("assert", loc);
+      check->a = named("assert^", loc);
       add(&check->args, positive);
       Stmt *validate = mem(sizeof(*validate));
       validate->kind = S_EXPR;

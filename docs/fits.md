@@ -9,11 +9,11 @@
 def^ Point { self^{ x:i32^=0 } }
 var^ value:Point | i32^ | nil^ = Point{x=42}
 if^ value fits^ Point {
-    print(value.x)
+    print^(value.x)
 elseif^ value fits^ i32^:
-    print(value + 1)
+    print^(value + 1)
 else^:
-    print(value fits^ nil^)
+    print^(value fits^ nil^)
 }
 ```
 
@@ -62,7 +62,7 @@ else^:
 def^ Holder { self^{ item:Point | nil^ = nil^ } }
 var^ holder = Holder{item=Point{x=7}}
 if^ holder.item fits^ Point {
-    print(holder.item.x)
+    print^(holder.item.x)
 }
 ```
 
@@ -80,11 +80,11 @@ if^ holder.item fits^ Point {
 ```rhat
 for^ let^ result=value {
 when^ fits^ Point:
-    print(result.x,it^.x)
+    print^(result.x,it^.x)
 when^ fits^ i32^:
-    print(result + 1)
+    print^(result + 1)
 other^:
-    print("absent")
+    print^("absent")
 }
 ```
 
@@ -105,7 +105,7 @@ b の値を次の比較へ渡します。共有する値は一度だけ評価し
 組み込みの `is` / `get` メソッドはありません。判定した変数を直接使います。
 `if^ value fits^ Error { return^ ... }` のように一方の分岐が終了する場合は、
 その後の経路で残りの選択肢へ絞り込みます。`break^` / `next^` でも同様です。
-`assert(value fits^ Type)` は偽なら終了するため、その後の経路では真側の型情報を使います。
+`assert^(value fits^ Type)` は偽なら終了するため、その後の経路では真側の型情報を使います。
 代入・別名経由の変更で証明が無効になる規則は、分岐内と共通です。
 `is` / `get` という通常名を、ユーザーの構造体メソッドとして定義することは可能です。
 取り出したインライン構造体・固定長配列はコピーであり、可変のペイロード参照は公開しません。

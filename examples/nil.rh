@@ -3,20 +3,20 @@ def^Point {
 }
 
 var^point:Point | nil^ = Point{x=12,y=34}
-print(point?.x ?? 0)
+print^(point?.x ?? 0)
 if^point? {
-    print(point.x,point.y)
+    print^(point.x,point.y)
 else^:
-    print("absent")
+    print^("absent")
 }
 
 var^count:i32^ | nil^ = 3
 count ?+= 4
-print(count ?? 0)
+print^(count ?? 0)
 count ?:= nil^
 count ?:= 99
-print(count?, count ?? 0)
+print^(count?, count ?? 0)
 
 var^values = [10,20]
 let^view:ref^i32^[2] | nil^ = ref^values
-print(view?[1] ?? 0)
+print^(view?[1] ?? 0)

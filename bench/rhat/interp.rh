@@ -46,5 +46,5 @@ repeat^ while^ pass < 8 {
     total := (total+eval(ref^ pool,root,pass)) % 1000003
     pass := pass+1
 }
-print(pool.len)
-print(total)
+print^(pool.len)
+print^(total)

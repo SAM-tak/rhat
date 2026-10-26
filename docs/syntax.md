@@ -10,7 +10,7 @@ R^ は L^ の構文を基本とし、固定幅の型、公称構造体、借用�
 
 ```rhat
 def^ Point { self^{ x:i32^=0,y:i32^=0 } }
-let^ show=p^ point:Point { print(point.x,point.y) }
+let^ show=p^ point:Point { print^(point.x,point.y) }
 show({x=1,y=2})
 let^ point:Point={x=3,y=4}
 
@@ -39,11 +39,11 @@ do^{
 
 ```rhat
 if^ value = 0 {
-    print(0)
+    print^(0)
 elseif^ value < 10:
-    print(1)
+    print^(1)
 else^:
-    print(2)
+    print^(2)
 }
 
 let^ sign = if^ value < 0: -1 el^ value > 0: 1 el^: 0;
@@ -69,14 +69,14 @@ var^ counter := 0
 
 ```rhat
 for^ var^ pass:i32^=0 while^ pass < 8 next^ pass += 1 {
-    print(pass)
+    print^(pass)
 }
 
-for^ i from^ 1 to^ 10 step^ 2 { print(i) }
-for^ i:u8^ from^ 3 downto^ 0 { print(i) }
-for^ 2 to^ 4 { print(it^) }
+for^ i from^ 1 to^ 10 step^ 2 { print^(i) }
+for^ i:u8^ from^ 3 downto^ 0 { print^(i) }
+for^ 2 to^ 4 { print^(it^) }
 
-repeat^ 3 { print(1) }
+repeat^ 3 { print^(1) }
 repeat^ while^ condition { work() }
 repeat^ until^ finished { work() }
 repeat^ { break^ }
@@ -93,16 +93,16 @@ for^ var^ i=0 while^ i<3 next^ i+=1 {
 prolog^:
     var^ total=0
 pre^:
-    print(i)
+    print^(i)
 first^:
     var^ values:grow^ i32^[]=[]
 main^:
     values.push(i)
     total+=i
 last^:
-    print(i,values.len,total)
+    print^(i,values.len,total)
 epilog^:
-    print(total)
+    print^(total)
 }
 ```
 
@@ -127,9 +127,9 @@ R^ では未初期化値を読めません。ゼロ回の可能性がある `epi
 
 ```rhat
 for^ let^ n=read() if^ n>0 {
-    print(n)
+    print^(n)
 else^:
-    print(0)
+    print^(0)
 }
 
 let^ twice=for^ let^ n=5 do^: n*2;
@@ -137,11 +137,11 @@ let^ answer=for^ let^ n=5 if^ n>0: n el^: 0;
 
 for^ value {
 when^ 0,1:
-    print(it^)
+    print^(it^)
 when^ 2 to^ 5:
-    print(2)
+    print^(2)
 other^:
-    print(3)
+    print^(3)
 }
 
 let^ answer=for^ value: when^ 0: 10 when^ 1 to^ 3: 20 other^: 30;
@@ -167,7 +167,7 @@ let^ answer=for^ value: when^ 0: 10 when^ 1 to^ 3: 20 other^: 30;
 関数・手続きリテラルの入れ子だけを数えます。トップレベルの暗黙のエントリー関数は対象に含めません。
 
 ```rhat
-print(f^ n:i64^ {
+print^(f^ n:i64^ {
     if^ n<2: 1 el^: n * f^ m:i64^ { this^^(m) }(n-1);
 }(6))  # 720
 ```

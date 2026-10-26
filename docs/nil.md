@@ -38,9 +38,9 @@ let^ read=f^ value:i32^ | nil^ ->i32^ { value ?? 0 }
 ```rhat
 var^ value:i32^ | nil^ = 12
 if^ value? {
-    print(value + 1)
+    print^(value + 1)
 else^:
-    print("absent")
+    print^("absent")
 }
 ```
 
@@ -54,11 +54,11 @@ else^:
 ```rhat
 def^ Point { self^{ x:i32^=0 } }
 let^ point:Point | nil^ = Point{x=42}
-print(point?.x ?? 0)
+print^(point?.x ?? 0)
 
 var^ items:i32^[2] = [10,20]
 let^ view:ref^ i32^[2] | nil^ = ref^ items
-print(view?[1] ?? 0)
+print^(view?[1] ?? 0)
 ```
 
 `?.`・`?[]`・`?[lo :: hi]` は受け手が不在なら、その後の後置連鎖全体を省略して nil を返します。

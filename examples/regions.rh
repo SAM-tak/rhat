@@ -11,10 +11,10 @@ repeat^while^i < 2000 {
     numbers.push(7)
     i := i + 1
 }
-assert(*first = 10)
-assert(numbers.len = 2003)
-print(*first, numbers.len)
+assert^(*first = 10)
+assert^(numbers.len = 2003)
+print^(*first, numbers.len)
 do^{
     var^scratch : grow^ i32^[] = [100, 200]
-    print(scratch[1])
+    print^(scratch[1])
 }

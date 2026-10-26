@@ -62,12 +62,12 @@ public^ let^ result=f^ x:i64^ ->Result {
         'lib/example.rh': lib,
         'main.rh': '''import^ lib.example
 let^ x=import^ lib.example
-print(x.twice(21),lib.example.twice(10,11),x.answer,x.enabled,x.label)
+print^(x.twice(21),lib.example.twice(10,11),x.answer,x.enabled,x.label)
 let^ item=x.Item{value=42}
-print(item.value)
+print^(item.value)
 let^ result=x.result(12)
-assert(result fits^ i64^)
-print(x.result(-1) fits^ x.Error.Bad,x.result(0) fits^ nil^,result)
+assert^(result fits^ i64^)
+print^(x.result(-1) fits^ x.Error.Bad,x.result(0) fits^ nil^,result)
 '''}, '42 42 42 true module\n42\ntrue true 12\n')
     positive('module_owned_template_composition', {
         'lib/mem.rh': '''module^ lib.mem
@@ -78,7 +78,7 @@ public^ let^ read=template^f^ item { item.read() }
 ''', 'main.rh': '''import^ lib.mem
 def^ Item : lib.mem.Base {}
 var^ a=lib.mem.make()
-print(lib.mem.total(ref^ a),lib.mem.read(Item{}))
+print^(lib.mem.total(ref^ a),lib.mem.read(Item{}))
 '''}, '42 42\n')
     positive('module_error_propagation', {
         'lib/fallible.rh': '''module^ lib.fallible
@@ -90,8 +90,8 @@ public^ let^ read=f^ n:i32^ ->i32^|Error.Bad|Error.Missing {
 }
 public^ let^ wrap=template^f^ n {return^ try^ read(n)+1}
 ''', 'main.rh': '''let^ lib=import^ lib.fallible
-print((lib.wrap(2) catch^ 0),lib.read(0) catch^ 12)
-do^{print(try^ lib.wrap(-1)) catch^ lib.Error.Missing: print(20) catch^: print(30)}
+print^((lib.wrap(2) catch^ 0),lib.read(0) catch^ 12)
+do^{print^(try^ lib.wrap(-1)) catch^ lib.Error.Missing: print^(20) catch^: print^(30)}
 '''}, '3 12\n20\n')
     positive('module_body_parameter_inference', {
         'lib/body.rh': """module^ lib.body
@@ -103,10 +103,10 @@ public^ def^ Box {
  add=p^ self^,delta {self^.value+=delta}
 }
 """, 'main.rh': """import^ lib.body
-print(lib.body.twice(20),lib.body.boolean(true^))
+print^(lib.body.twice(20),lib.body.boolean(true^))
 var^ b=lib.body.Box{}
 b.add(41)
-print(b.value)
+print^(b.value)
 """}, '42 42\n42\n')
 
     positive('module_local_call_inference', {
@@ -115,7 +115,7 @@ let^ twice=f^ x {x*2}
 public^ let^ run=f^ x:i32^ {twice(x)}
 public^ let^ generic=template^f^ x {twice(x)}
 ''', 'main.rh': '''import^ lib.inferred
-print(lib.inferred.run(21),lib.inferred.generic(i64^(22)))
+print^(lib.inferred.run(21),lib.inferred.generic(i64^(22)))
 '''}, '42 44\n')
     positive('module_private_method_inference', {
         'lib/inferred.rh': '''module^ lib.inferred
@@ -125,11 +125,11 @@ public^ def^ Box {
 }
 ''', 'main.rh': '''import^ lib.inferred
 let^ box=lib.inferred.Box{}
-print(box.run(42))
+print^(box.run(42))
 '''}, '42\n')
     negative('module_public_untyped', {
         'lib/inferred.rh': 'module^ lib.inferred\npublic^ let^ id=f^ x {x}',
-        'main.rh': 'import^ lib.inferred\nprint(lib.inferred.id(42))'}, 'or explicit template^')
+        'main.rh': 'import^ lib.inferred\nprint^(lib.inferred.id(42))'}, 'or explicit template^')
     negative('module_public_untyped_method', {
         'lib/inferred.rh': 'module^ lib.inferred\npublic^ def^ Box {id=f^ self^,x {x}}',
         'main.rh': 'import^ lib.inferred'}, 'or explicit template^')
@@ -139,16 +139,16 @@ print(box.run(42))
     positive('modules_nominal_distinct', {
         'lib/a.rh': 'module^ lib.a\npublic^ def^ Item { self^{ value:i32^=1 } }',
         'lib/b.rh': 'module^ lib.b\npublic^ def^ Item { self^{ value:i32^=2 } }',
-        'main.rh': 'import^ lib.a\nimport^ lib.b\nprint(lib.a.Item{}.value,lib.b.Item{}.value)'}, '1 2\n')
+        'main.rh': 'import^ lib.a\nimport^ lib.b\nprint^(lib.a.Item{}.value,lib.b.Item{}.value)'}, '1 2\n')
     for name, text, diagnostic in [
-        ('private_function', 'import^ lib.example\nprint(lib.example.hidden())', 'does not export'),
+        ('private_function', 'import^ lib.example\nprint^(lib.example.hidden())', 'does not export'),
         ('private_type', 'import^ lib.example\nlet^ x:lib.example.Secret=lib.example.Secret{}', 'unknown or unavailable type'),
         ('unknown_module', 'import^ absent.module', 'cannot find module'),
         ('import_collision', 'def^ lib {}\nimport^ lib.example', 'conflicts'),
         ('removed_error_prefix_struct', 'def^ A {}\nlet^ x=error^A{}', 'error^ construction has been removed'),
         ('removed_error_prefix_variant', 'errordef^ E { Bad }\nlet^ x=error^E.Bad{}', 'error^ construction has been removed'),
         ('overload_duplicate_domain', 'let^ f=f^ x:i32^ { x }\nlet^ f=f^ x:i32^ { x }', 'duplicate function'),
-        ('module_not_first', 'print(1)\nmodule^ late.name', 'error:'),
+        ('module_not_first', 'print^(1)\nmodule^ late.name', 'error:'),
     ]:
         negative(name, {'lib/example.rh': lib, 'main.rh': text}, diagnostic)
     negative('nominal_cross_module_rejection', {
@@ -159,13 +159,13 @@ print(box.run(42))
     negative('module_declaration_required', {'lib/a.rh': 'public^ let^ a=f^ { 1 }', 'main.rh': 'import^ lib.a'}, 'must declare')
     negative('module_cycle', {'lib/a.rh': 'module^ lib.a\nimport^ lib.b',
                              'lib/b.rh': 'module^ lib.b\nimport^ lib.a', 'main.rh': 'import^ lib.a'}, 'cyclic import')
-    negative('module_execution', {'lib/a.rh': 'module^ lib.a\nprint(1)', 'main.rh': 'import^ lib.a'}, 'only declarations')
+    negative('module_execution', {'lib/a.rh': 'module^ lib.a\nprint^(1)', 'main.rh': 'import^ lib.a'}, 'only declarations')
     negative('module_mutable_global', {'lib/a.rh': 'module^ lib.a\nvar^ a=1', 'main.rh': 'import^ lib.a'}, 'only declarations')
     negative('module_constant_call', {'lib/a.rh': 'module^ lib.a\nlet^ x=i64^(1)', 'main.rh': 'import^ lib.a'}, 'literal operations')
     negative('module_constant_invalid_unused', {'lib/a.rh': 'module^ lib.a\nlet^ x:i32^="bad"', 'main.rh': 'import^ lib.a'}, "expected 'i32^'")
     negative('module_nontransitive_import', {'lib/a.rh': 'module^ lib.a\nimport^ lib.b',
         'lib/b.rh': 'module^ lib.b\npublic^ let^ value=f^ { 1 }',
-        'main.rh': 'import^ lib.a\nprint(lib.b.value())'}, 'unknown')
+        'main.rh': 'import^ lib.a\nprint^(lib.b.value())'}, 'unknown')
     for name, use in [
         ('hidden_type_alias_bypass', 'let^ x:lib.b.Secret=lib.b.Secret{}'),
         ('hidden_type_namespace_bypass', 'def^ lib {}\nlet^ x:lib.b.Secret=lib.b.Secret{}'),
@@ -182,12 +182,12 @@ print(box.run(42))
         'lib/a.rh':'module^ lib.a\npublic^ let^ child=f^ { 1 }',
         'lib/a/child.rh':'module^ lib.a.child',
         'main.rh':'import^ lib.a\nimport^ lib.a.child'}, 'conflicts')
-    positive('block_may_shadow_import', {'main.rh':'import^ std.random\ndo^{ let^ std=42; print(std) }'}, '42\n')
+    positive('block_may_shadow_import', {'main.rh':'import^ std.random\ndo^{ let^ std=42; print^(std) }'}, '42\n')
     negative('module_local_owner_recursive', {'lib/a.rh': '''module^ lib.a
 public^ let^ recur=p^ n:i32^ {
     var^ a:grow^ i32^[]=[n]
     if^ n > 0 { this^(n-1) }
-    print(a[0])
+    print^(a[0])
 }''', 'main.rh': 'import^ lib.a\nlib.a.recur(2)'}, 'recursive call')
     negative('module_borrow_escape', {'lib/a.rh': '''module^ lib.a
 public^ let^ bad=p^ ->ref^ i32^ {
@@ -199,45 +199,45 @@ def^ Real = f64^ | Error.Bad
 let^ value=f^ ->Int { return^ 9223372036854775807 }
 let^ real=f^ ->Real { return^ 1.25 }
 let^ integer=value() let^ floating=real()
-assert(integer fits^ i64^) assert(floating fits^ f64^)
-print(integer,floating)
+assert^(integer fits^ i64^) assert^(floating fits^ f64^)
+print^(integer,floating)
 '''}, '9223372036854775807 1.25\n')
     negative('reserved_std_module', {'main.rh': 'module^ std.forged'}, 'reserved')
     positive('std_math_intrinsics', {'main.rh': '''let^ m = import^ std.math
-print(m.sqrt(2.0), m.sqrt(f32^(6.25)), m.sin(m.pi/2.0), m.atan2(1.0, 1.0)*4.0 = m.pi, m.pow(2.0, 10.0))
-print(m.floor(-1.5), m.ceil(-1.5), m.trunc(-1.5), m.round(2.5), m.abs(-3.0), m.copysign(2.0, -0.0), m.fma(2.0, 3.0, 1.0))
-print(m.log(m.e), m.log2(8.0), m.log10(1000.0), m.exp2(f32^(3.0)), m.tanh(0.0), m.cosh(0.0), m.tau = 2.0*m.pi)
+print^(m.sqrt(2.0), m.sqrt(f32^(6.25)), m.sin(m.pi/2.0), m.atan2(1.0, 1.0)*4.0 = m.pi, m.pow(2.0, 10.0))
+print^(m.floor(-1.5), m.ceil(-1.5), m.trunc(-1.5), m.round(2.5), m.abs(-3.0), m.copysign(2.0, -0.0), m.fma(2.0, 3.0, 1.0))
+print^(m.log(m.e), m.log2(8.0), m.log10(1000.0), m.exp2(f32^(3.0)), m.tanh(0.0), m.cosh(0.0), m.tau = 2.0*m.pi)
 let^ inf = 1.0/0.0
-print(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(1.0), m.isfinite(1.0), m.isfinite(inf), m.isnan(f32^(1.0)))
+print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(1.0), m.isfinite(1.0), m.isfinite(inf), m.isnan(f32^(1.0)))
 '''}, '1.4142135623730951 2.5 1 true 1024\n-2 -1 -1 3 3 -2 7\n1 3 3 8 0 1 true\n'
           'true true true false true false false\n')
     positive('std_text_parse', {'main.rh': '''let^ t = import^ std.text
 let^ show = p^ r:i64^ | t.Error.Invalid | t.Error.OutOfRange {
-    if^ r fits^ i64^ { print(r) elseif^ r fits^ t.Error.Invalid: print("invalid") else^: print("range") }
+    if^ r fits^ i64^ { print^(r) elseif^ r fits^ t.Error.Invalid: print^("invalid") else^: print^("range") }
 }
 show(t.parse_i64("42")) show(t.parse_i64("-9223372036854775808")) show(t.parse_i64("9223372036854775808"))
 show(t.parse_i64("+7")) show(t.parse_i64("")) show(t.parse_i64("-")) show(t.parse_i64("1x")) show(t.parse_i64(" 1"))
 let^ a = t.parse_i32("-2147483648") let^ b = t.parse_i32("2147483648")
-print(a fits^ i32^, b fits^ t.Error.OutOfRange)
+print^(a fits^ i32^, b fits^ t.Error.OutOfRange)
 let^ x = t.parse_f64("2.5e3") let^ y = t.parse_f64("1e999") let^ z = t.parse_f64("1.5 ") let^ w = t.parse_f32("0.1")
-print(x fits^ f64^, y fits^ t.Error.OutOfRange, z fits^ t.Error.Invalid, w fits^ f32^, t.parse_f64("") fits^ t.Error.Invalid)
-if^ x fits^ f64^ { print(x) }
-if^ w fits^ f32^ { print(w = f32^(0.1)) }
+print^(x fits^ f64^, y fits^ t.Error.OutOfRange, z fits^ t.Error.Invalid, w fits^ f32^, t.parse_f64("") fits^ t.Error.Invalid)
+if^ x fits^ f64^ { print^(x) }
+if^ w fits^ f32^ { print^(w = f32^(0.1)) }
 '''}, '42\n-9223372036854775808\nrange\n7\ninvalid\ninvalid\ninvalid\ninvalid\ntrue true\n'
           'true true true true true\n2500\ntrue\n')
     negative('user_llvm_intrinsic', {'main.rh': 'let^ s = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;'}, 'standard library only')
-    negative('private_standard_extern',{'main.rh': 'import^ std.random\nprint(std.random.sqrt(4.0))'}, 'sqrt')
+    negative('private_standard_extern',{'main.rh': 'import^ std.random\nprint^(std.random.sqrt(4.0))'}, 'sqrt')
     positive('module_public_extern', {
         'lib/cmath.rh': 'module^ lib.cmath\npublic^ externC^ hypot:f^ x:f64^, y:f64^ ->f64^;\npublic^ let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;\n',
-        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5 10 1.5\n')
+        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint^(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5 10 1.5\n')
     positive('module_recursive_external_borrow', {
         'lib/borrow.rh': '''module^ lib.borrow
 public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     if^ n > 0 { a.push(n); this^(a,n-1) }
 }
-''', 'main.rh':'import^ lib.borrow\nvar^ a:grow^ i32^[]=[]\nlib.borrow.fill(ref^ a,3)\nprint(a.len,a[0],a[2])'}, '3 3 1\n')
+''', 'main.rh':'import^ lib.borrow\nvar^ a:grow^ i32^[]=[]\nlib.borrow.fill(ref^ a,3)\nprint^(a.len,a[0],a[2])'}, '3 3 1\n')
     external = project('external_root', {'lib/value.rh': 'module^ lib.value\npublic^ let^ n=f^ { 42 }'})
-    positive('module_search_path', {'main.rh': 'import^ lib.value\nprint(lib.value.n())'}, '42\n', ['--module-path', external])
+    positive('module_search_path', {'main.rh': 'import^ lib.value\nprint^(lib.value.n())'}, '42\n', ['--module-path', external])
 
     # Compare both compilation paths, and validate actual per-module cache reuse.
     exe = root/'cached.exe'
@@ -270,9 +270,9 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     (root/'lib/example.rh').write_text(with_template)
     main_path = root/'main.rh'
     main_text = main_path.read_text()
-    main_path.write_text(main_text+'\nprint(x.id(42))\n')
+    main_path.write_text(main_text+'\nprint^(x.id(42))\n')
     assert 'compile: lib.example' in run(command).stderr
-    main_path.write_text(main_text+'\nprint(x.id(i64^(42)))\n')
+    main_path.write_text(main_text+'\nprint^(x.id(i64^(42)))\n')
     assert 'compile: lib.example' in run(command).stderr
     # Corruption must be detected even when a matching cache stamp exists.
     current_object = max(cache.glob('*.obj'), key=lambda p: p.stat().st_mtime_ns)
@@ -293,7 +293,7 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     suite.mark('object_cache_identity_reuse_invalidation_and_single_ir')
 
     native = project('native_header_cache', {
-        'main.rh':'print(42)', 'value.h':'#define HEADER_VALUE 1\n',
+        'main.rh':'print^(42)', 'value.h':'#define HEADER_VALUE 1\n',
         'wrapper.c': '#define rh_print_newline original_newline\n'
             +f'#include "{(repo/"runtime/rhat_runtime.c").as_posix()}"\n'
             +'#undef rh_print_newline\n#include "value.h"\n'
@@ -332,34 +332,34 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
 
     random_source = '''import^ std.random
 var^ r=std.random.new(12345)
-print(r.save())
+print^(r.save())
 var^ i:i32^=0
-repeat^ while^ i < 8 { print(r.next()); i:=i+1 }
+repeat^ while^ i < 8 { print^(r.next()); i:=i+1 }
 let^ saved=r.save()
 let^ a=(r.rangeint(-100,100) catch^ 0)
-assert((r.load(saved) fits^ nil^))
-assert((r.rangeint(-100,100) catch^ 0)=a)
+assert^((r.load(saved) fits^ nil^))
+assert^((r.rangeint(-100,100) catch^ 0)=a)
 let^ before=r.save()
-assert((r.load(0) fits^ std.random.Error.InvalidState))
-assert((r.rangeint(5,4) fits^ std.random.Error.InvalidArgument))
-assert((r.uniform(1.0,-1.0) fits^ std.random.Error.InvalidArgument))
-assert((r.normal(0.0,-1.0) fits^ std.random.Error.InvalidArgument))
-assert((r.rangeint(7,7) catch^ 0)=7)
-assert((r.uniform(2.0,2.0) catch^ 0.0)=2.0)
-assert((r.normal(3.0,0.0) catch^ 0.0)=3.0)
+assert^((r.load(0) fits^ std.random.Error.InvalidState))
+assert^((r.rangeint(5,4) fits^ std.random.Error.InvalidArgument))
+assert^((r.uniform(1.0,-1.0) fits^ std.random.Error.InvalidArgument))
+assert^((r.normal(0.0,-1.0) fits^ std.random.Error.InvalidArgument))
+assert^((r.rangeint(7,7) catch^ 0)=7)
+assert^((r.uniform(2.0,2.0) catch^ 0.0)=2.0)
+assert^((r.normal(3.0,0.0) catch^ 0.0)=3.0)
 let^ nan=0.0/0.0
 let^ infinity=1.0/0.0
-assert((r.uniform(nan,1.0) fits^ std.random.Error.InvalidArgument))
-assert((r.normal(0.0,infinity) fits^ std.random.Error.InvalidArgument))
-assert(before=r.save())
-assert((r.rangeint(-9223372036854775807-1,9223372036854775807) fits^ i64^))
+assert^((r.uniform(nan,1.0) fits^ std.random.Error.InvalidArgument))
+assert^((r.normal(0.0,infinity) fits^ std.random.Error.InvalidArgument))
+assert^(before=r.save())
+assert^((r.rangeint(-9223372036854775807-1,9223372036854775807) fits^ i64^))
 let^ u=(r.uniform(-1.7976931348623157e308,1.7976931348623157e308) catch^ 0.0)
-assert(u >= -1.7976931348623157e308 and^ u < 1.7976931348623157e308)
+assert^(u >= -1.7976931348623157e308 and^ u < 1.7976931348623157e308)
 let^ n=(r.normal(0.0,1.0) catch^ 0.0)
-assert(n=n)
+assert^(n=n)
 let^ automatic=std.random.new()
-assert((automatic fits^ std.random.Random))
-print("ok")
+assert^((automatic fits^ std.random.Random))
+print^("ok")
 '''
     random_root = project('random_contract', {'main.rh': random_source})
     mask = (1 << 64)-1
@@ -382,7 +382,7 @@ print("ok")
         run([compiler, 'emit', random_root/'main.rh', '-o', ll])
         # Use a focused caller: the success-only assertion above deliberately differs.
         fail_source = random_root/'fail.rh'
-        fail_source.write_text('import^ std.random\nassert((std.random.new() fits^ std.random.Error.SeedUnavailable))\nprint(42)')
+        fail_source.write_text('import^ std.random\nassert^((std.random.new() fits^ std.random.Error.SeedUnavailable))\nprint^(42)')
         run([compiler, 'emit', fail_source, '-o', ll])
         command = [clang, '-Wno-override-module', opt, '-rtlib=compiler-rt', '-DRH_TEST_SEED_FAILURE',
                    ll, repo/'runtime/rhat_runtime.c', repo/'runtime/rhat_random.c', '-o', random_root/'failure.exe']
@@ -400,8 +400,8 @@ print("ok")
         state ^= state >> 27
         return (state*0x2545F4914F6CDD1D)&mask
     statements = ['import^ std.random',
-                  'let^ expect_int=f^ value:std.random.IntResult ->i64^ {assert(value fits^ i64^) return^ value}',
-                  'let^ expect_real=f^ value:std.random.RealResult ->f64^ {assert(value fits^ f64^) return^ value}',
+                  'let^ expect_int=f^ value:std.random.IntResult ->i64^ {assert^(value fits^ i64^) return^ value}',
+                  'let^ expect_real=f^ value:std.random.RealResult ->f64^ {assert^(value fits^ f64^) return^ value}',
                   'var^ r=std.random.new(12345)']
     integer_expected = []
     for lo, hi in [(-100,100), (-(1<<63),0), (-(1<<63),(1<<63)-1), ((1<<63)-3,(1<<63)-1)]:
@@ -414,18 +414,18 @@ print("ok")
                     bits = raw_draw()
                 bits %= span
             integer_expected.append(lo+bits)
-            statements.append(f'print(expect_int(r.rangeint({lo},{hi})))')
+            statements.append(f'print^(expect_int(r.rangeint({lo},{hi})))')
     normal_expected = []
     for _ in range(8):
         u = (raw_draw() >> 11)/(1<<53)
         v = (raw_draw() >> 11)/(1<<53)
         normal_expected.append(2.0+3.0*(math.sqrt(-2.0*math.log(1.0-u))*math.cos(6.283185307179586476925286766559*v)))
-        statements.append('print(expect_real(r.normal(2.0,3.0)))')
-    statements += ['r.reseed(12345)', 'assert(r.save()=-7046029254386365396)',
-                   'var^ copy=r', 'assert(r.next()=copy.next())',
-                   'var^ zero=std.random.new(0)', 'assert(zero.save()!=0)',
+        statements.append('print^(expect_real(r.normal(2.0,3.0)))')
+    statements += ['r.reseed(12345)', 'assert^(r.save()=-7046029254386365396)',
+                   'var^ copy=r', 'assert^(r.next()=copy.next())',
+                   'var^ zero=std.random.new(0)', 'assert^(zero.save()!=0)',
                    'var^ fallback=std.random.new(-7046029254386353131)',
-                   'assert(fallback.save()=2685821657736338717)']
+                   'assert^(fallback.save()=2685821657736338717)']
     oracle_root = project('random_integer_normal_oracle', {'main.rh':'\n'.join(statements)})
     for opt in suite.opts:
         exe=oracle_root/f'oracle{opt}.exe'
@@ -450,11 +450,11 @@ let^ yes=lib.maybe(true^)
 let^ no:lib.Item|nil^=lib.maybe(false^)
 let^ named:lib.Result=yes
 let^ anonymous:nil^|lib.Item=named
-print(lib.read(yes),lib.read(no),anonymous?.value??0)
-print(lib.templateRead(yes),lib.templateRead(no))
+print^(lib.read(yes),lib.read(no),anonymous?.value??0)
+print^(lib.templateRead(yes),lib.templateRead(no))
 var^ number=7
 let^ ref=lib.borrow(ref^ number)
-print(*(ref??ref^ number))
+print^(*(ref??ref^ number))
 ''',
     }, '42 0 42\n42 0\n7\n')
     optional_ir = optional_root/'single.ll'
@@ -473,18 +473,18 @@ public^ let^ staticAnswer=1 fits^ i32^
 ''',
         'main.rh': '''let^ lib=import^ lib.value
 let^ yes:lib.Item|nil^=lib.Item.new()
-print(yes fits^ lib.Item,lib.read(yes),lib.read(nil^))
-print(lib.structural(lib.Item.new()),lib.structural(0))
-print(lib.staticAnswer)
+print^(yes fits^ lib.Item,lib.read(yes),lib.read(nil^))
+print^(lib.structural(lib.Item.new()),lib.structural(0))
+print^(lib.staticAnswer)
 let^ random=import^ std.random
 var^ rng=random.new(12345)
-print(rng fits^ random.Random,rng.load(0) fits^ random.Error.InvalidState)
+print^(rng fits^ random.Random,rng.load(0) fits^ random.Error.InvalidState)
 ''',
     }, 'true 42 0\n42 0\ntrue\ntrue true\n')
 
     negative('module_fits_private_type', {
         'lib/value.rh': 'module^ lib.value\ndef^ Hidden {self^{value:i32^}}',
-        'main.rh': 'let^ lib=import^ lib.value\nprint(1 fits^ lib.Hidden)',
+        'main.rh': 'let^ lib=import^ lib.value\nprint^(1 fits^ lib.Hidden)',
     }, 'unknown or unavailable type')
 
     positive('module_contextual_construction', {
@@ -497,10 +497,10 @@ public^ def^ Box {self^{implicit:Hidden,explicit:Hidden={value=10}}}
 public^ let^ total=f^ box:Box {box.implicit.value+box.explicit.value}
 ''',
         'main.rh': '''let^ lib=import^ lib.point
-print(lib.sum({x=20,y=22}),lib.sum({}))
+print^(lib.sum({x=20,y=22}),lib.sum({}))
 let^ point:lib.Point={x=5}
-print(point.x,point.y,lib.sum(lib.make()))
-print(lib.total({}))
+print^(point.x,point.y,lib.sum(lib.make()))
+print^(lib.total({}))
 ''',
     }, '42 3\n5 2 7\n19\n')
 
@@ -509,7 +509,7 @@ print(lib.total({}))
 def^ Hidden {self^{value:i32^}}
 public^ let^ read=f^ item:Hidden {item.value}
 ''',
-        'main.rh': 'import^ lib.hidden\nprint(lib.hidden.read({value=42}))',
+        'main.rh': 'import^ lib.hidden\nprint^(lib.hidden.read({value=42}))',
     }, 'requires a public type')
 
     negative('module_optional_nominal_identity', {
@@ -533,7 +533,7 @@ let^ item:lib.a.Item|nil^=lib.b.Item.new()
         shutil.copy2(repo/'runtime'/runtime,share/runtime)
     installed_random=share/'stdlib/std/random.rh'
     installed_random.write_text(installed_random.read_text()+'\npublic^ let^ portableMarker:i32^=42\n')
-    portable=project('packaged_resources',{'main.rh':'import^ std.random\nprint(std.random.portableMarker)\nvar^ r=std.random.new(12345)\nprint(r.save())'})
+    portable=project('packaged_resources',{'main.rh':'import^ std.random\nprint^(std.random.portableMarker)\nvar^ r=std.random.new(12345)\nprint^(r.save())'})
     for opt in suite.opts:
         exe=portable/f'portable{opt}.exe'
         run([packed,'build',portable/'main.rh','-o',exe,'--clang',clang,opt])

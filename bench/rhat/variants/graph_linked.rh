@@ -62,8 +62,8 @@ repeat^ while^ source < 4 {
             link := pool[link].next
         }
     }
-    assert(tail <= nv)
+    assert^(tail <= nv)
     source := source+1
 }
-print(nv+ne)
-print(total)
+print^(nv+ne)
+print^(total)

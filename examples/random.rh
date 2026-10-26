@@ -2,17 +2,17 @@ import^std.random
 
 var^rng = std.random.new(12345)
 let^saved = rng.save()
-print(rng.next())
+print^(rng.next())
 let^roll=rng.rangeint(1,6)
-if^roll fits^ i64^ { print(roll) }
-assert((rng.load(saved) fits^ nil^))
-print(rng.next()) # replay the first draw
+if^roll fits^ i64^ { print^(roll) }
+assert^((rng.load(saved) fits^ nil^))
+print^(rng.next()) # replay the first draw
 
 let^automatic = std.random.new()
 if^automatic fits^std.random.Random {
     var^other = automatic
     let^sample=other.uniform(-1.0,1.0)
-    if^sample fits^f64^ { print(sample) }
+    if^sample fits^f64^ { print^(sample) }
 else^:
-    print("OS seed unavailable")
+    print^("OS seed unavailable")
 }

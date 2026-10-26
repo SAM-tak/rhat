@@ -173,11 +173,11 @@ repeat^ while^ i < n {
     }
     i := i+1
 }
-print(stats.chars)
-print(stats.nodes)
-print(stats.ok)
-print(stats.errors[1])
-print(stats.errors[2])
-print(stats.errors[3])
-print(stats.errors[4])
-print(stats.sum)
+print^(stats.chars)
+print^(stats.nodes)
+print^(stats.ok)
+print^(stats.errors[1])
+print^(stats.errors[2])
+print^(stats.errors[3])
+print^(stats.errors[4])
+print^(stats.sum)

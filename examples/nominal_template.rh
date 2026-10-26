@@ -1,6 +1,6 @@
 def^Named {
     abstract^name : f^self^ -> string^;
-    greet = p^self^ { print(self^.name()) },
+    greet = p^self^ { print^(self^.name()) },
 }
 
 def^Person : Named {
@@ -14,7 +14,7 @@ def^File {
 
 let^nominal = p^ item:Named { item.greet() }
 
-let^structural = template^p^ item { print(item.name()) }
+let^structural = template^p^ item { print^(item.name()) }
 
 var^person = Person.new()
 let^file = File.new()

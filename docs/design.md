@@ -165,7 +165,7 @@ def^ Pair { self^{ left:u32^, right:u32^ } }
 def^ Expr = Num | Pair
 var^ values=grow^[Num{value=42},Pair{left=1,right=2}]
 let^ value=values[0]
-if^ value fits^ Num { print(value.value) }
+if^ value fits^ Num { print^(value.value) }
 ```
 
 名前付き合併型自身は公称型です。同じ選択肢の組を持つ別宣言も別の型であり、相互に暗黙変換しません。
@@ -176,10 +176,10 @@ if^ value fits^ Num { print(value.value) }
 入れ子の合併型も選択肢にできます。所有領域を含む選択肢は現在拒否し、固定サイズに限定します。
 
 `value fits^ Type` は適合を判定して bool^ を返し、分岐内で値の型を絞り込みます。
-`if^ value fits^ Num { print(value.value) }` と書けます。
+`if^ value fits^ Num { print^(value.value) }` と書けます。
 型の判別・取り出し用の組み込みメソッドはありません。
 型を証明せずに合併型の選択肢固有のメンバへアクセスすることはコンパイル時に拒否します。
-`assert(value fits^ Num)` も、正常に続く経路では型の証明になります。
+`assert^(value fits^ Num)` も、正常に続く経路では型の証明になります。
 取り出した構造体の private^ メンバへのアクセスは通常の規則に従います。
 合併型自体から可変のペイロード参照は公開しません。値全体の再代入で選択肢を変更します。
 
@@ -422,7 +422,7 @@ public^ let^ answer:i64^=40+2
 import^ lib.example
 let^ lib=import^ lib.example
 let^ item:lib.Item=lib.Item{value=lib.answer}
-print(lib.example.twice(item.value))
+print^(lib.example.twice(item.value))
 ```
 
 `module^` は先頭に一度、`import^` は最上位に書きます。取り込まれるファイルにはモジュール宣言が必要です。
@@ -467,7 +467,7 @@ let^ calculate=f^ x:i64^ ->Result {
     return^ x
 }
 let^ result=calculate(42)
-if^ result fits^ i64^ { print(result) }
+if^ result fits^ i64^ { print^(result) }
 ```
 
 各種別は独立した公称型、宣言名は種別の公称合併型です。値は `Error.Invalid{}` で構築します。
@@ -506,7 +506,7 @@ PRNGはR^、数学処理は `std.math`、`nextafter` とOS seed取得は [extern
 
 ```rhat
 let^ m = import^ std.math
-print(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
+print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 ```
 
 `std.math` の関数は f64^ と f32^ のオーバーロードを持ち、引数の型で選びます。浮動小数点リテラルは f64^ を選びます。
@@ -528,9 +528,9 @@ let^ t = import^ std.text
 var^ disc:i64^ = 3
 if^ (...).len > 0 {
     let^ parsed = t.parse_i64(...[0])
-    if^ parsed fits^ i64^ { disc := parsed else^: print("usage: hanoi [DISCS]") return^ }
+    if^ parsed fits^ i64^ { disc := parsed else^: print^("usage: hanoi [DISCS]") return^ }
 }
-print(disc)
+print^(disc)
 ```
 
 `std.text` の `parse_i64`・`parse_i32`・`parse_f64`・`parse_f32` は文字列全体を読み、

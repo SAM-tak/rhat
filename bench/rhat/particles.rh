@@ -41,5 +41,5 @@ repeat^ while^ i < n {
     total := total+i64^(ps[i].x*16.0)+i64^(ps[i].y*16.0)+i64^(ps[i].z*16.0)
     i := i+1
 }
-print(n)
-print(total)
+print^(n)
+print^(total)

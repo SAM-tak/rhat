@@ -20,5 +20,5 @@ repeat^ while^ pass < 8 {
     }
     pass := pass+1
 }
-print(data.len)
-print(total)
+print^(data.len)
+print^(total)

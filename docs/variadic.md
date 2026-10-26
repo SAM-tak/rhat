@@ -8,7 +8,7 @@ let^ sum = f^ ...:i64^ -> i64^ {
 }
 let^ label = f^ name:string^, ...:i64^ -> i64^ { sum(...) + ....len }
 var^ values:i64^[3] = [1, 2, 3]
-print(sum(), sum(1, 2, 3), label("x", 10, 20), sum(values...))   # 0 6 32 6
+print^(sum(), sum(1, 2, 3), label("x", 10, 20), sum(values...))   # 0 6 32 6
 ```
 
 L^ と同じく、引数リストの末尾に `...:T` を置くと、固定引数を超えた引数をすべて受け取ります。
@@ -27,7 +27,7 @@ L^ と同じく、引数リストの末尾に `...:T` を置くと、固定引�
 
 ```rhat
 let^ id = f^ ...:i32^ -> i32^[:] { return^ ... }
-print(id(4, 8)[1])        # 8
+print^(id(4, 8)[1])        # 8
 let^ kept = id(4, 8)      # 拒否: reference would outlive its owner
 ```
 
@@ -58,8 +58,8 @@ let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return
 エントリーファイルのトップレベルは `p^ ...:string^` の本体で、`...` はプログラム名を除いたコマンド引数です。
 
 ```rhat
-print(....len)
-for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print(...[i]) }
+print^(....len)
+for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i]) }
 ```
 
 `rhat run SOURCE [OPTIONS] -- ARGS...` では `--` より後ろがプログラムへの引数です。

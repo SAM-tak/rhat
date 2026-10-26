@@ -35,5 +35,5 @@ repeat^ while^ pass < 8 {
     total := total+sum_tree(ref^ pool,root,pass)
     pass := pass+1
 }
-print(count)
-print(total)
+print^(count)
+print^(total)

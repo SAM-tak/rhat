@@ -126,10 +126,10 @@ var^ pool:grow^ Node[]=[Num{value=0,next=0}]
 var^ symbols:grow^ u8^[]=[]
 var^ roots:grow^ u32^[]=[]
 let^ err=parse_all(text[::],ref^ pool,ref^ symbols,ref^ roots)
-print(text.len)
-print(pool.len-1)
-print(roots.len)
-print(err)
+print^(text.len)
+print^(pool.len-1)
+print^(roots.len)
+print^(err)
 var^ total:i64^=0
 var^ pass:i64^=0
 repeat^ while^ pass < 4 {
@@ -137,4 +137,4 @@ repeat^ while^ pass < 4 {
     repeat^ while^ i < roots.len { total := total+walk(ref^ pool,ref^ symbols,roots[i],pass); i := i+1 }
     pass := pass+1
 }
-print(total)
+print^(total)

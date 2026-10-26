@@ -96,7 +96,7 @@ let^ step = p^ pool:ref^ grow^ Node[], free:ref^ grow^ u32^[], slots:ref^ grow^ 
 let^ n:i64^=2000000 # BENCH_N
 let^ cap=n/8
 let^ keys=u64^(cap*2)
-assert(cap > 0)
+assert^(cap > 0)
 var^ nslots:i64^=16
 repeat^ while^ nslots < cap*2 { nslots := nslots*2 }
 let^ mask=nslots-1
@@ -117,8 +117,8 @@ repeat^ while^ i < n {
     step(ref^ pool,ref^ free,ref^ slots,ref^ stats,cap,keys,mask,r)
     i := i+1
 }
-assert(pool.len <= cap+2)
-assert(stats.count+free.len = pool.len-2)
+assert^(pool.len <= cap+2)
+assert^(stats.count+free.len = pool.len-2)
 var^ hash:u64^=0
 var^ vals:i64^=0
 var^ cur=pool[hi].next
@@ -127,9 +127,9 @@ repeat^ while^ pool[cur].key >= 0 {
     vals := vals+i64^(pool[cur].val)
     cur := pool[cur].next
 }
-print(stats.hits)
-print(stats.misses)
-print(stats.removes)
-print(stats.count)
-print(hash)
-print(vals)
+print^(stats.hits)
+print^(stats.misses)
+print^(stats.removes)
+print^(stats.count)
+print^(hash)
+print^(vals)

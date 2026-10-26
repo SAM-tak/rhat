@@ -31,7 +31,7 @@ let^tree_check = p^depth:i64^-> i64^{
 }
 
 let^maxdepth:i64^= 15 # BENCH_N
-print(tree_check(maxdepth+1))
+print^(tree_check(maxdepth+1))
 var^long:grow^Node[] = []
 let^root = make(ref^long, maxdepth)
 var^d:i64^= 4
@@ -43,9 +43,9 @@ repeat^while^d <= maxdepth {
         sum := sum + tree_check(d)
         i := i + 1
     }
-    print(iters)
-    print(d)
-    print(sum)
+    print^(iters)
+    print^(d)
+    print^(sum)
     d := d + 2
 }
-print(check(ref^long, root))
+print^(check(ref^long, root))

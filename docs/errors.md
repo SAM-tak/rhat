@@ -61,11 +61,11 @@ let^ selective=read(-1) catch^ if^ it^ fits^ Error.Invalid: 0 el^: try^ it^;
 ```rhat
 do^{
     let^ value=try^ read(-1)
-    print(value)
+    print^(value)
 catch^ Error.Invalid:
-    print("invalid")
+    print^("invalid")
 catch^:
-    print("other error")
+    print^("other error")
 }
 ```
 

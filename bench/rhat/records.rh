@@ -53,5 +53,5 @@ repeat^ while^ pass < 4 {
     repeat^ while^ i < log.len { total := total+score(log[i]); i := i+1 }
     pass := pass+1
 }
-print(log.len)
-print(total)
+print^(log.len)
+print^(total)

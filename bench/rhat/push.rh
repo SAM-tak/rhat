@@ -28,7 +28,7 @@ repeat^ while^ i < marks.len {
     marked_total := marked_total+i64^(marks[i].val)
     i := i+1
 }
-print(items.len)
-print(marks.len)
-print(total)
-print(marked_total)
+print^(items.len)
+print^(marks.len)
+print^(total)
+print^(marked_total)

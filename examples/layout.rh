@@ -11,7 +11,7 @@ def^C : A, B {
 }
 
 let^value = C.new()
-assert(value.a = 0)
-assert(value.b = 42)
-assert(value.c = 12)
-print(value.a, value.b, value.c)
+assert^(value.a = 0)
+assert^(value.b = 42)
+assert^(value.c = 12)
+print^(value.a, value.b, value.c)

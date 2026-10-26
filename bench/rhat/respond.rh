@@ -92,6 +92,6 @@ repeat^ while^ i < n {
     bytes := bytes+result.bytes
     i := i+1
 }
-print(n)
-print(bytes)
-print(h)
+print^(n)
+print^(bytes)
+print^(h)

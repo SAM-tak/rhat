@@ -14,7 +14,7 @@ let^ split=p^ text:u8^[:] -> WordList {
         repeat^ while^ i < text.len and^ text[i] != 32 { i := i+1 }
         let^ len=i-start
         if^ len > 0 {
-            assert(len <= 127)
+            assert^(len <= 127)
             out.data.push(u8^(len))
             out.data.append(text[start :: start+len])
             out.count := out.count+1
@@ -49,8 +49,8 @@ repeat^ while^ pass < 4 {
         total := total+len+i64^(words.data[at+1])+i64^(words.data[at+len])
         at := at+len+1
     }
-    assert(at = words.data.len)
+    assert^(at = words.data.len)
     pass := pass+1
 }
-print(words.count)
-print(total)
+print^(words.count)
+print^(total)

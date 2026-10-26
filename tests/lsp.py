@@ -112,7 +112,7 @@ def main():
     content = '''def^Point {self^{x:i64^=42, private^hidden:i32^=0}}
 let^twice=f^n {let^value:i64^=n return^value*2}
 var^point=Point{}
-print(twice(point.x))
+print^(twice(point.x))
 '''
     client.open(path, content)
     assert client.diagnostics(path, 1) == []
@@ -160,7 +160,7 @@ print(twice(point.x))
     print('PASS invalid edit recovery and incomplete member completion',flush=True)
 
     # Astral Unicode before the use exercises UTF-16 columns and incremental edits.
-    unicode = 'let^ 日本語:i64^=41\nprint("😀",日本語)\n'
+    unicode = 'let^ 日本語:i64^=41\nprint^("😀",日本語)\n'
     client.change(path,unicode,4)
     assert client.diagnostics(path,4) == []
     result=request('definition','日本語)',text=unicode)
@@ -173,7 +173,7 @@ print(twice(point.x))
     module = work/'lib'/'math.rh'
     module.parent.mkdir(exist_ok=True)
     module.write_text('module^ lib.math\npublic^ let^ twice=f^ x:i64^ {x*2}\n',encoding='utf-8')
-    main = 'let^ math=import^ lib.math\nprint(math.twice(21))\n'
+    main = 'let^ math=import^ lib.math\nprint^(math.twice(21))\n'
     client.change(path,main,6)
     assert client.diagnostics(path,6) == []
     result=request('definition','twice(21)',text=main)
@@ -192,10 +192,10 @@ print(twice(point.x))
     namespace_path = work/'namespaces.rh'
     namespace_source = '''import^lib.math
 let^math=import^lib.math
-print(lib . math . twice(1),math.twice(2))
-let^shadow=p^math:i64^ {print(math)}
+print^(lib . math . twice(1),math.twice(2))
+let^shadow=p^math:i64^ {print^(math)}
 shadow(3)
-print("lib.math") # lib.math
+print^("lib.math") # lib.math
 '''
     client.open(namespace_path,namespace_source)
     assert client.diagnostics(namespace_path,1) == []
@@ -221,20 +221,20 @@ def^ Derived:Base {}
 let^ twice=f^ n:i64^ {if^ n<1: 0 el^: this^(n-1);}
 var^ derived=Derived{}
 let^ x:i32^=1
-do^{let^ x:i64^=2 print(x)}
-print(x,derived.x,twice(2))
+do^{let^ x:i64^=2 print^(x)}
+print^(x,derived.x,twice(2))
 """
     client.change(path,scoped,7)
     assert client.diagnostics(path,7) == []
-    assert request('definition','print(x)',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i64^=2')
-    assert request('definition','print(x,',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i32^=1')
+    assert request('definition','print^(x)',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i64^=2')
+    assert request('definition','print^(x,',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i32^=1')
     assert request('definition','this^',text=scoped)['range']['start'] == at(scoped,'twice=f^')
     completions=request('completion','derived.x',shift=8,text=scoped)
     assert 'x' in {x['label'] for x in completions}, completions
     assert 'secret' not in {x['label'] for x in completions}, completions
     own="""def^ Hidden {self^{private^ secret:i64^=42} read=f^ self^ {self^.secret}}
 let^ box=Hidden{}
-print(box.read())
+print^(box.read())
 """
     client.change(path,own,8)
     assert client.diagnostics(path,8) == []
@@ -245,18 +245,18 @@ print(box.read())
     for version,invalid in [(9,'let^ x:UnknownType=1'),(10,'let^ x:f128^=1.0'),(11,'let^ bad=f^ {var^ x=1 return^ ref^ x} let^ r=bad()')]:
         client.change(path,invalid,version)
         assert client.diagnostics(path,version)
-    floating='let^ x:f16^=1.25 let^ y:f32^=1.5 print(x,y)\n'
+    floating='let^ x:f16^=1.25 let^ y:f32^=1.5 print^(x,y)\n'
     client.change(path,floating,12)
     assert client.diagnostics(path,12) == []
     # Stale document versions must never roll back a newer editor buffer.
     client.change(path,'bad!',11)
     assert client.diagnostics(path,12) == []
     for version in range(13,63):
-        client.change(path,'let^ number:i64^='+str(version)+'\nprint(number)\n',version)
+        client.change(path,'let^ number:i64^='+str(version)+'\nprint^(number)\n',version)
     assert client.diagnostics(path,62) == []
     print('PASS semantic error recovery, numeric allocation cleanup and coalesced edits',flush=True)
 
-    entry_module='module^ app\nlet^ value:i64^=42\nprint(value)\n'
+    entry_module='module^ app\nlet^ value:i64^=42\nprint^(value)\n'
     client.change(path,entry_module,63)
     assert client.diagnostics(path,63) == []
     library='module^ lib.constants\nlet^ hidden:i64^=42\npublic^ let^ answer:i64^=42\npublic^ let^ read=f^ {hidden}\n'
@@ -265,29 +265,29 @@ print(box.read())
     outline=client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=path.as_uri())))
     assert {'hidden','answer','read'} <= {x['name'] for x in outline}, outline
     print('PASS module entry statements and standalone library constants',flush=True)
-    loop='for^ index from^ 1 to^ 3 {print(index)}\n'
+    loop='for^ index from^ 1 to^ 3 {print^(index)}\n'
     client.change(path,loop,65)
     assert client.diagnostics(path,65) == []
     assert request('definition','index)',text=loop)['range']['start'] == at(loop,'index from^')
-    standard='import^ std.random\nvar^ rng=std.random.new(42)\nprint(rng.next())\n'
+    standard='import^ std.random\nvar^ rng=std.random.new(42)\nprint^(rng.next())\n'
     client.change(path,standard,66)
     assert client.diagnostics(path,66) == []
     print('PASS counted-loop binding navigation and standard library resolution',flush=True)
     narrowed="""def^ Box {self^{value:i64^|nil^=42}}
 let^ box=Box{}
-if^ box.value fits^ i64^ {print(box.value)}
+if^ box.value fits^ i64^ {print^(box.value)}
 let^ local:i64^|nil^=42
-if^ local? {print(local)}
+if^ local? {print^(local)}
 """
     client.change(path,narrowed,67)
     assert client.diagnostics(path,67) == []
-    assert request('hover','print(box.value)',shift=10,text=narrowed)['contents']['value'] == 'value: i64^'
-    assert request('hover','print(local)',shift=6,text=narrowed)['contents']['value'] == 'local: i64^'
+    assert request('hover','print^(box.value)',shift=10,text=narrowed)['contents']['value'] == 'value: i64^'
+    assert request('hover','print^(local)',shift=6,text=narrowed)['contents']['value'] == 'local: i64^'
     print('PASS narrowed local and member hover types',flush=True)
     reference='''var^ value:i32^=7
 let^ view:ref^ i32^=ref^ value
 let^ read=f^ item:ref^ i32^ ->i32^ {*item}
-print(read(view))
+print^(read(view))
 '''
     client.change(path,reference,68)
     assert client.diagnostics(path,68) == []
@@ -300,10 +300,10 @@ print(read(view))
     overloads='''let^ choose=f^ n:i32^ ->i32^ {n+1}
 let^ choose=f^ n:string^ ->i32^ {42}
 let^ dispatch=choose
-print(dispatch(1),choose("s"))
+print^(dispatch(1),choose("s"))
 def^ V {self^{n:i32^=1} op^+ =f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}}
 var^ v=V{}
-print(v+1)
+print^(v+1)
 '''
     client.change(path,overloads,69)
     assert client.diagnostics(path,69) == []

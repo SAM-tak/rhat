@@ -7,7 +7,7 @@ externC^ memset:p^ s:u8^[:], c:i32^, n:u64^;
 externC^ puts:p^ s:string^ ->i32^;
 
 var^ exponent:i32^=0
-print(hypot(3.0, 4.0), frexp(8.0, ref^ exponent), exponent)   # 5 0.5 4
+print^(hypot(3.0, 4.0), frexp(8.0, ref^ exponent), exponent)   # 5 0.5 4
 ```
 
 `externC^ 名前:署名;` は、本体のない関数を C の関数へ結び付けます。名前がそのまま C のシンボル名になり、

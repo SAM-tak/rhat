@@ -7,7 +7,7 @@
 let^read = f^value:i32^ -> i32^{ value+1 }
 let^read = f^value:string^ -> i32^{ 42 }
 let^alias:f^i32^ -> i32^; & f^string^ -> i32^; = read
-print(alias(2),alias("text"))
+print^(alias(2),alias("text"))
 ```
 
 関数型は `f^ 引数型, … -> 返り値型;`、手続き型は `p^ … -> 返り値型;` です。

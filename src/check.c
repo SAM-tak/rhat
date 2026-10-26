@@ -357,14 +357,14 @@ static Type *infer_call(Infer *c, Expr *e)
         return type_builtin(c->p, k);
       }
     }
-    if (!strcmp(target->text, "print") || !strcmp(target->text, "assert")) {
+    if (!strcmp(target->text, "print^") || !strcmp(target->text, "assert^")) {
       for (int j = 0; j < e->args.n; j++) {
         infer_expr(c, e->args.v[j], NULL);
       }
       if (c->terminated) {
         return type_builtin(c->p, T_NEVER);
       }
-      if (!strcmp(target->text, "assert") && e->args.n == 1) {
+      if (!strcmp(target->text, "assert^") && e->args.n == 1) {
         refine_condition(c->p, &c->vars, &c->flow, e->args.v[0], true);
       }
       return type_builtin(c->p, T_VOID);
@@ -1917,7 +1917,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
                        ? overload_hint(c->p, &candidates, j + offset, e->args.v[j])
                        : callable ? callable_hint(callable, e->args.n, j)
                                   : parameter_type(c->p, p);
-      if (e->a->kind == E_NAME && !strcmp(e->a->text, "assert")) {
+      if (e->a->kind == E_NAME && !strcmp(e->a->text, "assert^")) {
         hint = type_builtin(c->p, T_BOOL);
       }
       BodyNode *arg = body_expr(c, e->args.v[j], hint);

@@ -19,9 +19,9 @@ Clang でコンパイル・リンクします。Windows x86-64 で検証して�
 import^ std.random
 
 var^ rng = std.random.new(12345)
-print(rng.next())
+print^(rng.next())
 let^ result = rng.rangeint(1, 6)
-if^ result fits^ i64^ { print(result) }
+if^ result fits^ i64^ { print^(result) }
 ```
 
 独立したファイルは `module^ lib.example` で名乗り、`public^` の付いた宣言を公開します。
@@ -102,7 +102,7 @@ def^ C : A, B {
 }
 
 let^ value = C.new()
-print(value.a, value.b, value.c)
+print^(value.a, value.b, value.c)
 ```
 
 出力は `0 42 12`。`C` のフィールド配置は `A.a @0`, `B.b @4`, `C.c @8` です。
@@ -162,7 +162,8 @@ print(value.a, value.b, value.c)
   L^ と同じ優先順位で、`bitshift^` は正で左、負で論理右シフトし、型の幅以上ならゼロになります。
 - `i32^(value)` などの明示的な数値変換。整数間は下位ビットの保持と符号・ゼロ拡張、
   浮動小数点から整数はゼロ方向への切り捨てです。NaN・無限大・変換先範囲外は実行時診断します。
-- `print`, `assert`, 配列の `.len`, 伸長配列の `.push()`・`.pop()`・`.clear()`・`.truncate()`。組み込みメンバの名前に `^` は付けません。
+- `print^ value` / `print^(a, b)`、`assert^(cond)`、`panic^ value`。グローバルな組み込みはすべてハット識別子です。
+- 配列の `.len`, 伸長配列の `.push()`・`.pop()`・`.clear()`・`.truncate()`。組み込みメンバの名前に `^` は付けません。
   `.push(value)` は追記した要素への `ref^ T` を返し、後続の追記でも参照は有効です。
   `a[lo :: hi]`（終端を含まない）・`a[lo to^ hi]`（終端を含む）は配列・文字列の一部を借用し、`.append(view)` は伸長配列へまとめてコピーします。
   文字列の添字は `u8^` のバイト値を返します。ビューの寿命は元の保存領域に束縛されます。

@@ -40,5 +40,5 @@ repeat^ while^ i < a.len {
     total := total+i64^(a[i])
     i := i+1
 }
-print(w)
-print(total)
+print^(w)
+print^(total)

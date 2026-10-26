@@ -2031,12 +2031,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     }
   }
   if (target->kind == E_NAME &&
-      (!strcmp(target->text, "print") || !strcmp(target->text, "assert"))) {
-    bool print = !strcmp(target->text, "print");
+      (!strcmp(target->text, "print^") || !strcmp(target->text, "assert^"))) {
+    bool print = !strcmp(target->text, "print^");
     if (print && !c->in->fn->procedure)
-      fail(e->loc, "print requires p^");
+      fail(e->loc, "print^ requires p^");
     if (!print && e->args.n != 1)
-      fail(e->loc, "assert expects one bool");
+      fail(e->loc, "assert^ expects one bool");
     Instr *i = mem(sizeof(*i));
     i->op = print ? I_PRINT : I_ASSERT;
     i->loc = e->loc;
@@ -2049,9 +2049,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       }
       if (print && !kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
           v.type->kind != T_STRING && v.type->kind != T_BOOL)
-        fail(e->loc, "print does not support '%s'", type_name(v.type));
+        fail(e->loc, "print^ does not support '%s'", type_name(v.type));
       if (!print && v.type->kind != T_BOOL)
-        fail(e->loc, "assert requires bool");
+        fail(e->loc, "assert^ requires bool");
       v = snapshot(c, v, e->loc);
       add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
