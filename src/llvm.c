@@ -1035,6 +1035,18 @@ static void instruction(Output *o, Instr *i) {
         i->loc.line, valid);
     break;
   }
+  case I_TERMINATE: {
+    a = load(o, i->a);
+    b = ++o->tmp;
+    r = ++o->tmp;
+    fprintf(f,
+            "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n"
+            "  %%t%d = extractvalue { ptr, i64 } %%t%d, 1\n"
+            "  call void @rh_terminate(ptr %%t%d, i64 %%t%d, i32 %d, i32 %d)\n"
+            "  unreachable\n",
+            b, a, r, a, b, r, i->loc.line, i->label);
+    break;
+  }
   case I_LABEL:
     fprintf(f, "block%d:\n", i->label);
     break;
@@ -1129,6 +1141,7 @@ void emit_llvm(Program *p, const char *path) {
   emit_llvm_builtins(f);
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
         "declare void @rh_runtime_args(i32, ptr, ptr)\n"
+        "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
         "declare void @rh_print_bool(i64)\n"
@@ -1258,7 +1271,8 @@ void dump_ir(Program *p, const char *path) {
                          "stack.save",
                          "result.checkpoint",
                          "result.rewind",
-                         "range.guard"};
+                         "range.guard",
+                         "terminate"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,

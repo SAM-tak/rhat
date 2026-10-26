@@ -82,6 +82,9 @@ static void local_plan(Instance *in) {
         fail(i->loc, "return leaves a local data stack owner live");
       continue;
     }
+    if (i->op == I_TERMINATE) {
+      continue; /* The process exits; owners are not released. */
+    }
     if (i->op == I_BR || i->op == I_CBR) {
       join(states, labels[i->label], &state, &queue, i->loc);
       if (i->op == I_CBR)

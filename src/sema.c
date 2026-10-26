@@ -1696,6 +1696,42 @@ static Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc)
   fail(loc, "error '%s' is not included in '%s'", type_name(src.type),
        type_name(to));
 }
+/* End the process with a message: a string^, or the name of the error
+ * variant held by subject. panic^ and an error leaving the entry file differ
+ * only in the reported prefix. */
+static void terminate(Context *c, Value subject, bool panic, Loc loc)
+{
+  bool sum = subject.type->kind == T_UNION;
+  bool text = subject.type->kind == T_STRING;
+  int arms = sum ? subject.type->def->alternatives.n : 1;
+  for (int j = 0; j < arms; j++) {
+    int next = ++c->in->labels;
+    if (j + 1 < arms) {
+      Value test = value(c, type_builtin(c->p, T_BOOL));
+      Instr *is = emit(c, I_CASE_IS, loc);
+      is->dst = test.id;
+      is->a = subject.id;
+      is->type = subject.type;
+      is->label = j;
+      int here = ++c->in->labels;
+      nil_branch(c, test, here, next, loc);
+      nil_label(c, here, loc);
+    }
+    int message = subject.id;
+    if (!text) {
+      char *name = type_name(sum ? subject.type->def->alternatives.v[j] : subject.type);
+      Expr literal = {.kind = E_STRING, .loc = loc, .text = name, .length = strlen(name)};
+      message = expression(c, &literal, type_builtin(c->p, T_STRING)).id;
+    }
+    Instr *i = emit(c, I_TERMINATE, loc);
+    i->a = message;
+    i->label = panic;
+    if (j + 1 < arms) {
+      nil_label(c, next, loc);
+    }
+  }
+  c->terminated = true;
+}
 static void route_error(Context *c, Value error, Loc loc)
 {
   if (c->handlers.n) {
@@ -1735,7 +1771,10 @@ static void route_error(Context *c, Value error, Loc loc)
   }
   else {
     if (c->in->fn == c->p->entry) {
-      fail(loc, "unhandled try^ error at top level; add a catch^ clause");
+      /* The entry file has no caller: report the variant and exit. */
+      terminate(c, error, false, loc);
+      c->terminated = true;
+      return;
     }
     if (!error_accepts(c->in->result, error.type)) {
       fail(loc,
@@ -2804,6 +2843,18 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_PACK) {
     return pack_value(c, e, expected);
+  }
+  if (e->kind == E_PANIC) {
+    Value v = snapshot(c, expression(c, e->a, NULL), e->loc);
+    if (c->terminated) {
+      return abrupt(c);
+    }
+    if (v.type->kind != T_STRING && !only_errors(v.type)) {
+      fail(e->loc, "panic^ takes a string^ or an error value, found '%s'",
+           type_name(v.type));
+    }
+    terminate(c, v, true, e->loc);
+    return abrupt(c);
   }
   if (e->kind == E_TRY) {
     return construct(c, e, expected, -1);

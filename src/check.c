@@ -932,6 +932,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     return f ? f->type : NULL;
   }
+  case E_PANIC:
+    infer_expr(c, e->a, NULL);
+    c->terminated = true;
+    return type_builtin(c->p, T_NEVER);
   case E_PACK:
     if (e->a) {
       infer_expr(c, e->a, NULL);
@@ -1957,6 +1961,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     }
     break;
   }
+  case E_PANIC:
+    body_expr(c, e->a, NULL);
+    break;
   case E_PACK:
     if (e->a) {
       body_expr(c, e->a, NULL);

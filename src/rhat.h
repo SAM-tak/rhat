@@ -95,8 +95,9 @@ enum {
                */
   E_CHAIN,    /* Comparisons share operands and short-circuit left to right. */
   E_SLICE,    /* A range index: text is "::" or "to^"; b/c are optional bounds. */
-  E_PACK      /* Compiler-only: trailing arguments of a variadic call, or the
+  E_PACK,     /* Compiler-only: trailing arguments of a variadic call, or the
                  single forwarded sequence in a. */
+  E_PANIC     /* panic^ a: end the process; it produces no value. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */
@@ -325,7 +326,8 @@ enum {
   I_STACK_BEGIN,
   I_STACK_SAVE,   /* Save the caller-owned result stack frontier. */
   I_STACK_REWIND, /* Restore a result construction checkpoint after an error. */
-  I_RANGE_GUARD
+  I_RANGE_GUARD,
+  I_TERMINATE /* Exit with the string in slot a; label 1 marks panic^. */
 };
 enum {
   RANGE_SLOT,

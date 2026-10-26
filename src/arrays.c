@@ -84,7 +84,7 @@ void analyze_array_growth(Program *p) {
         top[((Slot *)in->slots.v[i->dst])->owner] = 0;
       if (i->op == I_RELEASE)
         top[i->a] = 0;
-      if (i->op == I_RETURN)
+      if (i->op == I_RETURN || i->op == I_TERMINATE)
         continue;
       if (i->op == I_BR || i->op == I_CBR) {
         merge(states, labels[i->label], top, count, &queue);

@@ -404,7 +404,6 @@ print(unguarded(ref^ items) fits^ E.Bad)
         ('error_nested_mixed','def^ Inner=i32^|E.Bad def^ Outer=Inner|nil^ let^ inner:Inner=1 let^ v:Outer=inner print(try^ v)','nested mixed nominal unions'),
         ('error_catch_infallible','print(42 catch^ 0)','requires an error alternative'),
         ('error_catch_after_try','print(try^ read(0) catch^ 0)','requires an error alternative'),
-        ('error_top_level','let^ n=try^ read(0)','unhandled try^ error at top level'),
         ('error_signature','let^ f=f^ ->i32^ {return^ try^ read(0)} print(f())','not included in the function result'),
         ('error_partial_signature','let^ f=f^ ->i32^|E.Bad {return^ try^ read(0)} print(f())','not included in the function result'),
         ('error_clause_without_try','do^{let^ n=read(0) catch^: print(1)}','error-producing try^'),
@@ -416,6 +415,20 @@ print(unguarded(ref^ items) fits^ E.Bad)
         ('error_return_rhs','let^ n=read(0) catch^ return^ 0','expected'),
         ('error_focus_escape','let^ bad=f^ ->ref^ E.Bad {return^ (E.Bad{} catch^ ref^ it^)} let^ ref=bad()',"borrowing storage requires var^"),
     ]
+    positive('error_top_level_success', prefix+'let^ n=try^ read(5) print(n)', '5\n')
+    suite.runtime_failure('error_top_level_first', prefix+'print(1) let^ n=try^ read(0) print(n)',
+                          'line 7: unhandled error E.Bad')
+    suite.runtime_failure('error_top_level_last', prefix+'let^ n=try^ read(-1) print(n)', 'unhandled error E.Missing')
+    suite.runtime_failure('error_top_level_variant', prefix+'do^{try^ E.Bad{}}', 'unhandled error E.Bad')
+    suite.runtime_failure('panic_message', prefix+'print(1)\npanic^ "not here"\nprint(2)', 'line 8: panic: not here')
+    suite.runtime_failure('panic_catch_rhs', prefix+'let^ n=read(-1) catch^ panic^ it^\nprint(n)', 'panic: E.Missing')
+    positive('panic_catch_rhs_success', prefix+'let^ n=read(3) catch^ panic^ it^\nprint(n)', '3\n')
+    suite.runtime_failure('panic_catch_arm', prefix+'do^{\n let^ n=try^ read(0)\n print(n)\ncatch^:\n panic^ it^\n}',
+                          'line 11: panic: E.Bad')
+    positive('panic_function_path', prefix+'let^ g=f^ n:i32^ ->i32^ { if^ n<0 { panic^ "negative" } return^ n }\nprint(g(2))', '2\n')
+    suite.runtime_failure('panic_function', prefix+'let^ g=f^ n:i32^ ->i32^ { if^ n<0 { panic^ "negative" } return^ n }\nprint(g(-1))',
+                          'panic: negative')
+    negatives.append(('panic_value_type', 'panic^ 3', 'panic^ takes a string^ or an error value'))
     for name, text, diagnostic in negatives:
         negative(name,prefix+text,diagnostic)
     suite.finish()

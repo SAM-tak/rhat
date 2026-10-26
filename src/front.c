@@ -719,6 +719,9 @@ static Expr *primary(Parser *p) {
   if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "...")) {
     e = node(E_NAME, t->loc); /* The collected variadic arguments. */
     e->text = "...";
+  } else if (t->kind == TOK_WORD && !strcmp(t->text, "panic^")) {
+    e = node(E_PANIC, t->loc);
+    e->a = expr(p, 0);
   } else if (t->kind == TOK_SCOPE) {
     e = node(E_NAME, t->loc);
     e->text = word(p);

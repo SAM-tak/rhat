@@ -241,6 +241,16 @@ _Noreturn void rh_truncate_fail(int32_t line) {
 _Noreturn void rh_slice_fail(int32_t line) {
   rh_panic("slice range out of bounds", line);
 }
+/* panic^, or an error that try^ passed out of the entry file, ends the
+ * process with its message or error variant name. */
+_Noreturn void rh_terminate(const char *text, int64_t length, int32_t line,
+                            int32_t panic)
+{
+  fflush(stdout);
+  fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s%.*s\n", line,
+          panic ? "panic: " : "unhandled error ", (int)length, text);
+  exit(1);
+}
 _Noreturn void rh_assert_fail(int32_t line) {
   rh_panic("assertion failed", line);
 }
