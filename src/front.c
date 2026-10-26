@@ -706,6 +706,9 @@ static Expr *for_expression(Parser *p, Loc loc);
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
+  if (t->kind == TOK_WORD && !strcmp(t->text, "externC^")) {
+    fail(t->loc, "externC^ declarations are only allowed at the top level");
+  }
   if (t->kind == TOK_SCOPE) {
     e = node(E_NAME, t->loc);
     e->text = word(p);
@@ -1763,6 +1766,15 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
   }
   return f;
 }
+/* Parse the signature after externC^ SYMBOL, bound to name. */
+static Function *external_function(Parser *p, char *name, char *symbol)
+{
+  need(p, ":");
+  Function *f = function(p, name, NULL, true);
+  f->abstract = false;
+  f->external = symbol;
+  return f;
+}
 static void definition(Parser *p) {
   Def *d = mem(sizeof(*d));
   d->loc = tok(p)->loc;
@@ -1980,10 +1992,7 @@ void parse_file(Program *p, const char *path, Module *module) {
     if (take(&q, "externC^")) {
       Loc declaration = tok(&q)->loc;
       char *name = decl_word(&q);
-      need(&q, ":");
-      Function *f = function(&q, name, NULL, true);
-      f->abstract = false;
-      f->external = name;
+      Function *f = external_function(&q, name, name);
       f->declaration = declaration;
       f->module = module;
       f->public = public;
@@ -2006,6 +2015,7 @@ void parse_file(Program *p, const char *path, Module *module) {
       binding = !strcmp(equal->text, "=") && initializer->kind == TOK_WORD &&
                 (!strcmp(initializer->text, "f^") ||
                  !strcmp(initializer->text, "p^") ||
+                 !strcmp(initializer->text, "externC^") ||
                  !strcmp(initializer->text, "template^"));
     }
     if (!binding) {
@@ -2042,14 +2052,20 @@ void parse_file(Program *p, const char *path, Module *module) {
     Loc declaration = tok(&q)->loc;
     char *name = decl_word(&q);
     need(&q, "=");
-    Function *parsed_function = function(&q, name, NULL, false);
-    /* A called literal initializes a value; it does not declare a named
-     * function. */
-    if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-        (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
-      q.at = binding_start;
-      add(&p->entry->body, stmt(&q));
-      continue;
+    Function *parsed_function = NULL;
+    if (take(&q, "externC^")) {
+      parsed_function = external_function(&q, name, word(&q));
+    }
+    else {
+      parsed_function = function(&q, name, NULL, false);
+      /* A called literal initializes a value; it does not declare a named
+       * function. */
+      if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
+          (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
+        q.at = binding_start;
+        add(&p->entry->body, stmt(&q));
+        continue;
+      }
     }
     parsed_function->declaration = declaration;
     parsed_function->module = module;

@@ -35,6 +35,13 @@ puts("from C")
 print(2)
 ''', '1\nfrom C\n2\n')
 
+    positive('ffi_symbol_alias_overloads', '''
+let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;
+let^ root = externC^ sqrt:f^ x:f64^ ->f64^;
+externC^ sqrt:f^ x:f64^ ->f64^;
+print(root(f32^(2.25)), root(6.25), sqrt(16.0))
+''', '1.5 2.5 4\n')
+
     if os.name == 'nt':
         linked = 'externC^ GetCurrentProcessId:p^ ->u32^;\nprint(GetCurrentProcessId() > 0)\n'
         library = 'kernel32'
@@ -52,6 +59,8 @@ print(2)
     negative('ffi_main_symbol', 'externC^ main:p^ ->i32^;', 'usable C identifier')
     negative('ffi_runtime_symbol', 'externC^ rh_random_seed:f^ state:ref^ u64^ ->i64^;', 'reserved for the runtime')
     negative('ffi_conflicting_symbol', 'externC^ abs:f^ n:i32^ ->i32^;\nexternC^ abs:f^ n:i64^ ->i64^;', 'another signature')
+    negative('ffi_alias_conflict', 'let^ a = externC^ abs:f^ n:i32^ ->i32^;\nlet^ b = externC^ abs:f^ n:i64^ ->i64^;', 'another signature')
+    negative('ffi_local', 'let^ g=p^ { let^ h = externC^ abs:f^ n:i32^ ->i32^; }', 'only allowed at the top level')
     negative('ffi_effect', 'externC^ puts:p^ s:string^ ->i32^;\nlet^ g=f^ ->i32^ { puts("x") }\nprint(g())', "f^ cannot call p^ 'puts'")
     suite.finish()
 

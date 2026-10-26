@@ -205,8 +205,8 @@ print(integer,floating)
     negative('reserved_std_module', {'main.rh': 'module^ std.forged'}, 'reserved')
     negative('private_standard_extern', {'main.rh': 'import^ std.random\nprint(std.random.sqrt(4.0))'}, 'sqrt')
     positive('module_public_extern', {
-        'lib/cmath.rh': 'module^ lib.cmath\npublic^ externC^ hypot:f^ x:f64^, y:f64^ ->f64^;\n',
-        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0))'}, '5 10\n')
+        'lib/cmath.rh': 'module^ lib.cmath\npublic^ externC^ hypot:f^ x:f64^, y:f64^ ->f64^;\npublic^ let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;\n',
+        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5 10 1.5\n')
     positive('module_recursive_external_borrow', {
         'lib/borrow.rh': '''module^ lib.borrow
 public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
