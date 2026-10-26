@@ -221,6 +221,10 @@ Def *outer_receiver(Function *f, Type *type, Loc loc);
 /* Read the refined type of a stable member path. */
 Type *path_type(Var *v, const char *path);
 
+/* Replace a variadic call's trailing arguments with one E_PACK argument;
+ * offset counts receivers already bound to leading parameters. */
+Expr *pack_arguments(Function *f, Expr *e, int offset);
+
 /* Reject an externC^ signature without a plain C shape or a usable symbol. */
 void external_validate(Program *p, Function *f);
 

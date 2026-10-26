@@ -94,7 +94,9 @@ enum {
   E_COALESCE, /* Lazy nil replacement, below unary and above binary operators.
                */
   E_CHAIN,    /* Comparisons share operands and short-circuit left to right. */
-  E_SLICE     /* A range index: text is "::" or "to^"; b/c are optional bounds. */
+  E_SLICE,    /* A range index: text is "::" or "to^"; b/c are optional bounds. */
+  E_PACK      /* Compiler-only: trailing arguments of a variadic call, or the
+                 single forwarded sequence in a. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */
@@ -102,6 +104,8 @@ struct Expr {
                       grow^ T[] value; never evaluated as a value. */
   Spec *constant_spec;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
+  bool spread;          /* A trailing ... forwards this sequence to a variadic
+                           parameter. */
   void *compiler_value; /* Internal full Value, retaining borrow provenance. */
   int kind;
   Loc loc;
@@ -186,6 +190,8 @@ struct Function {
   bool intrinsic; /* externLLVM^ binds an LLVM intrinsic instead of a C symbol. */
   bool procedure, templ, abstract, priv, override, mutable_self;
   bool overload, operator_member, right_receiver; /* Explicit member roles. */
+  bool variadic; /* The last parameter "..." collects trailing arguments as a
+                    slice. */
 };
 struct Field {
   Loc loc;

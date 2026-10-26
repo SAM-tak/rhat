@@ -496,6 +496,9 @@ static void lex(Parser *p) {
           (start[0] == '.' && *s == '.'))
         s++;
     }
+    if (s - start == 2 && !strncmp(start, "..", 2) && *s == '.') {
+      s++; /* The variadic marker ... is matched before concatenation. */
+    }
     if (s - start == 2 && *s == '=' &&
         (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "..", 2))) {
       s++;
@@ -656,6 +659,9 @@ static void entries(Parser *p, Expr *e, const char *end, bool named) {
       need(p, "=");
     }
     add(&e->args, expr(p, 0));
+    if (!strcmp(end, ")") && take(p, "...")) {
+      ((Expr *)e->args.v[e->args.n - 1])->spread = true;
+    }
     if (is(p, end))
       break;
   } while (take(p, ","));
@@ -710,7 +716,10 @@ static Expr *primary(Parser *p) {
       (!strcmp(t->text, "externC^") || !strcmp(t->text, "externLLVM^"))) {
     fail(t->loc, "%s declarations are only allowed at the top level", t->text);
   }
-  if (t->kind == TOK_SCOPE) {
+  if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "...")) {
+    e = node(E_NAME, t->loc); /* The collected variadic arguments. */
+    e->text = "...";
+  } else if (t->kind == TOK_SCOPE) {
     e = node(E_NAME, t->loc);
     e->text = word(p);
     e->scope_kind = t->text[1] == '^' ? 2 : 1;
@@ -1721,7 +1730,11 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
       a->loc = tok(p)->loc;
       a->name = take(p, "self^") ? "self^"
                 : take(p, "_^")  ? "_^"
+                : take(p, "...") ? "..."
                                  : decl_word(p);
+      if (f->variadic) {
+        fail(a->loc, "the variadic parameter ... must be last");
+      }
       a->self = !strcmp(a->name, "self^");
       if (a->self && (!owner || (f->params.n && !f->operator_member)))
         fail(a->loc, "self^ must be the first parameter of a method");
@@ -1730,6 +1743,17 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
       }
       if (take(p, ":"))
         a->spec = spec(p);
+      if (!strcmp(a->name, "...")) {
+        if (!a->spec) {
+          fail(a->loc, "variadic parameter needs an element type, as in ...:T");
+        }
+        Spec *slice = mem(sizeof(*slice));
+        slice->kind = SPEC_SLICE;
+        slice->loc = a->spec->loc;
+        slice->elem = a->spec;
+        a->spec = slice;
+        f->variadic = true;
+      }
       if (!a->self && !a->spec && abstr && !templ) {
         fail(a->loc, "bodiless declaration parameter requires a type annotation");
       }
@@ -1930,6 +1954,16 @@ void parse_file(Program *p, const char *path, Module *module) {
   p->entry->name = "<top-level>";
   p->entry->procedure = true;
   module->entry = p->entry;
+  if (module->root) {
+    /* The entry file is the body of p^ ...:string^ over the command arguments. */
+    Spec *text = mem(sizeof(*text)), *slice = mem(sizeof(*slice));
+    *text = (Spec){.kind = SPEC_NAME, .loc = p->entry->loc, .name = "string^"};
+    *slice = (Spec){.kind = SPEC_SLICE, .loc = p->entry->loc, .elem = text};
+    Param *arguments = mem(sizeof(*arguments));
+    *arguments = (Param){.loc = p->entry->loc, .name = "...", .spec = slice};
+    add(&p->entry->params, arguments);
+    p->entry->variadic = true;
+  }
   if (take(&q, "module^")) {
     module->name = qualified_word(&q);
     take(&q, ";");

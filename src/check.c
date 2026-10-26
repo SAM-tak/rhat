@@ -51,6 +51,36 @@ static bool same_signature(Program *p, Function *a, Function *b)
   }
   return true;
 }
+Expr *pack_arguments(Function *f, Expr *e, int offset)
+{
+  int fixed = f && f->variadic ? f->params.n - 1 - offset : -1;
+  if (fixed < 0 || e->args.n < fixed) {
+    return e;
+  }
+  Expr *call = mem(sizeof(*call)), *pack = mem(sizeof(*pack));
+  *call = *e;
+  call->args = (List){0};
+  pack->kind = E_PACK;
+  pack->loc = e->args.n > fixed ? ((Expr *)e->args.v[fixed])->loc : e->loc;
+  for (int j = 0; j < e->args.n; j++) {
+    add(j < fixed ? &call->args : &pack->args, e->args.v[j]);
+  }
+  for (int j = 0; j < pack->args.n; j++) {
+    Expr *arg = pack->args.v[j];
+    /* A lone ... forwards the caller's collected arguments. */
+    if (arg->spread || (pack->args.n == 1 && arg->kind == E_NAME &&
+                        !strcmp(arg->text, "..."))) {
+      if (pack->args.n != 1) {
+        fail(arg->loc, "a forwarded sequence must be the only variadic argument");
+      }
+      pack->a = mem(sizeof(*pack->a));
+      *pack->a = *arg;
+      pack->a->spread = false;
+    }
+  }
+  add(&call->args, pack);
+  return call;
+}
 void external_validate(Program *p, Function *f)
 {
   const char *s = f->external;
@@ -75,8 +105,8 @@ void external_validate(Program *p, Function *f)
       fail(f->declaration, "externC^ symbols starting with rh_ are reserved for the runtime");
     }
   }
-  if (f->templ) {
-    fail(f->loc, "externC^ declaration cannot be template^");
+  if (f->templ || f->variadic) {
+    fail(f->loc, "externC^ declaration cannot be template^ or variadic");
   }
   /* Scalars cross as their C types; ref^, slices and strings as a data pointer. */
   for (int j = 0; j < f->params.n; j++) {
@@ -416,6 +446,7 @@ static Type *infer_call(Infer *c, Expr *e)
   if (right_self) {
     actual.n = 0;
   }
+  e = pack_arguments(f, e, offset);
   bool known = true;
   for (int j = 0; j < e->args.n; j++) {
     int index = right_self ? j : j + offset;
@@ -901,6 +932,17 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     return f ? f->type : NULL;
   }
+  case E_PACK:
+    if (e->a) {
+      infer_expr(c, e->a, NULL);
+    }
+    for (int j = 0; !e->a && j < e->args.n; j++) {
+      infer_expr(c, e->args.v[j], expected ? expected->elem : NULL);
+    }
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
+    return expected;
   case E_SLICE: {
     Type *base = infer_expr(c, e->a, NULL);
     if (base && base->kind == T_REF) {
@@ -1864,6 +1906,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         }
       }
     }
+    e = pack_arguments(f, e, offset);
     for (int j = 0; j < e->args.n; j++) {
       Param *p = f && j + offset < f->params.n ? f->params.v[j + offset] : NULL;
       Type *hint = candidates.n > 1
@@ -1914,6 +1957,15 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     }
     break;
   }
+  case E_PACK:
+    if (e->a) {
+      body_expr(c, e->a, NULL);
+    }
+    for (int j = 0; !e->a && j < e->args.n; j++) {
+      body_expr(c, e->args.v[j], want ? want->elem : NULL);
+    }
+    n->type = want;
+    break;
   case E_ARRAY:
     for (int j = 0; j < e->args.n; j++) {
       add(&n->children, body_expr(c, e->args.v[j], want ? want->elem : NULL));

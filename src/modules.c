@@ -211,8 +211,10 @@ static bool local(List *names, const char *name) {
 static char *path_of(Expr *e) {
   if (!e)
     return NULL;
-  if (e->kind == E_NAME)
-    return e->text;
+  if (e->kind == E_NAME) {
+    /* The variadic arguments ... never name a module member. */
+    return strcmp(e->text, "...") ? e->text : NULL;
+  }
   if (e->kind == E_MEMBER && !e->optional) {
     char *a = path_of(e->a);
     if (a)

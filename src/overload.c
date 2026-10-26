@@ -177,6 +177,12 @@ Type *callable_group(Program *p, Def *owner, const char *name)
   return type;
 }
 
+/* A variadic function is never overloaded, so it stays a candidate at any
+ * arity and the call reports missing fixed arguments. */
+static bool accepts_arity(Function *f, int arity)
+{
+  return f->params.n == arity || f->variadic;
+}
 List callable_candidates(Type *type, int arity)
 {
   List found = {0};
@@ -184,7 +190,7 @@ List callable_candidates(Type *type, int arity)
     return found;
   }
   if (type->kind == T_FUNCTION) {
-    if (type->function && type->params.n == arity) {
+    if (type->function && accepts_arity(type->function, arity)) {
       add(&found, type->function);
     }
     return found;
@@ -280,7 +286,7 @@ List overload_candidates(Program *p, Def *owner, const char *name, int arity)
   List *functions = owner ? &owner->methods : &p->functions;
   for (int j = 0; j < functions->n; j++) {
     Function *f = functions->v[j];
-    if (!strcmp(f->name, name) && f->params.n == arity) {
+    if (!strcmp(f->name, name) && accepts_arity(f, arity)) {
       add(&found, f);
     }
   }
@@ -386,6 +392,10 @@ void overload_validate(Program *p, List *functions)
     Function *f = functions->v[j];
     for (int k = 0; k < j; k++) {
       Function *other = functions->v[k];
+      if (f != other && !strcmp(f->name, other->name) &&
+          (f->variadic || other->variadic)) {
+        fail(f->loc, "variadic function '%s' cannot be overloaded", f->name);
+      }
       if (f != other && !strcmp(f->name, other->name) &&
           overload_overlap(p, f, other)) {
         fail(f->loc, "overlapping overload '%s'; duplicate function domains", f->name);

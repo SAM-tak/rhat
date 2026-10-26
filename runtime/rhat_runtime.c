@@ -112,6 +112,53 @@ void rh_runtime_init(RhStack *stacks, uint64_t count) {
     s->limit = s->base + RH_STACK_BYTES;
   }
 }
+#if defined(_WIN32)
+#include <shellapi.h>
+#pragma comment(lib, "shell32.lib")
+#endif
+typedef struct {
+  const char *data;
+  int64_t length;
+} RhString;
+typedef struct {
+  RhString *items;
+  int64_t count;
+} RhStrings;
+/* The command arguments after the program name, as UTF-8 R^ strings that live
+ * until the process exits. */
+void rh_runtime_args(int argc, char **argv, RhStrings *out)
+{
+#if defined(_WIN32)
+  (void)argv;
+  wchar_t **wide = CommandLineToArgvW(GetCommandLineW(), &argc);
+  if (!wide) {
+    rh_panic("cannot read command arguments", 0);
+  }
+#endif
+  int64_t count = argc > 1 ? argc - 1 : 0;
+  RhString *items = malloc((size_t)(count ? count : 1) * sizeof(*items));
+  if (!items) {
+    rh_panic("cannot store command arguments", 0);
+  }
+  for (int64_t j = 0; j < count; j++) {
+#if defined(_WIN32)
+    int bytes =
+        WideCharToMultiByte(CP_UTF8, 0, wide[j + 1], -1, NULL, 0, NULL, NULL);
+    char *text = bytes > 0 ? malloc((size_t)bytes) : NULL;
+    if (!text || !WideCharToMultiByte(CP_UTF8, 0, wide[j + 1], -1, text,
+                                      bytes, NULL, NULL)) {
+      rh_panic("cannot convert command arguments", 0);
+    }
+#else
+    const char *text = argv[j + 1];
+#endif
+    items[j] = (RhString){text, (int64_t)strlen(text)};
+  }
+#if defined(_WIN32)
+  LocalFree(wide);
+#endif
+  *out = (RhStrings){items, count};
+}
 void rh_runtime_shutdown(void) {
   for (uint64_t j = 0; j < rh_stack_count; j++) {
 #if defined(_WIN32)

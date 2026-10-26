@@ -2211,8 +2211,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   if (right_self) {
     values.n = actual.n = 0;
   }
+  e = pack_arguments(f, e, offset);
   if (f->params.n != e->args.n + offset)
-    fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - offset);
+    fail(e->loc, "'%s' expects %s%d arguments", f->name,
+         f->variadic ? "at least " : "", f->params.n - offset - f->variadic);
   if (f->procedure && !c->in->fn->procedure)
     fail(e->loc, "f^ cannot call p^ '%s'", f->name);
   for (int j = 0; j < e->args.n; j++) {
@@ -2750,9 +2752,58 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
   i->type = base.type;
   return out;
 }
+/* Collect trailing arguments into a temporary array borrowed for one call,
+ * or view a forwarded sequence. */
+static Value pack_value(Context *c, Expr *e, Type *expected)
+{
+  Program *p = c->p;
+  if (e->a) {
+    Expr view = {.kind = E_SLICE, .loc = e->a->loc, .a = e->a, .text = "::"};
+    return slice_view(c, &view, expected);
+  }
+  layout(expected->elem, e->loc);
+  if (expected->elem->owned) {
+    fail(e->loc, "variadic elements cannot own storage");
+  }
+  Type *array = type_wrap(p, T_ARRAY, expected->elem, e->args.n ? e->args.n : 1);
+  Value items = {0};
+  int bounds = -1;
+  if (e->args.n) {
+    Expr literal = {.kind = E_ARRAY, .loc = e->loc, .args = e->args};
+    items = expression(c, &literal, array);
+    if (c->terminated) {
+      return abrupt(c);
+    }
+  }
+  else {
+    /* No arguments: an empty view of one zeroed element. */
+    items = value(c, array);
+    Instr *z = emit(c, I_ZERO, e->loc);
+    z->dst = items.id;
+    z->type = array;
+    Expr zero = {.kind = E_INT, .loc = e->loc, .text = "0"};
+    bounds = expression(c, &zero, type_builtin(p, T_I64)).id;
+  }
+  Value out = {.id = slot(c, expected, false),
+               .type = expected,
+               .deps = items.deps | root(c, c->depth + 1, false, e->loc)};
+  Instr *i = emit(c, I_SLICE, e->loc);
+  i->dst = out.id;
+  i->a = items.id;
+  i->b = bounds;
+  i->other = bounds;
+  i->type = array;
+  return out;
+}
 static Value expression(Context *c, Expr *e, Type *expected) {
   if (c->terminated) {
     return abrupt(c);
+  }
+  if (e->spread) {
+    fail(e->loc, "'...' forwards only into a variadic parameter");
+  }
+  if (e->kind == E_PACK) {
+    return pack_value(c, e, expected);
   }
   if (e->kind == E_TRY) {
     return construct(c, e, expected, -1);
@@ -4498,9 +4549,12 @@ void analyze(Program *p) {
       }
     }
   }
-  List none = {0};
+  List arguments = {0};
+  for (int j = 0; j < p->entry->params.n; j++) {
+    add(&arguments, parameter_type(p, p->entry->params.v[j]));
+  }
   p->entry->required_result = type_builtin(p, T_VOID);
-  instantiate(p, p->entry, NULL, &none, p->entry->loc);
+  instantiate(p, p->entry, NULL, &arguments, p->entry->loc);
   /* Abstract nominal parameters require a concrete call-site specialization. */
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];

@@ -1128,6 +1128,7 @@ void emit_llvm(Program *p, const char *path) {
           !p->emitting || p->emitting->root ? " zeroinitializer" : "");
   emit_llvm_builtins(f);
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
+        "declare void @rh_runtime_args(i32, ptr, ptr)\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
         "declare void @rh_print_bool(i64)\n"
@@ -1198,12 +1199,18 @@ void emit_llvm(Program *p, const char *path) {
       instruction(&o, in->code.v[k]);
     fputs("}\n", f);
   }
-  if (!p->emitting || p->emitting->root)
+  if (!p->emitting || p->emitting->root) {
+    /* The entry receives the command arguments as its ... string slice. */
     fprintf(f,
-            "\ndefine i32 @main() {\nentry:\n  call void @rh_runtime_init(ptr "
-            "@rh_stacks, i64 %d)\n  call void @rh_fn_0(i64 0)\n  call void "
-            "@rh_runtime_shutdown()\n  ret i32 0\n}\n",
+            "\ndefine i32 @main(i32 %%argc, ptr %%argv) {\nentry:\n"
+            "  %%args = alloca { ptr, i64 }\n"
+            "  call void @rh_runtime_init(ptr @rh_stacks, i64 %d)\n"
+            "  call void @rh_runtime_args(i32 %%argc, ptr %%argv, ptr %%args)\n"
+            "  %%strings = load { ptr, i64 }, ptr %%args\n"
+            "  call void @rh_fn_0(i64 0, { ptr, i64 } %%strings)\n"
+            "  call void @rh_runtime_shutdown()\n  ret i32 0\n}\n",
             p->stack_count);
+  }
   fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
   fputs("!1 = !{!\"Rhat storage\"}\n"
         "!2 = !{!\"non-owning value\", !1, i64 0}\n"
