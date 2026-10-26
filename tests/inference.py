@@ -1,56 +1,11 @@
 """Local call-shape inference, per-instance results, contracts and ownership."""
-import argparse
-from pathlib import Path
-import re
-import subprocess
+
+from harness import Suite
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compiler', required=True)
-    parser.add_argument('--clang', required=True)
-    parser.add_argument('--work', required=True)
-    parser.add_argument('--filter', default='')
-    args = parser.parse_args()
-    compiler, clang = str(Path(args.compiler).resolve()), str(Path(args.clang).resolve())
-    work = Path(args.work).resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    passed = 0
-
-    def run(command, good=True):
-        p = subprocess.run(list(map(str, command)), capture_output=True, text=True, timeout=90)
-        assert (p.returncode == 0) == good, (command, p.stdout, p.stderr)
-        return p
-
-    def source(name, text):
-        p = work / (name + '.rh')
-        p.write_text(text, encoding='utf-8')
-        return p
-
-    def positive(name, text, expected, inspect=None):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        path = source(name, text)
-        for opt in ('-O0', '-O2'):
-            exe = work / (name + opt + '.exe')
-            rir = exe.with_suffix('.rir')
-            run([compiler, 'build', path, '-o', exe, '--clang', clang, opt, '--dump-ir', rir])
-            assert run([exe]).stdout == expected, (name, opt, expected)
-            if inspect:
-                inspect(rir.read_text(), Path(str(exe)+'.ll').read_text())
-        passed += 1
-        print('PASS', name, flush=True)
-
-    def negative(name, text, diagnostic):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        p = run([compiler, 'check', source(name, text)], False)
-        assert diagnostic in p.stderr, (name, diagnostic, p.stderr)
-        assert re.search(r':\d+:\d+: error:', p.stderr), p.stderr
-        passed += 1
-        print('PASS', name, flush=True)
+    suite = Suite('inference')
+    positive, negative = suite.positive, suite.negative
 
     def instances(ir, ll):
         assert '-> i32^' in ir and '-> i64^' in ir and '-> string^' in ir
@@ -228,7 +183,7 @@ print((f^ x {typed(x)})(41))
     negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:grow^ i32^[]=[n] if^ n>0 {this^(n-1)} print(a.len)} call(3)', 'holds local owned value')
     negative('inference_ungrounded_recursion', 'let^ forever=f^ x {this^(x)} print(forever(1))', 'cannot infer return type')
     negative('inference_abstract_contract', 'def^ A {abstract^ read:f^ self^,x ->i32^;}', 'requires a type annotation')
-    print(f'{passed} inference cases passed; executable cases checked at -O0 and -O2.', flush=True)
+    suite.finish()
 
 
 if __name__ == '__main__':

@@ -1,9 +1,11 @@
-"""Compare versioned loops with their forced checked fallback at O0 and O2."""
+"""Compare versioned loops with their forced checked fallback at each tested optimization level."""
 import pathlib
 import re
 
 
-def exercise(run, source, compiler, clang, work, repo):
+def exercise(suite):
+    run, source, compiler, clang, work, repo = (
+        suite.run, suite.source, suite.compiler, suite.clang, suite.work, suite.repo)
     cases = [
         ('fixed', 'var^ a:i32^[4]=[1,2,3,4]; var^ i:i64^=0; repeat^ while^ i < 4 { a[i] := a[i]+1; i := i+1 }; print(a[0],a[3])', '2 5\n', True, None),
         ('grow', 'var^ a:grow^ i32^[]=[1,2,3,4]; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < a.len { s := s+a[i]; i := i+1 }; print(s)', '10\n', True, None),
@@ -58,16 +60,15 @@ def exercise(run, source, compiler, clang, work, repo):
                 matrix += f'print(sum(ref^ a,{start},{start+span},{scale},20))\n'
                 expected += str(sum(i*scale+21 for i in range(start, start+span))) + '\n'
     cases.append(('affine_matrix', matrix, expected, True, None))
-    for name, text, output, versioned, error in cases:
-        name = 'ranges_' + name
+    def check(name, text, output, versioned, error):
         path = source(name, text)
-        for opt in ('-O0', '-O2'):
+        for opt in suite.opts:
             exe = work / f'{name}_{opt[1:]}.exe'
             rir = exe.with_suffix('.rir')
             run([compiler, 'build', str(path), '-o', str(exe), '--clang', clang, '--dump-ir', str(rir), opt])
             llvm = pathlib.Path(str(exe) + '.ll').read_text()
             assert ('range.guard' in rir.read_text()) == versioned, name
-            actual = run([str(exe)], 1 if error else 0)
+            actual = run([str(exe)], not error)
             assert actual.stdout == output, (name, actual.stdout)
             if error:
                 assert error in actual.stderr, (name, actual.stderr)
@@ -83,20 +84,14 @@ def exercise(run, source, compiler, clang, work, repo):
                 other = exe.with_suffix('.checked.exe')
                 run([clang, '-Wno-override-module', '-std=c11', opt, '-rtlib=compiler-rt', str(checked),
                      str(repo / 'runtime/rhat_runtime.c'), '-o', str(other)])
-                fallback = run([str(other)], 1 if error else 0)
+                fallback = run([str(other)], not error)
                 assert (actual.stdout, actual.stderr) == (fallback.stdout, fallback.stderr), name
-        print('PASS ' + name, flush=True)
+    for case in cases:
+        suite.case('ranges_' + case[0], lambda case=case: check('ranges_' + case[0], *case[1:]))
     wrapper=work/'literal_capacity_runtime.c'
     wrapper.write_text('#define RH_STACK_BYTES 65536\n#include "'+
                        (repo/'runtime/rhat_runtime.c').as_posix()+'"\n')
-    path=source('literal_append_capacity',
-                'var^ a:grow^ u8^[]=[]; var^ i:i32^=0; repeat^ while^ i<64 { a.append("'+
-                'a'*1024+'"); i := i+1 }; a.append("!")')
-    for opt in ('-O0','-O2'):
-        exe=work/('literal_append_capacity_'+opt[1:]+'.exe')
-        run([compiler,'build',str(path),'-o',str(exe),'--clang',clang,'--runtime',str(wrapper),opt])
-        result=run([str(exe)],1)
-        assert 'data stack overflow' in result.stderr,result.stderr
-        assert 'at line 1:' in result.stderr,result.stderr
-    print('PASS literal_append_capacity',flush=True)
-    return len(cases)+1
+    suite.runtime_failure('literal_append_capacity',
+                          'var^ a:grow^ u8^[]=[]; var^ i:i32^=0; repeat^ while^ i<64 { a.append("'+
+                          'a'*1024+'"); i := i+1 }; a.append("!")',
+                          'at line 1: data stack overflow', extra=['--runtime', wrapper])

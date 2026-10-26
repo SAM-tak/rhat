@@ -1,53 +1,12 @@
 """Callable intersections, disjoint overloads and operator dispatch."""
-import argparse
-from pathlib import Path
-import subprocess
+
+from harness import Suite
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compiler', required=True)
-    parser.add_argument('--clang', required=True)
-    parser.add_argument('--work', required=True)
-    parser.add_argument('--filter', default='')
-    args = parser.parse_args()
-    compiler = str(Path(args.compiler).resolve())
-    work = Path(args.work).resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    passed = 0
-
-    def run(command, success=True):
-        result = subprocess.run(list(map(str, command)), capture_output=True,
-                                text=True, timeout=90)
-        assert (result.returncode == 0) == success, (command, result.stdout, result.stderr)
-        return result
-
-    def source(name, text):
-        path = work / (name + '.rh')
-        path.write_text(text, encoding='utf-8')
-        return path
-
-    def positive(name, text, expected):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        path = source(name, text)
-        for opt in ('-O0', '-O2'):
-            exe = work / (name + opt + '.exe')
-            run([compiler, 'build', path, '-o', exe, '--clang', args.clang, opt])
-            actual = run([exe]).stdout
-            assert actual == expected, (name, opt, actual, expected)
-        passed += 1
-        print('PASS', name, flush=True)
-
-    def negative(name, text, diagnostic):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        result = run([compiler, 'check', source(name, text)], False)
-        assert diagnostic in result.stderr, (name, result.stderr)
-        passed += 1
-        print('PASS', name, flush=True)
+    suite = Suite('overload')
+    run, positive, negative = suite.run, suite.positive, suite.negative
+    work = suite.work
 
     positive('overload_types_and_effects', '''
 let^ choose=f^ x:i32^ ->i32^ {x+1}
@@ -240,7 +199,7 @@ print(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
         ('signature_runtime_field', 'def^ V {self^{cb:f^i32^->i32^;}}', 'statically selected implementation'),
     ]:
         negative(name, text, diagnostic)
-    print(f'{passed} overload cases passed', flush=True)
+    suite.finish()
 
 
 if __name__ == '__main__':

@@ -1,53 +1,13 @@
 """L^ syntax alignment, evaluation order, and ownership regressions."""
-import argparse
-from pathlib import Path
-import subprocess
+from harness import Suite
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compiler', required=True)
-    parser.add_argument('--clang', required=True)
-    parser.add_argument('--work', required=True)
-    parser.add_argument('--filter', default='')
-    parser.add_argument('--checks-only', action='store_true')
-    args = parser.parse_args()
-    compiler, clang = str(Path(args.compiler).resolve()), str(Path(args.clang).resolve())
-    work = Path(args.work).resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    passed = 0
+    suite = Suite('syntax')
+    source, positive, negative = suite.source, suite.positive, suite.negative
 
-    def run(command, success=True):
-        result = subprocess.run(list(map(str, command)), capture_output=True, text=True, timeout=90)
-        assert (result.returncode == 0) == success, (command, result.stdout, result.stderr)
-        return result
-
-    def source(name, text):
-        path = work / (name + '.rh')
-        path.write_text(text, encoding='utf-8')
-        return path
-
-    def positive(name, text, expected, versioned=False):
-        nonlocal passed
-        if args.checks_only or (args.filter and args.filter not in name): return
-        path = source(name, text)
-        for opt in ('-O0', '-O2'):
-            exe = work / (name + opt + '.exe')
-            run([compiler, 'build', path, '-o', exe, '--clang', clang, opt])
-            actual = run([exe]).stdout
-            assert actual == expected, (name, opt, actual, expected)
-            if versioned:
-                assert '; range.guard result=' in Path(str(exe)+'.ll').read_text(), name
-        passed += 1
-        print('PASS', name, flush=True)
-
-    def negative(name, text, diagnostic):
-        nonlocal passed
-        if args.filter and args.filter not in name: return
-        result = run([compiler, 'check', source(name, text)], False)
-        assert diagnostic in result.stderr, (name, diagnostic, result.stderr)
-        passed += 1
-        print('PASS', name, flush=True)
+    def versioned(rir, ll):
+        assert '; range.guard result=' in ll
 
     positive('ref_keyword', '''
 var^ n=7
@@ -269,7 +229,7 @@ var^ values:i32^[4]=[1,2,3,4]
 var^ total=0
 for^ var^ i:i64^=0 while^ i<4 next^ i+=1 {total+=values[i]}
 print(total)
-''', '10\n', versioned=True)
+''', '10\n', inspect=versioned)
 
     positive('sections', '''
 var^ calls=0
@@ -492,13 +452,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     for name, text, diagnostic in cases:
         negative(name, text, diagnostic)
 
-    for opt in (() if args.checks_only or (args.filter and args.filter not in 'dynamic_step') else ('-O0', '-O2')):
-        path = source('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}')
-        exe = work / ('dynamic_step' + opt + '.exe')
-        run([compiler, 'build', path, '-o', exe, '--clang', clang, opt])
-        assert 'assert' in run([exe], False).stderr
-    if not args.checks_only and (not args.filter or args.filter in 'dynamic_step'): passed += 1
-    print(f'{passed} syntax cases passed; executable cases checked at -O0 and -O2.', flush=True)
+    suite.runtime_failure('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}', 'assert')
+    suite.finish()
 
 
 if __name__ == '__main__':

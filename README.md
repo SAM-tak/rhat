@@ -42,8 +42,8 @@ Windows では Visual Studio の C++ ビルド環境、Clang ツール（compile
 ```powershell
 cd C:\Users\Owner\source\repos\rhat
 .\scripts\build.ps1 -Test
-.\build\Debug\rhat.exe run examples/layout.rh
-.\build\Debug\rhat.exe run examples/regions.rh
+.\build\Release\rhat.exe run examples/layout.rh
+.\build\Release\rhat.exe run examples/regions.rh
 ```
 
 新しいターミナルでは、L^ と同様に開発環境を読み込めます。
@@ -56,7 +56,9 @@ rhat build examples/layout.rh -o build/layout.exe -O2
 .\build\layout.exe
 ```
 
-Release 版には `-Configuration Release`、Clang の指定には `-Clang PATH` を使えます。
+既定は Release 版です。Debug 版には `build.ps1 -Config Debug` / `devshell.ps1 -Configuration Debug`、Clang の指定には `-Clang PATH` を使えます。
+テストは既定で実行ファイルを `-O2` だけでビルドします。`-O0` も確かめるには CMake に `-DRHAT_TEST_ALL_OPTS=ON` を渡します。
+各テストスイートは全コアで並列に動くため、`ctest` に `-j` は付けません。
 
 ビルド時に見つけた Clang のパスを実行ファイルに記録するので、別のターミナルでもそのまま使えます。
 Clang の選択順は `--clang`、`RHAT_CLANG`、ビルド時に検出したパスです。
@@ -66,7 +68,7 @@ Clang の選択順は `--clang`、`RHAT_CLANG`、ビルド時に検出したパ�
 `build/rhat` に生成されます。POSIX 用ランタイムもありますが、この環境では未検証です。
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```

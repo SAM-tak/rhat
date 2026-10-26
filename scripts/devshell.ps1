@@ -1,7 +1,7 @@
 # Load the x64 toolchain and R^ paths into the current PowerShell session.
-# Usage: . .\scripts\devshell.ps1 [-Configuration Release] [-Clang PATH]
+# Usage: . .\scripts\devshell.ps1 [-Configuration Debug] [-Clang PATH]
 param(
-    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [string]$Clang
 )
 

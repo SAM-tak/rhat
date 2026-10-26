@@ -1,82 +1,22 @@
 """End-to-end semantic, provenance, IR, codegen and runtime checks."""
-import argparse
 import bisect
 import math
 import os
 import pathlib
 import re
-import subprocess
 import struct
 import sys
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--compiler", required=True)
-parser.add_argument("--clang", required=True)
-parser.add_argument("--work", required=True)
-parser.add_argument("--filter", default="", help="Run matching named cases (regular expression)")
-args = parser.parse_args()
-compiler = str(pathlib.Path(args.compiler).resolve())
-work = pathlib.Path(args.work).resolve()
-work.mkdir(parents=True, exist_ok=True)
-repo = pathlib.Path(__file__).resolve().parents[1]
-passed = 0
+from harness import Suite
+
+suite = Suite("integration")
+args, compiler, work, repo = suite.args, suite.compiler, suite.work, suite.repo
+source, positive, negative, runtime_failure = (
+    suite.source, suite.positive, suite.negative, suite.runtime_failure)
 
 
 def run(command, expected=0, env=None):
-    result = subprocess.run(command, capture_output=True, text=True, timeout=40, env=env)
-    if (result.returncode == 0) != (expected == 0):
-        raise AssertionError(f"{command}\nexit {result.returncode}\n{result.stdout}{result.stderr}")
-    return result
-
-
-def source(name, text):
-    path = work / f"{name}.rh"
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
-def positive(name, text, output, inspect=None):
-    global passed
-    if args.filter and not re.search(args.filter, name):
-        return
-    path = source(name, text)
-    for opt in ("-O0", "-O2"):
-        exe = work / f"{name}_{opt[1:]}.exe"
-        ir = work / f"{name}_{opt[1:]}.rir"
-        run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang,
-             "--dump-ir", str(ir), opt])
-        actual = run([str(exe)]).stdout
-        assert actual == output, (name, opt, actual, output)
-        if inspect:
-            inspect(ir.read_text(), pathlib.Path(str(exe) + ".ll").read_text())
-    passed += 1
-    print(f"PASS {name}", flush=True)
-
-
-def negative(name, text, diagnostic):
-    global passed
-    if args.filter and not re.search(args.filter, name):
-        return
-    path = source(name, text)
-    result = run([compiler, "check", str(path)], 1)
-    assert diagnostic in result.stderr, (name, diagnostic, result.stderr)
-    assert re.search(r":\d+:\d+: error:", result.stderr), result.stderr
-    passed += 1
-    print(f"PASS {name}", flush=True)
-
-
-def runtime_failure(name, text, diagnostic):
-    global passed
-    if args.filter and not re.search(args.filter, name):
-        return
-    path = source(name, text)
-    for opt in ("-O0", "-O2"):
-        exe = work / f"{name}_{opt[1:]}.exe"
-        run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang, opt])
-        result = run([str(exe)], 1)
-        assert diagnostic in result.stderr, (name, result.stderr)
-    passed += 1
-    print(f"PASS {name}", flush=True)
+    return suite.run(command, expected == 0, env)
 
 
 def layout_ir(ir, ll):
@@ -172,9 +112,6 @@ def high_water(name, text, expected, output, append_only=False):
     R^ references alone cannot reveal a lowered top: pages stay committed.
     The runtime assertions deliberately observe the hidden storage invariant.
     """
-    global passed
-    if args.filter and not re.search(args.filter, name):
-        return
     wrapper = work / (name + "_runtime.c")
     expected_c = ",".join(map(str, expected))
     wrapper.write_text(f'''
@@ -213,24 +150,15 @@ void rh_runtime_shutdown(void) {{
     # print checkpoint instead, while keeping the assertion itself meaningful.
     text = re.sub(r"assert\(([^()]*)\)",
                   r"assert(\1); do^{ let^ top_marker:i64^=1234567890123456789; print(top_marker) }", text)
-    path = source(name, text)
-    for opt in ("-O0", "-O2"):
-        exe = work / (name + opt[1:] + ".exe")
-        ir = work / (name + opt[1:] + ".rir")
-        run([compiler,"build",str(path),"-o",str(exe),opt,"--clang",args.clang,
-             "--runtime",str(wrapper),"--dump-ir",str(ir)])
-        assert run([str(exe)]).stdout == output
-        typed = ir.read_text()
+    def tops(typed, llvm):
         assert "top=append" in typed
         if append_only:
             assert "top=retained" not in typed
-            llvm = pathlib.Path(str(exe)+".ll").read_text()
             bodies = re.findall(r"(?ms)^define internal [^\n]* @rh_fn_\d+\(.*?^}", llvm)
             assert bodies and all("udiv i64" not in body for body in bodies)
         else:
             assert "top=retained" in typed
-    passed += 1
-    print("PASS " + name, flush=True)
+    positive(name, text, output, inspect=tops, extra=["--runtime", wrapper])
 
 
 high_water("push_append_only_loop", '''
@@ -341,13 +269,8 @@ for name,decl,count,element in (
     ("byte", "var^ a:grow^ u8^[]=[]", 65536, "1"),
     ("triple", "def^ Triple { self^{x:u8^=1,y:u8^=2,z:u8^=3} } var^ a:grow^ Triple[]=[]", 21845, "Triple.new()"),
 ):
-    path=source("push_capacity_"+name, decl+f"; var^ i:i32^=0; repeat^ while^ i<{count} {{ a.push({element}); i:=i+1 }} a.push({element})")
-    for opt in ("-O0","-O2"):
-        exe=work/("push_capacity_"+name+opt[1:]+".exe")
-        run([compiler,"build",str(path),"-o",str(exe),opt,"--clang",args.clang,"--runtime",str(small_runtime)])
-        assert "data stack overflow" in run([str(exe)],1).stderr
-    passed+=1
-    print("PASS push_capacity_"+name,flush=True)
+    runtime_failure("push_capacity_"+name, decl+f"; var^ i:i32^=0; repeat^ while^ i<{count} {{ a.push({element}); i:=i+1 }} a.push({element})",
+                    "data stack overflow", extra=["--runtime", small_runtime])
 
 positive("empty_program", "", "")
 
@@ -979,7 +902,7 @@ for bits in (8,16,32,64,128):
         if not unsigned:
             runtime_failure(f"inline_float_lower_{typ[:-1]}",f'print({typ}({literal(math.nextafter(lower,-math.inf))}))',"floating value out of integer range")
 if os.name == "nt":
-    for opt in ("-O0", "-O2"):
+    for opt in suite.opts:
         exe = work / ("runtime_regions_" + opt[1:] + ".exe")
         run([args.clang, "-std=c11", opt, str(repo / "tests/runtime_regions.c"), "-o", str(exe)])
         assert run([str(exe)]).stdout == "data stacks verified\n"
@@ -996,8 +919,7 @@ if os.name == "nt":
              str(repo / "tests/runtime_regions.c"), "-o", str(small)])
         assert run([str(small), "small-limit"]).stdout == "small reservation verified\n"
         assert "data stack overflow" in run([str(small), "guard"], 1).stderr
-    passed += 1
-    print("PASS windows_page_commit_calls_and_failures", flush=True)
+    suite.mark("windows_page_commit_calls_and_failures")
 
 positive("page_crossing_elements", """
 def^ Triple { self^{ a:u8^=1,b:u8^=2,c:u8^=3 } }
@@ -1236,12 +1158,11 @@ functions = re.findall(r"(?ms)^define internal (?:float|i8) @rh_f8_.*?^}", codec
 assert len(functions)==3
 fp8_external = work / "fp8_codec_external.ll"
 fp8_external.write_text("\n".join(f.replace("define internal ","define ",1) for f in functions)+"\n")
-for opt in ("-O0", "-O2"):
+for opt in suite.opts:
     exe = work / ("fp8_exhaustive_" + opt[1:] + ".exe")
     run([args.clang, "-std=c11", opt, str(c_path), str(fp8_external), "-Wno-override-module", "-o", str(exe)])
     run([str(exe)])
-passed += 1
-print("PASS fp8_exhaustive_262144_operations", flush=True)
+suite.mark("fp8_exhaustive_262144_operations")
 
 # Keep the new ports executable at both optimization levels in the main suite.
 sys.path.insert(0, str(repo / "bench"))
@@ -1288,8 +1209,7 @@ old_run={"builds":[["rhat.exe","build","push_small.rh","-o","push_small.exe"],
                    ["rustc.exe","push_small.rs","-o","push_small.exe"]],
          "rows":[{"workload":"push","size":"small","language":"rhat"}]}
 assert overwritten_rhat_rows(old_run)=={("push","small")}
-passed+=1
-print("PASS benchmark_executable_identity_and_collision_detection",flush=True)
+suite.mark("benchmark_executable_identity_and_collision_detection")
 
 for workload, spec in WORKLOADS.items():
     text = benchmark_source(workload, spec["smoke"])
@@ -1591,8 +1511,7 @@ print(x[0])
 report=run([compiler,"check",str(path),"--stacks"]).stdout
 assert report.startswith("data stacks: 3;"), report
 assert "2 own, 3 with callees" in report, report
-passed+=1
-print("PASS static_stack_report",flush=True)
+suite.mark("static_stack_report")
 positive("recursive_borrow", """
 let^ retain=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     if^ n=0 { return^ p }
@@ -1853,8 +1772,7 @@ path = source("preserve_input", '')
 before = path.read_bytes()
 run([compiler, "emit", str(path), "-o", str(path)], 1)
 assert path.read_bytes() == before
-passed += 1
-print("PASS preserve_input", flush=True)
+suite.mark("preserve_input")
 
 # Reproduce a new terminal: no RHAT_CLANG and no Clang directory on PATH.
 clean_env = dict(os.environ)
@@ -1869,8 +1787,7 @@ exe = work / "driver_default.exe"
 for _ in range(2):
     run([compiler, "build", str(path), "-o", str(exe), "-O2"], env=clean_env)
     assert run([str(exe)]).stdout == "42\n"
-passed += 1
-print("PASS default_clang_and_rebuild", flush=True)
+suite.mark("default_clang_and_rebuild")
 
 bad_env = dict(clean_env)
 missing_clang = str(work / "does-not-exist-clang.exe")
@@ -1881,8 +1798,7 @@ assert "LLVM IR retained at" in result.stderr, result.stderr
 assert pathlib.Path(str(exe) + ".ll").exists()
 run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang], env=bad_env)
 assert run([str(exe)]).stdout == "42\n"
-passed += 1
-print("PASS clang_override_precedence_and_diagnostic", flush=True)
+suite.mark("clang_override_precedence_and_diagnostic")
 def direct_scalar_abi(ir, ll):
     assert "define internal void @rh_fn_0" in ll
     for typ in ("i1", "i8", "i16", "i32", "i64", "i128", "half", "float", "double"):
@@ -1930,11 +1846,7 @@ print(i64^(value(ref^ n)),n)
 ''', '1 1\n')
 
 from ir_builtins import exercise as exercise_builtins
-builtin_checks = exercise_builtins(repo, work, compiler, args.clang, source, run,
-                                  positive, runtime_failure, high_water)
-# The callbacks above increment passed themselves; do not load its old value
-# through += before those callbacks have run.
-passed += builtin_checks
+exercise_builtins(suite, run, high_water)
 from ranges import exercise as exercise_ranges
-passed += exercise_ranges(run, source, compiler, args.clang, work, repo)
-print(f"{passed} integration cases passed (positive/runtime cases at -O0 and -O2)")
+exercise_ranges(suite)
+suite.finish()

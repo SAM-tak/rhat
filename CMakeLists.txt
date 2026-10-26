@@ -56,29 +56,35 @@ if(BUILD_TESTING)
   if(NOT RH_CLANG)
     message(FATAL_ERROR "Clang is required for integration tests; set RH_CLANG to its executable path")
   endif()
+  option(RHAT_TEST_ALL_OPTS "Also build executable test cases at -O0" OFF)
+  set(RHAT_TEST_ARGS --clang "${RH_CLANG}")
+  if(RHAT_TEST_ALL_OPTS)
+    list(APPEND RHAT_TEST_ARGS --all-opts)
+  endif()
   add_test(NAME integration COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/tests")
-  # Hundreds of native builds run at both optimization levels; child commands
-  # retain their own short timeouts in tests/run.py.
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/tests")
+  # Hundreds of native builds run at -O2 (and -O0 with RHAT_TEST_ALL_OPTS).
+  # Each suite runs its cases on all cores (tests/harness.py), so run ctest
+  # without -j; child commands retain their own short timeouts there.
   set_tests_properties(integration PROPERTIES TIMEOUT 3600)
   add_test(NAME modules COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/modules.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/module-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/module-tests")
   add_test(NAME syntax COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/syntax.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/syntax-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/syntax-tests")
   add_test(NAME nil COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/nil.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
   add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
   if(RHAT_BUILD_LSP)
     add_test(NAME lsp COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.py"
       --server $<TARGET_FILE:rhatls> --work "${CMAKE_CURRENT_BINARY_DIR}/lsp-tests")
   endif()
   add_test(NAME inference COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inference.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/inference-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/inference-tests")
   add_test(NAME errors COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/errors.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/error-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/error-tests")
   add_test(NAME overloads COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/overloads.py"
-    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/overload-tests")
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/overload-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)

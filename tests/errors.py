@@ -1,61 +1,13 @@
 """Error values, explicit propagation, lazy replacement, handlers, and cleanup."""
-import argparse
 from pathlib import Path
-import re
-import subprocess
+
+from harness import Suite
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compiler', required=True)
-    parser.add_argument('--clang', required=True)
-    parser.add_argument('--work', required=True)
-    parser.add_argument('--filter', default='')
-    args = parser.parse_args()
-    compiler, clang = str(Path(args.compiler).resolve()), str(Path(args.clang).resolve())
-    work = Path(args.work).resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    passed = 0
-
-    def run(command, success=True):
-        p = subprocess.run(list(map(str, command)), capture_output=True, text=True, timeout=90)
-        assert (p.returncode == 0) == success, (command, p.stdout, p.stderr)
-        return p
-
-    def source(name, text):
-        path = work / (name + '.rh')
-        path.write_text(text, encoding='utf-8')
-        return path
-
-    def positive(name, text, expected, failure=False, inspect=None, runtime=None):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        path = source(name, text)
-        for opt in ('-O0', '-O2'):
-            exe = work / (name + opt + '.exe')
-            rir = exe.with_suffix('.rir')
-            extra = ['--runtime', runtime] if runtime else []
-            run([compiler, 'build', path, '-o', exe, '--clang', clang, opt, '--dump-ir', rir, *extra])
-            if inspect:
-                inspect(rir.read_text(), Path(str(exe)+'.ll').read_text())
-            p = run([exe], not failure)
-            if failure:
-                assert expected in p.stderr, (name, opt, p.stderr)
-            else:
-                assert p.stdout == expected, (name, opt, p.stdout, expected)
-        passed += 1
-        print('PASS', name, flush=True)
-
-    def negative(name, text, diagnostic):
-        nonlocal passed
-        if args.filter and args.filter not in name:
-            return
-        p = run([compiler, 'check', source(name, text)], False)
-        assert diagnostic in p.stderr, (name, diagnostic, p.stderr)
-        assert re.search(r':\d+:\d+: error:', p.stderr), p.stderr
-        passed += 1
-        print('PASS', name, flush=True)
+    suite = Suite('error')
+    run, positive, negative = suite.run, suite.positive, suite.negative
+    work = suite.work
 
     prefix = '''errordef^ E {Bad,Missing}
 let^ read=f^ n:i32^ ->i32^|E.Bad|E.Missing {
@@ -390,7 +342,7 @@ repeat^ 10000 {
  }
 }
 print(42)
-''', '42\n', inspect=checkpoint_ir, runtime=runtime)
+''', '42\n', inspect=checkpoint_ir, extra=['--runtime', runtime])
 
     positive('error_early_unit_return', prefix+'''
 let^ save=p^ flag:bool^ {
@@ -466,7 +418,7 @@ print(unguarded(ref^ items) fits^ E.Bad)
     ]
     for name, text, diagnostic in negatives:
         negative(name,prefix+text,diagnostic)
-    print(f'{passed} error cases passed; executable cases checked at -O0 and -O2.',flush=True)
+    suite.finish()
 
 
 if __name__ == '__main__':

@@ -1,32 +1,20 @@
 """End-to-end module, separate object, cache and std.random contracts."""
-import argparse
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
 import re
-import subprocess
 import shutil
+
+from harness import Suite
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compiler', required=True)
-    parser.add_argument('--clang', required=True)
-    parser.add_argument('--work', required=True)
-    args = parser.parse_args()
-    compiler, clang = str(Path(args.compiler).resolve()), str(Path(args.clang).resolve())
-    work = Path(args.work).resolve()
-    repo = Path(__file__).resolve().parents[1]
+    suite = Suite('module integration')
+    run, compiler, clang, work, repo = suite.run, suite.compiler, suite.clang, suite.work, suite.repo
     shutil.rmtree(work, ignore_errors=True)  # Cache tests need a cold start.
     work.mkdir(parents=True, exist_ok=True)
-    passed = 0
-
-    def run(command, good=True):
-        p = subprocess.run(list(map(str, command)), capture_output=True, text=True, timeout=90)
-        assert (p.returncode == 0) == good, (command, p.stdout, p.stderr)
-        return p
 
     def project(name, files):
         root = work / name
@@ -37,24 +25,22 @@ def main():
         return root
 
     def positive(name, files, expected, extra=()):
-        nonlocal passed
+        """Queue a project build at each level in suite.opts; return its root and future."""
         root = project(name, files)
-        for opt in ('-O0', '-O2'):
-            exe = root / f'main{opt}.exe'
-            run([compiler, 'build', root/'main.rh', '-o', exe, '--clang', clang, opt, *extra])
-            actual = run([exe]).stdout
-            assert actual == expected, (name, opt, actual, expected)
-        passed += 1
-        print('PASS', name, flush=True)
-        return root
+        def body():
+            for opt in suite.opts:
+                exe = root / f'main{opt}.exe'
+                run([compiler, 'build', root/'main.rh', '-o', exe, '--clang', clang, opt, *extra])
+                actual = run([exe]).stdout
+                assert actual == expected, (name, opt, actual, expected)
+        return root, suite.case(name, body)
 
     def negative(name, files, diagnostic, extra=()):
-        nonlocal passed
         root = project(name, files)
-        p = run([compiler, 'check', root/'main.rh', *extra], False)
-        assert diagnostic in p.stderr and re.search(r':\d+:\d+: error:', p.stderr), (name, p.stderr)
-        passed += 1
-        print('PASS', name, flush=True)
+        def body():
+            p = run([compiler, 'check', root/'main.rh', *extra], False)
+            assert diagnostic in p.stderr and re.search(r':\d+:\d+: error:', p.stderr), (name, p.stderr)
+        suite.case(name, body)
 
     lib = '''module^ lib.example
 public^ def^ Item { self^{ value:i64^ } }
@@ -72,7 +58,7 @@ public^ let^ result=f^ x:i64^ ->Result {
     return^ x
 }
 '''
-    root = positive('imports_types_constants_errors', {
+    root, imports_built = positive('imports_types_constants_errors', {
         'lib/example.rh': lib,
         'main.rh': '''import^ lib.example
 let^ x=import^ lib.example
@@ -238,6 +224,8 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     second = run(command).stderr
     assert 'compile:' not in second and 'cache hit: lib.example' in second
     assert objects == {p.name: (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest()) for p in cache.glob('*.obj')}
+    if imports_built:
+        imports_built.result()
     assert run([exe]).stdout == run([root/'main-O2.exe']).stdout
     private_change = (root/'lib/example.rh').read_text().replace('{ 99 }', '{ 100 }')
     (root/'lib/example.rh').write_text(private_change)
@@ -276,8 +264,7 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     assert run([root/'single.exe']).stdout == run([exe]).stdout
     p = run([compiler, 'build', root/'main.rh', '-o', root/'lib/example.rh'], False)
     assert 'overwrite' in p.stderr
-    passed += 1
-    print('PASS object_cache_identity_reuse_invalidation_and_single_ir', flush=True)
+    suite.mark('object_cache_identity_reuse_invalidation_and_single_ir')
 
     native = project('native_header_cache', {
         'main.rh':'print(42)', 'value.h':'#define HEADER_VALUE 1\n',
@@ -293,8 +280,7 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     (native/'value.h').write_text('#define HEADER_VALUE 2\n')
     assert 'compile: runtime' in run(command).stderr
     assert run([native/'header.exe']).stdout=='422\n'
-    passed += 1
-    print('PASS runtime_header_cache_invalidation',flush=True)
+    suite.mark('runtime_header_cache_invalidation')
     if os.name=='nt':
         import ctypes
         kernel=ctypes.WinDLL('kernel32',use_last_error=True)
@@ -316,8 +302,7 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
         finally:
             for handle in held:
                 close(handle)
-        passed += 1
-        print('PASS windows_read_locked_immutable_cache_inputs',flush=True)
+        suite.mark('windows_read_locked_immutable_cache_inputs')
 
     random_source = '''import^ std.random
 var^ r=std.random.new(12345)
@@ -359,7 +344,7 @@ print("ok")
         state ^= (state << 25) & mask
         state ^= state >> 27
         expected.append((((state*0x2545F4914F6CDD1D)&mask) >> 11)/(1<<53))
-    for opt in ('-O0', '-O2'):
+    for opt in suite.opts:
         exe = random_root/f'random{opt}.exe'
         run([compiler, 'build', random_root/'main.rh', '-o', exe, '--clang', clang, opt])
         output = run([exe]).stdout.splitlines()
@@ -379,8 +364,7 @@ print("ok")
         else: command += ['-lm']
         run(command)
         assert run([random_root/'failure.exe']).stdout == '42\n'
-    passed += 1
-    print('PASS std_random_lhat_oracle_state_ranges_math_and_seed_failure', flush=True)
+    suite.mark('std_random_lhat_oracle_state_ranges_math_and_seed_failure')
     # Integer rejection, sign crossing, full-width range and distribution replay.
     state = 12345 ^ 0x9E3779B97F4A7C15
     def raw_draw():
@@ -417,17 +401,16 @@ print("ok")
                    'var^ fallback=std.random.new(-7046029254386353131)',
                    'assert(fallback.save()=2685821657736338717)']
     oracle_root = project('random_integer_normal_oracle', {'main.rh':'\n'.join(statements)})
-    for opt in ('-O0','-O2'):
+    for opt in suite.opts:
         exe=oracle_root/f'oracle{opt}.exe'
         run([compiler,'build',oracle_root/'main.rh','-o',exe,'--clang',clang,opt])
         output=run([exe]).stdout.splitlines()
         assert list(map(int,output[:96]))==integer_expected
         assert all(math.isclose(float(x), y, rel_tol=2e-14, abs_tol=2e-14)
                    for x,y in zip(output[96:],normal_expected)) and len(output)==104
-    passed += 1
-    print('PASS std_random_integer_rejection_and_normal_oracles',flush=True)
+    suite.mark('std_random_integer_rejection_and_normal_oracles')
 
-    optional_root = positive('module_optional_types', {
+    optional_root, _ = positive('module_optional_types', {
         'lib/value.rh': '''module^ lib.value
 public^ def^ Item {self^{value:i32^=42}}
 public^ def^ Result = Item | nil^
@@ -453,8 +436,7 @@ print(*(ref??ref^ number))
     run([clang, '-Wno-override-module', '-O2', optional_ir,
          repo/'runtime/rhat_runtime.c', '-o', optional_root/'single.exe'])
     assert run([optional_root/'single.exe']).stdout == '42 0 42\n42 0\n7\n'
-    passed += 1
-    print('PASS optional_union_single_ir_matches_modules', flush=True)
+    suite.mark('optional_union_single_ir_matches_modules')
 
     positive('module_fits_types_and_specializations', {
         'lib/value.rh': '''module^ lib.value
@@ -526,13 +508,12 @@ let^ item:lib.a.Item|nil^=lib.b.Item.new()
     installed_random=share/'stdlib/std/random.rh'
     installed_random.write_text(installed_random.read_text()+'\npublic^ let^ portableMarker:i32^=42\n')
     portable=project('packaged_resources',{'main.rh':'import^ std.random\nprint(std.random.portableMarker)\nvar^ r=std.random.new(12345)\nprint(r.save())'})
-    for opt in ('-O0','-O2'):
+    for opt in suite.opts:
         exe=portable/f'portable{opt}.exe'
         run([packed,'build',portable/'main.rh','-o',exe,'--clang',clang,opt])
         assert run([exe]).stdout=='42\n-7046029254386365396\n'
-    passed += 1
-    print('PASS installed_standard_library_and_runtime_resources',flush=True)
-    print(f'{passed} module integration cases passed (positive cases at -O0 and -O2)', flush=True)
+    suite.mark('installed_standard_library_and_runtime_resources')
+    suite.finish()
 
 
 if __name__ == '__main__':

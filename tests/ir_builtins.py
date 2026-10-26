@@ -2,7 +2,9 @@
 import re
 
 
-def exercise(repo, work, compiler, clang, source, run, positive, runtime_failure, high_water):
+def exercise(suite, run, high_water):
+    repo, work, compiler, clang = suite.repo, suite.work, suite.compiler, suite.clang
+    source, positive, runtime_failure = suite.source, suite.positive, suite.runtime_failure
     positive('inline_builtin_single_evaluation', '''
 let^ tick=p^ counter:ref^ i32^, result:i64^ -> i64^ {
     *counter := *counter+1; return^ result
@@ -74,7 +76,7 @@ print(x+y,f64^(x),i32^(3.5))
     for name in declared:
         if name.endswith('_fail') or name=='rh_stack_overflow':
             assert re.search(r'^declare[^\n]*@'+name+r'\([^\n]*\) cold noreturn$',llvm,re.M)
-    for opt in ('-O0','-O2'):
+    for opt in suite.opts:
         optimized=work/('runtime_boundary_'+opt[1:]+'.ll')
         run([clang,'-Wno-override-module',opt,'-S','-emit-llvm',str(raw),'-o',str(optimized)])
         text=optimized.read_text()
@@ -89,7 +91,7 @@ print(x+y,f64^(x),i32^(3.5))
         run([clang,'-Wno-override-module','-std=c11',opt,str(raw),
              str(repo/'runtime/rhat_runtime.c'),'-o',str(exe)])
         assert run([str(exe)]).stdout=='4 2\n3.5 1.5 3\n'
-    print('PASS minimal_runtime_boundary_and_inlined_helpers',flush=True)
+    suite.mark('minimal_runtime_boundary_and_inlined_helpers')
 
     # Exercise the actual emitted append helper with lengths that safe R^
     # source cannot fabricate. This verifies the pre-copy overflow checks.
@@ -131,7 +133,7 @@ int main(int argc,char **argv) {
   assert(!memcmp(storage+6,"abc",3));return 0;
 }
 ''')
-    for opt in ('-O0','-O2'):
+    for opt in suite.opts:
         exe=work/('append_boundary_'+opt[1:]+'.exe')
         run([clang,'-std=c11','-Wno-override-module',opt,str(c),str(exported_helpers),
              str(repo/'runtime/rhat_runtime.c'),'-o',str(exe)])
@@ -139,6 +141,4 @@ int main(int argc,char **argv) {
         for mode in ('count','size','len','partial'):
             result=run([str(exe),mode],1)
             assert 'at line 7: data stack overflow' in result.stderr,result.stderr
-    print('PASS emitted_append_overflow_overlap_and_empty_source',flush=True)
-    # positive/runtime_failure/high_water update the parent's case counter.
-    return 2
+    suite.mark('emitted_append_overflow_overlap_and_empty_source')
