@@ -517,6 +517,77 @@ static cJSON *signature_help(cJSON *index, const char *uri, const char *buffer,
                           count && argument >= count ? count - 1 : argument);
   return out;
 }
+static bool namespace_name(cJSON *index, const char *uri, const char *buffer,
+                           size_t start, size_t end)
+{
+  size_t root = start;
+  while (root) {
+    size_t at = root;
+    while (at && isspace((unsigned char)buffer[at - 1])) {
+      at--;
+    }
+    if (!at || buffer[at - 1] != '.') {
+      break;
+    }
+    at--;
+    while (at && isspace((unsigned char)buffer[at - 1])) {
+      at--;
+    }
+    size_t tail = at;
+    while (at && identifier((unsigned char)buffer[at - 1]) &&
+           buffer[at - 1] != '^') {
+      at--;
+    }
+    if (at == tail) {
+      break;
+    }
+    root = at;
+  }
+  /* A checked local or receiver takes precedence over an import spelling. */
+  if (symbol_at(index, uri, root)) {
+    return false;
+  }
+  cJSON *import;
+  cJSON_ArrayForEach(import, cJSON_GetObjectItem(index, "imports"))
+  {
+    if (strcmp(text(import, "uri"), uri)) {
+      continue;
+    }
+    const char *names[] = {text(import, "alias"), text(import, "module")};
+    for (int j = 0; j < 2; j++) {
+      const char *name = names[j];
+      size_t at = root;
+      bool contains = false;
+      while (*name) {
+        size_t length = strcspn(name, ".");
+        if (strncmp(buffer + at, name, length) ||
+            identifier((unsigned char)buffer[at + length])) {
+          break;
+        }
+        contains |= at == start && at + length == end;
+        at += length;
+        name += length;
+        if (!*name) {
+          if (contains) {
+            return true;
+          }
+          break;
+        }
+        while (isspace((unsigned char)buffer[at])) {
+          at++;
+        }
+        if (buffer[at++] != '.') {
+          break;
+        }
+        while (isspace((unsigned char)buffer[at])) {
+          at++;
+        }
+        name++;
+      }
+    }
+  }
+  return false;
+}
 static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
 {
   cJSON *out = cJSON_CreateObject(),
@@ -545,7 +616,11 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
     }
     else if (identifier(c)) {
       at++;
-      while (identifier((unsigned char)buffer[at])) {
+      while (buffer[at] != '^' && identifier((unsigned char)buffer[at])) {
+        at++;
+      }
+      /* A hat terminates the word; the next name may start immediately. */
+      while (buffer[at] == '^') {
         at++;
       }
       cJSON *s = symbol_at(index, uri, start);
@@ -558,6 +633,10 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                : *text(s, "owner")             ? 3
                                                : 5;
         modifiers = cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) ? 1 : 0;
+      }
+      else if (buffer[at - 1] != '^' &&
+               namespace_name(index, uri, buffer, start, at)) {
+        kind = 11;
       }
     }
     else {

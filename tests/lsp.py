@@ -109,9 +109,9 @@ def main():
     assert capabilities['capabilities']['textDocumentSync']['change'] == 2
     client.send('initialized', {})
     path = work/'unsaved 日本語.rh'
-    content = '''def^ Point {self^{x:i64^=42, private^ hidden:i32^=0}}
-let^ twice=f^ n {let^ value:i64^=n return^ value*2}
-var^ point=Point{}
+    content = '''def^Point {self^{x:i64^=42, private^hidden:i32^=0}}
+let^twice=f^n {let^value:i64^=n return^value*2}
+var^point=Point{}
 print(twice(point.x))
 '''
     client.open(path, content)
@@ -188,6 +188,33 @@ print(twice(point.x))
     # References from the defining module also include open importing roots.
     imported_refs = client.request('textDocument/references',dict(textDocument=dict(uri=module.as_uri()),position=dict(line=1,character=13),context=dict(includeDeclaration=True)))
     assert len(imported_refs) == 2, imported_refs
+
+    namespace_path = work/'namespaces.rh'
+    namespace_source = '''import^lib.math
+let^math=import^lib.math
+print(lib . math . twice(1),math.twice(2))
+let^shadow=p^math:i64^ {print(math)}
+shadow(3)
+print("lib.math") # lib.math
+'''
+    client.open(namespace_path,namespace_source)
+    assert client.diagnostics(namespace_path,1) == []
+    data = client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=namespace_path.as_uri())))['data']
+    line = column = 0
+    names = []
+    for offset in range(0,len(data),5):
+        delta_line, delta_column, length, kind, modifiers = data[offset:offset+5]
+        line += delta_line
+        column = delta_column if delta_line else column+delta_column
+        names.append((line,namespace_source.splitlines()[line][column:column+length],kind))
+    assert [(line,name) for line,name,kind in names if kind == 11] == [
+        (0,'lib'),(0,'math'),(1,'math'),(1,'lib'),(1,'math'),
+        (2,'lib'),(2,'math'),(2,'math'),
+    ], names
+    assert (2,'twice',2) in names, names
+    assert (3,'math',4) in names, names
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=namespace_path.as_uri())))
+    print('PASS import namespace paths, aliases and lexical shadowing colors',flush=True)
 
     scoped = """def^ Base {self^{x:i64^=42, private^ secret:i32^=0}}
 def^ Derived:Base {}
