@@ -8,5 +8,6 @@ __pycache__/
 
 .rhat-cache/
 
+.VSCodeCounter
 CLAUDE.md
 AGENT.md
