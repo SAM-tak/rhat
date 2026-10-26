@@ -15,8 +15,8 @@ count ?+= 4
 print(count ?? 0)
 count ?:= nil^
 count ?:= 99
-print(count?,count ?? 0)
+print(count?, count ?? 0)
 
-var^values:i32^[2] = [10,20]
-let^view:ref^ i32^[2] | nil^ = ref^ values
+var^values = [10,20]
+let^view:ref^i32^[2] | nil^ = ref^values
 print(view?[1] ?? 0)
