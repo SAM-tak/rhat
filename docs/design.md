@@ -521,6 +521,25 @@ print(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 組み込み関数は `public^ let^ sin = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;` の形で宣言します。
 `externLLVM^` は標準ライブラリ（`std.*`）の `llvm.*` シンボル専用です。渡せる型と効果の規則は [externC^](ffi.md) と同じです。
 
+## 文字列から数値への変換
+
+```rhat
+let^ t = import^ std.text
+var^ disc:i64^ = 3
+if^ (...).len > 0 {
+    let^ parsed = t.parse_i64(...[0])
+    if^ parsed fits^ i64^ { disc := parsed else^: print("usage: hanoi [DISCS]") return^ }
+}
+print(disc)
+```
+
+`std.text` の `parse_i64`・`parse_i32`・`parse_f64`・`parse_f32` は文字列全体を読み、
+`T | Error.Invalid | Error.OutOfRange` を返します。前後の空白は認めません。
+
+- 整数: 省略可能な `+` / `-` と十進の数字だけを R^ で読みます。型の範囲を超えると `OutOfRange` です。
+- 浮動小数点: ランタイムがNUL終端のコピーを作り、C の `strtod` / `strtof` で読みます（十進・十六進・`inf`・`nan`）。
+  f32^ は `strtof` で直接丸めます。絶対値が型の最大値を超えると `OutOfRange`、アンダーフローは0側に丸めた値です。
+
 ## 検証
 
 `tests/modules.py` はモジュール境界・オブジェクト再利用・乱数APIを O0/O2 で検証します。

@@ -2,7 +2,9 @@
 #if !defined(_WIN32)
 #define _DEFAULT_SOURCE
 #endif
+#include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -158,6 +160,48 @@ void rh_runtime_args(int argc, char **argv, RhStrings *out)
   LocalFree(wide);
 #endif
   *out = (RhStrings){items, count};
+}
+/* Parse all of text with strtod or strtof. Answers 0, 1 for text that is
+ * empty, starts with space or has trailing characters, or 2 on overflow. */
+static int32_t rh_parse_float(const char *text, int64_t length, bool single,
+                              double *wide, float *narrow)
+{
+  if (length <= 0 || (size_t)length >= SIZE_MAX ||
+      strchr(" \t\n\v\f\r", text[0]) || memchr(text, 0, (size_t)length)) {
+    return 1;
+  }
+  char small[64];
+  char *copy = length < (int64_t)sizeof(small) ? small : malloc((size_t)length + 1);
+  if (!copy) {
+    rh_panic("cannot copy number text", 0);
+  }
+  memcpy(copy, text, (size_t)length);
+  copy[length] = 0;
+  char *end = NULL;
+  errno = 0;
+  double value = 0;
+  if (single) {
+    *narrow = strtof(copy, &end);
+    value = *narrow;
+  }
+  else {
+    *wide = value = strtod(copy, &end);
+  }
+  int32_t status = end != copy + length ? 1
+                   : errno == ERANGE && isinf(value) ? 2
+                                                    : 0;
+  if (copy != small) {
+    free(copy);
+  }
+  return status;
+}
+int32_t rh_parse_f64(const char *text, int64_t length, double *out)
+{
+  return rh_parse_float(text, length, false, out, NULL);
+}
+int32_t rh_parse_f32(const char *text, int64_t length, float *out)
+{
+  return rh_parse_float(text, length, true, NULL, out);
 }
 void rh_runtime_shutdown(void) {
   for (uint64_t j = 0; j < rh_stack_count; j++) {
