@@ -600,22 +600,23 @@ static void instruction(Output *o, Instr *i) {
       data = fmt("%%t%d", ptr);
       length = fmt("%%t%d", len);
     }
-    a = load(o, i->b);
-    b = load(o, i->other);
-    int start_ok = ++o->tmp, count_ok = ++o->tmp, remaining = ++o->tmp;
-    int start_positive = ++o->tmp, count_positive = ++o->tmp;
-    int valid_start = ++o->tmp, valid_count = ++o->tmp, valid = ++o->tmp;
-    fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %s\n", start_ok, a, length);
-    fprintf(f, "  %%t%d = sub i64 %s, %%t%d\n", remaining, length, a);
-    fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %%t%d\n", count_ok, b, remaining);
-    fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", start_positive, a);
-    fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", count_positive, b);
-    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid_start, start_ok,
-            start_positive);
-    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid_count, count_ok,
-            count_positive);
-    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid, valid_start,
-            valid_count);
+    /* Omitted bounds are 0 and the length; an inclusive end adds one, and a
+       wrapped end fails the ordering check. */
+    char *lo = i->b >= 0 ? fmt("%%t%d", load(o, i->b)) : "0";
+    char *hi = i->other >= 0 ? fmt("%%t%d", load(o, i->other)) : length;
+    if (i->label) {
+      fprintf(f, "  %%t%d = add i64 %s, 1\n", ++o->tmp, hi);
+      hi = fmt("%%t%d", o->tmp);
+    }
+    int lo_ok = ++o->tmp, ordered = ++o->tmp, hi_ok = ++o->tmp;
+    int lower = ++o->tmp, valid = ++o->tmp;
+    b = ++o->tmp;
+    fprintf(f, "  %%t%d = icmp sge i64 %s, 0\n", lo_ok, lo);
+    fprintf(f, "  %%t%d = icmp sge i64 %s, %s\n", ordered, hi, lo);
+    fprintf(f, "  %%t%d = icmp ule i64 %s, %s\n", hi_ok, hi, length);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", lower, lo_ok, ordered);
+    fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", valid, lower, hi_ok);
+    fprintf(f, "  %%t%d = sub i64 %s, %s\n", b, hi, lo);
     fprintf(f,
             "  br i1 %%t%d, label %%slice_ok_%d, label %%slice_bad_%d, !prof "
             "!0\nslice_bad_%d:\n",
@@ -624,8 +625,8 @@ static void instruction(Output *o, Instr *i) {
             "  call void @rh_slice_fail(i32 %d)\n  unreachable\nslice_ok_%d:\n",
             i->loc.line, valid);
     int ptr = ++o->tmp, first = ++o->tmp, view = ++o->tmp;
-    fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %%t%d\n", ptr,
-            t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, a);
+    fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %s\n", ptr,
+            t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, lo);
     fprintf(f, "  %%t%d = insertvalue {ptr,i64} undef, ptr %%t%d, 0\n", first,
             ptr);
     fprintf(f, "  %%t%d = insertvalue {ptr,i64} %%t%d, i64 %%t%d, 1\n", view,
@@ -1277,7 +1278,7 @@ void dump_ir(Program *p, const char *path) {
         fputs(" proof=flow", f);
       }
       if (i->op == I_SLICE)
-        fprintf(f, " count=%%%d", i->other);
+        fprintf(f, " end=%%%d%s", i->other, i->label ? " inclusive" : "");
       if (i->op == I_FIELD)
         fprintf(f, " field=%d", i->label);
       if (i->args.n) {

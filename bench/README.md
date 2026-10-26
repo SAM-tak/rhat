@@ -88,7 +88,7 @@ python bench/run_workloads.py --report-only --out bench/push
 ```
 
 The R^ port retains real references returned by push, marking every 64th
-8-byte Item across later growth. It uses `(&Item)[>..]`, not an index substitute.
+8-byte Item across later growth. It uses `grow^ (ref^ Item)[]`, not an index substitute.
 C++ vector and Rust Vec controls use indices; the C++ deque control retains
 pointers. All original sizes, RNG outputs and four checksum lines are retained.
 The largest Item storage is 512 MB and fits the existing 1 GiB reservation.

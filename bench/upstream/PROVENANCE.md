@@ -37,7 +37,7 @@ No original sizes, RNG outputs, tree shapes, distances or checksums are changed.
 `cpp/push.cpp` and `rust/push.rs` are also unmodified copies from the pinned
 revision. `../rhat/push.rh` is a modified translation of upstream
 `bench/goose/push.goose`: R^ syntax, explicit numeric conversions, index loops
-for final scans and `(&Item)[>..]` for the marks. The marks are actual Item
+for final scans and `grow^ (ref^ Item)[]` for the marks. The marks are actual Item
 references returned by push and remain live across later growth; they are
 not replaced by indices. Original sizes, every-64th marking, RNG outputs
 and all four checksum lines are unchanged.

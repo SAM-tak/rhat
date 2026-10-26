@@ -488,7 +488,8 @@ static void lex(Parser *p) {
         s++;
       }
       else if ((strchr("+-*/%", start[0]) && *s == '=') ||
-          (start[0] == '=' && *s == '/') || (start[0] == ':' && *s == '=') ||
+          (start[0] == '=' && *s == '/') ||
+          (start[0] == ':' && (*s == '=' || *s == ':')) ||
           (start[0] == '-' && *s == '>') ||
           (strchr("=!<>", start[0]) && *s == '=') ||
           (start[0] == '&' && *s == '&') || (start[0] == '|' && *s == '|') ||
@@ -568,6 +569,14 @@ static Spec *spec_part(Parser *p)
     need(p, ";");
     return s;
   }
+  if (take(p, "grow^")) {
+    s = spec_part(p);
+    if (s->kind != SPEC_ARRAY || s->count) {
+      fail(s->loc, "grow^ needs an array type ending in [], as in grow^ T[]");
+    }
+    s->kind = SPEC_GROW;
+    return s;
+  }
   if (take(p, "(")) {
     s = spec(p);
     need(p, ")");
@@ -579,9 +588,8 @@ static Spec *spec_part(Parser *p)
     Spec *w = mem(sizeof(*w));
     w->loc = s->loc;
     w->elem = s;
-    if (take(p, ">")) {
-      need(p, "..");
-      w->kind = SPEC_GROW;
+    if (is(p, "]")) {
+      w->kind = SPEC_ARRAY; /* Unsized until grow^ claims it. */
     } else if (take(p, ":")) {
       w->kind = SPEC_SLICE;
     } else {
@@ -723,8 +731,12 @@ static Expr *primary(Parser *p) {
     e = expr(p, 0);
     p->header = header;
     need(p, ")");
-  } else if (!strcmp(t->text, "[")) {
+  } else if (!strcmp(t->text, "[") || !strcmp(t->text, "grow^")) {
     e = node(E_ARRAY, t->loc);
+    if (strcmp(t->text, "[")) {
+      e->text = t->text;
+      need(p, "[");
+    }
     entries(p, e, "]", false);
   } else if (!strcmp(t->text, "{")) {
     e = node(E_RECORD, t->loc);
@@ -810,7 +822,15 @@ static Expr *primary(Parser *p) {
       Expr *n = node(E_INDEX, e->loc);
       n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?[");
       n->a = e;
-      n->b = expr(p, 0);
+      n->b = is(p, "::") ? NULL : expr(p, 0);
+      if (is(p, "::") || is(p, "to^")) {
+        n->kind = E_SLICE;
+        n->text = next(p)->text;
+        n->c = is(p, "]") ? NULL : expr(p, 0);
+        if (!strcmp(n->text, "to^") && (!n->b || !n->c)) {
+          fail(n->loc, "an inclusive to^ slice needs both bounds");
+        }
+      }
       need(p, "]");
       e = n;
     }

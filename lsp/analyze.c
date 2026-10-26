@@ -177,9 +177,12 @@ static char *spec_text(Spec *s)
     return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION) ? "ref^ (%s)" : "ref^ %s",
                spec_text(s->elem));
   }
-  return fmt("%s[%s]", spec_text(s->elem),
-             s->kind == SPEC_GROW    ? ">.."
-             : s->kind == SPEC_SLICE ? ".."
+  bool wrap = s->elem->kind == SPEC_REF || s->elem->kind == SPEC_UNION ||
+              s->elem->kind == SPEC_INTERSECTION;
+  return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]",
+             s->kind == SPEC_GROW ? "grow^ " : "", spec_text(s->elem),
+             s->kind == SPEC_GROW    ? ""
+             : s->kind == SPEC_SLICE ? ":"
                                      : fmt("%d", s->count));
 }
 static char *signature(Program *p, Function *f)

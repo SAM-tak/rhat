@@ -34,7 +34,7 @@ let^ score=f^ event:Event -> i64^ {
     return^ i64^(q.id)+i64^(q.code)
 }
 let^ n:i64^=500000 # BENCH_N
-var^ log:Event[>..]=[]
+var^ log:grow^ Event[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n {

@@ -139,12 +139,12 @@ print(make(ref^ calls,true^)?.read(arg(ref^ calls))??0,calls)
     positive('nil_array', '''
 let^ array:i64^[2]|nil^=[10,20]
 print(array?.len??0,array?[1]??0)
-var^ owner:i32^[>..]=[3,4]
-var^ ref:ref^ i32^[>..]|nil^=ref^ owner
+var^ owner:grow^ i32^[]=[3,4]
+var^ ref:ref^ grow^ i32^[]|nil^=ref^ owner
 print(ref?[1]??0)
 ref:=nil^
 print(ref?[999999999]??7)
-let^ view:i32^[:]|nil^=owner.slice(0,2)
+let^ view:i32^[:]|nil^=owner[:: 2]
 print(view?[0]??0,view?.len??0)
 let^ fallback:i64^[2]=[7,8]
 let^ copy=array??fallback
@@ -154,7 +154,7 @@ print(copy[0],copy[1])
     positive('nil_strings', r'''
 var^ text:string^|nil^="a\0b"
 print(text?.len??0,text?[2]??u8^(0))
-print((text?.slice(0,1))?.len??0)
+print((text?[:: 1])?.len??0)
 text:=nil^
 print(text??"fallback")
 ''', '3 98\n1\nfallback\n')
@@ -296,7 +296,7 @@ print(ref?[-1]??0)
     prefix = 'def^ Item {self^{n:i32^=7}}\n'
     cases = [
         ('nil_wrong_arm', 'let^ x:i32^|nil^="bad"', 'not an alternative'),
-        ('nil_owned_union', 'let^ x:i32^[>..]|nil^=nil^', 'non-owning fixed-size'),
+        ('nil_owned_union', 'let^ x:grow^ i32^[]|nil^=nil^', 'non-owning fixed-size'),
         ('nil_void_union', 'let^ x:void^|nil^=nil^', 'void cannot'),
         ('nil_void_presence', 'let^ noop=p^ {} print(noop()?)', 'presence test requires'),
         ('nil_void_fallback', 'let^ noop=p^ {} let^ x:i32^|nil^=nil^ let^ y=x??noop()', 'value-producing fallback'),
@@ -317,9 +317,9 @@ print(ref?[-1]??0)
         ('nil_loop_invariant', 'var^ x:Item|nil^=Item.new() if^ x? {repeat^ 2 {print(x.n) x:=nil^}}', 'field access requires'),
         ('nil_loop_exit', 'var^ x:Item|nil^=Item.new() repeat^ while^ x? {break^} print(x.n)', 'field access requires'),
         ('nil_borrow_return', 'let^ bad=f^ ->ref^ i32^|nil^ {var^ x=1 return^ ref^ x} let^ r=bad()', 'cannot return a reference'),
-        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[:]|nil^ {var^ a:i32^[>..]=[1] let^ ref:ref^ i32^[>..]|nil^=ref^ a return^ ref?.slice(0,1)} let^ r=bad()', 'cannot return a reference'),
+        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[:]|nil^ {var^ a:grow^ i32^[]=[1] let^ ref:ref^ grow^ i32^[]|nil^=ref^ a return^ ref?[:: 1]} let^ r=bad()', 'cannot return a reference'),
         ('nil_coalesce_borrow_return', 'let^ bad=f^ ->ref^ i32^ {var^ a=1 var^ b=2 let^ x:ref^ i32^|nil^=ref^ a return^ x??ref^ b} let^ r=bad()', 'cannot return a reference'),
-        ('nil_array_history', 'var^ a:(ref^ i32^|nil^)[>..]=[] do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
+        ('nil_array_history', 'var^ a:grow^ (ref^ i32^|nil^)[]=[] do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
         ('nil_guard_store_borrow', 'var^ outer:ref^ i32^|nil^=nil^ do^{var^ local=1 outer ?:= ref^ local}', 'outlive'),
         ('nil_compare_order', 'let^ x:i32^|nil^=1 print(x<nil^)', 'only equality'),
     ]

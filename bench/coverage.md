@@ -67,7 +67,7 @@ scope watermarks without decommitting pages. Recursive cycles cannot retain
 local owned regions across cycle calls; borrowed external pools remain supported.
 Historical reports retain their original runtimes and descriptor sizes.
 
-Read-only `T[:]` views, checked slice(start,count), byte access on string literals
+Read-only `T[:]` views, checked `a[lo :: hi]` slices, byte access on string literals
 and bulk append are implemented. Strlist/words copy the split strings into owned
 packed storage; these are not borrowed-word substitutions. Text measurements are
 in their own session and do not refresh the historical runtime measurements.

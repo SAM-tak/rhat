@@ -35,7 +35,7 @@ let^ compose=p^ p:ref^ Xf, l:ref^ Xf, w:ref^ Xf {
     w.t.y := p.m[3]*l.t.x+p.m[4]*l.t.y+p.m[5]*l.t.z+p.t.y
     w.t.z := p.m[6]*l.t.x+p.m[7]*l.t.y+p.m[8]*l.t.z+p.t.z
 }
-let^ make=p^ pool:ref^ Node[>..], depth:i64^, seed:u64^ -> u32^ {
+let^ make=p^ pool:ref^ grow^ Node[], depth:i64^, seed:u64^ -> u32^ {
     let^ r=std.random.xorshift64(seed)
     let^ self=u32^(pool.len)
     pool.push(Node{id=i32^(self),local=Xf{m=rotation(r),
@@ -53,7 +53,7 @@ let^ make=p^ pool:ref^ Node[>..], depth:i64^, seed:u64^ -> u32^ {
     }
     return^ self
 }
-let^ update=p^ pool:ref^ Node[>..], index:u32^, parent:ref^ Xf {
+let^ update=p^ pool:ref^ grow^ Node[], index:u32^, parent:ref^ Xf {
     let^ nd=ref^ pool[index]
     compose(parent,ref^ nd.local,ref^ nd.world)
     var^ k:u8^=0
@@ -63,7 +63,7 @@ let^ update=p^ pool:ref^ Node[>..], index:u32^, parent:ref^ Xf {
     }
 }
 let^ depth:i64^=12 # BENCH_N
-var^ pool:Node[>..]=[]
+var^ pool:grow^ Node[]=[]
 let^ root=make(ref^ pool,depth,12345)
 var^ ident=identity()
 var^ total:i64^=0

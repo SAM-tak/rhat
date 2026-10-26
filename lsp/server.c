@@ -438,10 +438,9 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
   }
   if (member &&
       (*base == '[' || strchr(base, '[') || !strcmp(base, "string^"))) {
-    const char *array[] = {"len",    "slice", "push",    "pop",
-                           "append", "clear", "truncate"};
-    for (int j = 0; j < 7; j++) {
-      if (j >= 2 && !strstr(base, "[>..]")) {
+    const char *array[] = {"len", "push", "pop", "append", "clear", "truncate"};
+    for (int j = 0; j < 6; j++) {
+      if (j >= 1 && !strstr(base, "grow^ ")) {
         continue;
       }
       if (!strncmp(array[j], buffer + begin, cursor - begin)) {
@@ -459,7 +458,7 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
         "try^",     "catch^",    "import^",   "module^",  "public^",
         "private^", "abstract^", "override^", "mutable^", "true^",
         "false^",   "nil^",      "ref^",      "overload^", "op^",
-        "print",    "assert"};
+        "grow^",    "print",     "assert"};
     for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
       if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {
         completion_item(out, keywords[j], "R^", 14);

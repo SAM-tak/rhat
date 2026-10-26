@@ -6,8 +6,8 @@ def^ Item { self^{ key:i32^, val:i32^ } }
 
 
 let^ n:i64^=1000000 # BENCH_N
-var^ items:Item[>..]=[]
-var^ marks:(ref^ Item)[>..]=[]
+var^ items:grow^ Item[]=[]
+var^ marks:grow^ (ref^ Item)[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n {

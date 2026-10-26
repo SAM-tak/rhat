@@ -308,17 +308,6 @@ static Type *infer_call(Infer *c, Expr *e)
     if (base && base->kind == T_REF) {
       base = base->elem;
     }
-    if (base &&
-        (base->kind == T_ARRAY || base->kind == T_GROW ||
-         base->kind == T_SLICE || base->kind == T_STRING) &&
-        !strcmp(target->text, "slice")) {
-      for (int j = 0; j < e->args.n; j++) {
-        infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
-      }
-      return type_wrap(
-          c->p, T_SLICE,
-          base->kind == T_STRING ? type_builtin(c->p, T_U8) : base->elem, 0);
-    }
     if (base && base->kind == T_GROW && !strcmp(target->text, "pop")) {
       return base->elem;
     }
@@ -809,7 +798,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (c->terminated) {
       return type_builtin(c->p, T_NEVER);
     }
-    return elem ? type_wrap(c->p, T_ARRAY, elem, e->args.n) : NULL;
+    return !elem ? NULL
+           : e->text ? type_wrap(c->p, T_GROW, elem, 0)
+                     : type_wrap(c->p, T_ARRAY, elem, e->args.n);
   }
   case E_MEMBER: {
     Type *base = infer_expr(c, e->a, NULL);
@@ -847,6 +838,23 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
       }
     }
     return f ? f->type : NULL;
+  }
+  case E_SLICE: {
+    Type *base = infer_expr(c, e->a, NULL);
+    if (base && base->kind == T_REF) {
+      base = base->elem;
+    }
+    infer_expr(c, e->b, type_builtin(c->p, T_I64));
+    infer_expr(c, e->c, type_builtin(c->p, T_I64));
+    if (c->terminated) {
+      return type_builtin(c->p, T_NEVER);
+    }
+    return base && base->kind == T_STRING
+               ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
+           : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                      base->kind == T_SLICE)
+               ? type_wrap(c->p, T_SLICE, base->elem, 0)
+               : NULL;
   }
   case E_INDEX: {
     Type *base = infer_expr(c, e->a, NULL);
@@ -1714,6 +1722,23 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     }
     else if (base && !strcmp(e->text, "len")) {
       n->type = type_builtin(c->p, T_I64);
+    }
+    break;
+  }
+  case E_SLICE: {
+    n->a = body_expr(c, e->a, NULL);
+    body_expr(c, e->b, type_builtin(c->p, T_I64));
+    body_expr(c, e->c, type_builtin(c->p, T_I64));
+    Type *base = n->a->type;
+    if (base && base->kind == T_REF) {
+      base = base->elem;
+    }
+    if (base && base->kind == T_STRING) {
+      n->type = type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+    }
+    else if (base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                      base->kind == T_SLICE)) {
+      n->type = type_wrap(c->p, T_SLICE, base->elem, 0);
     }
     break;
   }

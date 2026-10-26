@@ -77,7 +77,7 @@ print(read(A{}),read(B{}))
 
     positive('inference_owned_return', '''
 let^ build=p^ n {
- var^ items:i32^[>..]=[]
+ var^ items:grow^ i32^[]=[]
  for^ i from^ 1 to^ n {items.push(i32^(i))}
  return^ items
 }
@@ -88,7 +88,7 @@ print(a.len,a[2],b.len,b[1])
     positive('inference_borrow', '''
 let^ at=f^ items,index {ref^ items[index]}
 let^ add=p^ items,value {items.push(value)}
-var^ a:i32^[>..]=[1,2]
+var^ a:grow^ i32^[]=[1,2]
 let^ ref=at(ref^ a,1)
 add(ref^ a,3);
 *ref:=42
@@ -224,8 +224,8 @@ print((f^ x {typed(x)})(41))
     negative('inference_bare_record', 'let^ use=p^ x {} use({value=42})', 'single nominal struct')
     negative('inference_pure_mutation', 'let^ edit=f^ x {*x:=42} var^ n=0 edit(ref^ n)', 'f^ cannot mutate')
     negative('inference_borrow_escape', 'let^ bad=f^ x {var^ local=x return^ ref^ local} let^ ref=bad(1)', 'cannot return a reference')
-    negative('inference_owned_argument', 'let^ use=p^ x {} var^ a:i32^[>..]=[] use(a)', 'pass owned values by reference')
-    negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:i32^[>..]=[n] if^ n>0 {this^(n-1)} print(a.len)} call(3)', 'holds local owned value')
+    negative('inference_owned_argument', 'let^ use=p^ x {} var^ a:grow^ i32^[]=[] use(a)', 'pass owned values by reference')
+    negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:grow^ i32^[]=[n] if^ n>0 {this^(n-1)} print(a.len)} call(3)', 'holds local owned value')
     negative('inference_ungrounded_recursion', 'let^ forever=f^ x {this^(x)} print(forever(1))', 'cannot infer return type')
     negative('inference_abstract_contract', 'def^ A {abstract^ read:f^ self^,x ->i32^;}', 'requires a type annotation')
     print(f'{passed} inference cases passed; executable cases checked at -O0 and -O2.', flush=True)

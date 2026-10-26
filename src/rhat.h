@@ -93,7 +93,8 @@ enum {
   E_CATCH,    /* Replace an error value with a lazily evaluated expression. */
   E_COALESCE, /* Lazy nil replacement, below unary and above binary operators.
                */
-  E_CHAIN     /* Comparisons share operands and short-circuit left to right. */
+  E_CHAIN,    /* Comparisons share operands and short-circuit left to right. */
+  E_SLICE     /* A range index: text is "::" or "to^"; b/c are optional bounds. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */

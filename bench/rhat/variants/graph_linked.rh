@@ -7,16 +7,16 @@ def^ Edge { self^{ to:i32^, next:u32^ } }
 
 
 
-let^ enqueue = p^ q:ref^ i32^[>..], tail:ref^ i64^, vertex:i32^ {
+let^ enqueue = p^ q:ref^ grow^ i32^[], tail:ref^ i64^, vertex:i32^ {
     if^ *tail < q.len { q[*tail] := vertex else^: q.push(vertex) }
     *tail := *tail+1
 }
 
 let^ nv:i64^=100000 # BENCH_N
 let^ ne=nv*8
-var^ pool:Edge[>..]=[]
-var^ dist:i32^[>..]=[]
-var^ q:i32^[>..]=[]
+var^ pool:grow^ Edge[]=[]
+var^ dist:grow^ i32^[]=[]
+var^ q:grow^ i32^[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < nv {

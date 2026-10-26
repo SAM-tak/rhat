@@ -95,7 +95,7 @@ prolog^:
 pre^:
     print(i)
 first^:
-    var^ values:i32^[>..]=[]
+    var^ values:grow^ i32^[]=[]
 main^:
     values.push(i)
     total+=i

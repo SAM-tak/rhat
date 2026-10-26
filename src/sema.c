@@ -185,6 +185,8 @@ Type *type_spec(Program *p, Spec *s) {
     }
     return callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
   }
+  if (s->kind == SPEC_ARRAY && !s->count)
+    fail(s->loc, "an array type without a length needs grow^, as in grow^ T[]");
   if (s->kind != SPEC_NAME)
     return type_wrap(p,
                      s->kind == SPEC_REF     ? T_REF
@@ -236,8 +238,8 @@ char *type_name(Type *t) {
                type_name(t->elem));
   if (t->kind == T_GROW)
     return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION)
-                   ? "(%s)[>..]"
-                   : "%s[>..]",
+                   ? "grow^ (%s)[]"
+                   : "grow^ %s[]",
                type_name(t->elem));
   return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[%d]"
                                                                   : "%s[%d]",
@@ -777,13 +779,14 @@ void layout(Type *t, Loc l)
 bool guarded_chain(Expr *e)
 {
   return e &&
-         (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_CALL) &&
+         (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_SLICE ||
+          e->kind == E_CALL) &&
          (e->optional || guarded_chain(e->a));
 }
 /* A method name is not a first-class value; keep it with its call. */
 Expr *chain_parts(Expr *e, List *steps)
 {
-  if (e->kind == E_MEMBER || e->kind == E_INDEX ||
+  if (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_SLICE ||
       (e->kind == E_CALL && e->a->kind == E_MEMBER)) {
     Expr *base = chain_parts(e->kind == E_CALL ? e->a->a : e->a, steps);
     add(steps, e);
@@ -2088,47 +2091,6 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       return abrupt(c);
     }
     Value base = deref(c, receiver, e->loc);
-    if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
-         base.type->kind == T_SLICE || base.type->kind == T_STRING) &&
-        !strcmp(target->text, "slice")) {
-      if (e->args.n != 2)
-        fail(e->loc, "slice expects start and count");
-      if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) &&
-          !base.addressable)
-        fail(e->loc,
-             "slice source needs a binding; cannot borrow a temporary array");
-      Value start = snapshot(
-          c, expression(c, e->args.v[0], type_builtin(p, T_I64)), e->loc);
-      if (c->terminated) {
-        return abrupt(c);
-      }
-      Value count = snapshot(
-          c, expression(c, e->args.v[1], type_builtin(p, T_I64)), e->loc);
-      if (c->terminated) {
-        return abrupt(c);
-      }
-      if (start.type->kind != T_I64 || count.type->kind != T_I64)
-        fail(e->loc, "slice start and count must be i64^");
-      Type *elem =
-          base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
-      Type *t = type_wrap(p, T_SLICE, elem, 0);
-      if (expected && expected != t)
-        fail(e->loc, "slice returns '%s', expected '%s'", type_name(t),
-             type_name(expected));
-      Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
-                   .type = t,
-                   .deps = base.deps | ((base.type->kind == T_ARRAY ||
-                                         base.type->kind == T_GROW)
-                                            ? base.storage
-                                            : 0)};
-      Instr *i = emit(c, I_SLICE, e->loc);
-      i->dst = out.id;
-      i->a = base.id;
-      i->b = start.id;
-      i->other = count.id;
-      i->type = base.type;
-      return out;
-    }
     if (base.type->kind == T_GROW && !strcmp(target->text, "truncate")) {
       if (e->args.n != 1)
         fail(e->loc, "truncate expects one new length");
@@ -2628,10 +2590,18 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     return out;
   }
   if (e->kind == E_ARRAY) {
+    bool grow = e->text != NULL; /* grow^[...] */
+    if (grow && t && t->kind != T_GROW)
+      fail(e->loc, "grow^ array literal cannot initialize '%s'", type_name(t));
+    Value first = {0};
     if (!t) {
       if (!e->args.n)
         fail(e->loc, "empty array needs a type annotation");
-      Value first = expression(c, e->args.v[0], NULL);
+      first = expression(c, e->args.v[0], NULL);
+    }
+    if (!t && grow)
+      t = type_wrap(c->p, T_GROW, first.type, 0);
+    if (!t) {
       t = type_wrap(c->p, T_ARRAY, first.type, e->args.n);
       layout(t, e->loc); /* Re-evaluation of inference expressions is avoided
                             below. */
@@ -2668,7 +2638,7 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     for (int j = 0; j < e->args.n; j++) {
       if (t->kind == T_GROW) {
-        Value v = expression(c, e->args.v[j], t->elem);
+        Value v = j || !first.type ? expression(c, e->args.v[j], t->elem) : first;
         if (v.type != t->elem)
           fail(e->loc, "array element type mismatch");
         out.deps |= v.deps;
@@ -2759,6 +2729,62 @@ static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *or
   Value result = call(c, &invoke, NULL, destination);
   operator_contract(f, result.type, loc);
   return result;
+}
+/* A range index borrows a view: [lo :: hi] excludes hi, [lo to^ hi] includes
+ * it, and an omitted bound is the start or the length. */
+static Value slice_view(Context *c, Expr *e, Type *expected)
+{
+  Program *p = c->p;
+  Value base = deref(c, expression(c, e->a, NULL), e->loc);
+  if (dead(base)) {
+    return base;
+  }
+  if (c->terminated) {
+    return abrupt(c);
+  }
+  if (base.type->kind != T_ARRAY && base.type->kind != T_GROW &&
+      base.type->kind != T_SLICE && base.type->kind != T_STRING) {
+    fail(e->loc, "slicing requires an array, slice or string");
+  }
+  if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) &&
+      !base.addressable) {
+    fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
+  }
+  int bounds[2] = {-1, -1};
+  Expr *ends[2] = {e->b, e->c};
+  for (int j = 0; j < 2; j++) {
+    if (!ends[j]) {
+      continue;
+    }
+    Value v = snapshot(c, expression(c, ends[j], type_builtin(p, T_I64)), e->loc);
+    if (c->terminated) {
+      return abrupt(c);
+    }
+    if (v.type->kind != T_I64) {
+      fail(ends[j]->loc, "slice bounds must be i64^");
+    }
+    bounds[j] = v.id;
+  }
+  Type *elem =
+      base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
+  Type *t = type_wrap(p, T_SLICE, elem, 0);
+  if (expected && expected != t) {
+    fail(e->loc, "slice is '%s', expected '%s'", type_name(t), type_name(expected));
+  }
+  Value out = {.id = slot(c, t, false),
+               .type = t,
+               .deps = base.deps | ((base.type->kind == T_ARRAY ||
+                                     base.type->kind == T_GROW)
+                                        ? base.storage
+                                        : 0)};
+  Instr *i = emit(c, I_SLICE, e->loc);
+  i->dst = out.id;
+  i->a = base.id;
+  i->b = bounds[0];
+  i->other = bounds[1];
+  i->label = !strcmp(e->text, "to^");
+  i->type = base.type;
+  return out;
 }
 static Value expression(Context *c, Expr *e, Type *expected) {
   if (c->terminated) {
@@ -2973,6 +2999,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     tool_record(p, e->name_loc.file ? e->name_loc : e->loc, f->loc, f->name,
                 result.type, NULL, f->owner, 8, false);
     return result;
+  }
+  if (e->kind == E_SLICE) {
+    return slice_view(c, e, expected);
   }
   if (e->kind == E_INDEX) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);

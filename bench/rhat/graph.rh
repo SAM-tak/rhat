@@ -6,20 +6,20 @@ import^ std.random
 
 
 
-let^ enqueue = p^ q:ref^ i32^[>..], tail:ref^ i64^, vertex:i32^ {
+let^ enqueue = p^ q:ref^ grow^ i32^[], tail:ref^ i64^, vertex:i32^ {
     if^ *tail < q.len { q[*tail] := vertex else^: q.push(vertex) }
     *tail := *tail+1
 }
 
 let^ nv:i64^=100000 # BENCH_N
 let^ ne=nv*8
-var^ esrc:i32^[>..]=[]
-var^ edst:i32^[>..]=[]
-var^ start:i32^[>..]=[]
-var^ fill:i32^[>..]=[]
-var^ out:i32^[>..]=[]
-var^ dist:i32^[>..]=[]
-var^ q:i32^[>..]=[]
+var^ esrc:grow^ i32^[]=[]
+var^ edst:grow^ i32^[]=[]
+var^ start:grow^ i32^[]=[]
+var^ fill:grow^ i32^[]=[]
+var^ out:grow^ i32^[]=[]
+var^ dist:grow^ i32^[]=[]
+var^ q:grow^ i32^[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < ne {

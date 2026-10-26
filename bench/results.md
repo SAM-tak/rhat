@@ -21,7 +21,7 @@ R^ compiler SHA-256: `d8d2e2b4ffd2f6e40db22d9d1e77c25f41693748a0ef33ca8829c17421
 Ratios are comparison / R^ time; above 1 means R^ is faster. C++/Rust columns refer to the selected controls described above.
 
 | Workload | Size / parameter | R^ ms | C++ ms | Rust ms | C++ / R^ | Rust / R^ | R^ peak MiB |
-|---|---|---:|---:|---:|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | sum | small / 1000000 | 22.84 | 21.08 | 25.09 | 0.923x | 1.099x | 7.90 |
 | sum | medium / 16000000 | 103.19 | 107.22 | 104.49 | 1.039x | 1.013x | 65.08 |
 | sum | large / 128000000 | 740.19 | 735.06 | 674.29 | 0.993x | 0.911x | 492.33 |
@@ -77,7 +77,7 @@ These are different-session measurements, not a paired experiment. Small differe
 Previous / current above 1 means the current run was faster; the previous R^ compiler and source revision differ.
 
 | Workload | Size | Previous R^ ms | Current R^ ms | Previous / current |
-|---|---|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: |
 | sum | small | 21.62 | 22.84 | 0.946x |
 | sum | medium | 98.45 | 103.19 | 0.954x |
 | sum | large | 701.36 | 740.19 | 0.948x |
@@ -130,7 +130,7 @@ Previous / current above 1 means the current run was faster; the previous R^ com
 ## Selected comparison implementations
 
 | Workload | Size | C++ variant/backend | Rust variant |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | sum | small | C++ reserved vector (clangcl) | Rust sum |
 | sum | medium | C++ reserved vector (msvc) | Rust sum |
 | sum | large | C++ reserved vector (msvc) | Rust sum |

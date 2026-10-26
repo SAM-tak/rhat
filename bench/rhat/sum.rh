@@ -2,7 +2,7 @@ import^ std.random
 # Port of aardappel/goose bench/goose/sum.goose, Apache-2.0.
 
 let^ n:i64^=1000000 # BENCH_N
-var^ data:i32^[>..]=[]
+var^ data:grow^ i32^[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n {

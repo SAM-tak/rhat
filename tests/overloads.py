@@ -171,15 +171,15 @@ print(v.n)
 
     positive('operator_owned_result_destination', '''def^ Packet {
  self^{n:i32^=2}
- op^.. =f^ self^,rhs:i32^ ->i32^[>..] {
-  var^ result:i32^[>..]=[self^.n,rhs]
+ op^.. =f^ self^,rhs:i32^ ->grow^ i32^[] {
+  var^ result:grow^ i32^[]=[self^.n,rhs]
   return^ result
  }
 }
 var^ packet=Packet{}
 var^ items=packet..3
 print(items.len,items[0],items[1])
-let^ build=f^ n:i32^ ->i32^[>..] {
+let^ build=f^ n:i32^ ->grow^ i32^[] {
  var^ local=Packet{n=n}
  return^ local..4
 }

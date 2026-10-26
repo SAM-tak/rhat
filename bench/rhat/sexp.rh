@@ -11,7 +11,7 @@ def^ ParseResult = Parsed | ParseError
 def^ Cursor { self^{ pos:i64^=0 } }
 def^ Digits { self^{ bytes:u8^[24] } }
 
-let^ emit_num=p^ text:ref^ u8^[>..], v:u64^ {
+let^ emit_num=p^ text:ref^ grow^ u8^[], v:u64^ {
     if^ v = 0 { text.push(48); return^ }
     var^ tmp=Digits{}
     var^ d=v
@@ -19,13 +19,13 @@ let^ emit_num=p^ text:ref^ u8^[>..], v:u64^ {
     repeat^ while^ d > 0 { tmp.bytes[count] := u8^(d % 10)+48; count := count+1; d := d/10 }
     repeat^ while^ count > 0 { count := count-1; text.push(tmp.bytes[count]) }
 }
-let^ emit_sym=p^ text:ref^ u8^[>..], seed:u64^ {
+let^ emit_sym=p^ text:ref^ grow^ u8^[], seed:u64^ {
     var^ r=seed
     let^ n=i64^(r % 12)+3
     var^ i:i64^=0
     repeat^ while^ i < n { r := std.random.xorshift64(r); text.push(u8^(r % 26)+97); i := i+1 }
 }
-let^ gen=p^ text:ref^ u8^[>..], depth:i64^, seed:u64^ -> u64^ {
+let^ gen=p^ text:ref^ grow^ u8^[], depth:i64^, seed:u64^ -> u64^ {
     var^ r=std.random.xorshift64(seed)
     if^ depth = 0 or^ r % 4 = 0 {
         if^ (r bitshift^ -8) % 2 = 0 { emit_sym(text,r) else^: emit_num(text,(r bitshift^ -16) % 100000) }
@@ -43,7 +43,7 @@ let^ gen=p^ text:ref^ u8^[>..], depth:i64^, seed:u64^ -> u64^ {
 let^ skip_space=p^ text:u8^[:], c:ref^ Cursor {
     repeat^ while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
 }
-let^ parse_node=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ Node[>..], symbols:ref^ u8^[>..], prev:u32^ -> ParseResult {
+let^ parse_node=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ grow^ Node[], symbols:ref^ grow^ u8^[], prev:u32^ -> ParseResult {
     skip_space(text,c)
     if^ c.pos >= text.len { return^ ParseError{code=1} }
     let^ ch=text[c.pos]
@@ -79,11 +79,11 @@ let^ parse_node=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ Node[>..], symbols:ref^
     if^ c.pos = start { return^ ParseError{code=3} }
     let^ offset=symbols.len
     let^ len=c.pos-start
-    symbols.append(text.slice(start,len))
+    symbols.append(text[start :: start+len])
     pool.push(Sym{start=u32^(offset),len=u32^(len),next=prev})
     return^ Parsed{index=u32^(pool.len-1)}
 }
-let^ parse_all=p^ text:u8^[:], pool:ref^ Node[>..], symbols:ref^ u8^[>..], roots:ref^ u32^[>..] -> i64^ {
+let^ parse_all=p^ text:u8^[:], pool:ref^ grow^ Node[], symbols:ref^ grow^ u8^[], roots:ref^ grow^ u32^[] -> i64^ {
     var^ c=Cursor{}
     repeat^ while^ true^ {
         skip_space(text,ref^ c)
@@ -104,7 +104,7 @@ let^ nextof=f^ node:Node -> u32^ {
     if^ node fits^ Num { return^ node.next }
     return^ node.next
 }
-let^ walk=f^ pool:ref^ Node[>..], symbols:ref^ u8^[>..], index:u32^, pass:i64^ -> i64^ {
+let^ walk=f^ pool:ref^ grow^ Node[], symbols:ref^ grow^ u8^[], index:u32^, pass:i64^ -> i64^ {
     let^ node=pool[index]
     if^ node fits^ Sym {
         let^ s=node
@@ -113,19 +113,19 @@ let^ walk=f^ pool:ref^ Node[>..], symbols:ref^ u8^[>..], index:u32^, pass:i64^ -
     if^ node fits^ Num { return^ i64^(node.value) bitxor^ pass }
     return^ 1+walk_chain(pool,symbols,node.first,pass)
 }
-let^ walk_chain=f^ pool:ref^ Node[>..], symbols:ref^ u8^[>..], index:u32^, pass:i64^ -> i64^ {
+let^ walk_chain=f^ pool:ref^ grow^ Node[], symbols:ref^ grow^ u8^[], index:u32^, pass:i64^ -> i64^ {
     if^ index = 0 { return^ 0 }
     return^ walk(pool,symbols,index,pass)+this^(pool,symbols,nextof(pool[index]),pass)
 }
 let^ n:i64^=20000 # BENCH_N
-var^ text:u8^[>..]=[]
+var^ text:grow^ u8^[]=[]
 var^ seed:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n { seed := gen(ref^ text,4,seed); i := i+1 }
-var^ pool:Node[>..]=[Num{value=0,next=0}]
-var^ symbols:u8^[>..]=[]
-var^ roots:u32^[>..]=[]
-let^ err=parse_all(text.slice(0,text.len),ref^ pool,ref^ symbols,ref^ roots)
+var^ pool:grow^ Node[]=[Num{value=0,next=0}]
+var^ symbols:grow^ u8^[]=[]
+var^ roots:grow^ u32^[]=[]
+let^ err=parse_all(text[::],ref^ pool,ref^ symbols,ref^ roots)
 print(text.len)
 print(pool.len-1)
 print(roots.len)

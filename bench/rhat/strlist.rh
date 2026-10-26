@@ -4,7 +4,7 @@ import^ std.random
 # All generated lengths are 3..20, so the original varint occupies one byte.
 # This is an R^ library representation over an owned byte region, not a new
 # general variable-size array type. The original text and copied list coexist.
-def^ WordList { self^{ count:i64^=0, data:u8^[>..] } }
+def^ WordList { self^{ count:i64^=0, data:grow^ u8^[] } }
 
 let^ split=p^ text:u8^[:] -> WordList {
     var^ out=WordList{}
@@ -16,7 +16,7 @@ let^ split=p^ text:u8^[:] -> WordList {
         if^ len > 0 {
             assert(len <= 127)
             out.data.push(u8^(len))
-            out.data.append(text.slice(start,len))
+            out.data.append(text[start :: start+len])
             out.count := out.count+1
         }
         repeat^ while^ i < text.len and^ text[i] = 32 { i := i+1 }
@@ -24,7 +24,7 @@ let^ split=p^ text:u8^[:] -> WordList {
     return^ out
 }
 let^ n:i64^=200000 # BENCH_N
-var^ text:u8^[>..]=[]
+var^ text:grow^ u8^[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n {
@@ -39,7 +39,7 @@ repeat^ while^ i < n {
     text.push(32)
     i := i+1
 }
-var^ words=split(text.slice(0,text.len))
+var^ words=split(text[::])
 var^ total:i64^=0
 var^ pass:i32^=0
 repeat^ while^ pass < 4 {

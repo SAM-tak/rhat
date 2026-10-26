@@ -2,7 +2,7 @@ import^ std.random
 # Port of aardappel/goose bench/goose/blur.goose, Apache-2.0.
 # Flat scalar buffers; borders retain their initial values in each buffer.
 
-let^ blur = p^ src:ref^ u8^[>..], dst:ref^ u8^[>..], w:i64^ {
+let^ blur = p^ src:ref^ grow^ u8^[], dst:ref^ grow^ u8^[], w:i64^ {
     var^ y:i64^=1
     repeat^ while^ y < w-1 {
         var^ x:i64^=1
@@ -18,8 +18,8 @@ let^ blur = p^ src:ref^ u8^[>..], dst:ref^ u8^[>..], w:i64^ {
     }
 }
 let^ w:i64^=1024 # BENCH_N
-var^ a:u8^[>..]=[]
-var^ b:u8^[>..]=[]
+var^ a:grow^ u8^[]=[]
+var^ b:grow^ u8^[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < w*w {

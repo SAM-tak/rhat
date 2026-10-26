@@ -2,58 +2,50 @@
 # Fixed-size nodes use i32^ indices (8 bytes/node), not relative references.
 # Local pools rewind a shared data stack; committed pages are reused.
 # The pool length is the node count, as in the C++/Rust arena variants.
-def^ Node { self^{ l:i32^=-1, r:i32^=-1 } }
+def^Node { self^{ l:i32^= -1, r:i32^= -1 } }
 
-let^ make = p^ pool:ref^ Node[>..], depth:i64^ -> i32^ {
-    var^ l:i32^=-1
-    var^ r:i32^=-1
-    if^ depth > 0 {
-        l := this^(pool,depth-1)
-        r := this^(pool,depth-1)
+let^make = p^pool:ref^grow^Node[], depth:i64^-> i32^{
+    var^l:i32^= -1
+    var^r:i32^= -1
+    if^depth > 0 {
+        l := this^(pool, depth - 1)
+        r := this^(pool, depth - 1)
     }
-    let^ index=i32^(pool.len)
-    pool.push(Node{l=l,r=r});
+    let^index=i32^(pool.len)
+    pool.push(Node{ l = l, r = r });
     return^ index
 }
 
-let^ check = f^ pool:ref^ Node[>..], index:i32^ -> i64^ {
-    let^ l=pool[index].l
-    let^ r=pool[index].r
-    if^ l < 0 { return^ 1 }
-    if^ r < 0 { return^ 1 }
-    return^ 1+this^(pool,l)+this^(pool,r)
+let^check = f^pool:ref^grow^Node[], index:i32^-> i64^{
+    let^l = pool[index].l
+    let^r = pool[index].r
+    if^l < 0 { return^1 }
+    if^r < 0 { return^1 }
+    return^1 + this^(pool, l) + this^(pool, r)
 }
 
-let^ tree_check = p^ depth:i64^ -> i64^ {
-    var^ pool:Node[>..]=[]
-    let^ root=make(ref^ pool,depth)
-    return^ check(ref^ pool,root)
+let^tree_check = p^depth:i64^-> i64^{
+    var^pool:grow^Node[] = []
+    let^root=make(ref^pool, depth)
+    return^check(ref^pool, root)
 }
 
-# Arithmetic spelling of 1 << n; no bitwise operators are required.
-let^ power2 = f^ n:i64^ -> i64^ {
-    var^ value:i64^=1
-    var^ i:i64^=0
-    repeat^ while^ i < n { value := value*2; i := i+1 }
-    return^ value
-}
-
-let^ maxdepth:i64^=15 # BENCH_N
+let^maxdepth:i64^= 15 # BENCH_N
 print(tree_check(maxdepth+1))
-var^ long:Node[>..]=[]
-let^ root=make(ref^ long,maxdepth)
-var^ d:i64^=4
-repeat^ while^ d <= maxdepth {
-    let^ iters=power2(maxdepth-d+4)
-    var^ sum:i64^=0
-    var^ i:i64^=0
-    repeat^ while^ i < iters {
-        sum := sum+tree_check(d)
-        i := i+1
+var^long:grow^Node[] = []
+let^root = make(ref^long, maxdepth)
+var^d:i64^= 4
+repeat^while^d <= maxdepth {
+    let^iters:i64^= 1 bitshift^(maxdepth-d+4)
+    var^sum:i64^= 0
+    var^i:i64^= 0
+    repeat^while^i < iters {
+        sum := sum + tree_check(d)
+        i := i + 1
     }
     print(iters)
     print(d)
     print(sum)
-    d := d+2
+    d := d + 2
 }
-print(check(ref^ long,root))
+print(check(ref^long, root))

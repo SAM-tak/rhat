@@ -1,7 +1,7 @@
 import^ std.random
 # Port of aardappel/goose bench/goose/words.goose, Apache-2.0.
 # Fixed-capacity vocabulary, copied packed word list and borrowed slice keys.
-def^ WordList { self^{ count:i64^=0, data:u8^[>..] } }
+def^ WordList { self^{ count:i64^=0, data:grow^ u8^[] } }
 
 let^ split=p^ text:u8^[:] -> WordList {
     var^ out=WordList{}
@@ -13,7 +13,7 @@ let^ split=p^ text:u8^[:] -> WordList {
         if^ len > 0 {
             assert(len <= 127)
             out.data.push(u8^(len))
-            out.data.append(text.slice(start,len))
+            out.data.append(text[start :: start+len])
             out.count := out.count+1
         }
         repeat^ while^ i < text.len and^ text[i] = 32 { i := i+1 }
@@ -35,7 +35,7 @@ let^ equal=f^ a:u8^[:], b:u8^[:] -> bool^ {
     repeat^ while^ i < a.len { if^ a[i] != b[i] { return^ false^ }; i := i+1 }
     return^ true^
 }
-let^ find=f^ slots:ref^ Slot[>..], key:u8^[:], mask:u64^ -> i64^ {
+let^ find=f^ slots:ref^ grow^ Slot[], key:u8^[:], mask:u64^ -> i64^ {
     var^ i=hash(key) bitand^ mask
     repeat^ while^ slots[i].count != 0 {
         if^ equal(slots[i].key,key) { return^ i64^(i) }
@@ -45,7 +45,7 @@ let^ find=f^ slots:ref^ Slot[>..], key:u8^[:], mask:u64^ -> i64^ {
 }
 let^ n:i64^=500000 # BENCH_N
 let^ vocab=n/10+16
-var^ dict:Word[>..]=[]
+var^ dict:grow^ Word[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < vocab {
@@ -61,29 +61,29 @@ repeat^ while^ i < vocab {
     dict.push(w)
     i := i+1
 }
-var^ text:u8^[>..]=[]
+var^ text:grow^ u8^[]=[]
 i := 0
 repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     let^ a=r % u64^(vocab)
     let^ k=a*a/u64^(vocab)
-    text.append(dict[k].bytes.slice(0,i64^(dict[k].len)))
+    text.append(dict[k].bytes[:: i64^(dict[k].len)])
     text.push(32)
     i := i+1
 }
-var^ words=split(text.slice(0,text.len))
+var^ words=split(text[::])
 var^ nslots:i64^=16
 repeat^ while^ nslots < vocab*4 { nslots := nslots*2 }
 let^ mask=u64^(nslots-1)
-var^ slots:Slot[>..]=[]
-let^ empty=words.data.slice(0,0)
+var^ slots:grow^ Slot[]=[]
+let^ empty=words.data[:: 0]
 i := 0
 repeat^ while^ i < nslots { slots.push(Slot{key=empty,count=0}); i := i+1 }
 var^ distinct:i64^=0
 var^ at:i64^=0
 repeat^ while^ at < words.data.len {
     let^ len=i64^(words.data[at])
-    let^ key=words.data.slice(at+1,len)
+    let^ key=words.data[at+1 :: at+1+len]
     let^ index=find(ref^ slots,key,mask)
     if^ slots[index].count = 0 {
         slots[index].key := key

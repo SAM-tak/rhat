@@ -4,7 +4,7 @@ import^ std.random
 def^ Digits { self^{ data:u8^[24] } }
 def^ Result { self^{ hash:u64^, bytes:i64^ } }
 
-let^ emit_int=p^ out:ref^ u8^[>..], value:u64^ {
+let^ emit_int=p^ out:ref^ grow^ u8^[], value:u64^ {
     if^ value = 0 { out.push(48); return^ }
     var^ d=value
     var^ tmp=Digits{}
@@ -16,7 +16,7 @@ let^ emit_int=p^ out:ref^ u8^[>..], value:u64^ {
     }
     repeat^ while^ count > 0 { count := count-1; out.push(tmp.data[count]) }
 }
-let^ emit_name=p^ out:ref^ u8^[>..], seed:u64^ {
+let^ emit_name=p^ out:ref^ grow^ u8^[], seed:u64^ {
     var^ r=std.random.xorshift64(seed)
     let^ n=i64^(r % 8)+3
     let^ odd=(r bitshift^ -8) % 8 = 0
@@ -32,7 +32,7 @@ let^ emit_name=p^ out:ref^ u8^[>..], seed:u64^ {
     }
     out.push(34)
 }
-let^ emit_sku=p^ out:ref^ u8^[>..], seed:u64^ {
+let^ emit_sku=p^ out:ref^ grow^ u8^[], seed:u64^ {
     var^ r=std.random.xorshift64(seed)
     out.push(34)
     out.push(u8^(r % 26)+65)
@@ -47,7 +47,7 @@ let^ hash=f^ bytes:u8^[:] -> u64^ {
     repeat^ while^ i < bytes.len { h := (h bitxor^ u64^(bytes[i]))*1099511628211; i := i+1 }
     return^ h
 }
-let^ handle=p^ out:ref^ u8^[>..], seed:u64^ -> Result {
+let^ handle=p^ out:ref^ grow^ u8^[], seed:u64^ -> Result {
     let^ r0=std.random.xorshift64(seed)
     let^ n=i64^(r0 % 8)+1
     out.clear()
@@ -77,10 +77,10 @@ let^ handle=p^ out:ref^ u8^[>..], seed:u64^ -> Result {
     out.append("],\"total\":")
     emit_int(out,total)
     out.push(125)
-    return^ Result{hash=hash(out.slice(0,out.len)),bytes=out.len}
+    return^ Result{hash=hash(out[::]),bytes=out.len}
 }
 let^ n:i64^=100000 # BENCH_N
-var^ out:u8^[>..]=[]
+var^ out:grow^ u8^[]=[]
 var^ seed:u64^=12345
 var^ h:u64^=0
 var^ bytes:i64^=0

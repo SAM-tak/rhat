@@ -6,7 +6,7 @@ def^ Particle {
 }
 
 let^ n:i64^=100000 # BENCH_N
-var^ ps:Particle[>..]=[]
+var^ ps:grow^ Particle[]=[]
 var^ r:u64^=12345
 var^ i:i64^=0
 repeat^ while^ i < n {

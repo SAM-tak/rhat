@@ -10,12 +10,12 @@ def^ Stats { self^{ count:i64^=0, hits:i64^=0, misses:i64^=0, removes:i64^=0 } }
 let^ home = f^ key:i32^, mask:i64^ -> i64^ {
     return^ i64^((u64^(key)*11400714819323198485 bitshift^ -24) bitand^ u64^(mask))
 }
-let^ find = f^ slots:ref^ Slot[>..], key:i32^, mask:i64^ -> i64^ {
+let^ find = f^ slots:ref^ grow^ Slot[], key:i32^, mask:i64^ -> i64^ {
     var^ i=home(key,mask)
     repeat^ while^ slots[i].idx >= 0 and^ slots[i].key != key { i := (i+1) bitand^ mask }
     return^ i
 }
-let^ remove = p^ slots:ref^ Slot[>..], at:i64^, mask:i64^ {
+let^ remove = p^ slots:ref^ grow^ Slot[], at:i64^, mask:i64^ {
     var^ i=at
     var^ j=at
     repeat^ while^ true^ {
@@ -29,7 +29,7 @@ let^ remove = p^ slots:ref^ Slot[>..], at:i64^, mask:i64^ {
         }
     }
 }
-let^ alloc = p^ pool:ref^ Node[>..], free:ref^ u32^[>..], key:i32^, val:i32^ -> u32^ {
+let^ alloc = p^ pool:ref^ grow^ Node[], free:ref^ grow^ u32^[], key:i32^, val:i32^ -> u32^ {
     if^ free.len > 0 {
         let^ k=free.pop()
         pool[k].key := key
@@ -39,20 +39,20 @@ let^ alloc = p^ pool:ref^ Node[>..], free:ref^ u32^[>..], key:i32^, val:i32^ -> 
     pool.push(Node{key=key,val=val,prev=0,next=0})
     return^ u32^(pool.len-1)
 }
-let^ unlink = p^ pool:ref^ Node[>..], n:u32^ {
+let^ unlink = p^ pool:ref^ grow^ Node[], n:u32^ {
     let^ p=pool[n].prev
     let^ q=pool[n].next
     pool[p].next := q
     pool[q].prev := p
 }
-let^ link_front = p^ pool:ref^ Node[>..], n:u32^ {
+let^ link_front = p^ pool:ref^ grow^ Node[], n:u32^ {
     let^ q=pool[0].next
     pool[n].prev := 0
     pool[n].next := q
     pool[q].prev := n
     pool[0].next := n
 }
-let^ step = p^ pool:ref^ Node[>..], free:ref^ u32^[>..], slots:ref^ Slot[>..], stats:ref^ Stats,
+let^ step = p^ pool:ref^ grow^ Node[], free:ref^ grow^ u32^[], slots:ref^ grow^ Slot[], stats:ref^ Stats,
                   cap:i64^, keys:u64^, mask:i64^, r:u64^ {
     let^ a=r % keys
     let^ key=i32^(a*a/keys)
@@ -100,9 +100,9 @@ assert(cap > 0)
 var^ nslots:i64^=16
 repeat^ while^ nslots < cap*2 { nslots := nslots*2 }
 let^ mask=nslots-1
-var^ slots:Slot[>..]=[]
-var^ pool:Node[>..]=[]
-var^ free:u32^[>..]=[]
+var^ slots:grow^ Slot[]=[]
+var^ pool:grow^ Node[]=[]
+var^ free:grow^ u32^[]=[]
 var^ i:i64^=0
 repeat^ while^ i < nslots { slots.push(Slot{key=0,idx=-1}); i := i+1 }
 let^ hi=alloc(ref^ pool,ref^ free,-1,0)

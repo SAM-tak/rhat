@@ -106,7 +106,7 @@ repeat^ 1 {if^ true^ {do^{next^}} print(99)}
 ''', '2\n3\n1\n7\n')
 
     positive('contextual_owned_records', '''
-def^ Bag {self^{tag:i32^=0,items:i32^[>..]}}
+def^ Bag {self^{tag:i32^=0,items:grow^ i32^[]}}
 let^ make=f^ ->Bag {return^ {items=[1,2],tag=7}}
 var^ bag=make()
 print(bag.tag,bag.items[1])
@@ -155,17 +155,17 @@ print(f^ n:i64^ {
 ''', '720\n5\n8\n')
 
     positive('outer_this_owned', '''
-let^ make=f^ n:i32^ ->i32^[>..] {
+let^ make=f^ n:i32^ ->grow^ i32^[] {
  if^ n=0 {return^ [7,8]}
- return^ f^ m:i32^ ->i32^[>..] {this^^(m-1)}(n)
+ return^ f^ m:i32^ ->grow^ i32^[] {this^^(m-1)}(n)
 }
 var^ result=make(4)
 print(result.len,result[1])
-let^ fill=p^ a:ref^ i32^[>..],n:i32^ ->i64^ {
+let^ fill=p^ a:ref^ grow^ i32^[],n:i32^ ->i64^ {
  if^ n=0 {return^ a.len}
- return^ p^ b:ref^ i32^[>..],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
+ return^ p^ b:ref^ grow^ i32^[],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
 }
-var^ values:i32^[>..]=[]
+var^ values:grow^ i32^[]=[]
 print(fill(ref^ values,3),values[0],values[2])
 ''', '2 8\n3 3 1\n')
 
@@ -223,8 +223,8 @@ print(1 ≦ 2 and^ 3 ≥ 2 and^ 2 ≠ 3 and^ 1 =/ 2)
 ''', 'true\n1\nfalse\n2\ntrue\ntrue\n')
 
     positive('parallel_owned_result', '''
-let^ make=f^ ->i32^[>..] {
- var^ n,data:i32^[>..]=7,[1,2]
+let^ make=f^ ->grow^ i32^[] {
+ var^ n,data:grow^ i32^[]=7,[1,2]
  data.push(n)
  return^ data
 }
@@ -275,15 +275,15 @@ print(total)
 var^ calls=0
 for^ var^ i=0 while^ i<3 next^ i+=1 {
 prolog^: print(10)
-pre^: var^ temp:i32^[>..]=[] temp.push(i) calls+=1
-first^: var^ kept:i32^[>..]=[] kept.push(temp[0])
+pre^: var^ temp:grow^ i32^[]=[] temp.push(i) calls+=1
+first^: var^ kept:grow^ i32^[]=[] kept.push(temp[0])
 main^: kept.push(i) print(temp[0])
 last^: print(i) print(kept.len)
 epilog^: print(20)
 }
 print(calls)
 repeat^ 0 { pre^: print(30) first^: print(99) last^: print(98) epilog^: print(40) }
-repeat^ 3 { main^: var^ tmp:i32^[>..]=[] tmp.push(1) break^ last^: print(50) epilog^: print(60) }
+repeat^ 3 { main^: var^ tmp:grow^ i32^[]=[] tmp.push(1) break^ last^: print(50) epilog^: print(60) }
 repeat^ 2 { first^: let^ a,b=1,2 main^: print(a,b) last^: print(a+b) }
 ''', '10\n0\n1\n2\n2\n4\n20\n4\n30\n40\n50\n60\n1 2\n1 2\n3\n')
 
@@ -292,7 +292,7 @@ var^ hits=0
 for^ var^ i=0 while^ i<3 next^ i+=1 {
 main^:
  repeat^ 2 {
- main^: var^ owned:i32^[>..]=[] owned.push(i) hits+=1 continue^[2]
+ main^: var^ owned:grow^ i32^[]=[] owned.push(i) hits+=1 continue^[2]
  last^: print(99)
  epilog^: print(98)
  }
@@ -305,7 +305,7 @@ last^: print(1)
 epilog^: print(2)
 }
 let^ early=p^ ->i32^ {
- repeat^ 2 { first^: var^ a:i32^[>..]=[] main^: a.push(42) return^ a[0] last^: print(95) epilog^: print(94) }
+ repeat^ 2 { first^: var^ a:grow^ i32^[]=[] main^: a.push(42) return^ a[0] last^: print(95) epilog^: print(94) }
  return^ 0
 }
 print(early())
@@ -316,13 +316,13 @@ repeat^ 2 { print(1) epilogue^: print(2) }
 repeat^ 0 { prologue^: print(3) premain^: print(4) epilogue^: print(5) }
 repeat^ 1 {
 main^:
- repeat^ 1 { pre^: break^^ first^: var^ a:i32^[>..]=[] main^: a.push(0) }
+ repeat^ 1 { pre^: break^^ first^: var^ a:grow^ i32^[]=[] main^: a.push(0) }
 last^: print(6)
 epilog^: print(7)
 }
 repeat^ 1 {
 pre^: break^
-first^: var^ a:i32^[>..]=[]
+first^: var^ a:grow^ i32^[]=[]
 main^: a.push(99)
 last^: print(98)
 epilog^: print(8)
@@ -374,7 +374,7 @@ let^ `not a name`=7 let^ `a``b`=8
 print(変数,`not a name`,`a``b`)
 let^ s="A\0B\x43\u{1f600}"
 print(s.len,s[1],s[2])
-var^ bytes:u8^[>..]=[] bytes.append("a\0b")
+var^ bytes:grow^ u8^[]=[] bytes.append("a\0b")
 print(bytes.len,bytes[1],bytes[2])
 print('a''b')
 print("x
@@ -417,7 +417,7 @@ print(outerthislib.sum(10),outerthislib.sum(wide))
         ('outer_this_capture', 'print(f^ n:i32^ ->i32^ {f^ {this^^(n-1)}()}(1))', "unknown value 'n'"),
         ('outer_this_effect', 'let^ run=p^ n:i32^ {f^ {this^^(0)}()} run(1)', 'f^ cannot call p^'),
         ('outer_this_local_owner', '''let^ run=f^ n:i32^ ->i32^ {
-var^ scratch:i32^[>..]=[n]
+var^ scratch:grow^ i32^[]=[n]
 if^ n=0 {return^ scratch[0]}
 return^ f^ m:i32^ ->i32^ {this^^(m-1)}(n)
 } print(run(3))''', 'holds local owned value'),

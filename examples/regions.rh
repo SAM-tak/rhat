@@ -1,10 +1,10 @@
-let^makeNumbers = f^ -> i32^[>..] {
-    var^ result : i32^[>..] = [10, 20]
+let^makeNumbers = f^ -> grow^ i32^[] {
+    var^ result : grow^ i32^[] = [10, 20]
     result.push(30)
     return^result
 }
 
-var^numbers : i32^[>..] = makeNumbers()
+var^numbers : grow^ i32^[] = makeNumbers()
 let^first = ref^ numbers[0]
 var^i : i64^ = 0
 repeat^while^i < 2000 {
@@ -15,6 +15,6 @@ assert(*first = 10)
 assert(numbers.len = 2003)
 print(*first, numbers.len)
 do^{
-    var^scratch : i32^[>..] = [100, 200]
+    var^scratch : grow^ i32^[] = [100, 200]
     print(scratch[1])
 }
