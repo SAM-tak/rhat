@@ -76,11 +76,11 @@ print(early(a),early(1))
 ''', 'true false true\ntrue false true\n7 0\n7 0\n', inspect=static_ir)
 
     positive('fits_side_effects', '''
-let^ make=p^ count:&i32^ ->i32^ {*count+=1 return^ 42}
+let^ make=p^ count:ref^ i32^ ->i32^ {*count+=1 return^ 42}
 var^ count=0
-if^ make(&count) fits^ string^ {print("wrong") else^: print(count)}
-print(make(&count) fits^ i32^,count)
-print(if^ make(&count) fits^ i32^: count el^: 0;)
+if^ make(ref^ count) fits^ string^ {print("wrong") else^: print(count)}
+print(make(ref^ count) fits^ i32^,count)
+print(if^ make(ref^ count) fits^ i32^: count el^: 0;)
 print(count)
 ''', '1\ntrue 2\n3\n3\n', inspect=static_ir)
 
@@ -150,7 +150,7 @@ def^ B {self^{b:i32^=9}}
 def^ H {self^{item:A|B|nil^=nil^}}
 var^ h=H{item=A.new()}
 if^ h.item fits^ A {print(h.item.a)}
-var^ ref=&h
+var^ ref=ref^ h
 if^ ref.item fits^ A {print(ref.item.a)}
 h.item:=B.new()
 if^ h.item fits^ A {print(h.item.a)
@@ -161,11 +161,11 @@ else^: print("none")}
     positive('fits_reference_and_arrays', '''
 def^ A {self^{a:i32^=7}}
 var^ a=A.new()
-var^ ref:&A|nil^=&a
-if^ ref fits^ &A {ref.a+=1 print(ref.a)}
+var^ ref:ref^ A|nil^=ref^ a
+if^ ref fits^ ref^ A {ref.a+=1 print(ref.a)}
 var^ array:i32^[2]=[3,4]
-let^ view:&i32^[2]|nil^=&array
-if^ view fits^ &i32^[2] {print(view[1])}
+let^ view:ref^ i32^[2]|nil^=ref^ array
+if^ view fits^ ref^ i32^[2] {print(view[1])}
 print(array fits^ i32^[2],array fits^ i32^[3])
 var^ owned:i32^[>..]=[]
 print(owned fits^ i32^[>..])
@@ -175,15 +175,15 @@ print(owned fits^ i32^[>..])
 def^ A {self^{a:i32^=7}}
 def^ B {self^{b:i32^=9}}
 def^ H {self^{item:A|B=A.new(),extra:i32^=42}}
-let^ change=p^ x:&H|nil^ {
- if^ x fits^ &H {
+let^ change=p^ x:ref^ H|nil^ {
+ if^ x fits^ ref^ H {
    if^ x.item fits^ A {x.item:=B.new()}
    return^ x.extra
  }
  return^ 0
 }
 var^ h=H.new()
-print(change(&h),change(nil^),h.item fits^ B)
+print(change(ref^ h),change(nil^),h.item fits^ B)
 ''', '42 0 true\n')
 
     positive('fits_composition', '''
@@ -197,11 +197,11 @@ if^ choice fits^ Base {print(choice.extra) else^: print(choice.value)}
 ''', 'true false\n9\n')
 
     positive('fits_chain', '''
-let^ next=p^ count:&i32^ ->i32^ {*count+=1 return^ *count}
+let^ next=p^ count:ref^ i32^ ->i32^ {*count+=1 return^ *count}
 var^ count=0
-print(0<next(&count) fits^ i32^<2,count)
-print(0>next(&count) fits^ i32^<next(&count),count)
-print(next(&count) fits^ string^<next(&count),count)
+print(0<next(ref^ count) fits^ i32^<2,count)
+print(0>next(ref^ count) fits^ i32^<next(ref^ count),count)
+print(next(ref^ count) fits^ string^<next(ref^ count),count)
 ''', 'true 1\nfalse 2\nfalse 3\n')
 
     positive('fits_match', '''
@@ -296,7 +296,7 @@ test(1) test(nil^)
     cases = [
         ('fits_replacement_removed_is','let^ value:A|B=A{} value.is(A)','method call requires a structure'),
         ('fits_replacement_removed_get','let^ value:A|B=A{} value.get(A)','method call requires a structure'),
-        ('fits_replacement_assert_alias','let^ clear=p^ x:&(A|B) {*x:=B{}} var^ value:A|B=A{} assert(value fits^ A) clear(&value) print(value.a)','field access requires'),
+        ('fits_replacement_assert_alias','let^ clear=p^ x:ref^ (A|B) {*x:=B{}} var^ value:A|B=A{} assert(value fits^ A) clear(ref^ value) print(value.a)','field access requires'),
         ('fits_replacement_assert_mutation','var^ value:A|B=A{} assert(value fits^ A) value:=B{} print(value.a)','field access requires'),
         ('fits_unknown_type','print(1 fits^ Missing)','unknown type'),
         ('fits_value_rhs','let^ value=1 print(1 fits^ value)','unknown type'),
@@ -304,15 +304,15 @@ test(1) test(nil^)
         ('fits_void_lhs','let^ noop=p^ {} print(noop() fits^ nil^)','requires a value type'),
         ('fits_wrong_branch','var^ x:A|B=A.new() if^ x fits^ A {print(x.b)}','has no field'),
         ('fits_assignment_invalidates','var^ x:A|B=A.new() if^ x fits^ A {x:=B.new() print(x.a)}','field access requires'),
-        ('fits_call_invalidates','let^ clear=p^ x:&(A|B) {*x:=B.new()} var^ x:A|B=A.new() if^ x fits^ A {clear(&x) print(x.a)}','field access requires'),
-        ('fits_condition_invalidates','let^ clear=p^ x:&(A|B) ->bool^ {*x:=B.new() return^ true^} var^ x:A|B=A.new() if^ x fits^ A and^ clear(&x) {print(x.a)}','field access requires'),
+        ('fits_call_invalidates','let^ clear=p^ x:ref^ (A|B) {*x:=B.new()} var^ x:A|B=A.new() if^ x fits^ A {clear(ref^ x) print(x.a)}','field access requires'),
+        ('fits_condition_invalidates','let^ clear=p^ x:ref^ (A|B) ->bool^ {*x:=B.new() return^ true^} var^ x:A|B=A.new() if^ x fits^ A and^ clear(ref^ x) {print(x.a)}','field access requires'),
         ('fits_path_assignment_invalidates','def^ H {self^{item:A|B=A.new()}} var^ h=H.new() if^ h.item fits^ A {h.item:=B.new() print(h.item.a)}','field access requires'),
-        ('fits_path_alias_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ h:&H {h.item:=B.new()} var^ h=H.new() let^ ref=&h if^ ref.item fits^ A {clear(&h) print(ref.item.a)}','field access requires'),
-        ('fits_path_borrow_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ x:&(A|B) {*x:=B.new()} var^ h=H.new() if^ h.item fits^ A {clear(&h.item) print(h.item.a)}','field access requires'),
+        ('fits_path_alias_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ h:ref^ H {h.item:=B.new()} var^ h=H.new() let^ ref=ref^ h if^ ref.item fits^ A {clear(ref^ h) print(ref.item.a)}','field access requires'),
+        ('fits_path_borrow_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ x:ref^ (A|B) {*x:=B.new()} var^ h=H.new() if^ h.item fits^ A {clear(ref^ h.item) print(h.item.a)}','field access requires'),
         ('fits_method_invalidates','def^ H {self^{item:A|B=A.new()} clear=p^ self^ {self^.item:=B.new()}} var^ h=H.new() if^ h.item fits^ A {h.clear() print(h.item.a)}','field access requires'),
-        ('fits_push_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[>..]=[H.new()] let^ ref=&a[0] if^ ref.item fits^ A {a.clear() a.push(H{item=B.new()}) print(ref.item.a)}','field access requires'),
-        ('fits_append_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[>..]=[H.new()] var^ b:H[1]=[H{item=B.new()}] let^ ref=&a[0] if^ ref.item fits^ A {a.clear() a.append(b.slice(0,1)) print(ref.item.a)}','field access requires'),
-        ('fits_match_original_invalidates','let^ change=p^ x:&(A|B) ->bool^ {*x:=B.new() return^ false^} var^ x:A|B=A.new() for^ x {when^ fits^ A: x:=B.new() print(x.a) other^: print(0)}','field access requires'),
+        ('fits_push_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[>..]=[H.new()] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.push(H{item=B.new()}) print(ref.item.a)}','field access requires'),
+        ('fits_append_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[>..]=[H.new()] var^ b:H[1]=[H{item=B.new()}] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.append(b.slice(0,1)) print(ref.item.a)}','field access requires'),
+        ('fits_match_original_invalidates','let^ change=p^ x:ref^ (A|B) ->bool^ {*x:=B.new() return^ false^} var^ x:A|B=A.new() for^ x {when^ fits^ A: x:=B.new() print(x.a) other^: print(0)}','field access requires'),
         ('fits_index_not_narrowed','var^ items:(A|B)[1]=[A.new()] if^ items[0] fits^ A {print(items[0].a)}','field access requires'),
         ('fits_call_not_narrowed','let^ value=f^ ->A|B {A.new()} if^ value() fits^ A {print(value().a)}','field access requires'),
         ('fits_chain_not_narrowed','var^ x:A|nil^=A.new() if^ x fits^ A fits^ A {print(x.a)}','field access requires'),
@@ -320,8 +320,8 @@ test(1) test(nil^)
         ('fits_path_loop_lost_fact','def^ H {self^{item:A|B=A.new()}} var^ h=H.new() if^ h.item fits^ A {repeat^ 2 {print(h.item.a) h.item:=B.new()}}','field access requires'),
         ('fits_loop_exit','var^ x:A|B=A.new() repeat^ while^ x fits^ A {break^} print(x.a)','field access requires'),
         ('fits_loop_epilog','var^ x:A|B=B.new() repeat^ while^ x fits^ A {main^: break^ epilog^: print(x.a)}','field access requires'),
-        ('fits_borrow_projection','var^ x:A|B=A.new() if^ x fits^ A {let^ ref=&x.a}','cannot borrow a temporary'),
-        ('fits_borrow_escape','let^ bad=f^ ->&A {var^ a=A.new() let^ x:&A|nil^=&a if^ x fits^ &A {return^ x} return^ &a} let^ value=bad()','cannot return a reference'),
+        ('fits_borrow_projection','var^ x:A|B=A.new() if^ x fits^ A {let^ ref=ref^ x.a}','cannot borrow a temporary'),
+        ('fits_borrow_escape','let^ bad=f^ ->ref^ A {var^ a=A.new() let^ x:ref^ A|nil^=ref^ a if^ x fits^ ref^ A {return^ x} return^ ref^ a} let^ value=bad()','cannot return a reference'),
     ]
     for name, text, diagnostic in cases:
         negative(name, prefix+text, diagnostic)

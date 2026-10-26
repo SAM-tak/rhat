@@ -512,23 +512,35 @@ static void lex(Parser *p) {
   end->loc = (Loc){p->p->path, line, col};
   add(&p->tokens, end);
 }
+/* Count the reference prefixes represented by a single hatted word. */
+static int reference_depth(const char *text)
+{
+  if (strncmp(text, "ref^", 4)) {
+    return 0;
+  }
+  int end = 3;
+  while (text[end] == '^') {
+    end++;
+  }
+  return text[end] ? 0 : end - 3;
+}
 static Spec *spec(Parser *p);
 static Spec *spec_part(Parser *p)
 {
   Spec *s = mem(sizeof(*s));
   s->loc = tok(p)->loc;
-  if (take(p, "&&")) {
-    s->kind = SPEC_REF;
-    Spec *inner = mem(sizeof(*inner));
-    inner->kind = SPEC_REF;
-    inner->loc = s->loc;
-    inner->elem = spec_part(p);
-    s->elem = inner;
-    return s;
-  }
-  if (take(p, "&")) {
+  int refs = reference_depth(tok(p)->text);
+  if (refs) {
+    next(p);
     s->kind = SPEC_REF;
     s->elem = spec_part(p);
+    while (--refs) {
+      Spec *outer = mem(sizeof(*outer));
+      outer->kind = SPEC_REF;
+      outer->loc = s->loc;
+      outer->elem = s;
+      s = outer;
+    }
     return s;
   }
   if (take(p, "(")) {
@@ -680,12 +692,20 @@ static Expr *primary(Parser *p) {
     e = node(E_RECORD, t->loc);
     entries(p, e, "}", true);
   }
-  else if (!strcmp(t->text, "&") || !strcmp(t->text, "-") ||
+  else if (reference_depth(t->text) || !strcmp(t->text, "-") ||
            !strcmp(t->text, "!") || !strcmp(t->text, "*") ||
            !strcmp(t->text, "bitnot^") || !strcmp(t->text, "try^")) {
     e = node(!strcmp(t->text, "try^") ? E_TRY : E_UNARY, t->loc);
-    e->text = t->text;
+    int refs = reference_depth(t->text);
+    e->text = refs ? "ref^" : t->text;
     e->a = expr(p, 8);
+    while (refs > 1) {
+      Expr *outer = node(E_UNARY, t->loc);
+      outer->text = "ref^";
+      outer->a = e;
+      e = outer;
+      refs--;
+    }
   }
   else if (!strcmp(t->text, "for^")) {
     e = for_expression(p, t->loc);
@@ -854,7 +874,8 @@ static int loop_section(Parser *p);
  */
 static bool catch_type(Parser *p)
 {
-  if (take(p, "&") || take(p, "&&")) {
+  if (reference_depth(tok(p)->text)) {
+    next(p);
     return catch_type(p);
   }
   if (take(p, "(")) {

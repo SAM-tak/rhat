@@ -86,11 +86,11 @@ print(a.len,a[2],b.len,b[1])
 ''', '3 3 2 2\n')
 
     positive('inference_borrow', '''
-let^ at=f^ items,index {&items[index]}
+let^ at=f^ items,index {ref^ items[index]}
 let^ add=p^ items,value {items.push(value)}
 var^ a:i32^[>..]=[1,2]
-let^ ref=at(&a,1)
-add(&a,3);
+let^ ref=at(ref^ a,1)
+add(ref^ a,3);
 *ref:=42
 print(a[1],a[2])
 ''', '42 3\n')
@@ -222,8 +222,8 @@ print((f^ x {typed(x)})(41))
     negative('inference_bad_shape', 'let^ add=f^ x,y {x+y} print(add(1,"hello"))', 'inferred types disagree')
     negative('inference_nominal_annotation', 'def^ A {} def^ B {} let^ use=p^ a:A,x {} let^ b=B{} use(b,1)', 'requires nominal')
     negative('inference_bare_record', 'let^ use=p^ x {} use({value=42})', 'single nominal struct')
-    negative('inference_pure_mutation', 'let^ edit=f^ x {*x:=42} var^ n=0 edit(&n)', 'f^ cannot mutate')
-    negative('inference_borrow_escape', 'let^ bad=f^ x {var^ local=x return^ &local} let^ ref=bad(1)', 'cannot return a reference')
+    negative('inference_pure_mutation', 'let^ edit=f^ x {*x:=42} var^ n=0 edit(ref^ n)', 'f^ cannot mutate')
+    negative('inference_borrow_escape', 'let^ bad=f^ x {var^ local=x return^ ref^ local} let^ ref=bad(1)', 'cannot return a reference')
     negative('inference_owned_argument', 'let^ use=p^ x {} var^ a:i32^[>..]=[] use(a)', 'pass owned values by reference')
     negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:i32^[>..]=[n] if^ n>0 {this^(n-1)} print(a.len)} call(3)', 'holds local owned value')
     negative('inference_ungrounded_recursion', 'let^ forever=f^ x {this^(x)} print(forever(1))', 'cannot infer return type')

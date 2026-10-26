@@ -117,7 +117,7 @@ static void infer_guard(Infer *c, Expr *test, Expr *name, bool positive)
 }
 static Var *infer_alias(Infer *c, Expr *e)
 {
-  if (e->kind == E_UNARY && !strcmp(e->text, "&") && e->a->kind == E_NAME) {
+  if (e->kind == E_UNARY && !strcmp(e->text, "ref^") && e->a->kind == E_NAME) {
     return infer_variable(c, e->a);
   }
   Var *v = infer_variable(c, e);
@@ -838,7 +838,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
   case E_UNARY: {
     bool raw = c->raw_name;
     Expr *old_place = c->raw_place;
-    if (!strcmp(e->text, "&")) {
+    if (!strcmp(e->text, "ref^")) {
       c->raw_name = e->a->kind == E_NAME;
       c->raw_place = e->a;
     }
@@ -857,7 +857,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (!a) {
       return NULL;
     }
-    if (!strcmp(e->text, "&")) {
+    if (!strcmp(e->text, "ref^")) {
       return type_wrap(c->p, T_REF, a, 0);
     }
     if (!strcmp(e->text, "*")) {
@@ -1459,7 +1459,7 @@ static void body_require(BodyCheck *c, BodyNode *n, Type *want, uint64_t kinds)
     return;
   }
   if (n->kind == E_UNARY) {
-    if (!strcmp(n->op, "&")) {
+    if (!strcmp(n->op, "ref^")) {
       if (want && want->kind == T_REF) {
         body_require(c, n->a, want->elem, UINT64_MAX);
       }
@@ -1549,7 +1549,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
       n->type = type_builtin(c->p, T_BOOL);
       n->kind = -1;
     }
-    else if (!strcmp(e->text, "&")) {
+    else if (!strcmp(e->text, "ref^")) {
       if (n->a->type) {
         n->type = type_wrap(c->p, T_REF, n->a->type, 0);
       }

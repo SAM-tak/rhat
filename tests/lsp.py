@@ -242,7 +242,7 @@ print(box.read())
     assert 'secret' in {x['label'] for x in completions}, completions
     print('PASS lexical shadowing, recursive navigation, inheritance and private visibility',flush=True)
 
-    for version,invalid in [(9,'let^ x:UnknownType=1'),(10,'let^ x:f128^=1.0'),(11,'let^ bad=f^ {var^ x=1 return^ &x} let^ r=bad()')]:
+    for version,invalid in [(9,'let^ x:UnknownType=1'),(10,'let^ x:f128^=1.0'),(11,'let^ bad=f^ {var^ x=1 return^ ref^ x} let^ r=bad()')]:
         client.change(path,invalid,version)
         assert client.diagnostics(path,version)
     floating='let^ x:f16^=1.25 let^ y:f32^=1.5 print(x,y)\n'
@@ -284,6 +284,19 @@ if^ local? {print(local)}
     assert request('hover','print(box.value)',shift=10,text=narrowed)['contents']['value'] == 'value: i64^'
     assert request('hover','print(local)',shift=6,text=narrowed)['contents']['value'] == 'local: i64^'
     print('PASS narrowed local and member hover types',flush=True)
+    reference='''var^ value:i32^=7
+let^ view:ref^ i32^=ref^ value
+let^ read=f^ item:ref^ i32^ ->i32^ {*item}
+print(read(view))
+'''
+    client.change(path,reference,68)
+    assert client.diagnostics(path,68) == []
+    assert request('hover','view))',text=reference)['contents']['value'] == 'view: ref^ i32^'
+    signature=request('signatureHelp','read(view)',shift=5,text=reference)
+    assert 'item:ref^ i32^' in signature['signatures'][0]['label'], signature
+    completions=request('completion','view))',text=reference)
+    assert 'ref^' in {item['label'] for item in completions}, completions
+    print('PASS reference keyword hover, signature and completion',flush=True)
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

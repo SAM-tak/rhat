@@ -87,12 +87,12 @@ print((b fits^ i32^),c??0)
 let^ empty:Named=nil^
 let^ again:i32^|nil^=empty
 print(again?,again??9)
-def^ Ref = &i32^ | nil^
+def^ Ref = ref^ i32^ | nil^
 var^ n=17
-let^ ref:Ref=&n
-let^ anonymous:&i32^|nil^=ref
+let^ ref:Ref=ref^ n
+let^ anonymous:ref^ i32^|nil^=ref
 var^ fallback=0
-let^ selected=anonymous??&fallback
+let^ selected=anonymous??ref^ fallback
 print(*selected)
 ''', 'true 12\nfalse 9\n17\n')
 
@@ -126,21 +126,21 @@ print(nil^?.missing?)
 
     positive('nil_chain_lazy', '''
 def^ Node {self^{values:i32^[2]=[5,6]} read=f^ self^,x:i32^ ->i32^ {x+1}}
-let^ make=p^ calls:&i32^,yes:bool^ ->Node|nil^ {*calls+=1 return^ if^ yes: Node.new() el^: nil^;}
-let^ index=p^ calls:&i32^ ->i64^ {*calls+=10 return^ 1}
-let^ arg=p^ calls:&i32^ ->i32^ {*calls+=100 return^ 7}
+let^ make=p^ calls:ref^ i32^,yes:bool^ ->Node|nil^ {*calls+=1 return^ if^ yes: Node.new() el^: nil^;}
+let^ index=p^ calls:ref^ i32^ ->i64^ {*calls+=10 return^ 1}
+let^ arg=p^ calls:ref^ i32^ ->i32^ {*calls+=100 return^ 7}
 var^ calls=0
-print(make(&calls,false^)?.values[index(&calls)]??0,calls)
-print(make(&calls,true^)?.values[index(&calls)]??0,calls)
-print(make(&calls,false^)?.read(arg(&calls))??0,calls)
-print(make(&calls,true^)?.read(arg(&calls))??0,calls)
+print(make(ref^ calls,false^)?.values[index(ref^ calls)]??0,calls)
+print(make(ref^ calls,true^)?.values[index(ref^ calls)]??0,calls)
+print(make(ref^ calls,false^)?.read(arg(ref^ calls))??0,calls)
+print(make(ref^ calls,true^)?.read(arg(ref^ calls))??0,calls)
 ''', '0 1\n6 12\n0 13\n8 114\n')
 
     positive('nil_array', '''
 let^ array:i64^[2]|nil^=[10,20]
 print(array?.len??0,array?[1]??0)
 var^ owner:i32^[>..]=[3,4]
-var^ ref:&i32^[>..]|nil^=&owner
+var^ ref:ref^ i32^[>..]|nil^=ref^ owner
 print(ref?[1]??0)
 ref:=nil^
 print(ref?[999999999]??7)
@@ -161,26 +161,26 @@ print(text??"fallback")
 
     positive('nil_mutable_reference', '''
 def^ Counter {self^{n:i32^=0} bump=p^ self^,n:i32^ {self^.n+=n}}
-let^ tick=p^ calls:&i32^ ->i32^ {*calls+=1 return^ 3}
+let^ tick=p^ calls:ref^ i32^ ->i32^ {*calls+=1 return^ 3}
 var^ counter=Counter.new()
-var^ ref:&Counter|nil^=&counter
+var^ ref:ref^ Counter|nil^=ref^ counter
 var^ calls=0
-ref?.bump(tick(&calls))
+ref?.bump(tick(ref^ calls))
 ref:=nil^
-ref?.bump(tick(&calls))
+ref?.bump(tick(ref^ calls))
 print(counter.n,calls)
 ''', '3 1\n')
 
     positive('nil_assignment', '''
-let^ tick=p^ calls:&i32^ ->i32^ {*calls+=1 return^ *calls}
+let^ tick=p^ calls:ref^ i32^ ->i32^ {*calls+=1 return^ *calls}
 var^ calls=0
 var^ a:i32^|nil^=nil^
 var^ b:i32^|nil^=10
-a ?:= tick(&calls)
-b ?+= tick(&calls)
+a ?:= tick(ref^ calls)
+b ?+= tick(ref^ calls)
 print(a?,b??0,calls)
 b ?:= nil^
-b ?:= tick(&calls)
+b ?:= tick(ref^ calls)
 print(b?,calls)
 var^ plain=2
 plain ?*= 3 plain ?-= 1 plain ?/= 5 plain ?%= 2
@@ -188,10 +188,10 @@ print(plain)
 ''', 'false 11 1\nfalse 1\n1\n')
 
     positive('nil_parallel_assignment', '''
-let^ tick=p^ calls:&i32^ ->i32^ {*calls+=1 return^ *calls}
+let^ tick=p^ calls:ref^ i32^ ->i32^ {*calls+=1 return^ *calls}
 var^ calls=0
 var^ a:(i32^|nil^)[3]=[1,nil^,3]
-a[0],a[1],a[2] ?+= tick(&calls),tick(&calls),tick(&calls)
+a[0],a[1],a[2] ?+= tick(ref^ calls),tick(ref^ calls),tick(ref^ calls)
 print(a[0]??0,a[1]??0,a[2]??0,calls)
 a[0],a[2] ?:= a[2],a[0]
 print(a[0]??0,a[2]??0)
@@ -202,25 +202,25 @@ print(x??0)
 
     positive('nil_assignment_chained_place', '''
 def^ Item {self^{x:i32^=5}}
-let^ tick=p^ calls:&i32^ ->i32^ {*calls+=1 return^ 4}
-let^ index=p^ calls:&i32^ ->i64^ {*calls+=10 return^ 0}
+let^ tick=p^ calls:ref^ i32^ ->i32^ {*calls+=1 return^ 4}
+let^ index=p^ calls:ref^ i32^ ->i64^ {*calls+=10 return^ 0}
 var^ calls=0 var^ item=Item.new()
-var^ maybe:&Item|nil^=&item
-maybe?.x ?+= tick(&calls)
+var^ maybe:ref^ Item|nil^=ref^ item
+maybe?.x ?+= tick(ref^ calls)
 maybe:=nil^
-maybe?.x ?+= tick(&calls)
+maybe?.x ?+= tick(ref^ calls)
 var^ a:(i32^|nil^)[2]=[1,nil^]
-var^ ref:&(i32^|nil^)[2]|nil^=&a
-ref?[index(&calls)] ?:= tick(&calls)
+var^ ref:ref^ (i32^|nil^)[2]|nil^=ref^ a
+ref?[index(ref^ calls)] ?:= tick(ref^ calls)
 ref:=nil^
-ref?[index(&calls)] ?:= tick(&calls)
+ref?[index(ref^ calls)] ?:= tick(ref^ calls)
 print(item.x,a[0]??0,calls)
 ''', '9 4 12\n')
 
     positive('nil_assignment_rhs_changes_tag', '''
-let^ change=p^ x:&(i32^|nil^) ->i32^ {*x:=nil^ return^ 7}
+let^ change=p^ x:ref^ (i32^|nil^) ->i32^ {*x:=nil^ return^ 7}
 var^ x:i32^|nil^=3
-x ?+= change(&x)
+x ?+= change(ref^ x)
 print(x??0)
 ''', '10\n')
 
@@ -240,9 +240,9 @@ if^ n = nil^ {print(n?)}
 
     positive('nil_flow_loop', '''
 def^ Item {self^{n:i32^=7}}
-let^ clear=p^ x:&(Item|nil^) {*x:=nil^}
+let^ clear=p^ x:ref^ (Item|nil^) {*x:=nil^}
 let^ run=p^ x:Item|nil^ {
- repeat^ while^ x? {print(x.n) clear(&x)}
+ repeat^ while^ x? {print(x.n) clear(ref^ x)}
 }
 run(Item.new())
 var^ x:Item|nil^=Item.new()
@@ -255,26 +255,26 @@ print(exit(nil^)? ,exit(Item.new())?.n??0)
 ''', '7\n7\n7\nfalse 7\n')
 
     positive('nil_coalesce_lazy', '''
-let^ tick=p^ x:&i32^ ->i32^ {*x+=1 return^ 12}
+let^ tick=p^ x:ref^ i32^ ->i32^ {*x+=1 return^ 12}
 var^ calls=0
 var^ x:i32^|nil^=3
-print(x??tick(&calls),calls)
+print(x??tick(ref^ calls),calls)
 x:=nil^
-print(x??tick(&calls),calls)
+print(x??tick(ref^ calls),calls)
 print(2+x??40)
 print(nil^??17)
 ''', '3 0\n12 1\n42\n17\n')
 
     positive('nil_coalesce_reference', '''
 var^ a=3 var^ b=8
-var^ x:&i32^|nil^=&a
-let^ present=x??&b;
+var^ x:ref^ i32^|nil^=ref^ a
+let^ present=x??ref^ b;
 *present:=4
 x:=nil^
-let^ absent=x??&b
+let^ absent=x??ref^ b
 print(a,*absent)
 var^ cell:i32^|nil^=nil^
-let^ ref=&cell
+let^ ref=ref^ cell
 print(ref?,(*ref)?)
 ''', '4 8\ntrue false\n')
 
@@ -289,7 +289,7 @@ print(read(a),read(b))
 
     positive('nil_bounds_present', '''
 var^ a:i32^[2]=[1,2]
-var^ ref:&i32^[2]|nil^=&a
+var^ ref:ref^ i32^[2]|nil^=ref^ a
 print(ref?[-1]??0)
 ''', 'array index out of bounds', failure=True)
 
@@ -308,19 +308,19 @@ print(ref?[-1]??0)
         ('nil_discard_guard', '_^ ?:= 1', 'discard is not'),
         ('nil_mutable_copy', 'def^ C {self^{x:i32^=0} bump=p^ self^ {self^.x+=1}} var^ c:C|nil^=C.new() c?.bump()', 'optional reference'),
         ('nil_place_copy', 'var^ x:Item|nil^=Item.new() x?.n ?:= 3', 'optional reference'),
-        ('nil_borrow_projection', 'var^ x:Item|nil^=Item.new() if^ x? {let^ ref=&x.n}', 'cannot borrow a temporary'),
+        ('nil_borrow_projection', 'var^ x:Item|nil^=Item.new() if^ x? {let^ ref=ref^ x.n}', 'cannot borrow a temporary'),
         ('nil_direct_mutation_invalidates', 'var^ x:Item|nil^=Item.new() if^ x? {x:=nil^ print(x.n)}', 'field access requires'),
-        ('nil_call_invalidates', 'let^ clear=p^ x:&(Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() if^ x? {clear(&x) print(x.n)}', 'field access requires'),
-        ('nil_alias_invalidates', 'let^ clear=p^ x:&(Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() let^ alias=&x if^ x? {clear(alias) print(x.n)}', 'field access requires'),
-        ('nil_condition_mutates', 'let^ clear=p^ x:&(Item|nil^) ->bool^ {*x:=nil^ return^ true^} var^ x:Item|nil^=Item.new() if^ x? and^ clear(&x) {print(x.n)}', 'field access requires'),
-        ('nil_branch_mutation', 'let^ clear=p^ x:&(Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() if^ x? {if^ true^ {clear(&x)} print(x.n)}', 'field access requires'),
+        ('nil_call_invalidates', 'let^ clear=p^ x:ref^ (Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() if^ x? {clear(ref^ x) print(x.n)}', 'field access requires'),
+        ('nil_alias_invalidates', 'let^ clear=p^ x:ref^ (Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() let^ alias=ref^ x if^ x? {clear(alias) print(x.n)}', 'field access requires'),
+        ('nil_condition_mutates', 'let^ clear=p^ x:ref^ (Item|nil^) ->bool^ {*x:=nil^ return^ true^} var^ x:Item|nil^=Item.new() if^ x? and^ clear(ref^ x) {print(x.n)}', 'field access requires'),
+        ('nil_branch_mutation', 'let^ clear=p^ x:ref^ (Item|nil^) {*x:=nil^} var^ x:Item|nil^=Item.new() if^ x? {if^ true^ {clear(ref^ x)} print(x.n)}', 'field access requires'),
         ('nil_loop_invariant', 'var^ x:Item|nil^=Item.new() if^ x? {repeat^ 2 {print(x.n) x:=nil^}}', 'field access requires'),
         ('nil_loop_exit', 'var^ x:Item|nil^=Item.new() repeat^ while^ x? {break^} print(x.n)', 'field access requires'),
-        ('nil_borrow_return', 'let^ bad=f^ ->&i32^|nil^ {var^ x=1 return^ &x} let^ r=bad()', 'cannot return a reference'),
-        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[:]|nil^ {var^ a:i32^[>..]=[1] let^ ref:&i32^[>..]|nil^=&a return^ ref?.slice(0,1)} let^ r=bad()', 'cannot return a reference'),
-        ('nil_coalesce_borrow_return', 'let^ bad=f^ ->&i32^ {var^ a=1 var^ b=2 let^ x:&i32^|nil^=&a return^ x??&b} let^ r=bad()', 'cannot return a reference'),
-        ('nil_array_history', 'var^ a:(&i32^|nil^)[>..]=[] do^{var^ local=1 a.push(&local)}', 'outlive'),
-        ('nil_guard_store_borrow', 'var^ outer:&i32^|nil^=nil^ do^{var^ local=1 outer ?:= &local}', 'outlive'),
+        ('nil_borrow_return', 'let^ bad=f^ ->ref^ i32^|nil^ {var^ x=1 return^ ref^ x} let^ r=bad()', 'cannot return a reference'),
+        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[:]|nil^ {var^ a:i32^[>..]=[1] let^ ref:ref^ i32^[>..]|nil^=ref^ a return^ ref?.slice(0,1)} let^ r=bad()', 'cannot return a reference'),
+        ('nil_coalesce_borrow_return', 'let^ bad=f^ ->ref^ i32^ {var^ a=1 var^ b=2 let^ x:ref^ i32^|nil^=ref^ a return^ x??ref^ b} let^ r=bad()', 'cannot return a reference'),
+        ('nil_array_history', 'var^ a:(ref^ i32^|nil^)[>..]=[] do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
+        ('nil_guard_store_borrow', 'var^ outer:ref^ i32^|nil^=nil^ do^{var^ local=1 outer ?:= ref^ local}', 'outlive'),
         ('nil_compare_order', 'let^ x:i32^|nil^=1 print(x<nil^)', 'only equality'),
     ]
     for name, text, diagnostic in cases:

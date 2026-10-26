@@ -1,14 +1,14 @@
-errordef^ Error { Invalid }
-let^ read=f^ n:i32^ ->i32^ | Error.Invalid {
-    if^ n<0 { return^ Error.Invalid{} }
+errordef^Error { Invalid }
+let^read=f^n:i32^ ->i32^| Error.Invalid {
+    if^ n<0 { return^Error.Invalid{} }
     return^ n
 }
-let^ twice=f^ n:i32^ { return^ (try^ read(n))*2 }
+let^twice=f^n:i32^{ return^(try^read(n))*2 }
 
 print(read(-1) catch^ 42)
 do^{
-    print(try^ twice(-1))
-catch^ Error.Invalid:
+    print(try^twice(-1))
+catch^Error.Invalid:
     print("invalid input")
 }
 print((twice(21) catch^ 0))

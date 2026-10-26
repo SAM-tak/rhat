@@ -83,10 +83,10 @@ print(read(0) catch^ if^ it^ fits^ E.Bad: 11 el^: 12;)
 ''', '2 9\n12 12\n7\n11\n')
 
     positive('error_lazy', prefix+'''
-let^ tick=p^ count:&i32^ ->i32^ {*count+=1 return^ 11}
+let^ tick=p^ count:ref^ i32^ ->i32^ {*count+=1 return^ 11}
 var^ count=0
-print(read(2) catch^ tick(&count),count)
-print(read(0) catch^ tick(&count),count)
+print(read(2) catch^ tick(ref^ count),count)
+print(read(0) catch^ tick(ref^ count),count)
 print(try^ 42)
 ''', '2 0\n11 1\n42\n')
 
@@ -408,18 +408,18 @@ handled()
     positive('error_optional_argument', '''
 errordef^ E {Bad}
 def^ Item {run=f^ self^,n:i32^ ->i32^ {n}}
-let^ test=f^ item:&Item|nil^ {
+let^ test=f^ item:ref^ Item|nil^ {
  let^ result=item?.run(try^ E.Bad{})
  return^ result
 }
-let^ index=f^ items:&i32^[2]|nil^ {
+let^ index=f^ items:ref^ i32^[2]|nil^ {
  let^ result=items?[try^ E.Bad{}]
  return^ result
 }
 var^ item=Item{}
 var^ items:i32^[2]=[1,2]
-print(test(nil^) fits^ nil^,test(&item) fits^ E.Bad)
-print(index(nil^) fits^ nil^,index(&items) fits^ E.Bad)
+print(test(nil^) fits^ nil^,test(ref^ item) fits^ E.Bad)
+print(index(nil^) fits^ nil^,index(ref^ items) fits^ E.Bad)
 ''', 'true true\ntrue true\n')
 
     positive('error_optional_assignment', prefix+'''
@@ -437,12 +437,12 @@ var^ items:i32^[2]=[1,2]
 do^{items[try^ E.Bad{}]:=42 catch^: print(10)}
 do^{let^ a,b=1,try^ E.Bad{} catch^: print(20)}
 do^{let^ a,b,c=1,try^ E.Bad{},3 catch^: print(30)}
-let^ update=p^ items:&i32^[2]|nil^ {
+let^ update=p^ items:ref^ i32^[2]|nil^ {
  items?[try^ E.Bad{}]?:=42
 }
-let^ unguarded=p^ items:&i32^[2] {items?[try^ E.Bad{}]?:=42}
-print(update(nil^) fits^ nil^,update(&items) fits^ E.Bad,items[0])
-print(unguarded(&items) fits^ E.Bad)
+let^ unguarded=p^ items:ref^ i32^[2] {items?[try^ E.Bad{}]?:=42}
+print(update(nil^) fits^ nil^,update(ref^ items) fits^ E.Bad,items[0])
+print(unguarded(ref^ items) fits^ E.Bad)
 ''', '10\n20\n30\ntrue true 1\ntrue\n')
 
     negatives = [
@@ -462,7 +462,7 @@ print(unguarded(&items) fits^ E.Bad)
         ('error_hidden_body_local','do^{let^ secret=42 try^ read(0) catch^: print(secret)}','unknown value'),
         ('error_hidden_loop_local','repeat^ 1 {first^: let^ secret=42 main^: try^ read(0) catch^: print(secret)}','unknown value'),
         ('error_return_rhs','let^ n=read(0) catch^ return^ 0','expected'),
-        ('error_focus_escape','let^ bad=f^ ->&E.Bad {return^ (E.Bad{} catch^ &it^)} let^ ref=bad()',"borrowing storage requires var^"),
+        ('error_focus_escape','let^ bad=f^ ->ref^ E.Bad {return^ (E.Bad{} catch^ ref^ it^)} let^ ref=bad()',"borrowing storage requires var^"),
     ]
     for name, text, diagnostic in negatives:
         negative(name,prefix+text,diagnostic)

@@ -116,9 +116,9 @@ def scalar_check_ir(ir, ll):
     assert "division_ok_" in ll
 
 positive("division_single_evaluation", '''
-let^ denominator=p^ counter:&i32^ -> i32^ { *counter:=*counter+1; return^ 97 }
+let^ denominator=p^ counter:ref^ i32^ -> i32^ { *counter:=*counter+1; return^ 97 }
 var^ counter:i32^=0
-print(1234 % denominator(&counter),counter)
+print(1234 % denominator(ref^ counter),counter)
 ''', "70 1\n", scalar_check_ir)
 for bits in (8,16,32,64,128):
     low=-(1 << (bits-1)); high=(1 << (bits-1))-1
@@ -249,20 +249,20 @@ assert(a.len=5)
 print(a[4])
 ''', [20], "5\n", append_only=True)
 high_water("borrowed_recursive_append_only", '''
-let^ write=p^ a:&i32^[>..], n:i32^ {
+let^ write=p^ a:ref^ i32^[>..], n:i32^ {
     if^ n > 0 { a.push(n); this^(a,n-1) }
 }
 var^ a:i32^[>..]=[]
-write(&a,3)
+write(ref^ a,3)
 assert(a.len=3)
 print(a[2])
 ''', [12], "1\n", append_only=True)
 high_water("borrowed_append_after_caller_shrink", '''
-let^ write=p^ a:&i32^[>..] { a.push(9) }
+let^ write=p^ a:ref^ i32^[>..] { a.push(9) }
 var^ a:i32^[>..]=[1,2,3]
 let^ view=a.slice(0,3)
 a.clear()
-write(&a)
+write(ref^ a)
 assert(a.len=1)
 print(view[2])
 ''', [12], "3\n")
@@ -293,8 +293,8 @@ print(a[1])
 ''', [16], "9\n")
 high_water("push_shrink_alias", '''
 var^ a:i32^[>..]=[1,2,3,4]
-let^ ref=&a[3]
-var^ alias=&a
+let^ ref=ref^ a[3]
+var^ alias=ref^ a
 alias.clear()
 a.push(9)
 assert(a.len=1)
@@ -302,7 +302,7 @@ print(*ref)
 ''', [16], "4\n")
 high_water("push_after_two_pops", '''
 var^ a:i32^[>..]=[1,2,3,4]
-let^ ref=&a[3]
+let^ ref=ref^ a[3]
 a.pop()
 a.pop()
 a.push(9)
@@ -310,12 +310,12 @@ assert(a.len=3)
 print(*ref)
 ''', [16], "4\n")
 high_water("push_shrink_recursive_effect", '''
-let^ cut=p^ a:&i32^[>..], n:i32^ {
+let^ cut=p^ a:ref^ i32^[>..], n:i32^ {
     if^ n=0 { a.clear() else^: again(a,n-1) }
 }
-let^ again=p^ a:&i32^[>..], n:i32^ { cut(a,n) }
+let^ again=p^ a:ref^ i32^[>..], n:i32^ { cut(a,n) }
 var^ a:i32^[>..]=[1,2,3,4]
-cut(&a,3)
+cut(ref^ a,3)
 a.push(9)
 assert(a.len=1)
 print(a[0])
@@ -358,7 +358,7 @@ negative("checked_structure_layout",layout_chain,"layout overflows")
 
 positive("truncate_retains_slots", """
 var^ a:i32^[>..]=[10,20,30]
-let^ held=&a[2]
+let^ held=ref^ a[2]
 let^ view=a.slice(0,3)
 a.truncate(1)
 print(a.len,*held,view[2])
@@ -372,13 +372,13 @@ print(a.len,*held)
 runtime_failure("truncate_negative", "var^ a:i32^[>..]=[1]; a.truncate(-1)", "truncate length out of bounds")
 runtime_failure("truncate_growth", "var^ a:i32^[>..]=[1]; a.truncate(2)", "truncate length out of bounds")
 negative("truncate_immutable", "let^ a:i32^[>..]=[1]; a.truncate(0)", "cannot modify let^")
-negative("truncate_pure_borrow", "let^ bad=f^ a:&i32^[>..] { a.truncate(0) }", "cannot mutate borrowed storage")
+negative("truncate_pure_borrow", "let^ bad=f^ a:ref^ i32^[>..] { a.truncate(0) }", "cannot mutate borrowed storage")
 negative("truncate_arity", "var^ a:i32^[>..]=[1]; a.truncate()", "expects one new length")
 negative("truncate_type", "var^ a:i32^[>..]=[1]; let^ n:i32^=0; a.truncate(n)", "must be i64^")
 negative("truncate_retains_history", """
-let^ bad=p^ -> (&i32^)[>..] {
+let^ bad=p^ -> (ref^ i32^)[>..] {
     var^ x:i32^=1
-    var^ refs:(&i32^)[>..]=[&x]
+    var^ refs:(ref^ i32^)[>..]=[ref^ x]
     refs.truncate(0)
     return^ refs
 }
@@ -440,13 +440,13 @@ print(copy.value,small.value,h.tag,h.tail)
          lambda ir,ll: ("type Value size=32 align=16" in ir and "payload=+16 bytes=16" in ir)
          or (_ for _ in ()).throw(AssertionError("wide union layout")))
 positive("union_reference_return", """
-def^ Ref { self^{ value:&i32^ } }
+def^ Ref { self^{ value:ref^ i32^ } }
 def^ Empty {}
 def^ Value = Ref | Empty
-let^ make=f^ x:&i32^ -> Value { return^ Ref{value=x} }
+let^ make=f^ x:ref^ i32^ -> Value { return^ Ref{value=x} }
 let^ get=f^ value:Value { assert(value fits^ Ref) return^ value.value }
 var^ x:i32^=42
-let^ value=make(&x)
+let^ value=make(ref^ x)
 let^ out=get(value);
 *out := 77
 print(x)
@@ -480,13 +480,13 @@ negative("union_missing_initializer", union_types+"def^ Box { self^{value:Expr} 
 negative("union_distinct_nominal_sum", union_types+"def^ Other = Num | Pair let^ a:Expr=Num{value=1}; let^ b:Other=a", "not an alternative")
 negative("union_private_access", "def^ A { self^{private^x:i32^=7} } def^ B {} def^ Value = A | B let^ v:Value=A{}; assert(v fits^ A); print(v.x)", "private member")
 negative("union_local_reference_escape", """
-def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
-let^ bad=p^ -> Value { var^ x:i32^=1; return^ Ref{value=&x} }
+def^ Ref { self^{value:ref^ i32^} } def^ Empty {} def^ Value = Ref | Empty
+let^ bad=p^ -> Value { var^ x:i32^=1; return^ Ref{value=ref^ x} }
 """, "cannot return a reference")
 negative("union_reference_storage_escape", """
-def^ Ref { self^{value:&i32^} } def^ Empty {} def^ Value = Ref | Empty
+def^ Ref { self^{value:ref^ i32^} } def^ Empty {} def^ Value = Ref | Empty
 var^ v:Value=Empty{}
-do^{ var^ x:i32^=1; v := Ref{value=&x} }
+do^{ var^ x:i32^=1; v := Ref{value=ref^ x} }
 """, "reference would outlive its owner")
 
 positive("slice_fixed_grow_string", """
@@ -509,9 +509,9 @@ let^ sub=f^ a:i32^[:] {
     let^ local=a.slice(1,2)
     return^ local.slice(1,1)
 }
-let^ borrowed=f^ a:&i32^[>..] { return^ a.slice(0,a.len) }
+let^ borrowed=f^ a:ref^ i32^[>..] { return^ a.slice(0,a.len) }
 var^ a:i32^[>..]=[1,2,3,4]
-let^ view=sub(borrowed(&a))
+let^ view=sub(borrowed(ref^ a))
 a.push(5)
 print(view.len,view[0])
 let^ literal=f^ { return^ "hello".slice(1,3) }
@@ -527,10 +527,10 @@ print(a[0].value,item.value)
 """, "7 42\n")
 positive("slice_reference_and_view_elements", """
 var^ x:i32^=7
-var^ refs:(&i32^)[>..]=[&x]
+var^ refs:(ref^ i32^)[>..]=[ref^ x]
 let^ view=refs.slice(0,1);
 *view[0] := 42
-var^ other:(&i32^)[>..]=[]
+var^ other:(ref^ i32^)[>..]=[]
 other.append(view)
 var^ views:i32^[:][>..]=[]
 let^ values:i32^[2]=[10,20]
@@ -559,7 +559,7 @@ runtime_failure("string_index_bounds", 'print("abc"[3])', "array index out of bo
 negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a.slice(0,2) }", "cannot return a reference")
 negative("slice_outer_escape", "var^ v=\"abc\".slice(0,0); do^{ var^ a:u8^[>..]=[1]; v := a.slice(0,1) }", "reference would outlive its owner")
 negative("slice_write", "var^ a:i32^[>..]=[1]; var^ v=a.slice(0,1); v[0] := 2", "not addressable")
-negative("slice_borrow_element", "var^ a:i32^[>..]=[1]; let^ v=a.slice(0,1); let^ p=&v[0]", "cannot borrow a temporary")
+negative("slice_borrow_element", "var^ a:i32^[>..]=[1]; let^ v=a.slice(0,1); let^ p=ref^ v[0]", "cannot borrow a temporary")
 negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[>..]=[Item{x=1}]; a.slice(0,1)[0].x := 2", "not addressable")
 negative("slice_temporary", "let^ v=[1,2].slice(0,2)", "slice source needs a binding")
 negative("slice_arity", "let^ a:i32^[1]=[1]; a.slice(0)", "slice expects start and count")
@@ -567,9 +567,9 @@ negative("slice_index_type", "let^ a:i32^[1]=[1]; let^ n:i32^=0; a.slice(n,1)", 
 negative("slice_initializer", "def^ Box { self^{ view:i32^[:] } } let^ b=Box{}", "needs an initializer")
 negative("append_mismatch", 'var^ a:i32^[>..]=[]; a.append("hello")', "same element type")
 negative("append_immutable", 'let^ a:u8^[>..]=[]; a.append("hello")', "cannot modify let^")
-negative("append_pure_borrow", 'let^ bad=f^ a:&u8^[>..] { a.append("hello") }', "cannot mutate borrowed storage")
-negative("append_inner_owner", "var^ a:(&i32^)[>..]=[]; do^{ var^ x:i32^=1; var^ b:(&i32^)[>..]=[&x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
-negative("append_borrowed_references", "let^ bad=p^ a:&(&i32^)[>..], b:(&i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
+negative("append_pure_borrow", 'let^ bad=f^ a:ref^ u8^[>..] { a.append("hello") }', "cannot mutate borrowed storage")
+negative("append_inner_owner", "var^ a:(ref^ i32^)[>..]=[]; do^{ var^ x:i32^=1; var^ b:(ref^ i32^)[>..]=[ref^ x]; a.append(b.slice(0,1)) }", "reference would outlive its owner")
+negative("append_borrowed_references", "let^ bad=p^ a:ref^ (ref^ i32^)[>..], b:(ref^ i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
 
 def direct_pop_ir(ir, ll):
     assert "array.pop" in ir and "pop_ok_" in ll
@@ -582,12 +582,12 @@ def direct_pop_ir(ir, ll):
 
 positive("pop_clear_slot_reuse", """
 def^ Item { self^{ key:i32^, val:i64^ } }
-let^ take=p^ a:&Item[>..] { return^ a.pop() }
+let^ take=p^ a:ref^ Item[>..] { return^ a.pop() }
 var^ a:Item[>..]=[]
 a.clear()
 let^ held=a.push(Item{key=1,val=42})
 a.push(Item{key=2,val=99})
-let^ last=take(&a)
+let^ last=take(ref^ a)
 print(a.len,last.key,last.val)
 a.clear()
 print(a.len,held.key,held.val)
@@ -599,7 +599,7 @@ print(a.len,same.key,held.val)
 positive("pop_copies_before_overlapping_assignment", """
 def^ Pair { self^{ x:i64^, y:i64^ } }
 var^ a:Pair[>..]=[Pair{x=1,y=2},Pair{x=3,y=4}]
-let^ held=&a[0]
+let^ held=ref^ a[0]
 let^ tail=a.slice(1,1)
 a[0]:=a.pop()
 print(a.len,held.x,held.y,tail[0].x,tail[0].y)
@@ -608,20 +608,20 @@ print(tail[0].x,tail[0].y)
 """, "1 3 4 3 4\n5 6\n", direct_pop_ir)
 positive("typed_storage_keeps_descriptor_aliases", """
 def^ Box { self^{ tag:i64^=7, items:i32^[>..] } }
-let^ mutate=p^ a:&i32^[>..], b:&i32^[>..] {
+let^ mutate=p^ a:ref^ i32^[>..], b:ref^ i32^[>..] {
     let^ old=a.len
     print(b.pop(),a.len,old)
     a.push(42)
     print(b.len,b[0],b[1])
 }
 var^ box=Box{items=[10,20]}
-let^ held=&box.items[1]
-mutate(&box.items,&box.items)
+let^ held=ref^ box.items[1]
+mutate(ref^ box.items,ref^ box.items)
 print(box.tag,box.items.len,*held)
 """, "20 1 2\n2 10 42\n7 2 42\n", direct_pop_ir)
 positive("push_reuses_aliased_slot", """
 var^ a:i32^[>..]=[42]
-let^ held=&a[0]
+let^ held=ref^ a[0]
 a.clear()
 a.push(*held)
 print(*held,a[0])
@@ -629,11 +629,11 @@ print(*held,a[0])
 positive("pop_reference_elements", """
 var^ x:i32^=10
 var^ y:i32^=20
-var^ refs:(&i32^)[>..]=[&x,&y]
+var^ refs:(ref^ i32^)[>..]=[ref^ x,ref^ y]
 let^ last=refs.pop();
 *last := 30
 refs.clear()
-refs.push(&x)
+refs.push(ref^ x)
 print(y,*refs[0],refs.len)
 """, "30 10 1\n")
 positive("pure_local_array_pop_clear", """
@@ -662,20 +662,20 @@ runtime_failure("pop_bounds", "var^ a:i32^[>..]=[1]; a.pop(); print(a[0])", "arr
 runtime_failure("clear_bounds", "var^ a:i32^[>..]=[1]; a.clear(); print(a[0])", "array index out of bounds")
 for method in ("pop", "clear"):
     negative(method+"_immutable", f"let^ a:i32^[>..]=[1]; a.{method}()", "cannot modify let^")
-    negative(method+"_pure_borrow", f"let^ bad=f^ a:&i32^[>..] {{ a.{method}() }}", "cannot mutate borrowed storage")
+    negative(method+"_pure_borrow", f"let^ bad=f^ a:ref^ i32^[>..] {{ a.{method}() }}", "cannot mutate borrowed storage")
     negative(method+"_arity", f"var^ a:i32^[>..]=[1]; a.{method}(1)", "expects no arguments")
     negative(method+"_retains_reference_history", """
-let^ bad=p^ -> (&i32^)[>..] {
+let^ bad=p^ -> (ref^ i32^)[>..] {
     var^ x:i32^=1
-    var^ a:(&i32^)[>..]=[&x]
+    var^ a:(ref^ i32^)[>..]=[ref^ x]
     a.METHOD()
     return^ a
 }
 """.replace("METHOD", method), "cannot return a reference")
 negative("pop_wrong_result", "var^ a:i32^[>..]=[1]; let^ x:i64^=a.pop()", "pop returns")
 negative("pop_local_reference_escape", """
-let^ bad=p^ source:&i32^ -> &i32^ {
-    var^ a:(&i32^)[>..]=[source]
+let^ bad=p^ source:ref^ i32^ -> ref^ i32^ {
+    var^ a:(ref^ i32^)[>..]=[source]
     return^ a.pop()
 }
 """, "cannot return a reference")
@@ -683,7 +683,7 @@ let^ bad=p^ source:&i32^ -> &i32^ {
 positive("push_returns_stable_reference", '''
 def^ Item { self^{ key:i32^, val:i32^ } }
 var^ items:Item[>..]=[]
-var^ marks:(&Item)[>..]=[]
+var^ marks:(ref^ Item)[>..]=[]
 let^ first=items.push(Item{key=7,val=11})
 marks.push(first)
 var^ i:i32^=0
@@ -698,36 +698,36 @@ print(items.len,marks.len,marks[0].key,marks[0].val,marks[32].val)
 positive("reference_array_literals_and_grouped_types", '''
 var^ x:i32^=10
 var^ y:i32^=20
-var^ a:(&i32^)[>..]=[&x,&y]
-let^ b:(&i32^)[2]=[&x,&y]
-let^ alias:&(&i32^)[>..]=&a
-let^ pointer:&&i32^=a.push(&x);
+var^ a:(ref^ i32^)[>..]=[ref^ x,ref^ y]
+let^ b:(ref^ i32^)[2]=[ref^ x,ref^ y]
+let^ alias:ref^ (ref^ i32^)[>..]=ref^ a
+let^ pointer:ref^ ref^ i32^=a.push(ref^ x);
 **pointer := 30
 print(*alias[0],*a[1],*b[0],a.len)
 ''', "30 20 30 3\n")
 positive("reference_record_elements", '''
-def^ Mark { self^{ ref:&i32^ } }
+def^ Mark { self^{ ref:ref^ i32^ } }
 var^ x:i32^=7
 var^ y:i32^=9
-var^ a:Mark[>..]=[Mark{ref=&x}]
-a.push(Mark{ref=&y});
+var^ a:Mark[>..]=[Mark{ref=ref^ x}]
+a.push(Mark{ref=ref^ y});
 *a[0].ref := 12
-a[1] := Mark{ref=&x}
+a[1] := Mark{ref=ref^ x}
 print(x,*a[1].ref)
 ''', "12 12\n")
 positive("reference_array_owned_return", '''
-let^ collect=p^ x:&i32^ -> (&i32^)[>..] {
-    var^ refs:(&i32^)[>..]=[]
+let^ collect=p^ x:ref^ i32^ -> (ref^ i32^)[>..] {
+    var^ refs:(ref^ i32^)[>..]=[]
     refs.push(x)
     return^ refs
 }
-let^ literal=p^ x:&i32^ -> (&i32^)[>..] { return^ [x] }
-let^ append=p^ a:&i32^[>..], x:i32^ { return^ a.push(x) }
+let^ literal=p^ x:ref^ i32^ -> (ref^ i32^)[>..] { return^ [x] }
+let^ append=p^ a:ref^ i32^[>..], x:i32^ { return^ a.push(x) }
 var^ x:i32^=42
-var^ refs=collect(&x)
-var^ other=literal(&x)
+var^ refs=collect(ref^ x)
+var^ other=literal(ref^ x)
 var^ data:i32^[>..]=[]
-let^ held=append(&data,7)
+let^ held=append(ref^ data,7)
 data.push(8)
 print(*refs[0],*other[0],*held)
 ''', "42 42 7\n")
@@ -740,112 +740,112 @@ positive("reference_slot_mutation_preserves_scalars", '''
 let^ f=p^ -> i32^ {
     var^ x:i32^=10
     var^ y:i32^=20
-    var^ refs:(&i32^)[>..]=[&x]
-    let^ slot=refs.push(&x);
-    *slot := &y
+    var^ refs:(ref^ i32^)[>..]=[ref^ x]
+    let^ slot=refs.push(ref^ x);
+    *slot := ref^ y
     print(*refs[0],*refs[1])
     return^ x
 }
 print(f())
 ''', "10 20\n10\n")
 negative("reference_slot_mutation_owned_escape", '''
-let^ bad=p^ -> (&i32^)[>..] {
+let^ bad=p^ -> (ref^ i32^)[>..] {
     var^ x:i32^=10
     var^ y:i32^=20
-    var^ refs:(&i32^)[>..]=[&x]
-    let^ slot=refs.push(&x);
-    *slot := &y
+    var^ refs:(ref^ i32^)[>..]=[ref^ x]
+    let^ slot=refs.push(ref^ x);
+    *slot := ref^ y
     return^ refs
 }
 ''', "cannot return a reference")
 negative("push_inner_owner", '''
-var^ marks:(&i32^)[>..]=[]
-do^{ var^ x:i32^=1; marks.push(&x) }
+var^ marks:(ref^ i32^)[>..]=[]
+do^{ var^ x:i32^=1; marks.push(ref^ x) }
 ''', "reference would outlive its owner")
 negative("push_return_local_element", '''
-let^ bad=p^ -> &i32^ { var^ a:i32^[>..]=[]; return^ a.push(1) }
+let^ bad=p^ -> ref^ i32^ { var^ a:i32^[>..]=[]; return^ a.push(1) }
 ''', "cannot return a reference")
 negative("push_return_local_pointer_slot", '''
-let^ bad=p^ x:&i32^ -> &&i32^ {
-    var^ refs:(&i32^)[>..]=[]
+let^ bad=p^ x:ref^ i32^ -> ref^ ref^ i32^ {
+    var^ refs:(ref^ i32^)[>..]=[]
     return^ refs.push(x)
 }
 ''', "cannot return a reference")
 negative("push_owned_return_local_references", '''
-let^ bad=p^ -> (&i32^)[>..] {
+let^ bad=p^ -> (ref^ i32^)[>..] {
     var^ x:i32^=1
-    var^ refs:(&i32^)[>..]=[]
-    refs.push(&x)
+    var^ refs:(ref^ i32^)[>..]=[]
+    refs.push(ref^ x)
     return^ refs
 }
 ''', "cannot return a reference")
 negative("reference_array_literal_return_local", '''
-let^ bad=p^ -> (&i32^)[>..] { var^ x:i32^=1; return^ [&x] }
+let^ bad=p^ -> (ref^ i32^)[>..] { var^ x:i32^=1; return^ [ref^ x] }
 ''', "cannot return a reference")
 negative("owned_reference_field_return_local", '''
-def^ Box { self^{ refs:(&i32^)[>..] } }
+def^ Box { self^{ refs:(ref^ i32^)[>..] } }
 let^ bad=p^ -> Box {
     var^ x:i32^=1
-    var^ box=Box{refs=[&x]}
+    var^ box=Box{refs=[ref^ x]}
     return^ box
 }
 ''', "cannot return a reference")
-for kind, annotation in (("grow", "(&i32^)[>..]"), ("fixed", "(&i32^)[1]")):
+for kind, annotation in (("grow", "(ref^ i32^)[>..]"), ("fixed", "(ref^ i32^)[1]")):
     negative("reference_array_loop_alias_"+kind, '''
-let^ bad=p^ source:&i32^ -> &i32^ {
+let^ bad=p^ source:ref^ i32^ -> ref^ i32^ {
     var^ local:i32^=9
     var^ refs:TYPE=[source]
-    let^ alias=&refs
+    let^ alias=ref^ refs
     var^ out=source
     var^ n:i32^=0
     repeat^ while^ n < 2 {
         out := alias[0]
-        refs[0] := &local
+        refs[0] := ref^ local
         n := n+1
     }
     return^ out
 }
 '''.replace("TYPE",annotation), "cannot return a reference")
 negative("push_through_borrowed_reference_array", '''
-let^ bad=p^ refs:&(&i32^)[>..], x:&i32^ { refs.push(x) }
+let^ bad=p^ refs:ref^ (ref^ i32^)[>..], x:ref^ i32^ { refs.push(x) }
 ''', "cannot store nonstatic references through borrowed storage")
 negative("push_immutable", "let^ a:i32^[>..]=[]; a.push(1)", "cannot modify let^")
 negative("push_wrong_result", "var^ a:i32^[>..]=[]; let^ x:i32^=a.push(1)", "push returns")
 negative("grow_owned_elements", "var^ a:i32^[>..][>..]=[]", "fixed-size")
 negative("push_loop_carried_reference_return", '''
-let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+let^ bad=p^ source:ref^ i32^ -> (ref^ i32^)[>..] {
     var^ local:i32^=9
     var^ ref=source
-    var^ marks:(&i32^)[>..]=[]
+    var^ marks:(ref^ i32^)[>..]=[]
     var^ n:i32^=0
     repeat^ while^ n < 2 {
         marks.push(ref)
-        ref := &local
+        ref := ref^ local
         n := n+1
     }
     return^ marks
 }
 ''', "cannot return a reference")
 negative("push_loop_parameter_reference_return", '''
-let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+let^ bad=p^ source:ref^ i32^ -> (ref^ i32^)[>..] {
     var^ local:i32^=9
-    var^ marks:(&i32^)[>..]=[]
+    var^ marks:(ref^ i32^)[>..]=[]
     var^ n:i32^=0
-    repeat^ while^ n < 2 { marks.push(source); source := &local; n := n+1 }
+    repeat^ while^ n < 2 { marks.push(source); source := ref^ local; n := n+1 }
     return^ marks
 }
 ''', "cannot return a reference")
 negative("push_loop_reference_chain", '''
-let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
+let^ bad=p^ source:ref^ i32^ -> (ref^ i32^)[>..] {
     var^ local:i32^=9
     var^ first=source
     var^ second=source
-    var^ marks:(&i32^)[>..]=[]
+    var^ marks:(ref^ i32^)[>..]=[]
     var^ n:i32^=0
     repeat^ while^ n < 3 {
         marks.push(first)
         first := second
-        second := &local
+        second := ref^ local
         n := n+1
     }
     return^ marks
@@ -854,8 +854,8 @@ let^ bad=p^ source:&i32^ -> (&i32^)[>..] {
 chain_declarations = "\n".join(f"var^ r{i}=x" for i in range(9))
 chain_assignments = "\n".join(f"r{i} := r{i+1}" for i in range(8))
 positive("reference_loop_fixed_point", '''
-let^ collect=p^ x:&i32^, y:&i32^ -> (&i32^)[>..] {
-    var^ marks:(&i32^)[>..]=[]
+let^ collect=p^ x:ref^ i32^, y:ref^ i32^ -> (ref^ i32^)[>..] {
+    var^ marks:(ref^ i32^)[>..]=[]
     DECLARATIONS
     var^ n:i32^=0
     repeat^ while^ n < 12 {
@@ -868,7 +868,7 @@ let^ collect=p^ x:&i32^, y:&i32^ -> (&i32^)[>..] {
 }
 var^ x:i32^=10
 var^ y:i32^=20
-var^ marks=collect(&x,&y)
+var^ marks=collect(ref^ x,ref^ y)
 print(marks.len,*marks[0],*marks[8],*marks[9],*marks[11])
 '''.replace("DECLARATIONS",chain_declarations).replace("ASSIGNMENTS",chain_assignments), "12 10 10 20 20\n")
 
@@ -932,11 +932,11 @@ print(f8^(0.0009765625000000002), f8^(0.0009765624999999998))
 ''', "1.125 1\n0.001953125 0\n")
 positive("bitwise_precedence", "print(2 + 3 bitand^ 1, bitnot^ 0 bitand^ 3, 8 bitshift^ -1 bitxor^ 3)", "3 3 7\n")
 positive("numeric_side_effects_and_inference", '''
-let^ bump=p^ x:&i32^ -> i32^ { *x := *x+1; return^ *x }
+let^ bump=p^ x:ref^ i32^ -> i32^ { *x := *x+1; return^ *x }
 let^ amount=f^ { let^ n:i128^=-1; return^ n }
 let^ shift=template^f^ x,n { x bitshift^ n }
 var^ x:i32^=0
-print(i64^(bump(&x)), x, shift(8,amount()))
+print(i64^(bump(ref^ x)), x, shift(8,amount()))
 print(8 bitshift^ amount())
 ''', "1 1 4\n4\n")
 negative("bits_on_float", "print(1.0 bitxor^ 2.0)", "bitwise operands must be integers")
@@ -988,7 +988,7 @@ positive("page_crossing_elements", """
 def^ Triple { self^{ a:u8^=1,b:u8^=2,c:u8^=3 } }
 var^ a:Triple[>..]=[]
 a.push(Triple.new())
-let^ first=&a[0].a
+let^ first=ref^ a[0].a
 var^ i:i32^=1
 repeat^ while^ i<3000 { a.push(Triple.new()); i:=i+1 }
 a[0].a:=9
@@ -1293,30 +1293,30 @@ for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17)), ("lru", (8, 16,
         positive(f"bench_{workload}_{n}", benchmark_source(workload, n), workload_oracle(workload, n) + "\n")
 calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^ n:i64^",1)[0]
 positive("calc_errors_and_precedence",calc_helpers+"""
-let^ check=p^ text:string^, pool:&Expr[>..] {
+let^ check=p^ text:string^, pool:ref^ Expr[>..] {
     pool.clear()
     let^ result=run(text.slice(0,text.len),pool)
     if^ result fits^ Ok { print(result.value) else^: print(0-result.code) }
 }
 var^ pool:Expr[>..]=[]
-check("",&pool)
-check("(",&pool)
-check("(1",&pool)
-check("1)",&pool)
-check("#1",&pool)
-check("1+",&pool)
-check("1/(2-2)",&pool)
-check("-1",&pool)
-check("1+2*3",&pool)
-check("(1+2)*3",&pool)
-check("8/3",&pool)
-check("1-2-3",&pool)
-check("18/3/2",&pool)
-check("1/0 + (",&pool)
-check("1/0 #",&pool)
-check("4294967296",&pool)
+check("",ref^ pool)
+check("(",ref^ pool)
+check("(1",ref^ pool)
+check("1)",ref^ pool)
+check("#1",ref^ pool)
+check("1+",ref^ pool)
+check("1/(2-2)",ref^ pool)
+check("-1",ref^ pool)
+check("1+2*3",ref^ pool)
+check("(1+2)*3",ref^ pool)
+check("8/3",ref^ pool)
+check("1-2-3",ref^ pool)
+check("18/3/2",ref^ pool)
+check("1/0 + (",ref^ pool)
+check("1/0 #",ref^ pool)
+check("4294967296",ref^ pool)
 pool.clear()
-let^ failed=run("1+(2*".slice(0,5),&pool)
+let^ failed=run("1+(2*".slice(0,5),ref^ pool)
 assert(failed fits^ Failure)
 print(failed.code,pool.len)
 """, "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
@@ -1327,13 +1327,13 @@ text.append("(abc 4294967296 ()) ")
 var^ pool:Node[>..]=[Num{value=0,next=0}]
 var^ symbols:u8^[>..]=[]
 var^ roots:u32^[>..]=[]
-print(parse_all(text.slice(0,text.len),&pool,&symbols,&roots))
+print(parse_all(text.slice(0,text.len),ref^ pool,ref^ symbols,ref^ roots))
 text.clear()
 text.append("xxxxxxxxxxxxxxxxxxx")
-print(pool.len-1,roots.len,walk(&pool,&symbols,roots[0],0))
+print(pool.len-1,roots.len,walk(ref^ pool,ref^ symbols,roots[0],0))
 roots.clear()
-print(parse_all("(".slice(0,1),&pool,&symbols,&roots),roots.len)
-print(parse_all(")".slice(0,1),&pool,&symbols,&roots),roots.len)
+print(parse_all("(".slice(0,1),ref^ pool,ref^ symbols,ref^ roots),roots.len)
+print(parse_all(")".slice(0,1),ref^ pool,ref^ symbols,ref^ roots),roots.len)
 """, "0\n4 1 4294967398\n8 0\n5 0\n")
 packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^ n:i64^",1)[0]
 positive("packed_words_own_copies", packed_word_helpers+"""
@@ -1347,8 +1347,8 @@ print(words.count,words.data.len,words.data[0],words.data[1],words.data[2],words
 response_helpers=(repo/"bench/rhat/respond.rh").read_text().split("let^ n:i64^",1)[0]
 positive("response_integer_format", response_helpers+"""
 var^ out:u8^[>..]=[]
-emit_int(&out,0)
-emit_int(&out,18446744073709551615)
+emit_int(ref^ out,0)
+emit_int(ref^ out,18446744073709551615)
 print(out.len,out[0],out[1],out[2],out[20])
 """, "21 48 49 56 53\n")
 positive("scene_layout", benchmark_source("scene", 0), workload_oracle("scene", 0)+"\n",
@@ -1489,7 +1489,7 @@ let^ outer=f^ n:i32^ -> i32^ {
     return^ inner(n)+a[0]
 }
 var^ long:i32^[>..]=[99]
-let^ ref=&long[0]
+let^ ref=ref^ long[0]
 var^ total:i32^=0
 var^ i:i32^=0
 repeat^ while^ i<100 { total:=total+outer(i); i:=i+1 }
@@ -1549,13 +1549,13 @@ let^ b=f^ n:i32^ -> i32^ { return^ a(n) }
 print(a(2))
 """, "holds local owned value")
 positive("mutual_recursive_borrowed_pool", """
-let^ a=p^ pool:&i32^[>..], n:i32^ {
+let^ a=p^ pool:ref^ i32^[>..], n:i32^ {
     pool.push(n)
     if^ n>0 { b(pool,n-1) }
 }
-let^ b=p^ pool:&i32^[>..], n:i32^ { a(pool,n) }
+let^ b=p^ pool:ref^ i32^[>..], n:i32^ { a(pool,n) }
 var^ pool:i32^[>..]=[]
-a(&pool,5)
+a(ref^ pool,5)
 print(pool.len,pool[0],pool[5])
 """, "6 5 0\n")
 positive("template_owned_scope_reuse", """
@@ -1579,12 +1579,12 @@ assert "2 own, 3 with callees" in report, report
 passed+=1
 print("PASS static_stack_report",flush=True)
 positive("recursive_borrow", """
-let^ retain=f^ p:&i32^, n:i32^ -> &i32^ {
+let^ retain=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     if^ n=0 { return^ p }
     return^ this^(p,n-1)
 }
 var^ n:i32^=42
-let^ ref=retain(&n,4)
+let^ ref=retain(ref^ n,4)
 print(*ref)
 """, "42\n")
 positive("method_this_receiver", """
@@ -1610,12 +1610,12 @@ negative("conditional_nonbool", "print(if^ 1: 2 el^: 3;)", "condition requires b
 negative("this_at_top", "this^()", "requires an enclosing function")
 negative("this_arity", "print(f^ n:i32^ -> i32^ { this^() }(1))", "expects 1 arguments")
 negative("this_argument_type", 'print(f^ n:i32^ -> i32^ { this^("bad") }(1))', "requires nominal 'i32^'")
-negative("anonymous_local_borrow", "let^ ref=f^ -> &i32^ { var^ n:i32^=1; return^ &n }()", "cannot return a reference")
+negative("anonymous_local_borrow", "let^ ref=f^ -> ref^ i32^ { var^ n:i32^=1; return^ ref^ n }()", "cannot return a reference")
 negative("recursive_local_borrow", """
-let^ bad=f^ p:&i32^, n:i32^ -> &i32^ {
+let^ bad=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     if^ n=0 { return^ p }
     var^ local:i32^=1
-    return^ this^(&local,n-1)
+    return^ this^(ref^ local,n-1)
 }
 """, "cannot return a reference")
 negative("anonymous_capture", "var^ outer:i32^=3; print(f^ -> i32^ { outer }())", "unknown value 'outer'")
@@ -1643,8 +1643,8 @@ def^ B : A { self^{ other:i32^ = 9 } }
 let^ b = B.new(); print(b.read())
 """, "7\n")
 positive("return_borrow", """
-let^ identity = f^ x:&i32^ -> &i32^ { return^ x }
-var^ n:i32^ = 9; let^ r=identity(&n); print(*r)
+let^ identity = f^ x:ref^ i32^ -> ref^ i32^ { return^ x }
+var^ n:i32^ = 9; let^ r=identity(ref^ n); print(*r)
 """, "9\n")
 positive("record_return", """
 def^ Pair { self^{ a:i32^ = 0, b:i32^ = 0 } }
@@ -1669,14 +1669,14 @@ let^ make = f^ -> i32^[>..] { return^ [3,4] }
 var^ a:i32^[>..]=make(); print(a[1])
 """, "4\n")
 positive("evaluation_order", """
-let^ change = p^ x:&i32^ -> i32^ { *x := 99; return^ 2 }
+let^ change = p^ x:ref^ i32^ -> i32^ { *x := 99; return^ 2 }
 let^ combine = p^ a:i32^, b:i32^ { print(a,b) }
 var^ n:i32^=1
-print(n + change(&n))
+print(n + change(ref^ n))
 n := 1
-combine(n,change(&n))
+combine(n,change(ref^ n))
 n := 1
-print(n,change(&n))
+print(n,change(ref^ n))
 """, "3\n1 2\n1 2\n")
 positive("numeric", """
 let^ big:i64^=9223372036854775807
@@ -1688,8 +1688,8 @@ print(7 / 2,7 % 2)
 """, "9223372036854775807 255 3 true\n3 1\n")
 positive("paths with spaces", 'print(42)', "42\n")
 positive("reference_mutation", """
-let^ set=p^ p:&i32^ { *p := 8 }
-var^ n:i32^=1; let^ r=&n; set(r); *r := 9; print(n)
+let^ set=p^ p:ref^ i32^ { *p := 8 }
+var^ n:i32^=1; let^ r=ref^ n; set(r); *r := 9; print(n)
 """, "9\n")
 positive("mutable_receiver", """
 def^ Counter {
@@ -1773,33 +1773,33 @@ def^ B:A { foo=f^self^ -> i64^ { return^ 1 } }
 negative("composition_cycle", 'def^ A:B {} def^ B:A {}\n', "cyclic def^ composition")
 negative("layout_cycle", 'def^ A { self^{ a:A } }\n', "recursive by-value layout")
 negative("duplicate_field", 'def^ A { self^{ a:i32^=1,a:i32^=2 } }\n', "duplicate field")
-negative("local_borrow_return", 'let^ bad=f^ -> &i32^ { var^ x:i32^=1; return^ &x }\n', "cannot return a reference")
+negative("local_borrow_return", 'let^ bad=f^ -> ref^ i32^ { var^ x:i32^=1; return^ ref^ x }\n', "cannot return a reference")
 negative("inner_borrow_escape", """
 var^ outer:i32^=1
-var^ ref=&outer
-do^{ var^ inner:i32^=2; ref := &inner }
+var^ ref=ref^ outer
+do^{ var^ inner:i32^=2; ref := ref^ inner }
 print(*ref)
 """, "reference would outlive its owner")
 negative("aggregate_borrow_return", """
-def^ View { self^{ p:&i32^ } }
-let^ bad=f^ -> View { var^ x:i32^=1; return^ View{p=&x} }
+def^ View { self^{ p:ref^ i32^ } }
+let^ bad=f^ -> View { var^ x:i32^=1; return^ View{p=ref^ x} }
 
 """, "cannot return a reference")
 negative("argument_borrow_escape", """
-let^ id=f^ p:&i32^ -> &i32^ { return^ p }
-var^ a:i32^=1; var^ r=&a
-do^{ var^ b:i32^=2; r := id(&b) }
+let^ id=f^ p:ref^ i32^ -> ref^ i32^ { return^ p }
+var^ a:i32^=1; var^ r=ref^ a
+do^{ var^ b:i32^=2; r := id(ref^ b) }
 """, "reference would outlive its owner")
 negative("borrowed_store_escape", """
-def^ View { self^{ p:&i32^ } }
-let^ bad=p^ v:&View { var^ x:i32^=1; v.p := &x }
+def^ View { self^{ p:ref^ i32^ } }
+let^ bad=p^ v:ref^ View { var^ x:i32^=1; v.p := ref^ x }
 
 """, "reference would outlive its owner")
 negative("owned_copy", 'var^ a:i32^[>..]=[]; let^ b=a', "owned region values cannot be copied")
 negative("owned_reassign", 'var^ a:i32^[>..]=[]; a := [1]', "owned values cannot be reassigned")
 negative("grow_not_tail", 'def^ A { self^{ a:i32^[>..], b:i32^=1 } }\n', "final field")
-negative("reference_default_array", 'def^ A { self^{ a:&i32^[2] } }\nlet^ a=A.new()', "needs an initializer")
-negative("pure_mutation", 'let^ bad=f^ x:&i32^ { *x := 2 }\n', "cannot mutate borrowed storage")
+negative("reference_default_array", 'def^ A { self^{ a:ref^ i32^[2] } }\nlet^ a=A.new()', "needs an initializer")
+negative("pure_mutation", 'let^ bad=f^ x:ref^ i32^ { *x := 2 }\n', "cannot mutate borrowed storage")
 negative("pure_procedure", 'let^ bad=f^ { print(1) }\n', "print requires p^")
 negative("missing_return", 'let^ bad=f^ x:i32^ -> i32^ { if^ x=0 { return^ 1 } }\n', "not all paths return")
 negative("immutable", 'let^ x:i32^=1; x := 2', "cannot modify let^")
@@ -1814,9 +1814,9 @@ negative("method_conflict", 'def^ A { n=f^self^ -> i32^ { return^ 1 } } def^ B {
 negative("inherited_field_method", 'def^ A { self^{ n:i32^=0 } } def^ B { n=f^self^ -> i32^ { return^ 2 } } def^ C:A,B {}\n', "field/method name collision")
 negative("private_abstract_field", 'def^ A { self^{ private^ abstract^ n:i32^ } }\n', "private abstract fields")
 negative("indirect_borrow_store", """
-def^ View { self^{ p:&i32^ } }
-def^ Context { self^{ view:&View, source:&i32^ } }
-let^ bad=p^ c:&Context { c.view.p := c.source }
+def^ View { self^{ p:ref^ i32^ } }
+def^ Context { self^{ view:ref^ View, source:ref^ i32^ } }
+let^ bad=p^ c:ref^ Context { c.view.p := c.source }
 
 """, "cannot store nonstatic references through borrowed storage")
 negative("pure_mutable_call", """
@@ -1824,7 +1824,7 @@ def^ Counter {
     self^{ n:i32^=0 },
     add=f^mutable^self^ { self^.n := 1 },
 }
-let^ bad=f^ c:&Counter { c.add() }
+let^ bad=f^ c:ref^ Counter { c.add() }
 
 """, "cannot mutate borrowed storage")
 negative("syntax", "let^ main=p^ {", "unterminated block")
@@ -1885,7 +1885,7 @@ let^ id=template^f^ x { return^ x }
 
 positive("small_aggregate_value_abi", '''
 def^ Pair { self^{ a:i64^, b:i64^ } }
-def^ Ref { self^{ p:&i32^ } }
+def^ Ref { self^{ p:ref^ i32^ } }
 def^ A { self^{ value:i64^ } }
 def^ B { self^{ value:i32^ } }
 def^ U = A | B
@@ -1893,7 +1893,7 @@ def^ Big { self^{ a:i64^, b:i64^, c:i64^ } }
 let^ id=template^f^ x { return^ x }
 var^ v:i32^=42
 let^ pair=id(Pair{a=12,b=30})
-let^ ref=id(Ref{p=&v})
+let^ ref=id(Ref{p=ref^ v})
 let^ text=id("abc")
 let^ view=id(text.slice(1,2))
 let^ ary=id([1,2,3,4])
@@ -1909,9 +1909,9 @@ lambda ir,ll: ('define internal { ptr, i64 }' in ll and
               re.search(r'define internal void @rh_fn_\d+\(i64 %sp, ptr %out, ptr %arg0\)',ll))
               or (_ for _ in ()).throw(AssertionError('small/large value ABI')))
 positive("float_cast_single_evaluation", '''
-let^ value=p^ n:&i32^ -> f64^ { *n := *n+1; return^ 1.5 }
+let^ value=p^ n:ref^ i32^ -> f64^ { *n := *n+1; return^ 1.5 }
 var^ n:i32^=0
-print(i64^(value(&n)),n)
+print(i64^(value(ref^ n)),n)
 ''', '1 1\n')
 
 from ir_builtins import exercise as exercise_builtins

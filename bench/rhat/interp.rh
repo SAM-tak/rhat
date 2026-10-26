@@ -7,7 +7,7 @@ def^ Mul { self^{ l:u32^, r:u32^ } }
 def^ Neg { self^{ of:u32^ } }
 def^ Expr = Num | Add | Mul | Neg
 
-let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
+let^ make=p^ pool:ref^ Expr[>..], depth:i64^, seed:u64^ -> u32^ {
     let^ s=std.random.xorshift64(seed)
     if^ depth = 0 {
         pool.push(Num{v=i32^(s % 1000)})
@@ -24,7 +24,7 @@ let^ make=p^ pool:&Expr[>..], depth:i64^, seed:u64^ -> u32^ {
     if^ k < 5 { pool.push(Add{l=a,r=b}) else^: pool.push(Mul{l=a,r=b}) }
     return^ u32^(pool.len-1)
 }
-let^ eval=f^ pool:&Expr[>..], index:u32^, pass:i64^ -> i64^ {
+let^ eval=f^ pool:ref^ Expr[>..], index:u32^, pass:i64^ -> i64^ {
     let^ node=pool[index]
     if^ node fits^ Num { return^ (i64^(node.v)+pass) % 1000003 }
     if^ node fits^ Add {
@@ -39,11 +39,11 @@ let^ eval=f^ pool:&Expr[>..], index:u32^, pass:i64^ -> i64^ {
 }
 let^ depth:i64^=16 # BENCH_N
 var^ pool:Expr[>..]=[]
-let^ root=make(&pool,depth,12345)
+let^ root=make(ref^ pool,depth,12345)
 var^ total:i64^=0
 var^ pass:i64^=0
 repeat^ while^ pass < 8 {
-    total := (total+eval(&pool,root,pass)) % 1000003
+    total := (total+eval(ref^ pool,root,pass)) % 1000003
     pass := pass+1
 }
 print(pool.len)

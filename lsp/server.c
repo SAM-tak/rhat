@@ -364,8 +364,8 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
     }
   }
   const char *base = type;
-  while (*base == '&') {
-    base++;
+  while (!strncmp(base, "ref^ ", 5)) {
+    base += 5;
   }
   cJSON *s;
   cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols"))
@@ -452,7 +452,7 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
         "to^",      "until^",    "by^",       "do^",      "fits^",
         "try^",     "catch^",    "import^",   "module^",  "public^",
         "private^", "abstract^", "override^", "mutable^", "true^",
-        "false^",   "nil^",      "print",     "assert"};
+        "false^",   "nil^",      "ref^",      "print",     "assert"};
     for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
       if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {
         completion_item(out, keywords[j], "R^", 14);

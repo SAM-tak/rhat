@@ -164,7 +164,8 @@ static char *spec_text(Spec *s)
     return fmt("%s | %s", spec_text(s->elem), spec_text(s->other));
   }
   if (s->kind == SPEC_REF) {
-    return fmt("&%s", spec_text(s->elem));
+    return fmt(s->elem->kind == SPEC_UNION ? "ref^ (%s)" : "ref^ %s",
+               spec_text(s->elem));
   }
   return fmt("%s[%s]", spec_text(s->elem),
              s->kind == SPEC_GROW    ? ">.."

@@ -35,7 +35,7 @@ let^ equal=f^ a:u8^[:], b:u8^[:] -> bool^ {
     repeat^ while^ i < a.len { if^ a[i] != b[i] { return^ false^ }; i := i+1 }
     return^ true^
 }
-let^ find=f^ slots:&Slot[>..], key:u8^[:], mask:u64^ -> i64^ {
+let^ find=f^ slots:ref^ Slot[>..], key:u8^[:], mask:u64^ -> i64^ {
     var^ i=hash(key) bitand^ mask
     repeat^ while^ slots[i].count != 0 {
         if^ equal(slots[i].key,key) { return^ i64^(i) }
@@ -84,7 +84,7 @@ var^ at:i64^=0
 repeat^ while^ at < words.data.len {
     let^ len=i64^(words.data[at])
     let^ key=words.data.slice(at+1,len)
-    let^ index=find(&slots,key,mask)
+    let^ index=find(ref^ slots,key,mask)
     if^ slots[index].count = 0 {
         slots[index].key := key
         slots[index].count := 1

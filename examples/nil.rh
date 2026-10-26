@@ -1,22 +1,22 @@
-def^ Point {
+def^Point {
     self^{ x:i32^=0, y:i32^=0 }
 }
 
-var^ point:Point | nil^ = Point{x=12,y=34}
+var^point:Point | nil^ = Point{x=12,y=34}
 print(point?.x ?? 0)
-if^ point? {
+if^point? {
     print(point.x,point.y)
 else^:
     print("absent")
 }
 
-var^ count:i32^ | nil^ = 3
+var^count:i32^ | nil^ = 3
 count ?+= 4
 print(count ?? 0)
 count ?:= nil^
 count ?:= 99
 print(count?,count ?? 0)
 
-var^ values:i32^[2] = [10,20]
-let^ view:&i32^[2] | nil^ = &values
+var^values:i32^[2] = [10,20]
+let^view:ref^ i32^[2] | nil^ = ref^ values
 print(view?[1] ?? 0)

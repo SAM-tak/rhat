@@ -1,16 +1,16 @@
-def^ A {
+def^A {
     self^{ a : i32^ = 0 }
 }
 
-def^ B {
+def^B {
     self^{ abstract^ b : i32^ }
 }
 
-def^ C : A, B {
+def^C : A, B {
     self^{ c : i32^ = 12, b : i32^ = 42 }
 }
 
-let^ value = C.new()
+let^value = C.new()
 assert(value.a = 0)
 assert(value.b = 42)
 assert(value.c = 12)

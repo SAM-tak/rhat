@@ -86,12 +86,12 @@ print(x.result(-1) fits^ x.Error.Bad,x.result(0) fits^ nil^,result)
         'lib/mem.rh': '''module^ lib.mem
 public^ def^ Base { self^{ value:i32^=42 }; read=f^ self^ ->i32^ { self^.value } }
 public^ let^ make=p^ ->i32^[>..] { return^ [20,22] }
-public^ let^ total=f^ a:&i32^[>..] ->i32^ { a[0]+a[1] }
+public^ let^ total=f^ a:ref^ i32^[>..] ->i32^ { a[0]+a[1] }
 public^ let^ read=template^f^ item { item.read() }
 ''', 'main.rh': '''import^ lib.mem
 def^ Item : lib.mem.Base {}
 var^ a=lib.mem.make()
-print(lib.mem.total(&a),lib.mem.read(Item{}))
+print(lib.mem.total(ref^ a),lib.mem.read(Item{}))
 '''}, '42 42\n')
     positive('module_error_propagation', {
         'lib/fallible.rh': '''module^ lib.fallible
@@ -203,8 +203,8 @@ public^ let^ recur=p^ n:i32^ {
     print(a[0])
 }''', 'main.rh': 'import^ lib.a\nlib.a.recur(2)'}, 'recursive call')
     negative('module_borrow_escape', {'lib/a.rh': '''module^ lib.a
-public^ let^ bad=p^ ->&i32^ {
- var^ a:i32^[>..]=[1]; return^ &a[0]
+public^ let^ bad=p^ ->ref^ i32^ {
+ var^ a:i32^[>..]=[1]; return^ ref^ a[0]
 }''', 'main.rh': 'import^ lib.a'}, 'escape')
     positive('primitive_union_literals', {'main.rh': '''errordef^ Error { Bad }
 def^ Int = i64^ | Error.Bad | nil^
@@ -219,10 +219,10 @@ print(integer,floating)
     negative('private_standard_intrinsic', {'main.rh': 'print(__sqrt^(4.0))'}, 'private standard-library')
     positive('module_recursive_external_borrow', {
         'lib/borrow.rh': '''module^ lib.borrow
-public^ let^ fill=p^ a:&i32^[>..], n:i32^ {
+public^ let^ fill=p^ a:ref^ i32^[>..], n:i32^ {
     if^ n > 0 { a.push(n); this^(a,n-1) }
 }
-''', 'main.rh':'import^ lib.borrow\nvar^ a:i32^[>..]=[]\nlib.borrow.fill(&a,3)\nprint(a.len,a[0],a[2])'}, '3 3 1\n')
+''', 'main.rh':'import^ lib.borrow\nvar^ a:i32^[>..]=[]\nlib.borrow.fill(ref^ a,3)\nprint(a.len,a[0],a[2])'}, '3 3 1\n')
     external = project('external_root', {'lib/value.rh': 'module^ lib.value\npublic^ let^ n=f^ { 42 }'})
     positive('module_search_path', {'main.rh': 'import^ lib.value\nprint(lib.value.n())'}, '42\n', ['--module-path', external])
 
@@ -433,7 +433,7 @@ public^ def^ Result = Item | nil^
 public^ let^ maybe=f^ yes:bool^ ->Item|nil^ {if^ yes: Item.new() el^: nil^;}
 public^ let^ read=f^ item:nil^|Item ->i32^ {item?.value??0}
 public^ let^ templateRead=template^f^ item {item?.value??0}
-public^ let^ borrow=f^ value:&i32^ ->&i32^|nil^ {value}
+public^ let^ borrow=f^ value:ref^ i32^ ->ref^ i32^|nil^ {value}
 ''',
         'main.rh': '''let^ lib=import^ lib.value
 let^ yes=lib.maybe(true^)
@@ -443,8 +443,8 @@ let^ anonymous:nil^|lib.Item=named
 print(lib.read(yes),lib.read(no),anonymous?.value??0)
 print(lib.templateRead(yes),lib.templateRead(no))
 var^ number=7
-let^ ref=lib.borrow(&number)
-print(*(ref??&number))
+let^ ref=lib.borrow(ref^ number)
+print(*(ref??ref^ number))
 ''',
     }, '42 0 42\n42 0\n7\n')
     optional_ir = optional_root/'single.ll'

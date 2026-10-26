@@ -1,89 +1,89 @@
-module^ std.random
-import^ std.sys
+module^std.random
+import^std.sys
 
-public^ errordef^ Error { InvalidState, InvalidArgument, SeedUnavailable }
-public^ def^ LoadResult = nil^ | Error.InvalidState
-public^ def^ IntResult = i64^ | Error.InvalidArgument
-public^ def^ RealResult = f64^ | Error.InvalidArgument
-public^ def^ NewResult = Random | Error.SeedUnavailable
+public^errordef^Error { InvalidState, InvalidArgument, SeedUnavailable }
+public^def^LoadResult = nil^ | Error.InvalidState
+public^def^IntResult = i64^ | Error.InvalidArgument
+public^def^RealResult = f64^ | Error.InvalidArgument
+public^def^NewResult = Random | Error.SeedUnavailable
 
-let^ seeded = f^ seed:i64^ -> u64^ {
+let^seeded = f^seed:i64^ -> u64^{
     let^ mixed = u64^(seed) bitxor^ 11400714819323198485
     if^ mixed = 0 { return^ 2685821657736338717 }
     return^ mixed
 }
 
-public^ def^ Random {
-    self^{ private^ state:u64^ = 2685821657736338717 }
+public^def^Random {
+    self^{ private^state:u64^ = 2685821657736338717 }
 
-    private^ raw = f^ mutable^ self^ -> u64^ {
+    private^raw = f^mutable^self^ -> u64^{
         self^.state := self^.state bitxor^ (self^.state bitshift^ -12)
         self^.state := self^.state bitxor^ (self^.state bitshift^ 25)
         self^.state := self^.state bitxor^ (self^.state bitshift^ -27)
         return^ self^.state * 2685821657736338717
     }
-    reseed = p^ self^, seed:i64^ { self^.state := seeded(seed) }
-    save = f^ self^ -> i64^ { i64^(self^.state) }
-    load = f^ mutable^ self^, state:i64^ -> LoadResult {
-        if^ state = 0 { return^ Error.InvalidState{} }
+    reseed = p^self^, seed:i64^{ self^.state := seeded(seed) }
+    save = f^self^ -> i64^{ i64^(self^.state) }
+    load = f^mutable^self^, state:i64^ -> LoadResult {
+        if^state = 0 { return^Error.InvalidState{} }
         self^.state := u64^(state)
         return^ nil^
     }
-    next = f^ mutable^ self^ -> f64^ {
+    next = f^mutable^self^ -> f64^ {
         return^ f64^(self^.raw() bitshift^ -11) / 9007199254740992.0
     }
-    rangeint = f^ mutable^ self^, lo:i64^, hi:i64^ -> IntResult {
-        if^ hi < lo { return^ Error.InvalidArgument{} }
-        if^ hi = lo { return^ lo }
-        let^ span = u64^(hi) - u64^(lo) + 1
-        var^ bits = self^.raw()
-        if^ span != 0 {
-            let^ threshold = (u64^(0) - span) % span
-            repeat^ while^ bits < threshold { bits := self^.raw() }
+    rangeint = f^mutable^self^, lo:i64^, hi:i64^ -> IntResult {
+        if^hi < lo { return^ Error.InvalidArgument{} }
+        if^hi = lo { return^ lo }
+        let^span = u64^(hi) - u64^(lo) + 1
+        var^bits = self^.raw()
+        if^span != 0 {
+            let^threshold = (u64^(0) - span) % span
+            repeat^while^ bits < threshold { bits := self^.raw() }
             bits := bits % span
         }
-        return^ i64^(u64^(lo) + bits)
+        return^i64^(u64^(lo) + bits)
     }
-    uniform = f^ mutable^ self^, lo:f64^, hi:f64^ -> RealResult {
-        if^ !__finite^(lo) or^ !__finite^(hi) or^ hi < lo {
+    uniform = f^mutable^self^, lo:f64^, hi:f64^-> RealResult {
+        if^!__finite^(lo) or^!__finite^(hi) or^hi < lo {
+            return^Error.InvalidArgument{}
+        }
+        if^lo = hi { return^lo }
+        let^u = self^.next()
+        var^v:f64^ = 0.0
+        if^lo <= 0.0 and^ hi >= 0.0 { v := (1.0-u)*lo + u*hi else^: v := lo + u*(hi-lo) }
+        if^v >= hi { v := __nextafter^(hi,lo) }
+        if^v < lo { v := lo }
+        return^v
+    }
+    normal = f^mutable^self^, mean:f64^, deviation:f64^-> RealResult {
+        if^!__finite^(mean) or^!__finite^(deviation) or^deviation < 0.0 {
             return^ Error.InvalidArgument{}
         }
-        if^ lo = hi { return^ lo }
-        let^ u = self^.next()
-        var^ v:f64^ = 0.0
-        if^ lo <= 0.0 and^ hi >= 0.0 { v := (1.0-u)*lo + u*hi else^: v := lo + u*(hi-lo) }
-        if^ v >= hi { v := __nextafter^(hi,lo) }
-        if^ v < lo { v := lo }
-        return^ v
-    }
-    normal = f^ mutable^ self^, mean:f64^, deviation:f64^ -> RealResult {
-        if^ !__finite^(mean) or^ !__finite^(deviation) or^ deviation < 0.0 {
-            return^ Error.InvalidArgument{}
-        }
-        if^ deviation = 0.0 { return^ mean }
-        let^ radius = __sqrt^(-2.0 * __log^(1.0 - self^.next()))
-        let^ angle = 6.283185307179586476925286766559 * self^.next()
-        return^ mean + deviation * (radius * __cos^(angle))
+        if^deviation = 0.0 { return^mean }
+        let^radius = __sqrt^(-2.0 * __log^(1.0 - self^.next()))
+        let^angle = 6.283185307179586476925286766559 * self^.next()
+        return^mean + deviation * (radius * __cos^(angle))
     }
 }
 
-public^ let^ new = f^ seed:i64^ -> Random {
-    var^ r = Random.new()
+public^let^new = f^seed:i64^-> Random {
+    var^r = Random.new()
     r.load(i64^(seeded(seed)))
-    return^ r
+    return^r
 }
-public^ let^ new = f^ -> NewResult {
-    var^ state:u64^ = 0
-    if^ !__seed^(&state) { return^ Error.SeedUnavailable{} }
-    if^ state = 0 { state := seeded(0) }
-    var^ r = Random.new()
+public^let^new = f^-> NewResult {
+    var^state:u64^= 0
+    if^!__seed^(ref^ state) { return^Error.SeedUnavailable{} }
+    if^state = 0 { state := seeded(0) }
+    var^r = Random.new()
     r.load(i64^(state))
-    return^ r
+    return^r
 }
 
 # The original benchmark sequence, deliberately distinct from Random's stream.
-public^ let^ xorshift64 = f^ state:u64^ -> u64^ {
-    var^ r = state bitxor^ (state bitshift^ 13)
-    r := r bitxor^ (r bitshift^ -7)
-    return^ r bitxor^ (r bitshift^ 17)
+public^let^xorshift64 = f^state:u64^-> u64^{
+    var^r = state bitxor^(state bitshift^13)
+    r := r bitxor^(r bitshift^ -7)
+    return^r bitxor^(r bitshift^ 17)
 }

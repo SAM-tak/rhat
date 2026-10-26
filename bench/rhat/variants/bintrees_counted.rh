@@ -3,7 +3,7 @@
 # A local pool is reserved and released for every short-lived tree.
 def^ Node { self^{ l:i32^=-1, r:i32^=-1 } }
 
-let^ make = p^ pool:&Node[>..], count:&i32^, depth:i64^ -> i32^ {
+let^ make = p^ pool:ref^ Node[>..], count:ref^ i32^, depth:i64^ -> i32^ {
     var^ l:i32^=-1
     var^ r:i32^=-1
     if^ depth > 0 {
@@ -16,7 +16,7 @@ let^ make = p^ pool:&Node[>..], count:&i32^, depth:i64^ -> i32^ {
     return^ index
 }
 
-let^ check = f^ pool:&Node[>..], index:i32^ -> i64^ {
+let^ check = f^ pool:ref^ Node[>..], index:i32^ -> i64^ {
     let^ l=pool[index].l
     let^ r=pool[index].r
     if^ l < 0 { return^ 1 }
@@ -27,8 +27,8 @@ let^ check = f^ pool:&Node[>..], index:i32^ -> i64^ {
 let^ tree_check = p^ depth:i64^ -> i64^ {
     var^ pool:Node[>..]=[]
     var^ count:i32^=0
-    let^ root=make(&pool,&count,depth)
-    return^ check(&pool,root)
+    let^ root=make(ref^ pool,ref^ count,depth)
+    return^ check(ref^ pool,root)
 }
 
 # Arithmetic spelling of 1 << n; no bitwise operators are required.
@@ -43,7 +43,7 @@ let^ maxdepth:i64^=15 # BENCH_N
 print(tree_check(maxdepth+1))
 var^ long:Node[>..]=[]
 var^ count:i32^=0
-let^ root=make(&long,&count,maxdepth)
+let^ root=make(ref^ long,ref^ count,maxdepth)
 var^ d:i64^=4
 repeat^ while^ d <= maxdepth {
     let^ iters=power2(maxdepth-d+4)
@@ -58,4 +58,4 @@ repeat^ while^ d <= maxdepth {
     print(sum)
     d := d+2
 }
-print(check(&long,root))
+print(check(ref^ long,root))

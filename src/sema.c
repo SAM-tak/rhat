@@ -197,7 +197,7 @@ char *type_name(Type *t) {
   if (t->kind == T_STRUCT || t->kind == T_UNION)
     return t->def->name;
   if (t->kind == T_REF)
-    return fmt(t->elem->kind == T_UNION ? "&(%s)" : "&%s", type_name(t->elem));
+    return fmt(t->elem->kind == T_UNION ? "ref^ (%s)" : "ref^ %s", type_name(t->elem));
   if (t->kind == T_SLICE)
     return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[:]"
                                                                     : "%s[:]",
@@ -1131,7 +1131,7 @@ static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
          type_name(src.type));
   if (src.type->owned)
     fail(l, "owned region values cannot be copied; construct at the "
-            "destination or borrow with '&'");
+            "destination or borrow with 'ref^'");
   if (!init) {
     store_check(c, dst, src, l);
     forget_roots(&c->vars, dst.storage, false);
@@ -2157,7 +2157,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       }
     }
     if (v.type->owned)
-      fail(e->loc, "pass owned values by reference with '&'");
+      fail(e->loc, "pass owned values by reference with 'ref^'");
     v = snapshot(c, v, e->loc);
     Value *saved = mem(sizeof(*saved));
     *saved = v;
@@ -2757,7 +2757,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return literal_int(c, &neg, expected);
     }
     Value a =
-        !strcmp(e->text, "&")
+        !strcmp(e->text, "ref^")
             ? place_expression(c, e->a)
             : expression(c, e->a,
                          (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^"))
@@ -2766,7 +2766,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (dead(a)) {
       return a;
     }
-    if (!strcmp(e->text, "&")) {
+    if (!strcmp(e->text, "ref^")) {
       if (!a.addressable)
         fail(e->loc, "cannot borrow a temporary; bind it first");
       if (a.var && !a.var->mut)
@@ -4092,7 +4092,7 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     if (t->kind == T_VOID)
       fail(a->loc, "parameter cannot have void type");
     if (t->owned)
-      fail(a->loc, "owned by-value parameters are not supported; use '&'");
+      fail(a->loc, "owned by-value parameters are not supported; use 'ref^'");
     Var *v = mem(sizeof(*v));
     v->declaration = a->loc;
     tool_record(p, a->loc, a->loc, a->name, t, NULL, NULL, TOOL_PARAMETER,

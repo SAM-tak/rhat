@@ -1,10 +1,10 @@
-def^ Point { self^{ x:i32^=0 } }
-def^ Label { self^{ text:string^="" } }
+def^Point { self^{ x:i32^=0 } }
+def^Label { self^{ text:string^="" } }
 
-let^ show=p^ value:Point | Label | nil^ {
-    if^ value fits^ Point {
+let^show=p^value:Point | Label | nil^{
+    if^value fits^ Point {
         print(value.x)
-    elseif^ value fits^ Label:
+    elseif^value fits^ Label:
         print(value.text)
     else^:
         print("absent")
@@ -15,7 +15,7 @@ show(Point{x=42})
 show(Label{text="hello"})
 show(nil^)
 
-let^ read=template^f^ value {
-    if^ value fits^ Point: value.x el^: 0;
+let^read=template^f^value {
+    if^value fits^Point: value.x el^: 0;
 }
 print(read(Point{x=7}),read(123))

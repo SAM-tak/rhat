@@ -14,11 +14,11 @@ def^ EvalResult = Ok | Failure
 def^ Cursor { self^{ pos:i64^=0 } }
 def^ Stats { self^{ chars:i64^=0, nodes:i64^=0, ok:i64^=0, sum:u64^=0, errors:i64^[5] } }
 
-let^ emit_num=p^ text:&u8^[>..], value:u64^ {
+let^ emit_num=p^ text:ref^ u8^[>..], value:u64^ {
     if^ value >= 10 { text.push(u8^(value/10)+48) }
     text.push(u8^(value % 10)+48)
 }
-let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
+let^ gen=p^ text:ref^ u8^[>..], depth:i64^, seed:u64^ -> u64^ {
     var^ r=std.random.xorshift64(seed)
     let^ k=r % 8
     if^ depth = 0 or^ k = 0 { emit_num(text,1+(r bitshift^ -8) % 99); return^ r }
@@ -36,7 +36,7 @@ let^ gen=p^ text:&u8^[>..], depth:i64^, seed:u64^ -> u64^ {
     text.push(32)
     return^ this^(text,depth-1,std.random.xorshift64(r))
 }
-let^ corrupt=p^ text:&u8^[>..], seed:u64^ {
+let^ corrupt=p^ text:ref^ u8^[>..], seed:u64^ {
     let^ kind=seed % 16
     if^ kind = 0 {
         var^ i=text.len
@@ -51,10 +51,10 @@ let^ corrupt=p^ text:&u8^[>..], seed:u64^ {
     if^ kind = 2 { text.truncate(text.len/2); return^ }
     if^ kind = 3 { text.append(" / 0") }
 }
-let^ skip=p^ text:u8^[:], c:&Cursor {
+let^ skip=p^ text:u8^[:], c:ref^ Cursor {
     repeat^ while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
 }
-let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
+let^ parse_factor=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ Expr[>..] -> ParseResult {
     skip(text,c)
     if^ c.pos >= text.len { return^ Failure{code=1} }
     let^ ch=text[c.pos]
@@ -84,7 +84,7 @@ let^ parse_factor=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     pool.push(Paren{of=inside.index})
     return^ Parsed{index=u32^(pool.len-1)}
 }
-let^ parse_term=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
+let^ parse_term=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ Expr[>..] -> ParseResult {
     let^ lhs=parse_factor(text,c,pool)
     if^ lhs fits^ Failure { return^ lhs }
     var^ left=lhs.index
@@ -101,7 +101,7 @@ let^ parse_term=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     }
     return^ Parsed{index=left}
 }
-let^ parse_expr=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
+let^ parse_expr=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ Expr[>..] -> ParseResult {
     let^ lhs=parse_term(text,c,pool)
     if^ lhs fits^ Failure { return^ lhs }
     var^ left=lhs.index
@@ -118,7 +118,7 @@ let^ parse_expr=p^ text:u8^[:], c:&Cursor, pool:&Expr[>..] -> ParseResult {
     }
     return^ Parsed{index=left}
 }
-let^ eval=f^ pool:&Expr[>..], index:u32^ -> EvalResult {
+let^ eval=f^ pool:ref^ Expr[>..], index:u32^ -> EvalResult {
     let^ node=pool[index]
     if^ node fits^ Num { return^ Ok{value=u64^(node.value)} }
     if^ node fits^ Neg {
@@ -140,11 +140,11 @@ let^ eval=f^ pool:&Expr[>..], index:u32^ -> EvalResult {
     if^ b = 0 { return^ Failure{code=4} }
     return^ Ok{value=a/b}
 }
-let^ run=p^ text:u8^[:], pool:&Expr[>..] -> EvalResult {
+let^ run=p^ text:u8^[:], pool:ref^ Expr[>..] -> EvalResult {
     var^ c=Cursor{}
-    let^ parsed=parse_expr(text,&c,pool)
+    let^ parsed=parse_expr(text,ref^ c,pool)
     if^ parsed fits^ Failure { return^ parsed }
-    skip(text,&c)
+    skip(text,ref^ c)
     if^ c.pos != text.len { return^ Failure{code=3} }
     return^ eval(pool,parsed.index)
 }
@@ -158,11 +158,11 @@ repeat^ while^ i < n {
     seed := std.random.xorshift64(seed)
     text.clear()
     let^ depth=i64^(seed % 4)+3
-    let^ s=gen(&text,depth,seed bitshift^ -8)
-    corrupt(&text,s)
+    let^ s=gen(ref^ text,depth,seed bitshift^ -8)
+    corrupt(ref^ text,s)
     stats.chars := stats.chars+text.len
     pool.clear()
-    let^ result=run(text.slice(0,text.len),&pool)
+    let^ result=run(text.slice(0,text.len),ref^ pool)
     stats.nodes := stats.nodes+pool.len
     if^ result fits^ Ok {
         stats.ok := stats.ok+1

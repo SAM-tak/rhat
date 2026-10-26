@@ -18,7 +18,7 @@ let^ rotation=f^ seed:u64^ -> f32^[9] {
     if^ axis = 1 { return^ [c,0,s,0,1,0,-s,0,c] }
     return^ [c,-s,0,s,c,0,0,0,1]
 }
-let^ compose=p^ p:&Xf, l:&Xf, w:&Xf {
+let^ compose=p^ p:ref^ Xf, l:ref^ Xf, w:ref^ Xf {
     var^ i:i32^=0
     repeat^ while^ i < 3 {
         var^ j:i32^=0
@@ -35,7 +35,7 @@ let^ compose=p^ p:&Xf, l:&Xf, w:&Xf {
     w.t.y := p.m[3]*l.t.x+p.m[4]*l.t.y+p.m[5]*l.t.z+p.t.y
     w.t.z := p.m[6]*l.t.x+p.m[7]*l.t.y+p.m[8]*l.t.z+p.t.z
 }
-let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
+let^ make=p^ pool:ref^ Node[>..], depth:i64^, seed:u64^ -> u32^ {
     let^ r=std.random.xorshift64(seed)
     let^ self=u32^(pool.len)
     pool.push(Node{id=i32^(self),local=Xf{m=rotation(r),
@@ -53,18 +53,18 @@ let^ make=p^ pool:&Node[>..], depth:i64^, seed:u64^ -> u32^ {
     }
     return^ self
 }
-let^ update=p^ pool:&Node[>..], index:u32^, parent:&Xf {
-    let^ nd=&pool[index]
-    compose(parent,&nd.local,&nd.world)
+let^ update=p^ pool:ref^ Node[>..], index:u32^, parent:ref^ Xf {
+    let^ nd=ref^ pool[index]
+    compose(parent,ref^ nd.local,ref^ nd.world)
     var^ k:u8^=0
     repeat^ while^ k < nd.nkids {
-        this^(pool,nd.kids[k],&nd.world)
+        this^(pool,nd.kids[k],ref^ nd.world)
         k := k+1
     }
 }
 let^ depth:i64^=12 # BENCH_N
 var^ pool:Node[>..]=[]
-let^ root=make(&pool,depth,12345)
+let^ root=make(ref^ pool,depth,12345)
 var^ ident=identity()
 var^ total:i64^=0
 var^ frame:i64^=0
@@ -73,11 +73,11 @@ repeat^ while^ frame < 16 {
     let^ step=f32^(frame % 5)
     var^ i:i64^=0
     repeat^ while^ i < pool.len {
-        let^ nd=&pool[i]
+        let^ nd=ref^ pool[i]
         if^ nd.id % 7 = phase { nd.local.t.x := step; nd.local.t.z := 8-step }
         i := i+1
     }
-    update(&pool,root,&ident)
+    update(ref^ pool,root,ref^ ident)
     i := 0
     repeat^ while^ i < pool.len {
         let^ t=pool[i].world.t

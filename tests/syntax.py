@@ -49,6 +49,29 @@ def main():
         passed += 1
         print('PASS', name, flush=True)
 
+    positive('ref_keyword', '''
+var^ n=7
+var^ r:ref^ i32^=ref^n
+var^ rr:ref^^ i32^=ref^r;
+**rr:=9
+let^ rrr:ref^^^ i32^=ref^rr
+print(***rrr)
+let^ read=f^ p:ref^ i32^ ->i32^ {*p}
+var^ refs:(ref^ i32^)[2]=[ref^ n,r]
+let^ all:ref^ (ref^ i32^)[2]=ref^ refs
+print(read(ref^ n),*all[0],*refs[1],n*2)
+def^ Box {self^{value:i32^=1} get=f^ self^ {self^.value}}
+var^ box=Box{}
+let^ b=ref^ box
+b.value:=3
+print(b.value,b.get())
+var^ values:i32^[2]=[4,5]
+let^ a=ref^ values
+print(a[1],a.len)
+let^ ref=11
+print(ref)
+''', '9\n9 9 9 18\n3 3\n5 2\n11\n')
+
     positive('contextual_records', '''
 def^ Point {self^{x:i32^=10,y:i32^=20}}
 def^ Outer {self^{point:Point}}
@@ -87,8 +110,8 @@ def^ Bag {self^{tag:i32^=0,items:i32^[>..]}}
 let^ make=f^ ->Bag {return^ {items=[1,2],tag=7}}
 var^ bag=make()
 print(bag.tag,bag.items[1])
-let^ read=f^ b:&Bag ->i32^ {b.tag}
-print(read(&bag))
+let^ read=f^ b:ref^ Bag ->i32^ {b.tag}
+print(read(ref^ bag))
 ''', '7 2\n7\n')
 
     positive('branches', '''
@@ -138,12 +161,12 @@ let^ make=f^ n:i32^ ->i32^[>..] {
 }
 var^ result=make(4)
 print(result.len,result[1])
-let^ fill=p^ a:&i32^[>..],n:i32^ ->i64^ {
+let^ fill=p^ a:ref^ i32^[>..],n:i32^ ->i64^ {
  if^ n=0 {return^ a.len}
- return^ p^ b:&i32^[>..],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
+ return^ p^ b:ref^ i32^[>..],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
 }
 var^ values:i32^[>..]=[]
-print(fill(&values,3),values[0],values[2])
+print(fill(ref^ values,3),values[0],values[2])
 ''', '2 8\n3 3 1\n')
 
     positive('outer_this_method', '''
@@ -151,7 +174,7 @@ def^ Counter {
  self^{base:i32^=3}
  sum=f^ self^,n:i32^ ->i32^ {
   if^ n=0 {return^ self^.base}
-  return^ f^ obj:&Counter,m:i32^ ->i32^ {this^^(obj,m-1)}(self^,n)+1
+  return^ f^ obj:ref^ Counter,m:i32^ ->i32^ {this^^(obj,m-1)}(self^,n)+1
  }
  current=f^ self^,n:i32^ ->i32^ {if^ n=0: self^.base el^: 1+this^(n-1);}
 }
@@ -163,7 +186,7 @@ def^ Mutable {
  run=p^ self^,n:i32^ ->i32^ {
   if^ n=0 {return^ self^.count}
   self^.count+=1
-  return^ p^ obj:&Mutable,m:i32^ ->i32^ {return^ this^^(obj,m-1)}(self^,n)
+  return^ p^ obj:ref^ Mutable,m:i32^ ->i32^ {return^ this^^(obj,m-1)}(self^,n)
  }
 }
 var^ counter=Mutable.new()
@@ -171,11 +194,11 @@ print(counter.run(4))
 ''', '7 5 77\n4\n')
 
     positive('assignments', '''
-let^ index=p^ calls:&i32^ ->i64^ { *calls+=1 return^ 0 }
-let^ change=p^ a:&i32^[2] ->i32^ { a[0]:=100 return^ 3 }
+let^ index=p^ calls:ref^ i32^ ->i64^ { *calls+=1 return^ 0 }
+let^ change=p^ a:ref^ i32^[2] ->i32^ { a[0]:=100 return^ 3 }
 var^ calls=0
 var^ a:i32^[2]=[10,20]
-a[index(&calls)] += change(&a)
+a[index(ref^ calls)] += change(ref^ a)
 print(a[0],calls)
 a[0],a[1] := a[1],a[0]
 print(a[0],a[1])
@@ -189,11 +212,11 @@ print(z)
 ''', '13 1\n20 13\n1 12\n40 1\n9\n')
 
     positive('comparison_chains', '''
-let^ tick=p^ calls:&i32^ ->i32^ { *calls+=1 return^ *calls }
+let^ tick=p^ calls:ref^ i32^ ->i32^ { *calls+=1 return^ *calls }
 var^ calls=0
-print(0 < tick(&calls) < 2)
+print(0 < tick(ref^ calls) < 2)
 print(calls)
-print(10 < tick(&calls) < tick(&calls))
+print(10 < tick(ref^ calls) < tick(ref^ calls))
 print(calls)
 print(1 <= 2 = 2 != 3)
 print(1 ≦ 2 and^ 3 ≥ 2 and^ 2 ≠ 3 and^ 1 =/ 2)
@@ -379,6 +402,13 @@ print(outerthislib.sum(10),outerthislib.sum(wide))
 ''', '55 210\n')
 
     cases = [
+        ('ref_repeated_expression', 'var^ x=1 let^ r=ref^^ x', 'cannot borrow a temporary'),
+        ('ref_repeated_expanded_expression', 'var^ x=1 let^ r=ref^ ref^ x', 'cannot borrow a temporary'),
+
+        ('old_ref_expression', 'var^ x=1 let^ r=&x', 'expected an expression'),
+        ('old_ref_type', 'let^ f=f^ x:&i32^ {*x}', 'expected a name'),
+        ('old_double_ref_type', 'let^ f=f^ x:&&i32^ {**x}', 'expected a name'),
+
         ('outer_this_top', 'this^^()', 'at that nesting depth'),
         ('outer_this_depth', 'print(f^ ->i32^ {this^^()}())', 'at that nesting depth'),
         ('outer_this_sibling', 'let^ first=f^ {1} print(f^ ->i32^ {this^^()}())', 'at that nesting depth'),
@@ -394,7 +424,7 @@ return^ f^ m:i32^ ->i32^ {this^^(m-1)}(n)
         ('outer_this_receiver', '''def^ A {run=f^ self^,n:i32^ ->i32^ {f^ {this^^(1,0)}()}}
 var^ a=A.new() print(a.run(1))''', 'explicit'),
         ('outer_this_mutable_effect', '''def^ A {run=f^ mutable^ self^,n:i32^ ->i32^ {
-f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
+f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
 }} var^ a=A.new() print(a.run(1))''', 'cannot mutate borrowed storage'),
         ('old_else', 'if^ true^ {} else^ {}', 'else^'),
         ('old_while', 'while^ false^ {}', 'driving clause'),
@@ -408,7 +438,7 @@ f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
         ('contextual_record_private', 'def^ P {self^{private^ x:i32^=0}} let^ p:P={x=1}', 'private member'),
         ('contextual_record_untyped_template', 'let^ f=template^p^ x {} f({x=1})', 'single nominal struct'),
         ('contextual_record_error_union', 'errordef^ E {Bad} let^ bad:i32^|E.Bad={}', 'contextual construction requires'),
-        ('contextual_record_borrow_escape', 'def^ Ref {self^{p:&i32^}} let^ bad=f^ ->Ref {var^ n=1 return^ {p=&n}} let^ v=bad()', 'cannot return a reference'),
+        ('contextual_record_borrow_escape', 'def^ Ref {self^{p:ref^ i32^}} let^ bad=f^ ->Ref {var^ n=1 return^ {p=ref^ n}} let^ v=bad()', 'cannot return a reference'),
         ('let_colon_equal', 'let^ x:=1', "expected '='"),
         ('immutable_compound', 'let^ x=1 x+=1', 'cannot modify let^'),
         ('readonly_focus', 'for^ i from^ 1 to^ 2 {i+=1}', 'cannot modify let^'),
@@ -431,8 +461,8 @@ f^ obj:&A ->i32^ {this^^(obj,0)}(self^)
         ('section_duplicate', 'repeat^ 1 {main^: main^:}', 'sections must follow'),
         ('section_no_body', 'repeat^ 1 {prolog^: print(1)}', 'requires pre^'),
         ('first_zero_use', 'repeat^ 0 {first^: let^ x=1 epilog^: print(x)}', 'not definitely initialized'),
-        ('first_borrow_pre', 'repeat^ 1 {pre^: var^ x=1 first^: let^ p=&x main^: print(*p)}', 'outlive'),
-        ('scope_escape', 'let^ p=for^ var^ x=1 do^: &x;', 'local owner'),
+        ('first_borrow_pre', 'repeat^ 1 {pre^: var^ x=1 first^: let^ p=ref^ x main^: print(*p)}', 'outlive'),
+        ('scope_escape', 'let^ p=for^ var^ x=1 do^: ref^ x;', 'local owner'),
         ('scope_too_far', 'let^ x=1 print($^x)', 'outside'),
         ('scope_space', 'let^ x=1 print($ x)', 'adjacent'),
         ('discard_read', 'let^ _^=1 print(_^)', 'cannot be read'),

@@ -4,15 +4,15 @@ import re
 
 def exercise(repo, work, compiler, clang, source, run, positive, runtime_failure, high_water):
     positive('inline_builtin_single_evaluation', '''
-let^ tick=p^ counter:&i32^, result:i64^ -> i64^ {
+let^ tick=p^ counter:ref^ i32^, result:i64^ -> i64^ {
     *counter := *counter+1; return^ result
 }
 var^ counter:i32^=0
 var^ a:i32^[>..]=[10,20,30,40]
-let^ view=a.slice(tick(&counter,1),tick(&counter,2))
-a.truncate(tick(&counter,3))
+let^ view=a.slice(tick(ref^ counter,1),tick(ref^ counter,2))
+a.truncate(tick(ref^ counter,3))
 a.append(view)
-assert(tick(&counter,1)=1)
+assert(tick(ref^ counter,1)=1)
 print(counter,a.len,a[3],a[4])
 ''', '4 5 20 30\n')
     positive('inline_append_overlap_both_directions', '''

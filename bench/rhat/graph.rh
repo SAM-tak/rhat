@@ -6,7 +6,7 @@ import^ std.random
 
 
 
-let^ enqueue = p^ q:&i32^[>..], tail:&i64^, vertex:i32^ {
+let^ enqueue = p^ q:ref^ i32^[>..], tail:ref^ i64^, vertex:i32^ {
     if^ *tail < q.len { q[*tail] := vertex else^: q.push(vertex) }
     *tail := *tail+1
 }
@@ -63,7 +63,7 @@ repeat^ while^ source < 4 {
     repeat^ while^ i < nv { dist[i] := -1; i := i+1 }
     dist[src] := 0
     var^ tail:i64^=0
-    enqueue(&q,&tail,src)
+    enqueue(ref^ q,ref^ tail,src)
     var^ head:i64^=0
     repeat^ while^ head < tail {
         let^ u=q[head]
@@ -76,7 +76,7 @@ repeat^ while^ source < 4 {
             let^ w=out[k]
             if^ dist[w] < 0 {
                 dist[w] := d+1
-                enqueue(&q,&tail,w)
+                enqueue(ref^ q,ref^ tail,w)
             }
             k := k+1
         }

@@ -1,17 +1,17 @@
-let^ identity=f^ value {value}
-let^ double=f^ value {value*2}
+let^identity = f^value {value}
+let^double = f^value {value*2}
 
 print(identity(42),identity("hello"))
 print(double(21),double(i64^(22)))
 
-let^ factorial=f^ n {
-    if^ n<2: 1 el^: n*this^(n-1);
+let^factorial=f^n {
+    if^n<2: 1 el^: n*this^(n-1);
 }
 print(factorial(i64^(10)))
 
 # This signature is inferred from its body without inspecting any callers.
-let^ inferred64 = f^ value {
-    let^ typed:i64^ = value
-    return^ typed + 1
+let^inferred64 = f^value {
+    let^typed:i64^ = value
+    return^typed + 1
 }
 print(inferred64(41))

@@ -10,12 +10,12 @@ def^ Stats { self^{ count:i64^=0, hits:i64^=0, misses:i64^=0, removes:i64^=0 } }
 let^ home = f^ key:i32^, mask:i64^ -> i64^ {
     return^ i64^((u64^(key)*11400714819323198485 bitshift^ -24) bitand^ u64^(mask))
 }
-let^ find = f^ slots:&Slot[>..], key:i32^, mask:i64^ -> i64^ {
+let^ find = f^ slots:ref^ Slot[>..], key:i32^, mask:i64^ -> i64^ {
     var^ i=home(key,mask)
     repeat^ while^ slots[i].idx >= 0 and^ slots[i].key != key { i := (i+1) bitand^ mask }
     return^ i
 }
-let^ remove = p^ slots:&Slot[>..], at:i64^, mask:i64^ {
+let^ remove = p^ slots:ref^ Slot[>..], at:i64^, mask:i64^ {
     var^ i=at
     var^ j=at
     repeat^ while^ true^ {
@@ -29,7 +29,7 @@ let^ remove = p^ slots:&Slot[>..], at:i64^, mask:i64^ {
         }
     }
 }
-let^ alloc = p^ pool:&Node[>..], free:&u32^[>..], key:i32^, val:i32^ -> u32^ {
+let^ alloc = p^ pool:ref^ Node[>..], free:ref^ u32^[>..], key:i32^, val:i32^ -> u32^ {
     if^ free.len > 0 {
         let^ k=free.pop()
         pool[k].key := key
@@ -39,20 +39,20 @@ let^ alloc = p^ pool:&Node[>..], free:&u32^[>..], key:i32^, val:i32^ -> u32^ {
     pool.push(Node{key=key,val=val,prev=0,next=0})
     return^ u32^(pool.len-1)
 }
-let^ unlink = p^ pool:&Node[>..], n:u32^ {
+let^ unlink = p^ pool:ref^ Node[>..], n:u32^ {
     let^ p=pool[n].prev
     let^ q=pool[n].next
     pool[p].next := q
     pool[q].prev := p
 }
-let^ link_front = p^ pool:&Node[>..], n:u32^ {
+let^ link_front = p^ pool:ref^ Node[>..], n:u32^ {
     let^ q=pool[0].next
     pool[n].prev := 0
     pool[n].next := q
     pool[q].prev := n
     pool[0].next := n
 }
-let^ step = p^ pool:&Node[>..], free:&u32^[>..], slots:&Slot[>..], stats:&Stats,
+let^ step = p^ pool:ref^ Node[>..], free:ref^ u32^[>..], slots:ref^ Slot[>..], stats:ref^ Stats,
                   cap:i64^, keys:u64^, mask:i64^, r:u64^ {
     let^ a=r % keys
     let^ key=i32^(a*a/keys)
@@ -105,8 +105,8 @@ var^ pool:Node[>..]=[]
 var^ free:u32^[>..]=[]
 var^ i:i64^=0
 repeat^ while^ i < nslots { slots.push(Slot{key=0,idx=-1}); i := i+1 }
-let^ hi=alloc(&pool,&free,-1,0)
-let^ ti=alloc(&pool,&free,-1,0)
+let^ hi=alloc(ref^ pool,ref^ free,-1,0)
+let^ ti=alloc(ref^ pool,ref^ free,-1,0)
 pool[hi].next := ti
 pool[ti].prev := hi
 var^ stats=Stats{}
@@ -114,7 +114,7 @@ var^ r:u64^=12345
 i := 0
 repeat^ while^ i < n {
     r := std.random.xorshift64(r)
-    step(&pool,&free,&slots,&stats,cap,keys,mask,r)
+    step(ref^ pool,ref^ free,ref^ slots,ref^ stats,cap,keys,mask,r)
     i := i+1
 }
 assert(pool.len <= cap+2)
