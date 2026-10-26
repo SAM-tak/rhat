@@ -91,7 +91,7 @@ static void usage(void) {
   puts("R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat emit SOURCE -o "
        "OUTPUT.ll [--dump-ir OUTPUT.rir]\n       rhat build SOURCE -o OUTPUT "
        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
-       "[--clang PATH] [--runtime PATH]\nOptions: --stacks, --emit-llvm PATH, "
+       "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
        "--dump-ir "
        "PATH, --module-path DIR, --link-lib NAME, --cache-dir DIR, --no-cache, "
        "--verbose\n"
@@ -126,8 +126,13 @@ int main(int argc, char **argv) {
   bool stacks = false, reuse = true, verbose = false;
   const char *cache = NULL;
   List module_paths = {0}, libraries = {0};
+  int program_args = argc;
   for (int j = 3; j < argc; j++) {
     char *s = argv[j];
+    if (!strcmp(s, "--") && !strcmp(command, "run")) {
+      program_args = j + 1; /* Everything after -- goes to the program. */
+      break;
+    }
     if (!strcmp(s, "--no-cache")) {
       reuse = false;
       continue;
@@ -250,8 +255,12 @@ int main(int argc, char **argv) {
     if (!strchr(exe, '/'))
       exe = fmt("./%s", out);
 #endif
-    char *run[] = {exe, NULL};
-    status = run_process(run);
+    List run = {0};
+    add(&run, exe);
+    for (int j = program_args; j < argc; j++)
+      add(&run, argv[j]);
+    add(&run, NULL);
+    status = run_process((char *const *)run.v);
     if (status < 0) {
       perror(exe);
       return 1;

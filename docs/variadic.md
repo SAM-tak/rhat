@@ -62,6 +62,7 @@ print(....len)
 for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print(...[i]) }
 ```
 
+`rhat run SOURCE [OPTIONS] -- ARGS...` では `--` より後ろがプログラムへの引数です。
 生成する `main(argc, argv)` がランタイムの `rh_runtime_args` で文字列スライスの配列を作り、エントリーへ渡します。
 配列と文字列はプロセスの終了まで生きます。Windows では UTF-16 のコマンドラインを UTF-8 に変換します。
 `import^` で取り込まれるモジュールのトップレベルには `...` はありません。
