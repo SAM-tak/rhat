@@ -440,6 +440,19 @@ print(g.len,tail.len,tail[0],all.len,closed.len,closed[2],empty.len,(text?[1 to^
 negative("grow_unsized_type", "var^ a:i32^[]=[]", "needs grow^")
 negative("grow_literal_fixed_target", "var^ a:i32^[2]=grow^[1,2]", "cannot initialize")
 negative("grow_literal_empty", "var^ a=grow^[]", "needs a type annotation")
+positive("grow_typed_empty_value", """
+var^ a:grow^ i64^[]=[]
+var^ b=grow^ i64^[]
+var^ c:grow^ i64^[]=grow^ i64^[]
+def^ Node { self^{ l:i32^=-1 } }
+var^ nodes=grow^ Node[]
+var^ x:i64^=9
+var^ refs=grow^ (ref^ i64^)[]
+a.push(1) b.push(2) c.push(3) nodes.push(Node{}) refs.push(ref^ x)
+print(a[0],b[0],c[0],nodes[0].l,*refs[0])
+""", "1 2 3 -1 9\n")
+negative("grow_typed_empty_mismatch", "var^ a:grow^ i32^[]=grow^ i64^[]", "cannot initialize")
+negative("grow_typed_empty_sized", "var^ a=grow^ i64^[4]", "needs an array type ending in []")
 negative("slice_inclusive_open", "var^ a=grow^[1,2]; let^ v=a[1 to^]", "needs both bounds")
 positive("slice_nested_return", """
 let^ sub=f^ a:i32^[:] {

@@ -2590,7 +2590,13 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     return out;
   }
   if (e->kind == E_ARRAY) {
-    bool grow = e->text != NULL; /* grow^[...] */
+    bool grow = e->text != NULL; /* grow^[...] or grow^ T[] */
+    if (e->test_spec) {
+      Type *named = type_spec(c->p, e->test_spec);
+      if (t && t != named)
+        fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
+      t = named;
+    }
     if (grow && t && t->kind != T_GROW)
       fail(e->loc, "grow^ array literal cannot initialize '%s'", type_name(t));
     Value first = {0};

@@ -782,6 +782,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     return type;
   }
   case E_ARRAY: {
+    if (e->test_spec) {
+      return type_spec(c->p, e->test_spec);
+    }
     if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW)) {
       for (int j = 0; j < e->args.n; j++) {
         infer_expr(c, e->args.v[j], expected->elem);
@@ -1853,7 +1856,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     for (int j = 0; j < e->args.n; j++) {
       add(&n->children, body_expr(c, e->args.v[j], want ? want->elem : NULL));
     }
-    n->type = want;
+    n->type = e->test_spec ? type_spec(c->p, e->test_spec) : want;
     break;
   case E_IF:
     body_expr(c, e->a, type_builtin(c->p, T_BOOL));

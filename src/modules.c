@@ -302,7 +302,7 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e) {
   }
   if (e->kind == E_RECORD && e->text)
     e->text = resolve_type_name(m, e->text, e->loc);
-  if (e->kind == E_FITS) {
+  if (e->test_spec) {
     resolve_spec(m, e->test_spec);
   }
   if (e->kind == E_FUNCTION) {

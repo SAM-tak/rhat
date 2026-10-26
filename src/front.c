@@ -735,9 +735,14 @@ static Expr *primary(Parser *p) {
     e = node(E_ARRAY, t->loc);
     if (strcmp(t->text, "[")) {
       e->text = t->text;
-      need(p, "[");
     }
-    entries(p, e, "]", false);
+    if (strcmp(t->text, "[") && !take(p, "[")) {
+      p->at--; /* grow^ T[] names an empty array of that type. */
+      e->test_spec = spec_part(p);
+    }
+    else {
+      entries(p, e, "]", false);
+    }
   } else if (!strcmp(t->text, "{")) {
     e = node(E_RECORD, t->loc);
     entries(p, e, "}", true);

@@ -98,7 +98,8 @@ enum {
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */
-  Spec *test_spec; /* The type operand of fits^, never evaluated as a value. */
+  Spec *test_spec; /* The type operand of fits^, or the type of an empty
+                      grow^ T[] value; never evaluated as a value. */
   Spec *constant_spec;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
   void *compiler_value; /* Internal full Value, retaining borrow provenance. */
