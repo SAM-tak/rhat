@@ -202,7 +202,8 @@ static char *file_stamp(const char *path)
 }
 int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
-                  const char *cache, bool reuse, bool verbose) {
+                  const char *cache, bool reuse, bool verbose,
+                  List *libraries) {
   if (!cache)
     cache = fmt("%s/.rhat-cache", directory(out));
   mkdirs(cache);
@@ -263,6 +264,8 @@ int build_objects(Program *p, const char *compiler, const char *clang,
     add(&args, "-lbcrypt");
 #endif
   }
+  for (int j = 0; j < libraries->n; j++)
+    add(&args, fmt("-l%s", (char *)libraries->v[j]));
 #if !defined(_WIN32)
   add(&args, "-lm");
 #endif

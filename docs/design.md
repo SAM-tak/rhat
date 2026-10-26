@@ -452,6 +452,7 @@ Cランタイムは毎回プリプロセスし、ヘッダーとマクロの展�
 既定は出力先の `.rhat-cache`、変更は `--cache-dir`、再利用の抑止は `--no-cache`、詳細表示は `--verbose` です。
 解析結果の永続化と、ソースなしでのライブラリ配布は未対応です。
 解析結果を再利用するための方針は [separate_compilation.md](separate_compilation.md) にまとめています。
+C の関数は [externC^](ffi.md) で宣言して呼び出し、追加のライブラリは `--link-lib NAME` でリンクします。
 `emit -o FILE.ll` と実行ファイル横の `.ll` は依存全体を含む単一IRです。
 実際に分割ビルドでコンパイルしたIRはキャッシュに保存し、`--verbose` でパスを表示します。
 
@@ -497,7 +498,7 @@ if^ result fits^ i64^ { print(result) }
 不正引数と、rangeint/uniformの等しい両端、normalのゼロ偏差では系列を進めません。
 uniformの等しい両端ではその値を返します。normalの極端な有限引数による結果のオーバーフローは許容します。
 next/rangeint/uniform/normalとloadは `f^ mutable^ self^`、reseedは `p^ self^` です。
-PRNGはR^、数学処理はLLVM intrinsicと数学ライブラリ、OS seed取得のみCの橋渡しで実装します。
+PRNGはR^、数学処理はCの数学ライブラリ、OS seed取得はCの橋渡しで実装し、どちらも [externC^](ffi.md) で呼びます。
 暗号用乱数生成器ではなく、数学ライブラリの丸めが異なる環境間でnormalのビット一致は保証しません。
 
 ## 検証

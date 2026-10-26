@@ -31,6 +31,66 @@ void inferred_call(Function *caller, Function *callee, Loc loc)
          callee->name);
   }
 }
+static bool c_scalar(Type *t)
+{
+  return t->kind == T_BOOL || (t->kind >= T_U8 && t->kind <= T_U64) ||
+         (t->kind >= T_I8 && t->kind <= T_I64) || t->kind == T_F32 ||
+         t->kind == T_F64;
+}
+static bool same_signature(Program *p, Function *a, Function *b)
+{
+  if (a->procedure != b->procedure || a->params.n != b->params.n ||
+      (a->result ? type_spec(p, a->result) : NULL) !=
+          (b->result ? type_spec(p, b->result) : NULL)) {
+    return false;
+  }
+  for (int j = 0; j < a->params.n; j++) {
+    if (parameter_type(p, a->params.v[j]) != parameter_type(p, b->params.v[j])) {
+      return false;
+    }
+  }
+  return true;
+}
+void external_validate(Program *p, Function *f)
+{
+  const char *s = f->external;
+  bool identifier = !(*s >= '0' && *s <= '9');
+  for (const char *c = s; *c; c++) {
+    identifier &= *c == '_' || (*c >= '0' && *c <= '9') ||
+                  (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z');
+  }
+  if (!identifier || !strcmp(s, "main")) {
+    fail(f->declaration, "externC^ symbol '%s' is not a usable C identifier", s);
+  }
+  if (!strncmp(s, "rh_", 3) &&
+      !(f->module && f->module->name && !strncmp(f->module->name, "std.", 4))) {
+    fail(f->declaration, "externC^ symbols starting with rh_ are reserved for the runtime");
+  }
+  if (f->templ) {
+    fail(f->loc, "externC^ declaration cannot be template^");
+  }
+  /* Scalars cross as their C types; ref^, slices and strings as a data pointer. */
+  for (int j = 0; j < f->params.n; j++) {
+    Param *param = f->params.v[j];
+    Type *t = parameter_type(p, param);
+    if (!c_scalar(t) && t->kind != T_STRING &&
+        !((t->kind == T_REF || t->kind == T_SLICE) && c_scalar(t->elem))) {
+      fail(param->loc, "externC^ parameter '%s' has no C shape: '%s'",
+           param->name, type_name(t));
+    }
+  }
+  if (f->result && !c_scalar(type_spec(p, f->result))) {
+    fail(f->result->loc, "externC^ result must be a C scalar or omitted");
+  }
+  for (int j = 0; j < p->functions.n; j++) {
+    Function *other = p->functions.v[j];
+    if (other != f && other->external && !strcmp(other->external, s) &&
+        !same_signature(p, f, other)) {
+      fail(f->declaration, "externC^ symbol '%s' is declared with another signature at %s:%d",
+           s, other->declaration.file, other->declaration.line);
+    }
+  }
+}
 void inferred_unused(Program *p, Function *f)
 {
   Param *param = inferred_parameter(f);
@@ -240,16 +300,6 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
 static Type *infer_call(Infer *c, Expr *e)
 {
   Expr *target = e->a;
-  int native = random_intrinsic(c->in, target);
-  if (native >= 0) {
-    for (int j = 0; j < e->args.n; j++) {
-      infer_expr(c, e->args.v[j], NULL);
-    }
-    if (c->terminated) {
-      return type_builtin(c->p, T_NEVER);
-    }
-    return type_builtin(c->p, native == 0 || native == 5 ? T_BOOL : T_F64);
-  }
   Function *f = NULL;
   Def *self = NULL;
   List actual = {0}, candidates = {0};
@@ -1398,7 +1448,10 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
   in->result = f->result ? type_spec(p, f->result) : f->required_result;
   in->id = p->instances.n;
   in->symbol = fmt("rh_fn_%d", in->id);
-  if (p->modules.n > 1 && f != p->entry) {
+  if (f->external) {
+    in->symbol = f->external;
+  }
+  else if (p->modules.n > 1 && f != p->entry) {
     char *identity = fmt(
         "%s:%s:%s", f->module && f->module->name ? f->module->name : "<entry>",
         f->name, self ? self->name : "");

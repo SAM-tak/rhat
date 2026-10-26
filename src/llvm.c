@@ -242,6 +242,70 @@ static void range_guard(Output *o, Instr *i) {
     save(o, slot, slot_type(o, slot), place);
   }
 }
+/* The C ABI spelling of an externC^ parameter or result type. A slice or
+ * string passes its data pointer only; small integers carry their extension. */
+static char *c_abi(Type *t, bool attributes)
+{
+  if (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_STRING) {
+    return "ptr";
+  }
+  const char *extension = "";
+  if (attributes && (t->kind == T_BOOL || t->kind == T_U8 || t->kind == T_U16)) {
+    extension = "zeroext ";
+  }
+  else if (attributes && (t->kind == T_I8 || t->kind == T_I16)) {
+    extension = "signext ";
+  }
+  return fmt("%s%s", extension, llvm_type(t));
+}
+/* A direct C call without the stack position or result destination. */
+static void external_call(Output *o, Instr *i)
+{
+  char *operands = "";
+  for (int j = 0; j < i->args.n; j++) {
+    Type *param = i->callee->params.v[j];
+    int v = load(o, (int)(intptr_t)i->args.v[j] - 1);
+    if (param->kind == T_SLICE || param->kind == T_STRING) {
+      int data = ++o->tmp;
+      fprintf(o->f, "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n", data, v);
+      v = data;
+    }
+    operands =
+        fmt("%s%s%s %%t%d", operands, j ? ", " : "", c_abi(param, false), v);
+  }
+  if (i->type->kind == T_VOID) {
+    fprintf(o->f, "  call void @%s(%s)\n", i->callee->symbol, operands);
+    return;
+  }
+  int r = ++o->tmp;
+  fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, llvm_type(i->type),
+          i->callee->symbol, operands);
+  save(o, i->dst, i->type, fmt("%%t%d", r));
+}
+/* Declare a C function once per IR module. An f^ declaration over scalars
+ * promises a result that depends only on its arguments. */
+static void external_declaration(Program *p, int index, FILE *f)
+{
+  Instance *in = p->instances.v[index];
+  for (int j = 0; j < index; j++) {
+    Instance *other = p->instances.v[j];
+    if (other->emitted && other->fn->external &&
+        !strcmp(other->symbol, in->symbol)) {
+      return;
+    }
+  }
+  bool pure = !in->fn->procedure;
+  fprintf(f, "\ndeclare %s @%s(",
+          in->result->kind == T_VOID ? "void" : c_abi(in->result, true),
+          in->symbol);
+  for (int j = 0; j < in->params.n; j++) {
+    Type *param = in->params.v[j];
+    pure &= param->kind != T_REF && param->kind != T_SLICE &&
+            param->kind != T_STRING;
+    fprintf(f, "%s%s", j ? ", " : "", c_abi(param, true));
+  }
+  fprintf(f, ") nounwind%s\n", pure ? " memory(none)" : "");
+}
 static void instruction(Output *o, Instr *i) {
   FILE *f = o->f;
   Type *t = i->type;
@@ -873,38 +937,11 @@ static void instruction(Output *o, Instr *i) {
     save(o, i->dst, t, fmt("%%t%d", r));
     break;
   }
-  case I_NATIVE: {
-    int values[2];
-    for (int j = 0; j < i->args.n; j++)
-      values[j] = load(o, (int)(intptr_t)i->args.v[j] - 1);
-    if (i->other == 0) {
-      r = ++o->tmp;
-      fprintf(f, "  %%t%d = call i64 @rh_random_seed(ptr %%t%d)\n", r,
-              values[0]);
-      a = ++o->tmp;
-      fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", a, r);
-      save(o, i->dst, t, fmt("%%t%d", a));
-    } else if (i->other == 5) {
-      r = ++o->tmp;
-      a = ++o->tmp;
-      fprintf(f, "  %%t%d = call double @llvm.fabs.f64(double %%t%d)\n", r,
-              values[0]);
-      fprintf(f, "  %%t%d = fcmp ole double %%t%d, 0x7FEFFFFFFFFFFFFF\n", a, r);
-      save(o, i->dst, t, fmt("%%t%d", a));
-    } else {
-      const char *names[] = {"", "llvm.sqrt.f64", "llvm.log.f64",
-                             "llvm.cos.f64", "nextafter"};
-      r = ++o->tmp;
-      fprintf(f, "  %%t%d = call double @%s(double %%t%d", r, names[i->other],
-              values[0]);
-      if (i->args.n == 2)
-        fprintf(f, ", double %%t%d", values[1]);
-      fputs(")\n", f);
-      save(o, i->dst, t, fmt("%%t%d", r));
-    }
-    break;
-  }
   case I_CALL: {
+    if (i->callee->fn->external) {
+      external_call(o, i);
+      break;
+    }
     a = ++o->tmp;
     fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
     int *values = mem((size_t)i->args.n * sizeof(int));
@@ -1079,22 +1116,6 @@ void emit_llvm(Program *p, const char *path) {
           p->stack_count,
           !p->emitting || p->emitting->root ? " zeroinitializer" : "");
   emit_llvm_builtins(f);
-  bool random_native = false;
-  for (int j = 0; j < p->instances.n; j++) {
-    Instance *in = p->instances.v[j];
-    for (int k = 0; k < in->code.n; k++)
-      if (((Instr *)in->code.v[k])->op == I_NATIVE)
-        random_native = true;
-  }
-  if (random_native)
-    fputs("declare i64 @rh_random_seed(ptr)\n"
-          "declare double @llvm.sqrt.f64(double)\n"
-          "declare double @llvm.log.f64(double)\n"
-          "declare double @llvm.cos.f64(double)\n"
-          "declare double @llvm.fabs.f64(double)\n"
-          "declare double @nextafter(double, double)\n",
-          f);
-
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
@@ -1114,6 +1135,10 @@ void emit_llvm(Program *p, const char *path) {
     Instance *in = p->instances.v[j];
     if (!in->emitted)
       continue;
+    if (in->fn->external) {
+      external_declaration(p, j, f);
+      continue;
+    }
     const char *linkage = !p->emitting ? "internal"
                           : in->fn->module != p->emitting
                               ? "available_externally"
@@ -1193,7 +1218,6 @@ void dump_ir(Program *p, const char *path) {
                          "field",
                          "index.checked",
                          "call",
-                         "native.intrinsic",
                          "print",
                          "assert",
                          "label",

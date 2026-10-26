@@ -58,6 +58,9 @@ void analyze_array_growth(Program *p) {
       never_shrinks = false;
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
+    if (in->fn->external) {
+      continue;
+    }
     int n = in->code.n, count = in->slots.n;
     Growth *states = mem((size_t)n * sizeof(Growth));
     int *labels = mem((size_t)(in->labels + 1) * sizeof(int));

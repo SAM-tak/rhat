@@ -221,8 +221,8 @@ Def *outer_receiver(Function *f, Type *type, Loc loc);
 /* Read the refined type of a stable member path. */
 Type *path_type(Var *v, const char *path);
 
-/* Recognize native bridges restricted to the random library. */
-int random_intrinsic(Instance *in, Expr *target);
+/* Reject an externC^ signature without a plain C shape or a usable symbol. */
+void external_validate(Program *p, Function *f);
 
 /* Apply the true or false facts of a previously checked condition. */
 void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,

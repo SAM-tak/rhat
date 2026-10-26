@@ -182,6 +182,7 @@ struct Function {
   List params, body;
   Spec *result;
   Type *required_result;
+  char *external; /* C symbol of an externC^ declaration, which has no body. */
   bool procedure, templ, abstract, priv, override, mutable_self;
   bool overload, operator_member, right_receiver; /* Explicit member roles. */
 };
@@ -295,7 +296,6 @@ enum {
   I_FIELD,
   I_INDEX,
   I_CALL,
-  I_NATIVE,
   I_PRINT,
   I_ASSERT,
   I_LABEL,
@@ -385,9 +385,12 @@ char *link_identity(const char *text);
 const char *tool_resource(const char *compiler, const char *fallback,
                           const char *relative);
 int run_process(char *const *args);
+/* Compile each module and link them with the runtime and C libraries named
+ * by --link-lib. */
 int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
-                  const char *cache, bool reuse, bool verbose);
+                  const char *cache, bool reuse, bool verbose,
+                  List *libraries);
 void dump_ir(Program *p, const char *path);
 char *llvm_type(Type *t);
 #endif

@@ -97,7 +97,9 @@ void plan_stacks(Program *p) {
   unsigned char *reach = mem((size_t)n * (size_t)n);
   for (int a = 0; a < n; a++) {
     Instance *in = p->instances.v[a];
-    local_plan(in);
+    if (!in->fn->external) {
+      local_plan(in);
+    }
     in->stack_need = in->stack_own;
     for (int k = 0; k < in->code.n; k++) {
       Instr *i = in->code.v[k];

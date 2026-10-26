@@ -1874,21 +1874,6 @@ static Value literal_int(Context *c, Expr *e, Type *expected) {
   i->text = e->text;
   return v;
 }
-int random_intrinsic(Instance *in, Expr *target)
-{
-  if (target->kind != E_NAME)
-    return -1;
-  const char *names[] = {"__seed^", "__sqrt^",      "__log^",
-                         "__cos^",  "__nextafter^", "__finite^"};
-  for (int j = 0; j < 6; j++)
-    if (!strcmp(target->text, names[j])) {
-      if (!in->fn->module || !in->fn->module->name ||
-          strcmp(in->fn->module->name, "std.random"))
-        fail(target->loc, "private standard-library intrinsic");
-      return j;
-    }
-  return -1;
-}
 /* this^ selects a declaration, independently of its runtime activation. */
 Function *this_function(Program *p, Instance *in, Expr *target)
 {
@@ -1981,34 +1966,6 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
-  int native = random_intrinsic(c->in, target);
-  if (native >= 0) {
-    int count = native == 4 ? 2 : 1;
-    if (e->args.n != count)
-      fail(e->loc, "invalid intrinsic arity");
-    Type *input = native == 0 ? type_wrap(p, T_REF, type_builtin(p, T_U64), 0)
-                              : type_builtin(p, T_F64);
-    Type *output = type_builtin(p, native == 0 || native == 5 ? T_BOOL : T_F64);
-    Value out = value(c, output);
-    Instr *i = mem(sizeof(*i));
-    i->op = I_NATIVE;
-    i->loc = e->loc;
-    i->dst = out.id;
-    i->type = output;
-    i->other = native;
-    for (int j = 0; j < count; j++) {
-      Value v = expression(c, e->args.v[j], input);
-      if (c->terminated) {
-        return abrupt(c);
-      }
-      if (v.type != input)
-        fail(e->loc, "invalid intrinsic argument");
-      v = snapshot(c, v, e->loc);
-      add(&i->args, (void *)(intptr_t)(v.id + 1));
-    }
-    add(&c->in->code, i);
-    return out;
-  }
   if (target->kind == E_NAME) {
     for (int k = T_U8; k <= T_F64; k++) {
       if (strcmp(target->text, builtin_name(k)))
@@ -2324,7 +2281,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     Value *v = values.v[j];
     add(&i->args, (void *)(intptr_t)(v->id + 1));
   }
-  if (f->procedure || f->mutable_self) {
+  /* C may write through every pointer it receives. */
+  if (f->procedure || f->mutable_self || f->external) {
     forget_roots(&c->vars, deps, false);
   }
   return out;
@@ -4418,6 +4376,10 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
   if (f->operator_member) {
     operator_contract(f, in->result, f->loc);
   }
+  if (f->external) {
+    in->state = 2;
+    return in;
+  }
   in->state = 1;
   Context c = {0};
   c.p = p;
@@ -4510,6 +4472,9 @@ void analyze(Program *p) {
     Function *f = p->functions.v[j];
     if (lookup_def(p, f->name))
       fail(f->loc, "function conflicts with def^ '%s'", f->name);
+    if (f->external) {
+      external_validate(p, f);
+    }
   }
   infer_parameters(p);
   overload_validate(p, &p->functions);

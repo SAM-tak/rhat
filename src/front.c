@@ -1727,7 +1727,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
       if (take(p, ":"))
         a->spec = spec(p);
       if (!a->self && !a->spec && abstr && !templ) {
-        fail(a->loc, "abstract method parameter requires a type annotation");
+        fail(a->loc, "bodiless declaration parameter requires a type annotation");
       }
       add(&f->params, a);
     } while (take(p, ","));
@@ -1975,6 +1975,20 @@ void parse_file(Program *p, const char *path, Module *module) {
       if (!group->union_specs.n) {
         fail(group->loc, "errordef^ requires a variant");
       }
+      continue;
+    }
+    if (take(&q, "externC^")) {
+      Loc declaration = tok(&q)->loc;
+      char *name = decl_word(&q);
+      need(&q, ":");
+      Function *f = function(&q, name, NULL, true);
+      f->abstract = false;
+      f->external = name;
+      f->declaration = declaration;
+      f->module = module;
+      f->public = public;
+      add(&module->functions, f);
+      add(&p->functions, f);
       continue;
     }
     if (take(&q, "def^")) {
