@@ -66,5 +66,8 @@ C 標準ライブラリと、Windows 以外での `libm` は常にリンクし�
 
 ## 標準ライブラリでの利用
 
-`std.random` は数学関数（`sqrt`・`log`・`cos`・`nextafter`）と OS の乱数取得（`rh_random_seed`）を
-非公開の `externC^` 宣言で呼びます。以前の専用の組み込み関数（`__sqrt^` など）は廃止しました。
+`std.random` は `nextafter` と OS の乱数取得（`rh_random_seed`）を非公開の `externC^` 宣言で呼びます。
+以前の専用の組み込み関数（`__sqrt^` など）は廃止しました。
+
+標準ライブラリは同じ形の `externLLVM^ llvm.名前:署名;` で LLVM 組み込み関数も束縛できます（`std.math` が使用）。
+利用者のコードからは使えません。

@@ -498,8 +498,27 @@ if^ result fits^ i64^ { print(result) }
 不正引数と、rangeint/uniformの等しい両端、normalのゼロ偏差では系列を進めません。
 uniformの等しい両端ではその値を返します。normalの極端な有限引数による結果のオーバーフローは許容します。
 next/rangeint/uniform/normalとloadは `f^ mutable^ self^`、reseedは `p^ self^` です。
-PRNGはR^、数学処理はCの数学ライブラリ、OS seed取得はCの橋渡しで実装し、どちらも [externC^](ffi.md) で呼びます。
+PRNGはR^、数学処理は `std.math`、`nextafter` とOS seed取得は [externC^](ffi.md) によるCの呼び出しで実装します。
 暗号用乱数生成器ではなく、数学ライブラリの丸めが異なる環境間でnormalのビット一致は保証しません。
+
+## 標準数学
+
+```rhat
+let^ m = import^ std.math
+print(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
+```
+
+`std.math` の関数は f64^ と f32^ のオーバーロードを持ち、引数の型で選びます。浮動小数点リテラルは f64^ を選びます。
+実体は同じ幅の LLVM 組み込み関数（`llvm.sin.f64` など）で、定数引数の畳み込みと、命令または数学ライブラリ呼び出しへの変換は LLVM が行います。
+
+- 定数: `pi`、`tau`、`e`（f64^）
+- 平方根・三角・双曲線: `sqrt`、`sin`、`cos`、`tan`、`asin`、`acos`、`atan`、`atan2(y, x)`、`sinh`、`cosh`、`tanh`
+- 指数・対数: `exp`、`exp2`、`log`、`log2`、`log10`、`pow`
+- 丸め・符号: `floor`、`ceil`、`trunc`、`round`（中間値は0から遠い側）、`abs`、`copysign`、`fma`（一度だけ丸める）
+- 判定: `isnan`、`isinf`、`isfinite`（R^ で実装）
+
+組み込み関数は `public^ let^ sin = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;` の形で宣言します。
+`externLLVM^` は標準ライブラリ（`std.*`）の `llvm.*` シンボル専用です。渡せる型と効果の規則は [externC^](ffi.md) と同じです。
 
 ## 検証
 

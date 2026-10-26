@@ -1,12 +1,9 @@
 module^std.random
 import^std.sys
+let^math = import^std.math
 
-externC^sqrt:f^x:f64^ -> f64^;
-externC^log:f^x:f64^ -> f64^;
-externC^cos:f^x:f64^ -> f64^;
 externC^nextafter:f^x:f64^, toward:f64^ -> f64^;
 externC^rh_random_seed:f^state:ref^ u64^ -> i64^;
-let^finite = f^x:f64^ -> bool^{ x - x = 0.0 }
 
 public^errordef^Error { InvalidState, InvalidArgument, SeedUnavailable }
 public^def^LoadResult = nil^ | Error.InvalidState
@@ -52,7 +49,7 @@ public^def^Random {
         return^i64^(u64^(lo) + bits)
     }
     uniform = f^mutable^self^, lo:f64^, hi:f64^-> RealResult {
-        if^!finite(lo) or^!finite(hi) or^hi < lo {
+        if^!math.isfinite(lo) or^!math.isfinite(hi) or^hi < lo {
             return^Error.InvalidArgument{}
         }
         if^lo = hi { return^lo }
@@ -64,13 +61,13 @@ public^def^Random {
         return^v
     }
     normal = f^mutable^self^, mean:f64^, deviation:f64^-> RealResult {
-        if^!finite(mean) or^!finite(deviation) or^deviation < 0.0 {
+        if^!math.isfinite(mean) or^!math.isfinite(deviation) or^deviation < 0.0 {
             return^ Error.InvalidArgument{}
         }
         if^deviation = 0.0 { return^mean }
-        let^radius = sqrt(-2.0 * log(1.0 - self^.next()))
+        let^radius = math.sqrt(-2.0 * math.log(1.0 - self^.next()))
         let^angle = 6.283185307179586476925286766559 * self^.next()
-        return^mean + deviation * (radius * cos(angle))
+        return^mean + deviation * (radius * math.cos(angle))
     }
 }
 

@@ -706,8 +706,9 @@ static Expr *for_expression(Parser *p, Loc loc);
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
-  if (t->kind == TOK_WORD && !strcmp(t->text, "externC^")) {
-    fail(t->loc, "externC^ declarations are only allowed at the top level");
+  if (t->kind == TOK_WORD &&
+      (!strcmp(t->text, "externC^") || !strcmp(t->text, "externLLVM^"))) {
+    fail(t->loc, "%s declarations are only allowed at the top level", t->text);
   }
   if (t->kind == TOK_SCOPE) {
     e = node(E_NAME, t->loc);
@@ -2016,6 +2017,7 @@ void parse_file(Program *p, const char *path, Module *module) {
                 (!strcmp(initializer->text, "f^") ||
                  !strcmp(initializer->text, "p^") ||
                  !strcmp(initializer->text, "externC^") ||
+                 !strcmp(initializer->text, "externLLVM^") ||
                  !strcmp(initializer->text, "template^"));
     }
     if (!binding) {
@@ -2055,6 +2057,10 @@ void parse_file(Program *p, const char *path, Module *module) {
     Function *parsed_function = NULL;
     if (take(&q, "externC^")) {
       parsed_function = external_function(&q, name, word(&q));
+    }
+    else if (take(&q, "externLLVM^")) {
+      parsed_function = external_function(&q, name, qualified_word(&q));
+      parsed_function->intrinsic = true;
     }
     else {
       parsed_function = function(&q, name, NULL, false);

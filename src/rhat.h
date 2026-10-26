@@ -183,6 +183,7 @@ struct Function {
   Spec *result;
   Type *required_result;
   char *external; /* C symbol of an externC^ declaration, which has no body. */
+  bool intrinsic; /* externLLVM^ binds an LLVM intrinsic instead of a C symbol. */
   bool procedure, templ, abstract, priv, override, mutable_self;
   bool overload, operator_member, right_receiver; /* Explicit member roles. */
 };

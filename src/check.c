@@ -54,17 +54,26 @@ static bool same_signature(Program *p, Function *a, Function *b)
 void external_validate(Program *p, Function *f)
 {
   const char *s = f->external;
-  bool identifier = !(*s >= '0' && *s <= '9');
-  for (const char *c = s; *c; c++) {
-    identifier &= *c == '_' || (*c >= '0' && *c <= '9') ||
-                  (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z');
+  bool standard =
+      f->module && f->module->name && !strncmp(f->module->name, "std.", 4);
+  if (f->intrinsic) {
+    if (!standard || strncmp(s, "llvm.", 5)) {
+      fail(f->declaration,
+           "externLLVM^ binds llvm.* intrinsics in the standard library only");
+    }
   }
-  if (!identifier || !strcmp(s, "main")) {
-    fail(f->declaration, "externC^ symbol '%s' is not a usable C identifier", s);
-  }
-  if (!strncmp(s, "rh_", 3) &&
-      !(f->module && f->module->name && !strncmp(f->module->name, "std.", 4))) {
-    fail(f->declaration, "externC^ symbols starting with rh_ are reserved for the runtime");
+  else {
+    bool identifier = !(*s >= '0' && *s <= '9');
+    for (const char *c = s; *c; c++) {
+      identifier &= *c == '_' || (*c >= '0' && *c <= '9') ||
+                    (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z');
+    }
+    if (!identifier || !strcmp(s, "main")) {
+      fail(f->declaration, "externC^ symbol '%s' is not a usable C identifier", s);
+    }
+    if (!strncmp(s, "rh_", 3) && !standard) {
+      fail(f->declaration, "externC^ symbols starting with rh_ are reserved for the runtime");
+    }
   }
   if (f->templ) {
     fail(f->loc, "externC^ declaration cannot be template^");

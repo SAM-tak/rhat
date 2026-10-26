@@ -294,6 +294,17 @@ static void external_declaration(Program *p, int index, FILE *f)
       return;
     }
   }
+  if (in->fn->intrinsic) {
+    /* LLVM supplies the attributes of its own intrinsics. */
+    fprintf(f, "\ndeclare %s @%s(",
+            in->result->kind == T_VOID ? "void" : llvm_type(in->result),
+            in->symbol);
+    for (int j = 0; j < in->params.n; j++) {
+      fprintf(f, "%s%s", j ? ", " : "", c_abi(in->params.v[j], false));
+    }
+    fputs(")\n", f);
+    return;
+  }
   bool pure = !in->fn->procedure;
   fprintf(f, "\ndeclare %s @%s(",
           in->result->kind == T_VOID ? "void" : c_abi(in->result, true),
