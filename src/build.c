@@ -190,6 +190,16 @@ static char *compile(const char *input, const char *identity, const char *name,
   publish(stamp_tmp, stamp);
   return object;
 }
+/* Identify a large tool by size and modification time, as ccache's mtime check
+ * does; hashing a 100 MB clang dominated the time of every build. */
+static char *file_stamp(const char *path)
+{
+  struct stat st;
+  if (stat(path, &st)) {
+    return NULL;
+  }
+  return fmt("%lld:%lld", (long long)st.st_size, (long long)st.st_mtime);
+}
 int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
                   const char *cache, bool reuse, bool verbose) {
@@ -197,7 +207,7 @@ int build_objects(Program *p, const char *compiler, const char *clang,
     cache = fmt("%s/.rhat-cache", directory(out));
   mkdirs(cache);
   char *compiler_hash = digest_file(executable(compiler));
-  char *clang_path = executable(clang), *clang_hash = digest_file(clang_path);
+  char *clang_path = executable(clang), *clang_hash = file_stamp(clang_path);
   if (!clang_hash) {
     errno = ENOENT;
     return -1;
