@@ -17,13 +17,19 @@ param(
         -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
         Select-Object -First 1
     if (-not $vsRoot) { throw 'No Visual Studio installation with the x64 C++ toolchain was found.' }
-    $vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
-    if (-not (Test-Path -LiteralPath $vcvars)) { throw "vcvars64.bat was not found: $vcvars" }
-    $environmentLines = & $env:ComSpec /d /c "`"$vcvars`" >nul 2>&1 && set"
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the Visual Studio toolchain.' }
-    foreach ($line in $environmentLines) {
-        if ($line -match '^([^=]+)=(.*)$') {
-            Set-Item -LiteralPath "Env:\$($matches[1])" -Value $matches[2]
+    # vcvars grows PATH on every run, so a reinitialized session eventually
+    # exceeds the cmd.exe line limit; keep an existing x64 environment.
+    if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64') {
+        $vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
+        if (-not (Test-Path -LiteralPath $vcvars)) { throw "vcvars64.bat was not found: $vcvars" }
+        $environmentLines = & $env:ComSpec /d /c "`"$vcvars`" 2>&1 && set"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to initialize the Visual Studio toolchain:`n$($environmentLines -join "`n")"
+        }
+        foreach ($line in $environmentLines) {
+            if ($line -match '^([^=]+)=(.*)$') {
+                Set-Item -LiteralPath "Env:\$($matches[1])" -Value $matches[2]
+            }
         }
     }
 
