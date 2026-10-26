@@ -1803,7 +1803,7 @@ negative("pure_mutation", 'let^ bad=f^ x:ref^ i32^ { *x := 2 }\n', "cannot mutat
 negative("pure_procedure", 'let^ bad=f^ { print(1) }\n', "print requires p^")
 negative("missing_return", 'let^ bad=f^ x:i32^ -> i32^ { if^ x=0 { return^ 1 } }\n', "not all paths return")
 negative("immutable", 'let^ x:i32^=1; x := 2', "cannot modify let^")
-negative("closure", 'do^{ let^ f=f^ { return^ 1 } }', "function values")
+negative("closure_capture", 'do^{ let^ captured=1 let^ f=f^ ->i32^ { return^ captured } print(f()) }', "unknown value 'captured'")
 negative("literal_overflow", 'let^ x:i32^=2147483648', "does not fit")
 negative("unknown_type", 'let^ x:Missing=1', "unknown type")
 negative("recursive_default", 'def^ A { self^{ n:i32^=A.new().n } }\nlet^ a=A.new()', "recursive default construction")

@@ -82,6 +82,8 @@ typedef struct {
   bool raw_name;
   Expr *raw_place;
   bool in_default;
+  Expr *operator_target; /* The operator constructing an owning destination. */
+  int operator_destination; /* Valid only when operator_target is non-NULL. */
 } Context;
 
 /* Type inference and concrete-instance registry, implemented in check.c. */
@@ -121,6 +123,40 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
                        Loc at);
 
 /* Shared type, name and flow operations, implemented in sema.c. */
+
+/* Collect the declarations represented by a callable name and receiver. */
+List overload_candidates(Program *p, Def *owner, const char *name, int arity);
+/* Find the common contextual type without choosing an overload arm. */
+Type *overload_hint(Program *p, List *candidates, int index, Expr *arg);
+/* Select the sole compatible arm; unresolved inference may return NULL. */
+Function *overload_select(Program *p, List *candidates, List *actual, Loc loc,
+                          bool strict);
+/* Whether two declarations admit any common call, ignoring return types. */
+bool overload_overlap(Program *p, Function *a, Function *b);
+/* Reject overlapping declarations in one callable group. */
+void overload_validate(Program *p, List *functions);
+/* Intern callable signatures, declaration types and their intersections. */
+Type *callable_signature(Program *p, List *params, Type *result, bool procedure,
+                         Function *function);
+Type *callable_declaration(Program *p, Function *f);
+Type *callable_intersection(Program *p, Type *a, Type *b, Loc loc);
+Type *callable_group(Program *p, Def *owner, const char *name);
+/* Recover static implementations from an unbound callable value. */
+List callable_candidates(Type *type, int arity);
+/* Include declaration identity in specializations receiving callable values. */
+char *callable_identity(Type *type);
+/* Read a callable contract during body inference without requiring a body. */
+Type *callable_hint(Type *type, int arity, int index);
+Type *callable_contract(Type *type, List *actual);
+/* Identify callable types and check their structural contracts. */
+bool callable_type(Type *t);
+bool callable_accepts(Type *want, Type *actual);
+/* Select an operator member; a missing member leaves built-in handling intact. */
+Function *operator_select(Program *p, const char *op, Type *a, Type *b, Loc loc);
+/* Contextualize a literal operand only when all operator arms agree. */
+Type *operator_hint(Program *p, const char *op, Type *receiver, bool right, Expr *arg);
+/* Infer the result of a selected operator with its explicit receiver. */
+Type *operator_result(Program *p, Function *f, Type *a, Type *b, Loc loc);
 
 /* Split a postfix chain without separating a method from its call. */
 Expr *chain_parts(Expr *e, List *steps);

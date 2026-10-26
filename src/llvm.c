@@ -7,6 +7,8 @@ char *llvm_type(Type *t) {
   case T_BOOL:
     return "i1";
   case T_NIL:
+  case T_FUNCTION:
+  case T_INTERSECTION:
   case T_U8:
   case T_I8:
   case T_F8:

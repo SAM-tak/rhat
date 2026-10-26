@@ -53,8 +53,10 @@ struct Spec {
   bool resolved;
   Loc loc;
   char *name;
-  Spec *elem, *other; /* Union specifications retain both alternative types. */
+  Spec *elem, *other; /* Binary type operands; elem holds a callable result. */
   int kind, count;
+  List params; /* Parameter specifications of a callable signature. */
+  bool procedure; /* A p^ signature carries the procedure effect. */
 };
 enum {
   SPEC_NAME,
@@ -62,7 +64,9 @@ enum {
   SPEC_ARRAY,
   SPEC_GROW,
   SPEC_SLICE,
-  SPEC_UNION /* An inline set of alternative types. */
+  SPEC_UNION, /* An inline set of alternative types. */
+  SPEC_FUNCTION, /* A callable signature ending in a semicolon. */
+  SPEC_INTERSECTION /* A value satisfying every callable signature. */
 };
 enum {
   E_INT,
@@ -177,6 +181,7 @@ struct Function {
   Spec *result;
   Type *required_result;
   bool procedure, templ, abstract, priv, override, mutable_self;
+  bool overload, operator_member, right_receiver; /* Explicit member roles. */
 };
 struct Field {
   Loc loc;
@@ -226,7 +231,9 @@ enum {
   T_GROW,
   T_SLICE,
   T_UNION,
-  T_NEVER /* Compiler-only type for an expression with no normal value path. */
+  T_NEVER, /* Compiler-only type for an expression with no normal value path. */
+  T_FUNCTION, /* A callable signature, optionally tied to a static declaration. */
+  T_INTERSECTION /* A canonical set of callable signatures. */
 };
 struct Type {
   char *symbol;
@@ -238,6 +245,10 @@ struct Type {
   bool refs, owned;
   bool structural; /* Anonymous union identity is its canonical alternative set.
                     */
+  List params, arms; /* Callable parameters or intersection members. */
+  Type *result; /* The result of a callable signature. */
+  Function *function; /* A noncapturing declaration known at compile time. */
+  bool procedure; /* The callable may have procedure effects. */
 };
 typedef struct {
   bool library_root; /* Check a standalone module using library rules. */

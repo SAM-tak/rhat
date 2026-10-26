@@ -480,13 +480,24 @@ static void lex(Parser *p) {
     }
     else {
       t->kind = (unsigned char)*s++;
-      if ((strchr("+-*/%", start[0]) && *s == '=') ||
+      if (!strncmp(start, "<=>", 3)) {
+        s = start + 3;
+      }
+      else if ((start[0] == '*' && *s == '*') ||
+               (start[0] == '/' && *s == '/')) {
+        s++;
+      }
+      else if ((strchr("+-*/%", start[0]) && *s == '=') ||
           (start[0] == '=' && *s == '/') || (start[0] == ':' && *s == '=') ||
           (start[0] == '-' && *s == '>') ||
           (strchr("=!<>", start[0]) && *s == '=') ||
           (start[0] == '&' && *s == '&') || (start[0] == '|' && *s == '|') ||
           (start[0] == '.' && *s == '.'))
         s++;
+    }
+    if (s - start == 2 && *s == '=' &&
+        (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "..", 2))) {
+      s++;
     }
     if (!t->text)
       t->text = slice(start, (size_t)(s - start));
@@ -543,6 +554,20 @@ static Spec *spec_part(Parser *p)
     }
     return s;
   }
+  if (take(p, "f^") || take(p, "p^")) {
+    s->kind = SPEC_FUNCTION;
+    s->procedure = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "p^");
+    if (!is(p, "->") && !is(p, ";")) {
+      do {
+        add(&s->params, spec(p));
+      } while (take(p, ","));
+    }
+    if (take(p, "->")) {
+      s->elem = spec(p);
+    }
+    need(p, ";");
+    return s;
+  }
   if (take(p, "(")) {
     s = spec(p);
     need(p, ")");
@@ -575,15 +600,28 @@ static Spec *spec_part(Parser *p)
   }
   return s;
 }
-static Spec *spec(Parser *p)
+static Spec *spec_intersection(Parser *p)
 {
   Spec *s = spec_part(p);
+  while (take(p, "&")) {
+    Spec *both = mem(sizeof(*both));
+    both->kind = SPEC_INTERSECTION;
+    both->loc = s->loc;
+    both->elem = s;
+    both->other = spec_part(p);
+    s = both;
+  }
+  return s;
+}
+static Spec *spec(Parser *p)
+{
+  Spec *s = spec_intersection(p);
   while (take(p, "|")) {
     Spec *sum = mem(sizeof(*sum));
     sum->kind = SPEC_UNION;
     sum->loc = s->loc;
     sum->elem = s;
-    sum->other = spec_part(p);
+    sum->other = spec_intersection(p);
     s = sum;
   }
   return s;
@@ -694,11 +732,18 @@ static Expr *primary(Parser *p) {
   }
   else if (reference_depth(t->text) || !strcmp(t->text, "-") ||
            !strcmp(t->text, "!") || !strcmp(t->text, "*") ||
+           !strcmp(t->text, "**") ||
            !strcmp(t->text, "bitnot^") || !strcmp(t->text, "try^")) {
     e = node(!strcmp(t->text, "try^") ? E_TRY : E_UNARY, t->loc);
     int refs = reference_depth(t->text);
-    e->text = refs ? "ref^" : t->text;
-    e->a = expr(p, 8);
+    e->text = refs ? "ref^" : !strcmp(t->text, "**") ? "*" : t->text;
+    e->a = expr(p, 9);
+    if (!strcmp(t->text, "**")) {
+      Expr *inner = node(E_UNARY, t->loc);
+      inner->text = "*";
+      inner->a = e->a;
+      e->a = inner;
+    }
     while (refs > 1) {
       Expr *outer = node(E_UNARY, t->loc);
       outer->text = "ref^";
@@ -792,7 +837,7 @@ static Expr *primary(Parser *p) {
 }
 static int prec(const char *s) {
   if (!strcmp(s, "??") || !strcmp(s, "catch^")) {
-    return 6;
+    return 8;
   }
   if (!strcmp(s, "or^"))
     return 1;
@@ -803,12 +848,20 @@ static int prec(const char *s) {
       !strcmp(s, ">=") || !strcmp(s, "fits^")) {
     return 3;
   }
-  if (!strcmp(s, "+") || !strcmp(s, "-"))
+  if (!strcmp(s, "<=>"))
     return 4;
+  if (!strcmp(s, ".."))
+    return 5;
+  if (!strcmp(s, "+") || !strcmp(s, "-"))
+    return 6;
+  if (!strcmp(s, "**"))
+    return 10;
   if (!strcmp(s, "*") || !strcmp(s, "/") || !strcmp(s, "%") ||
+      !strcmp(s, "//") ||
+      !strcmp(s, "cross^") || !strcmp(s, "dot^") ||
       !strcmp(s, "bitand^") || !strcmp(s, "bitor^") || !strcmp(s, "bitxor^") ||
       !strcmp(s, "bitshift^"))
-    return 5;
+    return 7;
   return -1;
 }
 static Expr *expr(Parser *p, int min) {
@@ -861,7 +914,7 @@ static Expr *expr(Parser *p, int min) {
                           t->loc);
       binary->text = t->text;
       binary->a = e;
-      binary->b = expr(p, pr + 1);
+      binary->b = expr(p, pr + ((!strcmp(t->text, "..") || !strcmp(t->text, "**")) ? 0 : 1));
       e = binary;
     }
   }
@@ -988,7 +1041,7 @@ static Stmt *if_statement(Parser *p, Expr *condition, Loc loc) {
   return s;
 }
 static const char *assignment_operator(Parser *p) {
-  const char *ops[] = {":=",  "+=",  "-=",  "*=",  "/=",  "%=",
+  const char *ops[] = {":=",  "+=",  "-=",  "*=",  "/=",  "%=", "//=", "**=", "..=",
                        "?:=", "?+=", "?-=", "?*=", "?/=", "?%="};
   for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++)
     if (is(p, ops[j]))
@@ -1623,6 +1676,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
   f->lexical = p->scope_depth + 2;
   f->name = name;
   f->owner = owner;
+  f->operator_member = owner && !strncmp(name, "op^", 3);
   bool templ = take(p, "template^");
   f->templ = templ;
   f->abstract = abstr;
@@ -1640,8 +1694,11 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
                 : take(p, "_^")  ? "_^"
                                  : decl_word(p);
       a->self = !strcmp(a->name, "self^");
-      if (a->self && (!owner || f->params.n))
+      if (a->self && (!owner || (f->params.n && !f->operator_member)))
         fail(a->loc, "self^ must be the first parameter of a method");
+      if (a->self && f->params.n) {
+        f->right_receiver = true;
+      }
       if (take(p, ":"))
         a->spec = spec(p);
       if (!a->self && !a->spec && abstr && !templ) {
@@ -1732,24 +1789,64 @@ static void definition(Parser *p) {
       }
       continue;
     }
-    bool priv = false, abstr = false, over = false;
-    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^")) {
+    bool priv = false, abstr = false, over = false, overload = false;
+    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") ||
+           is(p, "overload^")) {
       if (take(p, "private^"))
         priv = true;
       else if (take(p, "abstract^"))
         abstr = true;
+      else if (take(p, "overload^")) {
+        overload = true;
+      }
       else {
         next(p);
         over = true;
       }
     }
+    if (over && overload) {
+      fail(tok(p)->loc, "override^ and overload^ cannot be combined");
+    }
     Loc declaration = tok(p)->loc;
-    char *name = decl_word(p);
-    need(p, abstr ? ":" : "=");
+    char *name;
+    if (take(p, "op^")) {
+      Token *op = next(p);
+      const char *allowed[] = {"+", "-", "*", "/", "%", "//", "**", "..",
+                               "cross^", "dot^", "<=>", "="};
+      bool valid = false;
+      for (size_t k = 0; k < sizeof(allowed) / sizeof(*allowed); k++) {
+        valid |= !strcmp(op->text, allowed[k]);
+      }
+      if (!valid) {
+        fail(op->loc, "invalid operator definition '%s'", op->text);
+      }
+      name = fmt("op^%s", op->text);
+    }
+    else {
+      name = decl_word(p);
+    }
+    if (abstr) {
+      need(p, ":");
+    }
+    else if (!take(p, ":=")) {
+      need(p, "=");
+    }
     Function *f = function(p, name, d, abstr);
     f->declaration = declaration;
     f->priv = priv;
     f->override = over;
+    f->overload = overload;
+    if (f->operator_member) {
+      int self_count = 0;
+      for (int k = 0; k < f->params.n; k++) {
+        self_count += ((Param *)f->params.v[k])->self;
+      }
+      bool unary = !strcmp(name, "op^-") && f->params.n == 1;
+      if (f->procedure || f->mutable_self || self_count != 1 ||
+          (!unary && f->params.n != 2)) {
+        fail(f->loc, "operator requires a pure f^ with self^ and one operand (or unary '-')");
+      }
+    }
     add(&d->own_methods, f);
   }
 }

@@ -297,6 +297,25 @@ print(read(view))
     completions=request('completion','view))',text=reference)
     assert 'ref^' in {item['label'] for item in completions}, completions
     print('PASS reference keyword hover, signature and completion',flush=True)
+    overloads='''let^ choose=f^ n:i32^ ->i32^ {n+1}
+let^ choose=f^ n:string^ ->i32^ {42}
+let^ dispatch=choose
+print(dispatch(1),choose("s"))
+def^ V {self^{n:i32^=1} op^+ =f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}}
+var^ v=V{}
+print(v+1)
+'''
+    client.change(path,overloads,69)
+    assert client.diagnostics(path,69) == []
+    hover=request('hover','dispatch(1)',text=overloads)['contents']['value']
+    assert ' & ' in hover and 'f^ i32^ -> i32^;' in hover and 'f^ string^ -> i32^;' in hover, hover
+    signatures=request('signatureHelp','dispatch(1)',shift=9,text=overloads)
+    assert len(signatures['signatures']) == 2, signatures
+    definition=request('definition','choose("s")',text=overloads)
+    assert definition['range']['start'] == at(overloads,'choose=f^',occurrence=1), definition
+    definition=request('definition','v+1',shift=1,text=overloads)
+    assert definition['range']['start'] == at(overloads,'op^+'), definition
+    print('PASS callable intersections, overload navigation and operator navigation',flush=True)
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

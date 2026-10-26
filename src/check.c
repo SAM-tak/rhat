@@ -165,16 +165,6 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
     }
   }
 }
-static Function *lookup_function(Program *p, const char *name, int arity)
-{
-  for (int j = 0; j < p->functions.n; j++) {
-    Function *f = p->functions.v[j];
-    if (!strcmp(f->name, name) && f->params.n == arity) {
-      return f;
-    }
-  }
-  return NULL;
-}
 static Type *infer_expr(Infer *c, Expr *e, Type *expected);
 static Type *infer_lookup(Infer *c, const char *name)
 {
@@ -262,7 +252,7 @@ static Type *infer_call(Infer *c, Expr *e)
   }
   Function *f = NULL;
   Def *self = NULL;
-  List actual = {0};
+  List actual = {0}, candidates = {0};
   if (target->kind == E_FUNCTION) {
     f = target->function;
   }
@@ -297,7 +287,10 @@ static Type *infer_call(Infer *c, Expr *e)
       }
     }
     else {
-      f = lookup_function(c->p, target->text, e->args.n);
+      Type *binding = infer_lookup(c, target->text);
+      candidates = binding ? callable_candidates(binding, e->args.n)
+                           : overload_candidates(c->p, NULL, target->text, e->args.n);
+      f = candidates.n ? candidates.v[0] : NULL;
     }
   }
   else if (target->kind == E_MEMBER) {
@@ -354,34 +347,63 @@ static Type *infer_call(Infer *c, Expr *e)
     }
     if (base && base->kind == T_STRUCT) {
       self = base->def;
-      f = method(self, target->text);
+      candidates = overload_candidates(c->p, self, target->text, e->args.n + 1);
+      f = candidates.n ? candidates.v[0] : method(self, target->text);
       if (!f) {
         fail(e->loc, "'%s' has no method '%s'", self->name, target->text);
       }
       add(&actual, type_wrap(c->p, T_REF, base, 0));
     }
   }
+  if (!f && target->kind != E_NAME && target->kind != E_MEMBER) {
+    Type *type = infer_expr(c, target, NULL);
+    candidates = callable_candidates(type, e->args.n);
+    f = candidates.n ? candidates.v[0] : NULL;
+  }
   if (!f) {
     return NULL;
   }
-  inferred_call(c->in->fn, f, e->loc);
   int offset = actual.n;
+  Type *right_self = offset && f->right_receiver ? actual.v[0] : NULL;
+  if (right_self) {
+    actual.n = 0;
+  }
   bool known = true;
   for (int j = 0; j < e->args.n; j++) {
-    Param *param = j + offset < f->params.n ? f->params.v[j + offset] : NULL;
+    int index = right_self ? j : j + offset;
+    Param *param = index < f->params.n ? f->params.v[index] : NULL;
     Type *t =
-        infer_expr(c, e->args.v[j], parameter_hint(c->p, param, e->args.v[j]));
-    Type *want = parameter_type(c->p, param);
+        infer_expr(c, e->args.v[j],
+                   candidates.n > 1
+                       ? overload_hint(c->p, &candidates, j + offset, e->args.v[j])
+                       : parameter_hint(c->p, param, e->args.v[j]));
     if (c->terminated || (t && t->kind == T_NEVER)) {
       return type_builtin(c->p, T_NEVER);
-    }
-    if (param && param->spec && t && want && sum_accepts(want, t)) {
-      t = want;
     }
     if (!t) {
       known = false;
     }
     add(&actual, t);
+  }
+  if (right_self) {
+    add(&actual, right_self);
+  }
+  if (candidates.n > 1) {
+    f = overload_select(c->p, &candidates, &actual, e->loc, false);
+    if (!f) {
+      if (known) {
+        overload_select(c->p, &candidates, &actual, e->loc, true);
+      }
+      return NULL;
+    }
+  }
+  inferred_call(c->in->fn, f, e->loc);
+  for (int j = offset; j < actual.n && j < f->params.n; j++) {
+    Param *param = f->params.v[j];
+    Type *want = parameter_type(c->p, param), *t = actual.v[j];
+    if (param->spec && t && want && sum_accepts(want, t)) {
+      actual.v[j] = want;
+    }
   }
   if (f->procedure || f->mutable_self) {
     infer_mutation(c, e, &actual, offset);
@@ -389,8 +411,10 @@ static Type *infer_call(Infer *c, Expr *e)
   if (!known || actual.n != f->params.n) {
     return f->result ? type_spec(c->p, f->result) : f->required_result;
   }
-  if (!self && f->owner && f->params.n && ((Param *)f->params.v[0])->self) {
-    self = outer_receiver(f, actual.v[0], e->loc);
+  for (int j = 0; !self && f->owner && j < f->params.n; j++) {
+    if (((Param *)f->params.v[j])->self) {
+      self = outer_receiver(f, actual.v[j], e->loc);
+    }
   }
   return instance_for(c->p, f, self, &actual, e->loc)->result;
 }
@@ -705,11 +729,14 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (!strcmp(e->text, "nil^")) {
       return type_builtin(c->p, T_NIL);
     }
-    return infer_lookup(c, e->text);
+    {
+      Type *type = infer_lookup(c, e->text);
+      return type ? type : callable_group(c->p, NULL, e->text);
+    }
   case E_SELF:
     return infer_lookup(c, e->text);
   case E_FUNCTION:
-    fail(e->loc, "function values cannot escape; invoke the literal directly");
+    return callable_declaration(c->p, e->function);
   case E_CALL:
     return infer_call(c, e);
   case E_RECORD: {
@@ -802,6 +829,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
     if (base->kind == T_STRUCT && !f) {
+      Type *type = callable_group(c->p, base->def, e->text);
+      if (type) {
+        return type;
+      }
       fail(e->loc, "'%s' has no field '%s'", base->def->name, e->text);
     }
     if (f && c->raw_place != e) {
@@ -862,6 +893,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     if (!strcmp(e->text, "*")) {
       return a->kind == T_REF ? a->elem : NULL;
+    }
+    if (!strcmp(e->text, "-")) {
+      Function *op = operator_select(c->p, "-", a, NULL, e->loc);
+      if (op) {
+        return operator_result(c->p, op, a, NULL, e->loc);
+      }
     }
     return a;
   }
@@ -932,7 +969,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
                  !strcmp(e->text, "&&") || !strcmp(e->text, "||");
     bool comparison = strchr("=!<>", e->text[0]) != NULL;
-    Type *a = infer_expr(c, e->a, comparison || logic ? NULL : expected);
+    bool literal_left = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+                        (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") &&
+                         e->a->a->kind == E_INT);
+    Type *right_type = !logic && literal_left ? infer_expr(c, e->b, NULL) : NULL;
+    Type *left_hint = operator_hint(c->p, e->text, right_type, true, e->a);
+    Type *a = infer_expr(c, e->a, left_hint ? left_hint : comparison || logic ? NULL : expected);
     if (a && a->kind == T_NEVER) {
       return a;
     }
@@ -947,7 +989,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
       refine_condition(c->p, &c->vars, &c->flow, e->a,
                        !strcmp(e->text, "and^"));
     }
-    Type *b = infer_expr(c, e->b, !strcmp(e->text, "bitshift^") ? NULL : a);
+    Type *hint = operator_hint(c->p, e->text, a, false, e->b);
+    Type *b = right_type ? right_type
+                         : infer_expr(c, e->b, hint ? hint : !strcmp(e->text, "bitshift^") ? NULL : a);
     if (b && b->kind == T_NEVER && !logic) {
       return b;
     }
@@ -958,6 +1002,14 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (comparison && (nil_name(e->a) || nil_name(e->b)) &&
         (!strcmp(e->text, "=") || !strcmp(e->text, "!="))) {
       infer_guard(c, e, nil_name(e->a) ? e->b : e->a, !strcmp(e->text, "!="));
+    }
+    Function *op = a && b ? operator_select(c->p, e->text, a, b, e->loc) : NULL;
+    if (op) {
+      Type *result = operator_result(c->p, op, a, b, e->loc);
+      return comparison && strcmp(e->text, "<=>") ? type_builtin(c->p, T_BOOL) : result;
+    }
+    if (!strcmp(e->text, "<=>")) {
+      return type_builtin(c->p, T_I32);
     }
     if (comparison || logic) {
       return type_builtin(c->p, T_BOOL);
@@ -994,7 +1046,7 @@ static void infer_statements(Infer *c, List *body, bool scoped)
       Var *v = mem(sizeof(*v));
       v->name = s->name;
       v->lexical = c->lexical;
-      v->type = t ? t : actual;
+      v->type = callable_type(actual) ? actual : t ? t : actual;
       v->alias = infer_alias(c, s->a);
       if (s->flow_alias && s->a->kind == E_NAME) {
         v->source = infer_variable(c, s->a);
@@ -1011,7 +1063,7 @@ static void infer_statements(Infer *c, List *body, bool scoped)
         Var *v = mem(sizeof(*v));
         v->name = b->name;
         v->lexical = c->lexical;
-        v->type = t ? t : actual;
+        v->type = callable_type(actual) ? actual : t ? t : actual;
         v->alias = infer_alias(c, b->a);
         add(&pending, v);
       }
@@ -1263,8 +1315,12 @@ void infer_results(Program *p)
       if (!result && !c.value_return) {
         result = type_builtin(p, T_VOID);
       }
-      if (!in->fn->result && !in->fn->required_result && result &&
-          result != in->result) {
+      Type *contract = in->fn->result ? type_spec(p, in->fn->result)
+                                     : in->fn->required_result;
+      if (callable_type(contract) && result && !callable_accepts(contract, result)) {
+        fail(in->fn->loc, "callable result does not satisfy '%s'", type_name(contract));
+      }
+      if ((!contract || callable_type(contract)) && result && result != in->result) {
         if (in->state) {
           fail(in->fn->loc, "return inference changed after code generation");
         }
@@ -1336,7 +1392,7 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
         "%s:%s:%s", f->module && f->module->name ? f->module->name : "<entry>",
         f->name, self ? self->name : "");
     for (int j = 0; j < actual->n; j++) {
-      identity = fmt("%s:%s", identity, type_name(actual->v[j]));
+      identity = fmt("%s:%s", identity, callable_identity(actual->v[j]));
     }
     in->symbol = fmt("rh_fn_%s", link_identity(identity));
   }
@@ -1353,6 +1409,9 @@ Type *parameter_type(Program *p, Param *param)
 }
 bool parameter_accepts(Type *want, Type *actual)
 {
+  if (want == actual || callable_accepts(want, actual)) {
+    return true;
+  }
   if (sum_accepts(want, actual)) {
     return true;
   }
@@ -1523,6 +1582,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         }
       }
     }
+    else if (e->kind == E_NAME && (n->type = callable_group(c->p, NULL, e->text))) {
+      break;
+    }
     else if (e->text && !strcmp(e->text, "nil^")) {
       n->type = type_builtin(c->p, T_NIL);
     }
@@ -1559,6 +1621,11 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         n->type = n->a->type->elem;
       }
     }
+    else if (!strcmp(e->text, "-") && n->a->type &&
+             (n->a->type->kind == T_STRUCT || n->a->type->kind == T_REF)) {
+      Function *op = operator_select(c->p, "-", n->a->type, NULL, e->loc);
+      n->type = op && op->result ? type_spec(c->p, op->result) : NULL;
+    }
     else {
       body_require(c, n->a, NULL, body_numbers(!strcmp(e->text, "bitnot^")));
       n->type = n->a->type;
@@ -1573,6 +1640,24 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     n->a = body_expr(c, e->a, NULL);
     n->b = body_expr(c, e->b, NULL);
     Type *a = n->a->type, *b = n->b->type;
+    Type *receiver = a && a->kind == T_REF ? a->elem : a;
+    Type *right = b && b->kind == T_REF ? b->elem : b;
+    if ((receiver && receiver->kind == T_STRUCT) || (right && right->kind == T_STRUCT)) {
+      Type *left_hint = operator_hint(c->p, e->text, b, true, e->a);
+      if (left_hint && !a) {
+        body_require(c, n->a, left_hint, UINT64_MAX);
+        a = left_hint;
+      }
+      Type *hint = operator_hint(c->p, e->text, a, false, e->b);
+      if (hint) {
+        body_require(c, n->b, hint, UINT64_MAX);
+        b = hint;
+      }
+      Function *op = operator_select(c->p, e->text, a, b, e->loc);
+      n->type = compare ? type_builtin(c->p, T_BOOL)
+                       : op && op->result ? type_spec(c->p, op->result) : NULL;
+      break;
+    }
     if (logical) {
       a = b = type_builtin(c->p, T_BOOL);
     }
@@ -1648,10 +1733,18 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
   }
   case E_CALL: {
     Function *f = NULL;
+    List candidates = {0}, actual = {0}, arguments = {0};
     int offset = 0;
-    Type *cast = NULL;
+    Type *cast = NULL, *callable = NULL;
     if (e->a->kind == E_NAME) {
-      f = lookup_function(c->p, e->a->text, e->args.n);
+      candidates = overload_candidates(c->p, NULL, e->a->text, e->args.n);
+      f = candidates.n ? candidates.v[0] : NULL;
+      Var *binding = selected(&c->scope, e->a);
+      if (binding && callable_type(binding->type)) {
+        callable = binding->type;
+        candidates = callable_candidates(callable, e->args.n);
+        f = candidates.n ? candidates.v[0] : NULL;
+      }
       for (int k = T_BOOL; k <= T_STRING; k++) {
         if (!strcmp(e->a->text, builtin_name(k))) {
           cast = type_builtin(c->p, k);
@@ -1668,8 +1761,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         base = base->elem;
       }
       if (base && base->kind == T_STRUCT) {
-        f = method(base->def, e->a->text);
+        candidates = overload_candidates(c->p, base->def, e->a->text, e->args.n + 1);
+        f = candidates.n ? candidates.v[0] : method(base->def, e->a->text);
         offset = 1;
+        add(&actual, type_wrap(c->p, T_REF, base, 0));
       }
       else if (base && (base->kind == T_GROW || base->kind == T_ARRAY ||
                         base->kind == T_SLICE)) {
@@ -1681,21 +1776,43 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     }
     for (int j = 0; j < e->args.n; j++) {
       Param *p = f && j + offset < f->params.n ? f->params.v[j + offset] : NULL;
-      Type *hint = parameter_type(c->p, p);
+      Type *hint = candidates.n > 1
+                       ? overload_hint(c->p, &candidates, j + offset, e->args.v[j])
+                       : callable ? callable_hint(callable, e->args.n, j)
+                                  : parameter_type(c->p, p);
       if (e->a->kind == E_NAME && !strcmp(e->a->text, "assert")) {
         hint = type_builtin(c->p, T_BOOL);
       }
       BodyNode *arg = body_expr(c, e->args.v[j], hint);
+      add(&actual, arg->type);
+      add(&arguments, arg);
       if (cast) {
         body_require(c, arg, NULL, body_numbers(false));
       }
     }
-    n->type = cast             ? cast
+    if (candidates.n > 1) {
+      f = overload_select(c->p, &candidates, &actual, e->loc, false);
+      for (int j = 0; f && j < arguments.n; j++) {
+        body_require(c, arguments.v[j], parameter_type(c->p, f->params.v[j + offset]),
+                     UINT64_MAX);
+      }
+    }
+    Type *contract = callable_contract(callable, &actual);
+    if (contract) {
+      for (int j = 0; j < arguments.n; j++) {
+        body_require(c, arguments.v[j], contract->params.v[j], UINT64_MAX);
+      }
+    }
+    n->type = contract         ? contract->result
+              : cast             ? cast
               : f && f->result ? type_spec(c->p, f->result)
               : f              ? f->required_result
                                : NULL;
     break;
   }
+  case E_FUNCTION:
+    n->type = callable_declaration(c->p, e->function);
+    break;
   case E_RECORD: {
     Def *d = e->text ? lookup_def(c->p, e->text) : NULL;
     n->type = d ? d->type : want;
@@ -1760,7 +1877,7 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
     if (s->kind == S_BIND) {
       Type *hint = s->spec ? type_spec(c->p, s->spec) : NULL;
       BodyNode *n = body_expr(c, s->a, hint);
-      if (hint) {
+      if (hint && !callable_type(n->type)) {
         n = body_node(hint);
       }
       else if (s->a && (s->a->kind == E_INT || s->a->kind == E_FLOAT)) {

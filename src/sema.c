@@ -170,6 +170,21 @@ Type *type_spec(Program *p, Spec *s) {
   if (s->kind == SPEC_UNION) {
     return type_union(p, type_spec(p, s->elem), type_spec(p, s->other), s->loc);
   }
+  if (s->kind == SPEC_INTERSECTION) {
+    return callable_intersection(p, type_spec(p, s->elem),
+                                  type_spec(p, s->other), s->loc);
+  }
+  if (s->kind == SPEC_FUNCTION) {
+    List params = {0};
+    for (int j = 0; j < s->params.n; j++) {
+      Type *param = type_spec(p, s->params.v[j]);
+      if (param->kind == T_VOID) {
+        fail(s->loc, "callable parameter cannot have void type");
+      }
+      add(&params, param);
+    }
+    return callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
+  }
   if (s->kind != SPEC_NAME)
     return type_wrap(p,
                      s->kind == SPEC_REF     ? T_REF
@@ -189,8 +204,25 @@ Type *type_spec(Program *p, Spec *s) {
   return d->type;
 }
 char *type_name(Type *t) {
+  if (!t) {
+    return "?";
+  }
   if (t->kind == T_NEVER) {
     return "<never>";
+  }
+  if (t->kind == T_INTERSECTION) {
+    char *name = str("");
+    for (int j = 0; j < t->arms.n; j++) {
+      name = fmt("%s%s%s", name, j ? " & " : "", type_name(t->arms.v[j]));
+    }
+    return name;
+  }
+  if (t->kind == T_FUNCTION) {
+    char *name = str(t->procedure ? "p^" : "f^");
+    for (int j = 0; j < t->params.n; j++) {
+      name = fmt("%s%s%s", name, j ? ", " : " ", type_name(t->params.v[j]));
+    }
+    return fmt("%s -> %s;", name, type_name(t->result));
   }
   if (t->kind < T_STRUCT)
     return (char *)builtin_name(t->kind);
@@ -279,7 +311,7 @@ Type *without_nil(Program *p, Type *t, Loc loc)
 }
 static bool fits_type(Type *from, Type *to)
 {
-  if (sum_accepts(to, from)) {
+  if (sum_accepts(to, from) || callable_accepts(to, from)) {
     return true;
   }
   if (from->kind == T_STRUCT && to->kind == T_STRUCT) {
@@ -522,7 +554,15 @@ static void compose(Program *p, Def *d) {
       }
     }
     for (int j = 0; j < b->methods.n; j++) {
-      Function *m = b->methods.v[j], *old = method(d, m->name);
+      Function *m = b->methods.v[j], *old = NULL;
+      for (int k = 0; k < d->methods.n; k++) {
+        Function *candidate = d->methods.v[k];
+        if (!strcmp(candidate->name, m->name) &&
+            overload_overlap(p, candidate, m)) {
+          old = candidate;
+          break;
+        }
+      }
       if (old && old != m) {
         if (old->abstract || m->abstract) {
           compatible(p, old->abstract ? old : m, old->abstract ? m : old);
@@ -535,7 +575,8 @@ static void compose(Program *p, Def *d) {
         bool resolved = false;
         for (int k = 0; k < d->own_methods.n; k++) {
           Function *own = d->own_methods.v[k];
-          if (!strcmp(own->name, m->name)) {
+          if (!strcmp(own->name, m->name) &&
+              overload_overlap(p, old, own) && overload_overlap(p, m, own)) {
             compatible(p, old, own);
             compatible(p, m, own);
             resolved = true;
@@ -577,28 +618,60 @@ static void compose(Program *p, Def *d) {
   }
   for (int i = 0; i < d->own_methods.n; i++) {
     Function *f = d->own_methods.v[i];
-    for (int j = 0; j < i; j++)
-      if (!strcmp(f->name, ((Function *)d->own_methods.v[j])->name))
-        fail(f->loc, "duplicate method '%s'", f->name);
-    if (field(d, f->name))
+    if (field(d, f->name)) {
       fail(f->loc, "field/method name collision '%s'", f->name);
-    if (!f->params.n || !((Param *)f->params.v[0])->self)
+    }
+    if (!f->operator_member &&
+        (!f->params.n || !((Param *)f->params.v[0])->self)) {
       fail(f->loc, "methods must start with self^ in this compiler");
-    if (f->abstract && f->priv)
-      fail(f->loc,
-           "private abstract methods cannot be implemented by another def^");
-    Function *old = method(d, f->name);
-    if (old) {
+    }
+    if (f->abstract && f->priv) {
+      fail(f->loc, "private abstract methods cannot be implemented by another def^");
+    }
+    Function *old = NULL;
+    bool named = false;
+    int matches = 0, position = -1;
+    for (int j = 0; j < d->methods.n; j++) {
+      Function *candidate = d->methods.v[j];
+      if (strcmp(candidate->name, f->name)) {
+        continue;
+      }
+      named = true;
+      if (overload_overlap(p, candidate, f)) {
+        old = candidate;
+        position = j;
+        matches++;
+      }
+    }
+    if (f->overload) {
+      if (!named) {
+        fail(f->loc, "overload^ has no existing method '%s'", f->name);
+      }
+      if (matches) {
+        fail(f->loc, "overlapping overload '%s'", f->name);
+      }
+      add(&d->methods, f);
+    }
+    else if (old) {
+      if (matches != 1) {
+        fail(f->loc, "override^ overlaps multiple arms of '%s'", f->name);
+      }
+      if (old->owner == d) {
+        fail(f->loc, "duplicate method '%s'; use overload^ for disjoint signatures", f->name);
+      }
       compatible(p, old, f);
-      if (!old->abstract && !f->override)
-        fail(f->loc, "replacing concrete method '%s' requires override^",
-             f->name);
-      for (int j = 0; j < d->methods.n; j++)
-        if (d->methods.v[j] == old)
-          d->methods.v[j] = f;
-    } else {
-      if (f->override)
+      if (!old->abstract && !f->override) {
+        fail(f->loc, "replacing concrete method '%s' requires override^", f->name);
+      }
+      d->methods.v[position] = f;
+    }
+    else {
+      if (f->override) {
         fail(f->loc, "override^ has no inherited method '%s'", f->name);
+      }
+      if (named) {
+        fail(f->loc, "adding a signature to '%s' requires overload^", f->name);
+      }
       add(&d->methods, f);
     }
   }
@@ -615,6 +688,19 @@ static void compose(Program *p, Def *d) {
 }
 void layout(Type *t, Loc l)
 {
+  if (callable_type(t)) {
+    if (t->kind == T_FUNCTION && !t->function) {
+      fail(l, "callable storage requires a statically selected implementation");
+    }
+    for (int j = 0; j < t->arms.n; j++) {
+      layout(t->arms.v[j], l);
+    }
+    return;
+  }
+  if ((t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_SLICE) &&
+      callable_type(t->elem)) {
+    fail(l, "callable array storage is not supported; use statically selected let^ bindings");
+  }
   if (t->kind == T_GROW) {
     layout(t->elem, l);
     if (t->elem->owned || !t->elem->size)
@@ -1316,7 +1402,9 @@ static Value fits_value(Context *c, Expr *e)
   if (src.type->kind == T_VOID || target->kind == T_VOID) {
     fail(e->loc, "fits^ requires a value type");
   }
-  layout(target, e->loc);
+  if (!callable_type(target)) {
+    layout(target, e->loc);
+  }
   Type *yes = fits_subset(c->p, src.type, target, true, e->loc);
   Type *no = fits_subset(c->p, src.type, target, false, e->loc);
   remember_test(&c->flow, c, e, e->a, yes, no);
@@ -1822,10 +1910,70 @@ Def *outer_receiver(Function *f, Type *type, Loc loc)
 {
   if (type->kind != T_REF || type->elem->kind != T_STRUCT ||
       !derives(type->elem->def, f->owner)) {
-    fail(loc, "outer method call requires an explicit '&%s' receiver",
+    fail(loc, "outer method call requires an explicit 'ref^ %s' receiver",
          f->owner->name);
   }
   return type->elem->def;
+}
+static void check_callable(Program *p, Type *want, Type *actual, Loc loc)
+{
+  if (!callable_accepts(want, actual)) {
+    fail(loc, "callable '%s' does not satisfy '%s'", type_name(actual), type_name(want));
+  }
+  if (want->kind == T_INTERSECTION) {
+    for (int j = 0; j < want->arms.n; j++) {
+      check_callable(p, want->arms.v[j], actual, loc);
+    }
+    return;
+  }
+  if (want->function) {
+    return;
+  }
+  List candidates = callable_candidates(actual, want->params.n);
+  Function *f = overload_select(p, &candidates, &want->params, loc, true);
+  Type *signature = callable_declaration(p, f);
+  if (f->mutable_self) {
+    fail(loc, "a mutable^ method cannot satisfy a pure callable contract");
+  }
+  bool known = signature->result != NULL;
+  for (int j = 0; j < signature->params.n; j++) {
+    known &= signature->params.v[j] != NULL;
+  }
+  if (known) {
+    return;
+  }
+  Def *self = NULL;
+  for (int j = 0; j < f->params.n; j++) {
+    if (((Param *)f->params.v[j])->self) {
+      self = outer_receiver(f, want->params.v[j], loc);
+    }
+    if (callable_type(want->params.v[j])) {
+      fail(loc, "generic callable contracts require concrete callback arguments");
+    }
+  }
+  Instance *in = instantiate(p, f, self, &want->params, loc);
+  if (want->result && !parameter_accepts(want->result, in->result)) {
+    fail(loc, "callable result '%s' does not satisfy '%s'", type_name(in->result),
+         type_name(want->result));
+  }
+}
+static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiver)
+{
+  if (candidates->n == 1) {
+    return candidates->v[0];
+  }
+  if (!candidates->n) {
+    return NULL;
+  }
+  List actual = {0};
+  if (receiver) {
+    add(&actual, receiver);
+  }
+  for (int j = 0; j < e->args.n; j++) {
+    Type *hint = overload_hint(c->p, candidates, j + (receiver != NULL), e->args.v[j]);
+    add(&actual, expression_type(c, e->args.v[j], hint));
+  }
+  return overload_select(c->p, candidates, &actual, e->loc, true);
 }
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
@@ -2070,7 +2218,11 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     if (base.type->kind != T_STRUCT)
       fail(e->loc, "method call requires a structure");
     self = base.type->def;
-    f = method(self, target->text);
+    List candidates = overload_candidates(p, self, target->text, e->args.n + 1);
+    f = select_call(c, &candidates, e, type_wrap(p, T_REF, base.type, 0));
+    if (!f) {
+      f = method(self, target->text);
+    }
     if (!f)
       fail(e->loc, "'%s' has no method '%s'", self->name, target->text);
     access_check(c, f->priv, f->owner, e->loc, f->name);
@@ -2107,33 +2259,45 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     }
   }
   else if (target->kind == E_NAME) {
-    for (int j = 0; j < p->functions.n; j++) {
-      Function *candidate = p->functions.v[j];
-      if (!strcmp(candidate->name, target->text) &&
-          candidate->params.n == e->args.n) {
-        f = candidate;
-        break;
-      }
-    }
+    Var *binding = selected(c, target);
+    List candidates = binding ? callable_candidates(binding->type, e->args.n)
+                              : overload_candidates(p, NULL, target->text, e->args.n);
+    f = select_call(c, &candidates, e, NULL);
     if (!f)
       fail(e->loc, "unknown function '%s'", target->text);
   }
   else {
-    fail(e->loc, "function values and escaping closures are not supported");
+    Value target_value = expression(c, target, NULL);
+    List candidates = callable_candidates(target_value.type, e->args.n);
+    f = select_call(c, &candidates, e, NULL);
+    if (!f) {
+      fail(e->loc, "callable has no statically selected implementation");
+    }
   }
   if (f->abstract)
     fail(e->loc, "cannot call abstract method '%s'", f->name);
-  tool_record(p, target->name_loc.file ? target->name_loc : target->loc,
-              f->declaration.file ? f->declaration : f->loc, f->name, NULL, f,
-              f->owner, f->owner ? 6 : 12, false);
+  Var *alias = target->kind == E_NAME ? selected(c, target) : NULL;
+  if (alias && callable_type(alias->type)) {
+    tool_record(p, target->loc, alias->declaration, alias->name, alias->type,
+                NULL, NULL, 13, false);
+  }
+  else {
+    tool_record(p, target->name_loc.file ? target->name_loc : target->loc,
+                f->declaration.file ? f->declaration : f->loc, f->name, NULL, f,
+                f->owner, f->owner ? 6 : 12, false);
+  }
   inferred_call(c->in->fn, f, e->loc);
   int offset = values.n;
+  Value *right_self = offset && f->right_receiver ? values.v[0] : NULL;
+  if (right_self) {
+    values.n = actual.n = 0;
+  }
   if (f->params.n != e->args.n + offset)
     fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - offset);
   if (f->procedure && !c->in->fn->procedure)
     fail(e->loc, "f^ cannot call p^ '%s'", f->name);
   for (int j = 0; j < e->args.n; j++) {
-    Param *param = f->params.v[j + offset];
+    Param *param = f->params.v[right_self ? j : j + offset];
     Type *want = parameter_type(p, param);
     Value v = expression(c, e->args.v[j], parameter_hint(p, param, e->args.v[j]));
     if (c->terminated) {
@@ -2142,6 +2306,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     if (v.type->kind == T_VOID)
       fail(e->loc, "void argument");
     if (want) {
+      if (callable_type(want)) {
+        check_callable(p, want, v.type, e->loc);
+      }
       Type *a = v.type, *b = want;
       if (a != b) {
         bool okay = parameter_accepts(b, a);
@@ -2163,6 +2330,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     *saved = v;
     add(&values, saved);
     add(&actual, v.type);
+  }
+  if (right_self) {
+    add(&values, right_self);
+    add(&actual, right_self->type);
   }
   Instance *in = instantiate(p, f, self, &actual, e->loc);
   Type *t = in->result;
@@ -2522,14 +2693,72 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     return out;
   }
+  Expr *old_target = c->operator_target;
+  int old_destination = c->operator_destination;
+  if (t && t->owned && dst >= 0 && (e->kind == E_BIN || e->kind == E_UNARY)) {
+    c->operator_target = e;
+    c->operator_destination = dst;
+  }
   Value v = expression(c, e, t);
+  c->operator_target = old_target;
+  c->operator_destination = old_destination;
   if (dst >= 0) {
+    if (v.id == dst) {
+      return v;
+    }
     Value d = {0};
     d.id = dst;
     d.type = t;
     return copy_to(c, d, v, e->loc, true);
   }
   return v;
+}
+static Value callable_value(Context *c, Type *type, Type *expected, Loc loc)
+{
+  if (expected && (!callable_type(expected) || !callable_accepts(expected, type))) {
+    fail(loc, "callable '%s' does not satisfy '%s'", type_name(type), type_name(expected));
+  }
+  Value out = value(c, type);
+  Instr *i = emit(c, I_CONST, loc);
+  i->dst = out.id;
+  i->type = type;
+  i->text = "0";
+  return out;
+}
+static void operator_contract(Function *f, Type *result, Loc loc)
+{
+  if (!strcmp(f->name, "op^=") && result->kind != T_BOOL) {
+    fail(loc, "op^= must return bool^");
+  }
+  if (!strcmp(f->name, "op^<=>") &&
+      (!kind_integer(result->kind) || kind_unsigned(result->kind))) {
+    fail(loc, "op^<=> must return a signed integer");
+  }
+}
+static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
+{
+  Loc loc = origin->loc;
+  Value receiver = deref(c, f->right_receiver ? b : a, loc);
+  access_check(c, f->priv, f->owner, loc, f->name);
+  Value ref = value(c, type_wrap(c->p, T_REF, receiver.type, 0));
+  Instr *address = emit(c, I_ADDR, loc);
+  address->dst = ref.id;
+  address->a = receiver.id;
+  address->type = ref.type;
+  ref.deps = receiver.storage | receiver.deps;
+  if (!receiver.addressable) {
+    ref.deps |= root(c, c->depth + 1, false, loc);
+  }
+  Expr target = {.kind = E_FUNCTION, .loc = loc, .function = f};
+  Expr invoke = {.kind = E_CALL, .loc = loc, .a = &target};
+  for (int j = 0; j < f->params.n; j++) {
+    Param *param = f->params.v[j];
+    add(&invoke.args, saved_value(param->self ? ref : f->right_receiver ? a : b, loc));
+  }
+  int destination = c->operator_target == origin ? c->operator_destination : -1;
+  Value result = call(c, &invoke, NULL, destination);
+  operator_contract(f, result.type, loc);
+  return result;
 }
 static Value expression(Context *c, Expr *e, Type *expected) {
   if (c->terminated) {
@@ -2581,7 +2810,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
         test = fits_value(c, &pair);
       }
       else {
-        current = snapshot(c, expression(c, operand, previous.type), e->loc);
+        Type *hint = operator_hint(p, e->names.v[j], previous.type, false, operand);
+        current = snapshot(c, expression(c, operand, hint ? hint : previous.type), e->loc);
         if (dead(current)) {
           return current;
         }
@@ -2628,8 +2858,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   if (guarded_chain(e)) {
     return chain_value(c, e);
   }
-  if (e->kind == E_FUNCTION)
-    fail(e->loc, "function values cannot escape; invoke the literal directly");
+  if (e->kind == E_FUNCTION) {
+    return callable_value(c, callable_declaration(p, e->function), expected, e->loc);
+  }
   if (e->kind == E_INT)
     return literal_int(c, e, expected);
   if (e->kind == E_BOOL || e->kind == E_FLOAT || e->kind == E_STRING) {
@@ -2664,6 +2895,19 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (c->in_default)
       fail(e->loc, "default initializer cannot capture caller locals or self^");
     Var *v = selected(c, e);
+    if (!v && e->kind == E_NAME && !e->scope_kind) {
+      Type *type = callable_group(p, NULL, e->text);
+      if (type) {
+        for (int j = 0; j < p->functions.n; j++) {
+          Function *member = p->functions.v[j];
+          if (!strcmp(member->name, e->text)) {
+            tool_record(p, e->loc, member->declaration, e->text, type,
+                        NULL, NULL, 12, false);
+          }
+        }
+        return callable_value(c, type, expected, e->loc);
+      }
+    }
     if (!v)
       fail(e->loc,
            "unknown value '%s' (closures and global values are not supported)",
@@ -2703,6 +2947,18 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (base.type->kind != T_STRUCT)
       fail(e->loc, "field access requires a structure");
     Field *f = field(base.type->def, e->text);
+    if (!f) {
+      Type *type = callable_group(p, base.type->def, e->text);
+      if (type) {
+        for (int j = 0; j < base.type->def->methods.n; j++) {
+          Function *member = base.type->def->methods.v[j];
+          if (!strcmp(member->name, e->text)) {
+            access_check(c, member->priv, member->owner, e->loc, member->name);
+          }
+        }
+        return callable_value(c, type, expected, e->loc);
+      }
+    }
     if (!f)
       fail(e->loc, "'%s' has no field '%s'", base.type->def->name, e->text);
     Value result = field_value(c, base, f, e->loc);
@@ -2785,6 +3041,12 @@ static Value expression(Context *c, Expr *e, Type *expected) {
         fail(e->loc, "'*' requires a reference");
       return deref(c, a, e->loc);
     }
+    if (!strcmp(e->text, "-")) {
+      Function *op = operator_select(p, "-", a.type, NULL, e->loc);
+      if (op) {
+        return invoke_operator(c, op, a, (Value){0}, e);
+      }
+    }
     if ((!strcmp(e->text, "bitnot^") && !kind_integer(a.type->kind)) ||
         (!strcmp(e->text, "!") && a.type->kind != T_BOOL) ||
         (!strcmp(e->text, "-") &&
@@ -2811,10 +3073,17 @@ static Value expression(Context *c, Expr *e, Type *expected) {
                          ? expression_type(c, e->b, NULL)
                          : NULL;
     bool nil_rhs = nil_name(e->b) || (rhs_kind && rhs_kind->kind == T_NIL);
+    bool literal_left = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+                        (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") &&
+                         e->a->a->kind == E_INT);
+    Type *left_hint = !logic && literal_left
+                         ? operator_hint(p, e->text, expression_type(c, e->b, NULL), true, e->a)
+                         : NULL;
     Value a = comparison && nil_rhs && e->a->kind == E_NAME
                   ? place_expression(c, e->a)
                   : expression(c, e->a,
                                logic        ? type_builtin(p, T_BOOL)
+                               : left_hint  ? left_hint
                                : comparison ? NULL
                                             : expected);
     if (dead(a)) {
@@ -2865,11 +3134,31 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       return out;
     }
     a = snapshot(c, a, e->loc);
+    Type *operand_hint = operator_hint(p, e->text, a.type, false, e->b);
     Value b = comparison && nil_name(e->a) && e->b->kind == E_NAME
                   ? place_expression(c, e->b)
-                  : expression(c, e->b, shift || nil_rhs ? NULL : a.type);
+                  : expression(c, e->b, operand_hint ? operand_hint : shift || nil_rhs ? NULL : a.type);
     if (dead(b)) {
       return b;
+    }
+    Function *op = operator_select(p, e->text, a.type, b.type, e->loc);
+    if (op) {
+      Value result = invoke_operator(c, op, a, b, e);
+      if (comparison && strcmp(e->text, "<=>")) {
+        Expr left = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &result};
+        if (!strcmp(op->name, "op^=")) {
+          if (!strcmp(e->text, "!=")) {
+            Expr negate = {.kind = E_UNARY, .loc = e->loc, .text = "!", .a = &left};
+            return expression(c, &negate, NULL);
+          }
+          return result;
+        }
+        Expr zero = {.kind = E_INT, .loc = e->loc, .text = "0"};
+        Expr compare = {.kind = E_BIN, .loc = e->loc, .text = e->text,
+                        .a = &left, .b = &zero};
+        return expression(c, &compare, NULL);
+      }
+      return result;
     }
     if (bitwise && (!kind_integer(a.type->kind) || !kind_integer(b.type->kind)))
       fail(e->loc, "bitwise operands must be integers");
@@ -2902,6 +3191,21 @@ static Value expression(Context *c, Expr *e, Type *expected) {
            type_name(a.type));
     if (kind_float(a.type->kind) && !strcmp(e->text, "%"))
       fail(e->loc, "floating remainder is not supported");
+    if (!strcmp(e->text, "<=>")) {
+      Expr *left = saved_value(a, e->loc), *right = saved_value(b, e->loc);
+      Expr less = {.kind = E_BIN, .loc = e->loc, .text = "<", .a = left, .b = right};
+      Expr greater = {.kind = E_BIN, .loc = e->loc, .text = ">", .a = left, .b = right};
+      Expr minus = {.kind = E_INT, .loc = e->loc, .text = "-1"};
+      Expr plus = {.kind = E_INT, .loc = e->loc, .text = "1"};
+      Expr zero = {.kind = E_INT, .loc = e->loc, .text = "0"};
+      Expr tail = {.kind = E_IF, .loc = e->loc, .a = &greater, .b = &plus, .c = &zero};
+      Expr choice = {.kind = E_IF, .loc = e->loc, .a = &less, .b = &minus, .c = &tail};
+      return expression(c, &choice, type_builtin(p, T_I32));
+    }
+    if (!strcmp(e->text, "//") || !strcmp(e->text, "**") ||
+        !strcmp(e->text, "..") || !strcmp(e->text, "cross^") || !strcmp(e->text, "dot^")) {
+      fail(e->loc, "operator '%s' requires a user-defined operator member", e->text);
+    }
     out = value(c, cmp ? type_builtin(p, T_BOOL) : a.type);
     Instr *i = emit(c, I_BIN, e->loc);
     i->dst = out.id;
@@ -3672,6 +3976,17 @@ static void statements(Context *c, List *body, bool scope) {
       int dest = alias_result ? c->in->result_slot : -1;
       if (!t && alias_result)
         t = c->in->result;
+      if (callable_type(t)) {
+        Type *actual = expression_type(c, s->a, t);
+        if (!actual || !callable_accepts(t, actual)) {
+          fail(s->loc, "callable does not satisfy '%s'", type_name(t));
+        }
+        check_callable(c->p, t, actual, s->loc);
+        if (s->mut) {
+          fail(s->loc, "statically selected callable bindings require let^");
+        }
+        t = actual;
+      }
       if (t && t->kind == T_NEVER) {
         expression(c, s->a, NULL);
         break;
@@ -3824,9 +4139,9 @@ static void statements(Context *c, List *body, bool scope) {
           statements(c, &one, false);
           continue;
         }
-        src[j] = snapshot(c,
-                          expression(c, s->values.n ? s->values.v[j] : s->b,
-                                     s->op ? old[j].type : dest[j].type),
+        Expr *rhs = s->values.n ? s->values.v[j] : s->b;
+        Type *hint = s->op ? operator_hint(c->p, s->op, old[j].type, false, rhs) : NULL;
+        src[j] = snapshot(c, expression(c, rhs, hint ? hint : s->op ? old[j].type : dest[j].type),
                           s->loc);
         if (s->op) {
           Expr left = {.kind = E_SAVED, .loc = s->loc, .saved_slot = old[j].id};
@@ -4065,6 +4380,9 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
          "explicit result type",
          f->name);
   layout(in->result, f->loc);
+  if (f->operator_member) {
+    operator_contract(f, in->result, f->loc);
+  }
   in->state = 1;
   Context c = {0};
   c.p = p;
@@ -4157,13 +4475,12 @@ void analyze(Program *p) {
     Function *f = p->functions.v[j];
     if (lookup_def(p, f->name))
       fail(f->loc, "function conflicts with def^ '%s'", f->name);
-    for (int k = 0; k < j; k++)
-      if (!strcmp(f->name, ((Function *)p->functions.v[k])->name) &&
-          f->params.n == ((Function *)p->functions.v[k])->params.n)
-        fail(f->loc, "duplicate function '%s' with %d arguments", f->name,
-             f->params.n);
   }
   infer_parameters(p);
+  overload_validate(p, &p->functions);
+  for (int j = 0; j < p->defs.n; j++) {
+    overload_validate(p, &((Def *)p->defs.v[j])->methods);
+  }
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];
     if (f->public) {
@@ -4194,7 +4511,7 @@ void analyze(Program *p) {
         Param *a = f->params.v[k];
         Type *t = parameter_type(p, a);
         Type *base = t->kind == T_REF ? t->elem : t;
-        if (base->kind == T_STRUCT && base->def->abstract)
+        if ((base->kind == T_STRUCT && base->def->abstract) || callable_type(base))
           concrete = false;
         add(&types, t);
       }
@@ -4212,12 +4529,16 @@ void analyze(Program *p) {
         continue;
       }
       List types = {0};
+      bool concrete = true;
       for (int n = 0; n < f->params.n; n++) {
         Param *a = f->params.v[n];
-        add(&types,
-            a->self ? type_wrap(p, T_REF, d->type, 0) : parameter_type(p, a));
+        Type *type = a->self ? type_wrap(p, T_REF, d->type, 0) : parameter_type(p, a);
+        concrete &= !callable_type(type);
+        add(&types, type);
       }
-      instantiate(p, f, d, &types, f->loc);
+      if (concrete) {
+        instantiate(p, f, d, &types, f->loc);
+      }
     }
   }
   for (int j = 0; j < p->functions.n; j++) {

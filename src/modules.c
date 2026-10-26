@@ -196,6 +196,9 @@ static void resolve_spec(Module *m, Spec *s) {
   else {
     resolve_spec(m, s->elem);
     resolve_spec(m, s->other);
+    for (int j = 0; j < s->params.n; j++) {
+      resolve_spec(m, s->params.v[j]);
+    }
   }
 }
 static bool local(List *names, const char *name) {

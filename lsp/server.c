@@ -68,17 +68,23 @@ static bool same_id(cJSON *a, cJSON *b)
 }
 static cJSON *symbol_at(cJSON *index, const char *uri, size_t offset)
 {
-  cJSON *s;
+  cJSON *s, *at_end = NULL;
   cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols"))
   {
     cJSON *use = cJSON_GetObjectItem(s, "use");
     size_t start = (size_t)number(use, "offset");
-    if (!strcmp(text(use, "uri"), uri) && start <= offset &&
-        offset <= start + (size_t)number(s, "length")) {
-      return s;
+    if (!strcmp(text(use, "uri"), uri) && start <= offset) {
+      size_t end = start + (size_t)number(s, "length");
+      if (offset < end) {
+        return s;
+      }
+      /* Prefer an adjacent operator over the end of its receiver token. */
+      if (offset == end && !at_end) {
+        at_end = s;
+      }
     }
   }
-  return NULL;
+  return at_end;
 }
 static cJSON *wire_location(cJSON *location)
 {
@@ -452,7 +458,8 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
         "to^",      "until^",    "by^",       "do^",      "fits^",
         "try^",     "catch^",    "import^",   "module^",  "public^",
         "private^", "abstract^", "override^", "mutable^", "true^",
-        "false^",   "nil^",      "ref^",      "print",     "assert"};
+        "false^",   "nil^",      "ref^",      "overload^", "op^",
+        "print",    "assert"};
     for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
       if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {
         completion_item(out, keywords[j], "R^", 14);
@@ -495,7 +502,31 @@ static cJSON *signature_help(cJSON *index, const char *uri, const char *buffer,
     end--;
   }
   cJSON *symbol = symbol_at(index, uri, end ? end - 1 : 0);
-  if (!symbol || !cJSON_IsArray(cJSON_GetObjectItem(symbol, "parameters"))) {
+  if (!symbol) {
+    return NULL;
+  }
+  cJSON *callables = cJSON_GetObjectItem(symbol, "callableSignatures");
+  if (cJSON_IsArray(callables)) {
+    cJSON *out = cJSON_CreateObject(), *all = cJSON_AddArrayToObject(out, "signatures");
+    cJSON *source;
+    cJSON_ArrayForEach(source, callables)
+    {
+      cJSON *sig = cJSON_CreateObject(), *params = cJSON_AddArrayToObject(sig, "parameters");
+      cJSON_AddStringToObject(sig, "label", text(source, "label"));
+      cJSON *name;
+      cJSON_ArrayForEach(name, cJSON_GetObjectItem(source, "parameters"))
+      {
+        cJSON *param = cJSON_CreateObject();
+        cJSON_AddStringToObject(param, "label", name->valuestring);
+        cJSON_AddItemToArray(params, param);
+      }
+      cJSON_AddItemToArray(all, sig);
+    }
+    cJSON_AddNumberToObject(out, "activeSignature", 0);
+    cJSON_AddNumberToObject(out, "activeParameter", argument);
+    return out;
+  }
+  if (!cJSON_IsArray(cJSON_GetObjectItem(symbol, "parameters"))) {
     return NULL;
   }
   cJSON *out = cJSON_CreateObject(),

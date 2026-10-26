@@ -163,8 +163,18 @@ static char *spec_text(Spec *s)
   if (s->kind == SPEC_UNION) {
     return fmt("%s | %s", spec_text(s->elem), spec_text(s->other));
   }
+  if (s->kind == SPEC_INTERSECTION) {
+    return fmt("%s & %s", spec_text(s->elem), spec_text(s->other));
+  }
+  if (s->kind == SPEC_FUNCTION) {
+    char *out = str(s->procedure ? "p^" : "f^");
+    for (int j = 0; j < s->params.n; j++) {
+      out = fmt("%s%s%s", out, j ? ", " : " ", spec_text(s->params.v[j]));
+    }
+    return fmt("%s -> %s;", out, s->elem ? spec_text(s->elem) : "void^");
+  }
   if (s->kind == SPEC_REF) {
-    return fmt(s->elem->kind == SPEC_UNION ? "ref^ (%s)" : "ref^ %s",
+    return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION) ? "ref^ (%s)" : "ref^ %s",
                spec_text(s->elem));
   }
   return fmt("%s[%s]", spec_text(s->elem),
@@ -208,6 +218,24 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
   ToolSource *source = source_for(p, r->use.file);
   if (r->function && source) {
     const char *at = source->text + loc_offset(source->text, r->use);
+    if (r->function->operator_member && strncmp(at, "op^", 3)) {
+      size_t length = 1;
+      if (!strncmp(at, "<=>", 3)) {
+        length = 3;
+      }
+      else if (strchr("=!<>", at[0]) && at[1] == '=') {
+        length = 2;
+      }
+      else {
+        const char *op = r->function->name + 3;
+        if (!strncmp(at, op, strlen(op))) {
+          length = strlen(op);
+        }
+      }
+      char *spelling = mem(length + 1);
+      memcpy(spelling, at, length);
+      use_name = spelling;
+    }
     if (!strncmp(at, "this^", 5)) {
       size_t count = 5;
       while (at[count] == '^') {
@@ -281,6 +309,24 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
                              : fmt("%s: %s", short_name(r->name),
                                    r->type ? type_name(r->type) : "?");
   cJSON_AddStringToObject(out, "detail", detail);
+  if (callable_type(r->type)) {
+    cJSON *signatures = cJSON_AddArrayToObject(out, "callableSignatures");
+    List arms = r->type->arms;
+    if (r->type->kind == T_FUNCTION) {
+      add(&arms, r->type);
+    }
+    for (int j = 0; j < arms.n; j++) {
+      Type *arm = arms.v[j];
+      cJSON *sig = cJSON_CreateObject();
+      cJSON_AddStringToObject(sig, "label", type_name(arm));
+      cJSON *params = cJSON_AddArrayToObject(sig, "parameters");
+      for (int k = 0; k < arm->params.n; k++) {
+        Param *param = arm->function ? arm->function->params.v[k] : NULL;
+        cJSON_AddItemToArray(params, cJSON_CreateString(param ? param->name : fmt("arg%d", k + 1)));
+      }
+      cJSON_AddItemToArray(signatures, sig);
+    }
+  }
   if (r->function) {
     cJSON *params = cJSON_AddArrayToObject(out, "parameters");
     for (int j = 0; j < r->function->params.n; j++) {

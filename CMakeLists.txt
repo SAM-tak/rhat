@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(RHAT_FRONTEND_SOURCES
   src/front.c src/modules.c src/sema.c src/check.c src/digest.c
-  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c)
+  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
   ${RHAT_FRONTEND_SOURCES})
 if(NOT WIN32)
@@ -77,6 +77,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/inference-tests")
   add_test(NAME errors COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/errors.py"
     --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/error-tests")
+  add_test(NAME overloads COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/overloads.py"
+    --compiler $<TARGET_FILE:rhat> --clang "${RH_CLANG}" --work "${CMAKE_CURRENT_BINARY_DIR}/overload-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)
