@@ -105,6 +105,13 @@ static void publish(const char *tmp, const char *path) {
     if (error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION &&
         error != ERROR_LOCK_VIOLATION)
       break;
+    /* A parallel build may have published the same content meanwhile, and a
+     * linker or virus scanner may still hold it open. */
+    char *current = digest_file(path), *mine = digest_file(tmp);
+    if (current && mine && !strcmp(current, mine)) {
+      remove(tmp);
+      return;
+    }
     Sleep(10);
   }
   fail((Loc){path, 1, 1}, "cannot publish cache artifact (%lu)",
@@ -149,7 +156,7 @@ static char *compile(const char *input, const char *identity, const char *name,
   if (!source_hash)
     fail((Loc){input, 1, 1}, "cannot read compilation input");
   char *key =
-      link_identity(fmt("rhat-objects-v1:%s:%s:%s:host-x86-64:c11:compiler-rt",
+      link_identity(fmt("rhat-objects-v2:%s:%s:%s:host-x86-64:c11:compiler-rt",
                         identity, opt, source_hash));
   char *object = fmt("%s/%s.obj", cache, key),
        *stamp = fmt("%s/%s.sha256", cache, key);
@@ -168,8 +175,13 @@ static char *compile(const char *input, const char *identity, const char *name,
   if (verbose)
     fprintf(stderr, "compile: %s\n", name);
   char *temporary = fmt("%s/%s.%d.tmp.obj", cache, key, (int)pid());
+  /* COFF objects embed a timestamp unless told otherwise. Deterministic
+   * objects let parallel builds publish identical cache entries. */
   char *args[] = {
       (char *)clang, "-Wno-override-module", "-std=c11", (char *)opt,
+#if defined(_WIN32)
+      "-mno-incremental-linker-compatible",
+#endif
       "-c",          (char *)input,          "-o",       temporary,
       NULL};
   int status = run_process(args);
