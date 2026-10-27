@@ -256,7 +256,7 @@ void *lhat_hostdata_pointer(LhatValue value, const LhatHostDataTag *tag);
 LhatProgram *mock_program(void);
 void mock_run(int32_t mode);
 void mock_values(int32_t mode);
-void mock_data(LhatValue v);
+void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -382,18 +382,23 @@ void mock_values(int32_t mode)
     const float *f = lhat_hostvalue_data(v, ((MockValue *)v.as.object)->tag);
     printf("%g %g %g %g\\n", f[0], f[1], f[2], call("length", mode ? xyz : &v, 1).as.real);
 }}
-void mock_data(LhatValue v)
+void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *))
 {{
-    LhatValue bump[2] = {{v, lhat_integer(41)}}, both[2] = {{v, v}}, none[2] = {{v, lhat_nil()}};
+    LhatValue bump[2] = {{v, lhat_integer(41)}}, both[2] = {{v, v}}, none[2] = {{v, lhat_nil()}}, again;
     long long bumped = (long long)call("bump", bump, 2).as.integer;
     LhatValue same = call("same", both, 2), missing = call("same", none, 2);
-    printf("%lld %d %d\\n", bumped, same.as.object == v.as.object, missing.tag == LHAT_VALUE_NIL);
+    void *pointer = ((MockData *)v.as.object)->pointer;
+    wrap(NULL, pointer, &again);
+    printf("%lld %d %d %d\\n", bumped, same.as.object == v.as.object, missing.tag == LHAT_VALUE_NIL,
+           again.as.object == v.as.object);
     fflush(stdout);
     for (int j = 0; j < program.n; j++) {{
         if (!strcmp(program.names[j], "dispose")) {{
             program.fns[j](NULL, NULL, &v, 1, NULL, NULL);
         }}
     }}
+    wrap(NULL, pointer, &again);
+    printf("%d\\n", again.as.object != v.as.object);
 }}
 ''', encoding='utf-8')
     lhat = '''includeC^ "lhat.h"
@@ -434,8 +439,9 @@ exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { Vec3{x = a.x + b.x, y = a.y + b.
     negative('ffi_export_lhat_value_mutable', header + 'exportL^ def^ C { self^{ n:i32^ = 0 }\n  bump = f^ mutable^ self^ -> i32^ { self^.n += 1 return^ self^.n } }', "cannot change self^")
     data = lhat.replace('externC^ mock_run:p^ mode:i32^;', '''externC^ def^ LhatMachine;
 externC^ def^ LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
-externC^ mock_data:p^ v:LhatValue;
-externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Counter, out:ref^ LhatValue -> bool^;''') + '''exportL^ ref^ def^ Counter {
+externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Counter, out:ref^ LhatValue -> bool^;
+externC^ mock_data:p^ v:LhatValue,
+  wrap:externC^ p^ ref^ LhatMachine | nil^, ref^ Counter, ref^ LhatValue -> bool^;;''') + '''exportL^ ref^ def^ Counter {
   self^{ n:i64^ = 0 }
   bump = p^ self^, by:i64^ -> i64^ { self^.n += by return^ self^.n }
   dispose = p^ self^ { print^("dispose", self^.n) }
@@ -444,7 +450,7 @@ exportL^ let^ same = f^ a:ref^ Counter, b:ref^ Counter | nil^ -> ref^ Counter | 
 var^ c = Counter{n = 1}
 var^ v = LhatValue{}
 print^(rhat_lhat_wrap_Counter(nil^, ref^ c, ref^ v))
-mock_data(v)
+mock_data(v, rhat_lhat_wrap_Counter)
 print^(c.n)
 '''
     positive('ffi_export_lhat_data', data,
@@ -452,7 +458,7 @@ print^(c.n)
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.same f^rhat.Counter, rhat.Counter|nil^ -> rhat.Counter|nil^;\n'
              'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
-             'true\ntrue\n42 1 1\ndispose 42\n42\n', extra=lhat_extra)
+             'true\ntrue\n42 1 1 1\ndispose 42\n1\n42\n', extra=lhat_extra)
     negative('ffi_export_lhat_data_value', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }\nexportL^ let^ g = f^ w:W -> i32^ { 0 }',
              "exportL^ parameter 'w' needs")
     negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^')

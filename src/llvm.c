@@ -1896,6 +1896,23 @@ static char *l_register(const char *call, const char *signature)
   return fmt("  snprintf(s, sizeof s, \"%s;\"%s);\n  if (!%s) {\n    return false;\n  }\n",
              signature, modules, call);
 }
+/* Whether L^ releases d's host data through a dispose method, so that the
+ * glue keeps one L^ value per pointer while L^ holds it. */
+static bool l_held(Def *d)
+{
+  for (int j = 0; d && j < d->own_methods.n; j++) {
+    Function *f = d->own_methods.v[j];
+    if (!f->priv && !strcmp(c_function_symbol(f), "dispose")) {
+      return true;
+    }
+  }
+  return false;
+}
+/* What makes the L^ value of d's host data. */
+static const char *l_make(Def *d)
+{
+  return l_held(d) ? "rh_lhat_hold" : "lhat_machine_make_hostdata";
+}
 /* LhatHostFn wrappers for exportL^ functions and methods, and the function
  * that registers them, with the exportL^ def^ host value types and their
  * scalar fields and the exportL^ ref^ def^ host data types, under an L^
@@ -1906,7 +1923,7 @@ static char *l_register(const char *call, const char *signature)
  * data type, rhat_lhat_wrap_<Name> makes the L^ value of an R^ reference. */
 static void lhat_glue(Program *p, FILE *f, List *hosts)
 {
-  fputs("#include <stdio.h>\n#include <string.h>\n"
+  fputs("#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
         "void rh_terminate(const char *, int64_t, int32_t, int32_t);\n"
         "static void *rh_lhat_value(LhatValue v, const LhatHostValueTag *tag)\n{\n"
         "  void *bytes = lhat_hostvalue_data(v, tag);\n  if (!bytes) {\n"
@@ -1918,6 +1935,78 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
         "    static const char m[] = \"exportL^ received another host data type\";\n"
         "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return pointer;\n}\n",
         f);
+  bool table = false;
+  for (int j = 0; j < p->defs.n; j++) {
+    table |= ((Def *)p->defs.v[j])->lhat_data && l_held(p->defs.v[j]);
+  }
+  if (table) {
+    fputs("/* The L^ values of host data L^ releases, one per machine, type and pointer\n"
+        " * while L^ holds it, so that a pointer answered again is not given a second\n"
+        " * wrapper and released twice. An open-addressing table the collector does\n"
+        " * not see; release drops the entry. Each thread keeps its own, as a\n"
+        " * machine is made, run and disposed on one thread and shares nothing. */\n"
+        "typedef struct { LhatMachine *machine; const LhatHostDataTag *tag; void *pointer; LhatValue value; } RhLhatHeld;\n"
+        "static _Thread_local RhLhatHeld *rh_lhat_held;\n"
+        "static _Thread_local size_t rh_lhat_held_size, rh_lhat_held_count;\n"
+        "static size_t rh_lhat_slot(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer)\n"
+        "{\n"
+        "  size_t mask = rh_lhat_held_size - 1;\n"
+        "  size_t at = (size_t)(((uintptr_t)pointer >> 4) * UINT64_C(11400714819323198485)) & mask;\n"
+        "  for (RhLhatHeld *e = &rh_lhat_held[at];\n"
+        "       e->pointer && (e->pointer != pointer || e->tag != tag || e->machine != machine);\n"
+        "       e = &rh_lhat_held[at]) {\n"
+        "    at = (at + 1) & mask;\n"
+        "  }\n"
+        "  return at;\n"
+        "}\n"
+        "static bool rh_lhat_hold(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer, LhatValue *out)\n"
+        "{\n"
+        "  RhLhatHeld *e = rh_lhat_held_size ? &rh_lhat_held[rh_lhat_slot(machine, tag, pointer)] : NULL;\n"
+        "  if (e && e->pointer) {\n"
+        "    *out = e->value;\n"
+        "    return true;\n"
+        "  }\n"
+        "  if (!lhat_machine_make_hostdata(machine, tag, pointer, out)) {\n"
+        "    return false;\n"
+        "  }\n"
+        "  if (2 * (rh_lhat_held_count + 1) > rh_lhat_held_size) {\n"
+        "    RhLhatHeld *old = rh_lhat_held;\n"
+        "    size_t size = rh_lhat_held_size;\n"
+        "    rh_lhat_held_size = size ? 2 * size : 64;\n"
+        "    rh_lhat_held = calloc(rh_lhat_held_size, sizeof *rh_lhat_held);\n"
+        "    if (!rh_lhat_held) {\n"
+        "      static const char m[] = \"out of memory for exportL^ host data\";\n"
+        "      rh_terminate(m, sizeof m - 1, 0, 1);\n"
+        "    }\n"
+        "    for (size_t j = 0; j < size; j++) {\n"
+        "      if (old[j].pointer) {\n"
+        "        rh_lhat_held[rh_lhat_slot(old[j].machine, old[j].tag, old[j].pointer)] = old[j];\n"
+        "      }\n"
+        "    }\n"
+        "    free(old);\n"
+        "  }\n"
+        "  rh_lhat_held[rh_lhat_slot(machine, tag, pointer)] = (RhLhatHeld){machine, tag, pointer, *out};\n"
+        "  rh_lhat_held_count++;\n"
+        "  return true;\n"
+        "}\n"
+        "static void rh_lhat_drop(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer)\n"
+        "{\n"
+        "  size_t at = rh_lhat_held_size ? rh_lhat_slot(machine, tag, pointer) : 0;\n"
+        "  if (!rh_lhat_held_size || !rh_lhat_held[at].pointer) {\n"
+        "    return;\n"
+        "  }\n"
+        "  rh_lhat_held[at].pointer = NULL;\n"
+        "  rh_lhat_held_count--;\n"
+        "  /* Reinsert the rest of the run so that no lookup stops at the hole. */\n"
+        "  for (size_t j = (at + 1) & (rh_lhat_held_size - 1); rh_lhat_held[j].pointer;\n"
+        "       j = (j + 1) & (rh_lhat_held_size - 1)) {\n"
+        "    RhLhatHeld e = rh_lhat_held[j];\n"
+        "    rh_lhat_held[j].pointer = NULL;\n"
+        "    rh_lhat_held[rh_lhat_slot(e.machine, e.tag, e.pointer)] = e;\n"
+        "  }\n"
+        "}\n"
+        "", f);
+  }
   char *registrations = "";
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
@@ -1925,8 +2014,8 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
       fprintf(f,
               "static const LhatHostDataTag *rh_lhat_data_%d;\n"
               "bool rhat_lhat_wrap_%s(LhatMachine *machine, void *pointer, LhatValue *out)\n{\n"
-              "  return lhat_machine_make_hostdata(machine, rh_lhat_data_%d, pointer, out);\n}\n",
-              d->type->id, d->name, d->type->id);
+              "  return %s(machine, rh_lhat_data_%d, pointer, out);\n}\n",
+              d->type->id, d->name, l_make(d), d->type->id);
       registrations = fmt("%s  rh_lhat_data_%d = lhat_register_hostdata_type(program, module, \"%s\");\n"
                           "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
                           registrations, d->type->id, d->name, d->type->id);
@@ -2006,6 +2095,9 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
     if (!none) {
       signature = fmt("%s -> %s", signature, l_name(t));
     }
+    if (owner && owner->lhat_data && l_held(owner) && !strcmp(name, "dispose")) {
+      body = fmt("%s  rh_lhat_drop(machine, rh_lhat_data_%d, v0);\n", body, owner->type->id);
+    }
     fprintf(f, "%s rh_entry_%s(%s);\n", none || text || value ? "void" : c_name(t), symbol,
             *entry ? entry : "void");
     fprintf(f,
@@ -2027,20 +2119,11 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                    : fmt("lhat_make_hostvalue(machine, rh_lhat_tag_%d, &r, &answers[0])", t->id));
     }
     else if (data) {
-      /* A reference handed back answers the L^ value it came in as, so that
-       * one pointer has one wrapper and is disposed once. */
-      char *same = "";
-      for (int k = 0; k < in->params.n; k++) {
-        if (lhat_data_def(in->params.v[k]) == data) {
-          same = fmt("%s  if (r && r == v%d) {\n    answers[0] = arguments[%d];\n  }\n  else", same,
-                     k, k);
-        }
-      }
       fprintf(f,
-              "  *answer_count = 1;\n  void *r = rh_entry_%s(%s);\n%s"
-              "  if (!r || !lhat_machine_make_hostdata(machine, rh_lhat_data_%d, r, &answers[0])) {\n"
-              "    answers[0] = lhat_nil();\n  }\n}\n",
-              symbol, call, same, data->type->id);
+              "  void *r = rh_entry_%s(%s);\n"
+              "  if (!r || !%s(machine, rh_lhat_data_%d, r, &answers[0])) {\n"
+              "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
+              symbol, call, l_make(data), data->type->id);
     }
     else {
       fprintf(f, "  answers[0] = %s(rh_entry_%s(%s));\n  *answer_count = 1;\n}\n",
