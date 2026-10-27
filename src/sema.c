@@ -4951,7 +4951,7 @@ void analyze(Program *p) {
     if (!d->opaque) {
       layout(d->type, d->loc);
     }
-    if (d->lhat_value) {
+    if (d->lhat_value || d->lhat_data) {
       lhat_def_validate(p, d);
     }
   }

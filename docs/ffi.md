@@ -181,7 +181,40 @@ exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { ... } # L^ からは rhat.sum(a,
   （L^ から外すには `private^` にします）。
 - 引数の値は L^ のバイト列を複製して受け取り、結果は `lhat_make_hostvalue` で返します。
   別の host value 型が渡されると「exportL^ received another host value type」で終了します。
-- 参照として渡す型（`exportL^ ref^ def^`、L^ の host data）は未対応です。
+- `p^` のメソッドも登録しますが、L^ の値は複製なので、`self^` への変更は L^ 側に残りません。
+
+### 参照として渡す型（exportL^ ref^ def^）
+
+```rhat
+exportL^ ref^ def^ Counter {
+  self^{ n:i64^ = 0 }
+  bump = p^ self^, by:i64^ -> i64^ { self^.n += by return^ self^.n }
+}
+exportL^ ref^ externC^ def^ Box {                    # C の不透明型にメソッドを付けて公開
+  get = f^ self^ -> i64^ { box_get(self^) }
+  dispose = p^ self^ { box_free(self^) }            # L^ の GC が手放すときに呼ぶ
+}
+exportL^ let^ box = p^ n:i64^ -> ref^ Box { return^ box_new(n) }
+externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Counter,
+                                  out:ref^ LhatValue -> bool^;
+```
+
+- `exportL^ ref^ def^` は L^ の host data 型（`lhat_register_hostdata_type`）として登録し、`ref^ T` /
+  `ref^ T | nil^` を L^ の `<module>.T` / `<module>.T|nil^` として受け渡します。値そのものは渡せません。
+  中身はポインタだけで、フィールドは L^ から見えません（メソッドを通します）。
+- `private^` でないメソッドはすべて `lhat_register_member` で登録します。参照なので `self^` への変更は
+  そのまま R^ の値に反映されます。`dispose` という名前のメソッドがあると、L^ はそれを手放しの処理として扱い、
+  GC がラッパーを回収するときに一度だけ呼びます。
+- `externC^ def^ Name { メソッド }` のようにフィールドなしで本体を書いた C 型は不透明のままメソッドを持てます。
+- exportL^ 関数が引数の参照をそのまま返すと、中継コードは新しいラッパーを作らず引数の L^ 値を返します。
+  同じポインタに二つのラッパーができて `dispose` が二度呼ばれるのを避けるためです。
+- R^ が持っている値を L^ に渡す入口として、型ごとに
+  `bool rhat_lhat_wrap_<名前>(LhatMachine *machine, void *pointer, LhatValue *out)` を生成します。
+  R^ からは `externC^` で宣言して呼びます。
+- 寿命: exportL^ 関数が返す参照は R^ の規則で引数から派生したものに限られるため、ここで宙づりは生まれません。
+  危ないのは入口だけです。`rhat_lhat_wrap_<名前>` に渡した R^ の値や `externC^` が返した C のオブジェクトを、
+  元の持ち主より長く L^ が保持すると宙づりになります。`externC^` と同じ信頼境界として扱い、R^ の値は
+  マシンを持つフレームかその外側に置きます。
 
 ## 効果と安全性
 

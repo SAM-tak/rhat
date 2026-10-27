@@ -2015,7 +2015,8 @@ void parse_file(Program *p, const char *path, Module *module) {
       fail(overload_at, "overload^ applies only to a function declaration");
     }
     /* exportC^ and exportL^ mark a function entered from C or from L^;
-     * exportL^ also marks a def^ L^ holds by value. */
+     * exportL^ also marks a def^ L^ holds by value, or with ref^ by
+     * reference. */
     Loc export_at = tok(&q)->loc;
     bool exported = false, lhat_export = false;
     for (;;) {
@@ -2029,13 +2030,11 @@ void parse_file(Program *p, const char *path, Module *module) {
         break;
       }
     }
-    if (lhat_export && is(&q, "ref^")) {
-      fail(export_at, "exportL^ ref^ def^ (L^ host data) is not supported yet");
-    }
+    bool lhat_ref = lhat_export && take(&q, "ref^");
     bool lhat_def = lhat_export && !exported &&
                     (is(&q, "def^") || (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
                                         !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^")));
-    if ((exported || lhat_export) && !lhat_def && !is(&q, "let^")) {
+    if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(&q, "let^"))) {
       fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
                       " (or exportL^ to a def^)");
     }
@@ -2130,10 +2129,13 @@ void parse_file(Program *p, const char *path, Module *module) {
         definition(&q);
         d = p->defs.v[p->defs.n - 1];
       }
+      /* With methods only, it is still opaque. */
+      d->opaque |= !d->own_fields.n;
       d->c_name = name;
       d->module = module;
       d->public = public;
-      d->lhat_value = lhat_def;
+      d->lhat_value = lhat_def && !lhat_ref;
+      d->lhat_data = lhat_ref;
       add(&module->defs, d);
       continue;
     }
@@ -2142,7 +2144,8 @@ void parse_file(Program *p, const char *path, Module *module) {
       Def *d = p->defs.v[p->defs.n - 1];
       d->module = module;
       d->public = public;
-      d->lhat_value = lhat_def;
+      d->lhat_value = lhat_def && !lhat_ref;
+      d->lhat_data = lhat_ref;
       add(&module->defs, d);
       continue;
     }

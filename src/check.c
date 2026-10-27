@@ -128,11 +128,22 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   add(&call->args, pack);
   return call;
 }
+Def *lhat_data_def(Type *t)
+{
+  if (t->kind == T_UNION && t->def->alternatives.n == 2) {
+    Type *a = t->def->alternatives.v[0], *b = t->def->alternatives.v[1];
+    t = a->kind == T_NIL ? b : b->kind == T_NIL ? a : t;
+  }
+  return t->kind == T_REF && t->elem->kind == T_STRUCT && t->elem->def->lhat_data ? t->elem->def
+                                                                                  : NULL;
+}
 /* A value L^ hands a host function: number^ (integers to 64 bits and
- * floats), bool^, string^ or an exportL^ def^ host value. */
+ * floats), bool^, string^, an exportL^ def^ host value or a reference to
+ * an exportL^ ref^ def^ host data. */
 static bool l_value(Type *t)
 {
-  return t->kind == T_STRING || c_scalar(t) || (t->kind == T_STRUCT && t->def->lhat_value);
+  return t->kind == T_STRING || c_scalar(t) || (t->kind == T_STRUCT && t->def->lhat_value) ||
+         lhat_data_def(t);
 }
 /* An ASCII C identifier other than main, which the entry file defines. */
 static bool c_identifier(const char *s)
@@ -151,10 +162,10 @@ void export_validate(Program *p, Function *f)
   if (!f->owner && (!c_identifier(s) || !strncmp(s, "rh_", 3))) {
     fail(f->declaration, "%s name '%s' is not a usable C identifier", kind, s);
   }
-  if (f->templ || f->variadic || (f->owner && !f->owner->lhat_value)) {
+  if (f->templ || f->variadic || (f->owner && !f->owner->lhat_value && !f->owner->lhat_data)) {
     fail(f->loc, "%s function cannot be template^, variadic or a method", kind);
   }
-  if (f->mutable_self) {
+  if (f->mutable_self && f->owner->lhat_value) {
     fail(f->loc, "exportL^ def^ method '%s' cannot change self^; L^ hands host values by copy",
          s);
   }
@@ -195,15 +206,18 @@ void export_validate(Program *p, Function *f)
     fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
   }
   if (result && f->lhat_export && !l_value(result)) {
-    fail(f->result->loc, "exportL^ result must be a number, bool^, string^ or exportL^ def^");
+    fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
+                         "or ref^ to an exportL^ ref^ def^");
   }
 }
 void lhat_def_validate(Program *p, Def *d)
 {
-  if (d->opaque || d->abstract || !c_flat(d->type)) {
-    fail(d->loc, "exportL^ def^ '%s' needs a flat def^ of scalars and flat def^ values", d->name);
+  if (d->lhat_value && (d->opaque || d->abstract || !c_flat(d->type))) {
+    fail(d->loc, "exportL^ def^ '%s' needs a flat def^ of scalars and flat def^ values; "
+                 "exportL^ ref^ def^ hands L^ a reference instead",
+         d->name);
   }
-  if (d->type->size > 248) {
+  if (d->lhat_value && d->type->size > 248) {
     fail(d->loc, "exportL^ def^ '%s' is %zu bytes; an L^ host value holds at most 248", d->name,
          d->type->size);
   }

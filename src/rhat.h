@@ -224,6 +224,7 @@ struct Def {
   char *c_name; /* externC^ def^: the C type of this name it lays out as. */
   bool opaque;  /* externC^ def^ Name; with no body, usable only as ref^. */
   bool lhat_value; /* exportL^ def^: an L^ host value type, its methods members. */
+  bool lhat_data;  /* exportL^ ref^ def^: an L^ host data type over ref^ to it. */
 };
 enum {
   T_VOID,
@@ -438,5 +439,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers);
 /* The C symbol of an externC^ or exportC^ function (the latter's name
  * without its module path). */
 const char *c_function_symbol(Function *f);
+/* The exportL^ ref^ def^ that t, a ref^ (or a ref^ | nil^), refers to. */
+Def *lhat_data_def(Type *t);
 char *llvm_type(Type *t);
 #endif

@@ -1855,10 +1855,12 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
   }
 }
 /* The L^ spelling of a value an exportL^ function takes or answers; a host
- * value type is qualified by the module, which the registration receives. */
+ * type is qualified by the module, which the registration receives. */
 static const char *l_name(Type *t)
 {
-  return t->kind == T_STRUCT   ? fmt("%%s.%s", t->def->name)
+  Def *data = lhat_data_def(t);
+  return data                  ? fmt("%%s.%s%s", data->name, t->kind == T_UNION ? "|nil^" : "")
+         : t->kind == T_STRUCT ? fmt("%%s.%s", t->def->name)
          : t->kind == T_STRING ? "string^"
          : t->kind == T_BOOL   ? "bool^"
                                : "number^";
@@ -1896,10 +1898,12 @@ static char *l_register(const char *call, const char *signature)
 }
 /* LhatHostFn wrappers for exportL^ functions and methods, and the function
  * that registers them, with the exportL^ def^ host value types and their
- * scalar fields, under an L^ module path with signatures R^'s types imply.
- * Each wrapper converts the L^ arguments, calls the R^ entry, and answers
- * its result; a string argument is borrowed for the call, a string result
- * copied, and a host value copied either way. */
+ * scalar fields and the exportL^ ref^ def^ host data types, under an L^
+ * module path with signatures R^'s types imply. Each wrapper converts the
+ * L^ arguments, calls the R^ entry, and answers its result; a string
+ * argument is borrowed for the call, a string result copied, a host value
+ * copied either way, and host data passed as its pointer. For each host
+ * data type, rhat_lhat_wrap_<Name> makes the L^ value of an R^ reference. */
 static void lhat_glue(Program *p, FILE *f, List *hosts)
 {
   fputs("#include <stdio.h>\n#include <string.h>\n"
@@ -1907,11 +1911,26 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
         "static void *rh_lhat_value(LhatValue v, const LhatHostValueTag *tag)\n{\n"
         "  void *bytes = lhat_hostvalue_data(v, tag);\n  if (!bytes) {\n"
         "    static const char m[] = \"exportL^ received another host value type\";\n"
-        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return bytes;\n}\n",
+        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return bytes;\n}\n"
+        "static void *rh_lhat_data(LhatValue v, const LhatHostDataTag *tag, bool nullable)\n{\n"
+        "  void *pointer = nullable && v.tag == LHAT_VALUE_NIL ? NULL : lhat_hostdata_pointer(v, tag);\n"
+        "  if (!pointer && !nullable) {\n"
+        "    static const char m[] = \"exportL^ received another host data type\";\n"
+        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return pointer;\n}\n",
         f);
   char *registrations = "";
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
+    if (d->lhat_data) {
+      fprintf(f,
+              "static const LhatHostDataTag *rh_lhat_data_%d;\n"
+              "bool rhat_lhat_wrap_%s(LhatMachine *machine, void *pointer, LhatValue *out)\n{\n"
+              "  return lhat_machine_make_hostdata(machine, rh_lhat_data_%d, pointer, out);\n}\n",
+              d->type->id, d->name, d->type->id);
+      registrations = fmt("%s  rh_lhat_data_%d = lhat_register_hostdata_type(program, module, \"%s\");\n"
+                          "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
+                          registrations, d->type->id, d->name, d->type->id);
+    }
     if (!d->lhat_value) {
       continue;
     }
@@ -1935,16 +1954,25 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
     const char *name = c_function_symbol(in->fn), *symbol = in->symbol;
     Type *t = in->result;
     bool text = t->kind == T_STRING, none = t->kind == T_VOID, value = t->kind == T_STRUCT;
+    Def *data = lhat_data_def(t), *owner = in->fn->owner;
     char *entry = text ? "const char **, int64_t *" : value ? fmt("%s *", c_name(t)) : "";
     char *call = text ? "&rt, &rl" : value ? "&r" : "";
     char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
     for (int k = 0; k < in->params.n; k++) {
       Type *param = in->params.v[k];
       char *sep = *entry ? ", " : "", *comma = *call ? ", " : "";
-      /* A method's receiver comes as ref^ to the host value. */
-      Type *held = param->kind == T_REF ? param->elem : param;
-      signature = fmt("%s%s%s", signature, k ? ", " : "",
-                      param->kind == T_REF ? "self^" : l_name(param));
+      /* A method's receiver comes as ref^ to the host value or data. */
+      bool self = owner && !k;
+      Def *pointed = lhat_data_def(param);
+      Type *held = self && !pointed ? param->elem : param;
+      signature = fmt("%s%s%s", signature, k ? ", " : "", self ? "self^" : l_name(param));
+      if (pointed) {
+        entry = fmt("%s%svoid *", entry, sep);
+        body = fmt("%s  void *v%d = rh_lhat_data(arguments[%d], rh_lhat_data_%d, %s);\n", body, k, k,
+                   pointed->type->id, param->kind == T_UNION ? "true" : "false");
+        call = fmt("%s%sv%d", call, comma, k);
+        continue;
+      }
       if (held->kind == T_STRUCT) {
         entry = fmt("%s%s%s *", entry, sep, c_name(held));
         body = fmt("%s  %s v%d;\n  memcpy(&v%d, rh_lhat_value(arguments[%d], rh_lhat_tag_%d), "
@@ -1986,7 +2014,9 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             "  (void)machine; (void)context; (void)count;\n%s",
             symbol, body);
     if (none) {
-      fprintf(f, "  rh_entry_%s(%s);\n  *answer_count = 0;\n}\n", symbol, call);
+      /* L^ releases host data through dispose with no room for answers. */
+      fprintf(f, "  rh_entry_%s(%s);\n  if (answer_count) {\n    *answer_count = 0;\n  }\n}\n",
+              symbol, call);
     }
     else if (text || value) {
       fprintf(f,
@@ -1996,16 +2026,32 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
               text ? "lhat_machine_make_string(machine, rt, (size_t)rl, &answers[0])"
                    : fmt("lhat_make_hostvalue(machine, rh_lhat_tag_%d, &r, &answers[0])", t->id));
     }
+    else if (data) {
+      /* A reference handed back answers the L^ value it came in as, so that
+       * one pointer has one wrapper and is disposed once. */
+      char *same = "";
+      for (int k = 0; k < in->params.n; k++) {
+        if (lhat_data_def(in->params.v[k]) == data) {
+          same = fmt("%s  if (r && r == v%d) {\n    answers[0] = arguments[%d];\n  }\n  else", same,
+                     k, k);
+        }
+      }
+      fprintf(f,
+              "  *answer_count = 1;\n  void *r = rh_entry_%s(%s);\n%s"
+              "  if (!r || !lhat_machine_make_hostdata(machine, rh_lhat_data_%d, r, &answers[0])) {\n"
+              "    answers[0] = lhat_nil();\n  }\n}\n",
+              symbol, call, same, data->type->id);
+    }
     else {
       fprintf(f, "  answers[0] = %s(rh_entry_%s(%s));\n  *answer_count = 1;\n}\n",
               t->kind == T_BOOL ? "lhat_bool" : kind_float(t->kind) ? "lhat_real" : "lhat_integer",
               symbol, call);
     }
-    Def *owner = in->fn->owner;
     registrations = fmt("%s%s", registrations,
-                        l_register(owner ? fmt("lhat_register_hostvalue_member(program, module, "
+                        l_register(owner ? fmt("lhat_register_%smember(program, module, "
                                                "\"%s\", \"%s\", s, rh_lhat_%s, NULL)",
-                                               owner->name, name, symbol)
+                                               owner->lhat_data ? "" : "hostvalue_", owner->name,
+                                               name, symbol)
                                          : fmt("lhat_register_func(program, module, \"%s\", s, "
                                                "rh_lhat_%s, NULL)",
                                                name, symbol),
@@ -2047,7 +2093,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
   }
   bool lhat = hosts.n > 0;
   for (int j = 0; headers && j < p->defs.n; j++) {
-    lhat |= ((Def *)p->defs.v[j])->lhat_value;
+    lhat |= ((Def *)p->defs.v[j])->lhat_value || ((Def *)p->defs.v[j])->lhat_data;
   }
   if (!shims.n && !exports.n && !lhat) {
     return false;

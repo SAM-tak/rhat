@@ -248,9 +248,15 @@ bool lhat_register_hostvalue_field(LhatProgram *program, const char *module, con
 bool lhat_register_hostvalue_member(LhatProgram *program, const char *module, const char *type, const char *name, const char *signature, LhatHostFn call, void *context);
 void *lhat_hostvalue_data(LhatValue argument, const LhatHostValueTag *tag);
 bool lhat_make_hostvalue(LhatMachine *machine, const LhatHostValueTag *tag, const void *bytes, LhatValue *out);
+typedef struct LhatHostDataTag { const char *name; } LhatHostDataTag;
+const LhatHostDataTag *lhat_register_hostdata_type(LhatProgram *program, const char *module, const char *name);
+bool lhat_register_member(LhatProgram *program, const char *module, const char *type, const char *name, const char *signature, LhatHostFn call, void *context);
+bool lhat_machine_make_hostdata(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer, LhatValue *out);
+void *lhat_hostdata_pointer(LhatValue value, const LhatHostDataTag *tag);
 LhatProgram *mock_program(void);
 void mock_run(int32_t mode);
 void mock_values(int32_t mode);
+void mock_data(LhatValue v);
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -326,6 +332,33 @@ bool lhat_make_hostvalue(LhatMachine *machine, const LhatHostValueTag *tag, cons
     out->tag = LHAT_VALUE_HOSTVALUE;
     return true;
 }}
+typedef struct {{ const LhatHostDataTag *tag; void *pointer; }} MockData;
+const LhatHostDataTag *lhat_register_hostdata_type(LhatProgram *p, const char *module, const char *name)
+{{
+    (void)p;
+    LhatHostDataTag *t = malloc(sizeof *t);
+    t->name = name;
+    printf("%s.%s data\\n", module, name);
+    return t;
+}}
+bool lhat_register_member(LhatProgram *p, const char *module, const char *type, const char *name, const char *signature, LhatHostFn call, void *context)
+{{
+    return lhat_register_hostvalue_member(p, module, type, name, signature, call, context);
+}}
+bool lhat_machine_make_hostdata(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer, LhatValue *out)
+{{
+    (void)machine;
+    MockData *m = malloc(sizeof *m);
+    m->tag = tag;
+    m->pointer = pointer;
+    out->as.object = (LhatObject *)m;
+    out->tag = LHAT_VALUE_OBJECT;
+    return true;
+}}
+void *lhat_hostdata_pointer(LhatValue v, const LhatHostDataTag *tag)
+{{
+    return v.tag == LHAT_VALUE_OBJECT && ((MockData *)v.as.object)->tag == tag ? ((MockData *)v.as.object)->pointer : NULL;
+}}
 static LhatValue text(const char *t) {{ LhatValue v; lhat_machine_make_string(NULL, t, strlen(t), &v); return v; }}
 void mock_run(int32_t mode)
 {{
@@ -348,6 +381,19 @@ void mock_values(int32_t mode)
     LhatValue v = call("scaled", scale, 2);
     const float *f = lhat_hostvalue_data(v, ((MockValue *)v.as.object)->tag);
     printf("%g %g %g %g\\n", f[0], f[1], f[2], call("length", mode ? xyz : &v, 1).as.real);
+}}
+void mock_data(LhatValue v)
+{{
+    LhatValue bump[2] = {{v, lhat_integer(41)}}, both[2] = {{v, v}}, none[2] = {{v, lhat_nil()}};
+    long long bumped = (long long)call("bump", bump, 2).as.integer;
+    LhatValue same = call("same", both, 2), missing = call("same", none, 2);
+    printf("%lld %d %d\\n", bumped, same.as.object == v.as.object, missing.tag == LHAT_VALUE_NIL);
+    fflush(stdout);
+    for (int j = 0; j < program.n; j++) {{
+        if (!strcmp(program.names[j], "dispose")) {{
+            program.fns[j](NULL, NULL, &v, 1, NULL, NULL);
+        }}
+    }}
 }}
 ''', encoding='utf-8')
     lhat = '''includeC^ "lhat.h"
@@ -386,7 +432,30 @@ exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { Vec3{x = a.x + b.x, y = a.y + b.
     suite.runtime_failure('ffi_export_lhat_value_type', values + 'mock_values(1)\n', 'exportL^ received another host value type', extra=lhat_extra)
     negative('ffi_export_lhat_value_flat', header + 'exportL^ def^ S { self^{ s:string^ = "" } }', "exportL^ def^ 'S' needs a flat def^")
     negative('ffi_export_lhat_value_mutable', header + 'exportL^ def^ C { self^{ n:i32^ = 0 }\n  bump = f^ mutable^ self^ -> i32^ { self^.n += 1 return^ self^.n } }', "cannot change self^")
-    negative('ffi_export_lhat_data', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }', 'not supported yet')
+    data = lhat.replace('externC^ mock_run:p^ mode:i32^;', '''externC^ def^ LhatMachine;
+externC^ def^ LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
+externC^ mock_data:p^ v:LhatValue;
+externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Counter, out:ref^ LhatValue -> bool^;''') + '''exportL^ ref^ def^ Counter {
+  self^{ n:i64^ = 0 }
+  bump = p^ self^, by:i64^ -> i64^ { self^.n += by return^ self^.n }
+  dispose = p^ self^ { print^("dispose", self^.n) }
+}
+exportL^ let^ same = f^ a:ref^ Counter, b:ref^ Counter | nil^ -> ref^ Counter | nil^ { b }
+var^ c = Counter{n = 1}
+var^ v = LhatValue{}
+print^(rhat_lhat_wrap_Counter(nil^, ref^ c, ref^ v))
+mock_data(v)
+print^(c.n)
+'''
+    positive('ffi_export_lhat_data', data,
+             'rhat.Counter data\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.same f^rhat.Counter, rhat.Counter|nil^ -> rhat.Counter|nil^;\n'
+             'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
+             'true\ntrue\n42 1 1\ndispose 42\n42\n', extra=lhat_extra)
+    negative('ffi_export_lhat_data_value', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }\nexportL^ let^ g = f^ w:W -> i32^ { 0 }',
+             "exportL^ parameter 'w' needs")
+    negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^')
     negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
     negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
              "exportL^ parameter 'b' needs a number, bool^, string^ or exportL^ def^ type annotation")
