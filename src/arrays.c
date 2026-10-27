@@ -27,9 +27,17 @@ static void merge(Growth *states, int target, unsigned char *top, int count,
   if (changed)
     add(queue, (void *)(intptr_t)(target + 1));
 }
+static bool dyn_shrinks(Instr *i)
+{
+  bool any = false;
+  for (int j = 0; i->op == I_DYNCALL && j < i->targets.n; j++) {
+    any |= ((Instance *)i->targets.v[j])->may_shrink;
+  }
+  return any;
+}
 static bool shrinks(Instr *i) {
   return i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE ||
-         (i->op == I_CALL && i->callee->may_shrink);
+         (i->op == I_CALL && i->callee->may_shrink) || dyn_shrinks(i);
 }
 void analyze_array_growth(Program *p) {
   bool changed;

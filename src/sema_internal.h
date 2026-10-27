@@ -225,6 +225,10 @@ Type *path_type(Var *v, const char *path);
  * offset counts receivers already bound to leading parameters. */
 Expr *pack_arguments(Function *f, Expr *e, int offset);
 
+/* The narrowed type of fits^ spec s on a ref^ dyn^ value: ref^ dyn^ D for
+ * fits^ dyn^ D, otherwise a reference to exactly the named concrete def. */
+Type *dyn_fits_target(Program *p, Spec *s, Loc loc);
+
 /* Reject an externC^ signature without a plain C shape or a usable symbol. */
 void external_validate(Program *p, Function *f);
 

@@ -423,6 +423,21 @@ static Type *infer_call(Infer *c, Expr *e)
       forget_paths(&c->vars);
       return type_wrap(c->p, T_REF, base->elem, 0);
     }
+    if (base && base->kind == T_DYN) {
+      /* Lowering checks the call; inference needs only the declared result. */
+      Function *m = method(base->elem->def, target->text);
+      for (int j = 0; j < e->args.n; j++) {
+        Param *param = m && j + 1 < m->params.n ? m->params.v[j + 1] : NULL;
+        infer_expr(c, e->args.v[j], param ? parameter_type(c->p, param) : NULL);
+      }
+      if (c->terminated) {
+        return type_builtin(c->p, T_NEVER);
+      }
+      if (m && (m->procedure || m->mutable_self)) {
+        forget_paths(&c->vars);
+      }
+      return !m ? NULL : m->result ? type_spec(c->p, m->result) : type_builtin(c->p, T_VOID);
+    }
     if (base && base->kind == T_STRUCT) {
       self = base->def;
       candidates = overload_candidates(c->p, self, target->text, e->args.n + 1);
@@ -480,7 +495,8 @@ static Type *infer_call(Infer *c, Expr *e)
   for (int j = offset; j < actual.n && j < f->params.n; j++) {
     Param *param = f->params.v[j];
     Type *want = parameter_type(c->p, param), *t = actual.v[j];
-    if (param->spec && t && want && sum_accepts(want, t)) {
+    if (param->spec && t && want &&
+        (sum_accepts(want, t) || (want->kind == T_DYN && parameter_accepts(want, t)))) {
       actual.v[j] = want;
     }
   }
@@ -729,6 +745,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     Type *type = infer_expr(c, e->a, NULL);
     if (c->terminated) {
       return type_builtin(c->p, T_NEVER);
+    }
+    if (type && type->kind == T_DYN) {
+      Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
+      remember_test(&c->flow, &scope, e, e->a,
+                    dyn_fits_target(c->p, e->test_spec, e->loc), type);
+      return type_builtin(c->p, T_BOOL);
     }
     Type *target = type_spec(c->p, e->test_spec);
     if (target->kind == T_VOID || (type && type->kind == T_VOID)) {
@@ -1533,6 +1555,10 @@ bool parameter_accepts(Type *want, Type *actual)
   }
   if (sum_accepts(want, actual)) {
     return true;
+  }
+  if (want->kind == T_DYN) {
+    return actual->kind == T_REF && actual->elem->kind == T_STRUCT &&
+           !actual->elem->def->abstract && derives(actual->elem->def, want->elem->def);
   }
   if (want->kind == T_REF && actual->kind == T_REF) {
     want = want->elem;

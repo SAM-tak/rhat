@@ -458,7 +458,7 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer,
         "try^",     "catch^",    "import^",   "module^",  "public^",
         "private^", "abstract^", "override^", "mutable^", "true^",
         "false^",   "nil^",      "ref^",      "overload^", "op^",
-        "grow^",    "externC^",  "externLLVM^", "panic^",   "print^",    "assert^"};
+        "grow^",    "externC^",  "externLLVM^", "dyn^",     "panic^",   "print^",    "assert^"};
     for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
       if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {
         completion_item(out, keywords[j], "R^", 14);

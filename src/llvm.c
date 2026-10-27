@@ -34,6 +34,8 @@ char *llvm_type(Type *t) {
   case T_STRING:
   case T_SLICE:
     return "{ ptr, i64 }";
+  case T_DYN:
+    return "{ ptr, ptr }";
   case T_REF:
     return "ptr";
   case T_ARRAY:
@@ -48,6 +50,7 @@ typedef struct {
   FILE *f;
   Instance *in;
   int tmp;
+  Program *p;
 } Output;
 static Type *slot_type(Output *o, int n) {
   return ((Slot *)o->in->slots.v[n])->type;
@@ -241,6 +244,51 @@ static void range_guard(Output *o, Instr *i) {
     }
     save(o, slot, slot_type(o, slot), place);
   }
+}
+/* A method table has one address in the whole program so that fits^ can
+ * compare it; every IR module using it emits the same linkonce_odr copy. */
+static char *table_symbol(DynTable *t)
+{
+  return fmt("rh_dyn_%s", link_identity(fmt("%s:%s", t->concrete->name, t->iface->name)));
+}
+/* Whether table t holds a type that the dyn^ test or cast toward type accepts
+ * on a value whose dyn^ def is from. */
+static bool table_matches(DynTable *t, Def *from, Type *type)
+{
+  return t->iface == from && (type->kind == T_DYN ? derives(t->concrete, type->elem->def)
+                                                  : t->concrete == type->elem->def);
+}
+/* Whether instruction i of in names table t. */
+static bool table_used(Program *p, Instance *in, Instr *i, DynTable *t)
+{
+  if (i->op == I_DYN) {
+    return i->label == t->id;
+  }
+  if (i->op != I_DYNIS && i->op != I_DYNCAST) {
+    return false;
+  }
+  Def *from = ((Slot *)in->slots.v[i->a])->type->elem->def;
+  if (table_matches(t, from, i->type)) {
+    return true;
+  }
+  for (int j = 0; i->op == I_DYNCAST && j < p->dyn_tables.n; j++) {
+    DynTable *source = p->dyn_tables.v[j];
+    if (table_matches(source, from, i->type) && source->concrete == t->concrete &&
+        t->iface == i->type->elem->def) {
+      return true;
+    }
+  }
+  return false;
+}
+static DynTable *table_for(Program *p, Def *concrete, Def *iface)
+{
+  for (int j = 0; j < p->dyn_tables.n; j++) {
+    DynTable *t = p->dyn_tables.v[j];
+    if (t->concrete == concrete && t->iface == iface) {
+      return t;
+    }
+  }
+  return NULL;
 }
 /* The C ABI spelling of an externC^ parameter or result type. A slice or
  * string passes its data pointer only; small integers carry their extension. */
@@ -981,6 +1029,98 @@ static void instruction(Output *o, Instr *i) {
       save(o, i->dst, t, fmt("%%t%d", r));
     break;
   }
+  case I_DYN: {
+    a = load(o, i->a);
+    b = ++o->tmp;
+    r = ++o->tmp;
+    fprintf(f,
+            "  %%t%d = insertvalue { ptr, ptr } undef, ptr %%t%d, 0\n"
+            "  %%t%d = insertvalue { ptr, ptr } %%t%d, ptr @%s, 1\n",
+            b, a, r, b, table_symbol(o->p->dyn_tables.v[i->label]));
+    save(o, i->dst, t, fmt("%%t%d", r));
+    break;
+  }
+  case I_DYNIS:
+  case I_DYNCAST: {
+    /* Compare the table against every table of an accepted concrete type. */
+    a = load(o, i->a);
+    int data = ++o->tmp, table = ++o->tmp;
+    fprintf(f, "  %%t%d = extractvalue { ptr, ptr } %%t%d, 0\n  %%t%d = extractvalue { ptr, ptr } %%t%d, 1\n",
+            data, a, table, a);
+    Def *from = slot_type(o, i->a)->elem->def;
+    char *result = i->op == I_DYNIS ? "false" : "null";
+    for (int j = 0; j < o->p->dyn_tables.n; j++) {
+      DynTable *candidate = o->p->dyn_tables.v[j];
+      if (!table_matches(candidate, from, i->type)) {
+        continue;
+      }
+      int hit = ++o->tmp, next = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp eq ptr %%t%d, @%s\n", hit, table, table_symbol(candidate));
+      if (i->op == I_DYNIS) {
+        fprintf(f, "  %%t%d = or i1 %s, %%t%d\n", next, result, hit);
+      }
+      else {
+        DynTable *to = table_for(o->p, candidate->concrete, i->type->elem->def);
+        fprintf(f, "  %%t%d = select i1 %%t%d, ptr @%s, ptr %s\n", next, hit,
+                table_symbol(to), result);
+      }
+      result = fmt("%%t%d", next);
+    }
+    if (i->op == I_DYNCAST) {
+      b = ++o->tmp;
+      r = ++o->tmp;
+      fprintf(f,
+              "  %%t%d = insertvalue { ptr, ptr } undef, ptr %%t%d, 0\n"
+              "  %%t%d = insertvalue { ptr, ptr } %%t%d, ptr %s, 1\n",
+              b, data, r, b, result);
+      result = fmt("%%t%d", r);
+    }
+    save(o, i->dst, slot_type(o, i->dst), result);
+    break;
+  }
+  case I_DYNDATA:
+    a = load(o, i->a);
+    r = ++o->tmp;
+    fprintf(f, "  %%t%d = extractvalue { ptr, ptr } %%t%d, 0\n", r, a);
+    save(o, i->dst, t, fmt("%%t%d", r));
+    break;
+  case I_DYNCALL: {
+    /* Every table entry shares the declared signature; self is the data. */
+    int receiver = load(o, (int)(intptr_t)i->args.v[0] - 1);
+    int data = ++o->tmp, table = ++o->tmp, entry = ++o->tmp, target = ++o->tmp;
+    fprintf(f,
+            "  %%t%d = extractvalue { ptr, ptr } %%t%d, 0\n"
+            "  %%t%d = extractvalue { ptr, ptr } %%t%d, 1\n"
+            "  %%t%d = getelementptr ptr, ptr %%t%d, i64 %d\n"
+            "  %%t%d = load ptr, ptr %%t%d\n",
+            data, receiver, table, receiver, entry, table, i->label, target,
+            entry);
+    a = ++o->tmp;
+    fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
+    int *values = mem((size_t)i->args.n * sizeof(int));
+    for (int j = 1; j < i->args.n; j++)
+      if (direct(slot_type(o, (int)(intptr_t)i->args.v[j] - 1)))
+        values[j] = load(o, (int)(intptr_t)i->args.v[j] - 1);
+    r = ++o->tmp;
+    if (direct(t))
+      fprintf(f, "  %%t%d = call %s %%t%d(i64 %%t%d", r, llvm_type(t), target, a);
+    else
+      fprintf(f, "  call void %%t%d(i64 %%t%d", target, a);
+    if (t->kind != T_VOID && !direct(t))
+      fprintf(f, ", ptr %%p%d", i->dst);
+    fprintf(f, ", ptr %%t%d", data);
+    for (int j = 1; j < i->args.n; j++) {
+      Type *param = slot_type(o, (int)(intptr_t)i->args.v[j] - 1);
+      if (direct(param))
+        fprintf(f, ", %s %%t%d", llvm_type(param), values[j]);
+      else
+        fprintf(f, ", ptr %%p%d", (int)(intptr_t)i->args.v[j] - 1);
+    }
+    fputs(")\n", f);
+    if (direct(t))
+      save(o, i->dst, t, fmt("%%t%d", r));
+    break;
+  }
   case I_PRINT:
     for (int j = 0; j < i->args.n; j++) {
       int id = (int)(intptr_t)i->args.v[j] - 1;
@@ -1087,6 +1227,16 @@ void emit_llvm(Program *p, const char *path) {
           i->callee->emitted = true;
           changed = true;
         }
+        for (int t = 0; t < p->dyn_tables.n; t++) {
+          DynTable *table = p->dyn_tables.v[t];
+          for (int n = 0; table_used(p, in, i, table) && n < table->entries.n; n++) {
+            Instance *entry = table->entries.v[n];
+            if (entry && !entry->emitted) {
+              entry->emitted = true;
+              changed = true;
+            }
+          }
+        }
       }
     }
   } while (changed);
@@ -1139,6 +1289,38 @@ void emit_llvm(Program *p, const char *path) {
           p->stack_count,
           !p->emitting || p->emitting->root ? " zeroinitializer" : "");
   emit_llvm_builtins(f);
+  unsigned char *tables = mem((size_t)p->dyn_tables.n + 1);
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    for (int k = 0; in->emitted && k < in->code.n; k++) {
+      for (int t = 0; t < p->dyn_tables.n; t++) {
+        tables[t] |= table_used(p, in, in->code.v[k], p->dyn_tables.v[t]);
+      }
+    }
+  }
+  for (int j = 0; j < p->dyn_tables.n; j++) {
+    DynTable *table = p->dyn_tables.v[j];
+    if (!tables[j]) {
+      continue;
+    }
+    char *symbol = table_symbol(table);
+#if defined(__APPLE__)
+    fprintf(f, "@%s = linkonce_odr constant [%d x ptr] [", symbol, table->entries.n);
+#else
+    fprintf(f, "$%s = comdat any\n@%s = linkonce_odr constant [%d x ptr] [", symbol, symbol,
+            table->entries.n);
+#endif
+    for (int k = 0; k < table->entries.n; k++) {
+      Instance *entry = table->entries.v[k];
+      fprintf(f, "%sptr %s%s", k ? ", " : "", entry ? "@" : "null",
+              entry ? entry->symbol : "");
+    }
+#if defined(__APPLE__)
+    fputs("]\n", f);
+#else
+    fputs("], comdat\n", f);
+#endif
+  }
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
         "declare void @rh_runtime_args(i32, ptr, ptr)\n"
         "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
@@ -1183,7 +1365,7 @@ void emit_llvm(Program *p, const char *path) {
       fprintf(f, ", %s %%arg%d", direct(param) ? llvm_type(param) : "ptr", k);
     }
     fputs(") {\nentry:\n", f);
-    Output o = {f, in, 0};
+    Output o = {f, in, 0, p};
     for (int k = 0; k < in->slots.n; k++) {
       Slot *s = in->slots.v[k];
       if (!s->alias || (result && direct(in->result) && k == in->result_slot))
@@ -1272,7 +1454,12 @@ void dump_ir(Program *p, const char *path) {
                          "result.checkpoint",
                          "result.rewind",
                          "range.guard",
-                         "terminate"};
+                         "terminate",
+                         "dyn.make",
+                         "dyn.call",
+                         "dyn.is",
+                         "dyn.cast",
+                         "dyn.data"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,

@@ -227,6 +227,21 @@ if^ w fits^ f32^ { print^(w = f32^(0.1)) }
           'true true true true true\n2500\ntrue\n')
     negative('user_llvm_intrinsic', {'main.rh': 'let^ s = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;'}, 'standard library only')
     negative('private_standard_extern',{'main.rh': 'import^ std.random\nprint^(std.random.sqrt(4.0))'}, 'sqrt')
+    positive('module_dyn_tables_and_downcasts', {
+        'lib/kinds.rh': '''module^ lib.kinds
+public^ def^ Base { abstract^ name:f^ self^ -> string^; }
+public^ def^ D1 : Base { self^{ a:i32^ = 7 } name = f^ self^ -> string^ { "d1" } }
+public^ let^ probe = p^ x:ref^ dyn^ Base { if^ x fits^ D1 { print^("lib sees D1", x.a) else^: print^("lib other", x.name()) } }
+''',
+        'main.rh': '''import^ lib.kinds
+def^ Mine : lib.kinds.Base { name = f^ self^ -> string^ { "mine" } }
+var^ a = lib.kinds.D1{}
+var^ m = Mine{}
+lib.kinds.probe(ref^ a)
+lib.kinds.probe(ref^ m)
+let^ x:ref^ dyn^ lib.kinds.Base = ref^ a
+if^ x fits^ lib.kinds.D1 { print^("main sees D1", x.a) }
+'''}, 'lib sees D1 7\nlib other mine\nmain sees D1 7\n')
     positive('module_public_extern', {
         'lib/cmath.rh': 'module^ lib.cmath\npublic^ externC^ hypot:f^ x:f64^, y:f64^ ->f64^;\npublic^ let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;\n',
         'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint^(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5 10 1.5\n')

@@ -55,7 +55,7 @@ Type *type_wrap(Program *p, int k, Type *e, int n) {
   if (k == T_REF) {
     t->size = t->align = 8;
     t->refs = true;
-  } else if (k == T_SLICE) {
+  } else if (k == T_SLICE || k == T_DYN) {
     t->size = 16;
     t->align = 8;
     t->refs = true;
@@ -187,6 +187,16 @@ Type *type_spec(Program *p, Spec *s) {
   }
   if (s->kind == SPEC_ARRAY && !s->count)
     fail(s->loc, "an array type without a length needs grow^, as in grow^ T[]");
+  if (s->kind == SPEC_DYN) {
+    fail(s->loc, "dyn^ is a reference; write ref^ dyn^ T");
+  }
+  if (s->kind == SPEC_REF && s->elem->kind == SPEC_DYN) {
+    Type *t = type_spec(p, s->elem->elem);
+    if (t->kind != T_STRUCT) {
+      fail(s->loc, "dyn^ needs a def^ type, found '%s'", type_name(t));
+    }
+    return type_wrap(p, T_DYN, t, 0);
+  }
   if (s->kind != SPEC_NAME)
     return type_wrap(p,
                      s->kind == SPEC_REF     ? T_REF
@@ -232,6 +242,8 @@ char *type_name(Type *t) {
     return t->def->name;
   if (t->kind == T_REF)
     return fmt(t->elem->kind == T_UNION ? "ref^ (%s)" : "ref^ %s", type_name(t->elem));
+  if (t->kind == T_DYN)
+    return fmt("ref^ dyn^ %s", type_name(t->elem));
   if (t->kind == T_SLICE)
     return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[:]"
                                                                     : "%s[:]",
@@ -1271,6 +1283,14 @@ static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
   if (src.type == to) {
     return copy_to(c, out, src, loc, true);
   }
+  if (src.type->kind == T_DYN) {
+    /* A fits^ test on the dyn^ value proved its concrete type or composer. */
+    Instr *i = emit(c, to->kind == T_DYN ? I_DYNCAST : I_DYNDATA, loc);
+    i->dst = out.id;
+    i->a = src.id;
+    i->type = to;
+    return out;
+  }
   int tag = union_alternative(to, src.type);
   if (tag >= 0) {
     Instr *i = emit(c, I_UNION, loc);
@@ -1395,11 +1415,41 @@ static Value nil_literal(Context *c, Loc loc)
   Expr e = {.kind = E_NAME, .loc = loc, .text = "nil^"};
   return expression(c, &e, NULL);
 }
+Type *dyn_fits_target(Program *p, Spec *s, Loc loc)
+{
+  bool dynamic = s->kind == SPEC_DYN;
+  Type *t = type_spec(p, dynamic ? s->elem : s);
+  if (t->kind == T_REF) {
+    t = t->elem;
+  }
+  if (t->kind != T_STRUCT) {
+    fail(loc, "fits^ on a dyn^ value needs a def^ type, found '%s'", type_name(t));
+  }
+  if (dynamic) {
+    return type_wrap(p, T_DYN, t, 0);
+  }
+  if (t->def->abstract) {
+    fail(loc, "no value has exactly the abstract type '%s'; write fits^ dyn^ %s",
+         t->def->name, t->def->name);
+  }
+  return type_wrap(p, T_REF, t, 0);
+}
 static Value fits_value(Context *c, Expr *e)
 {
   Value src = expression(c, e->a, NULL);
   if (dead(src)) {
     return src;
+  }
+  if (src.type->kind == T_DYN) {
+    /* Only the yes branch narrows; the remaining types are not expressible. */
+    Type *yes = dyn_fits_target(c->p, e->test_spec, e->loc);
+    remember_test(&c->flow, c, e, e->a, yes, src.type);
+    Value out = value(c, type_builtin(c->p, T_BOOL));
+    Instr *i = emit(c, I_DYNIS, e->loc);
+    i->dst = out.id;
+    i->a = src.id;
+    i->type = yes;
+    return out;
   }
   Type *target = type_spec(c->p, e->test_spec);
   if (src.type->kind == T_VOID || target->kind == T_VOID) {
@@ -2002,6 +2052,163 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
   }
   return overload_select(c->p, candidates, &actual, e->loc, true);
 }
+/* Why method f of iface cannot occupy a dyn^ table entry, or NULL. Entries
+ * share one signature across every concrete type. */
+static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
+{
+  if (f->templ || f->operator_member || f->right_receiver || !f->params.n ||
+      !((Param *)f->params.v[0])->self) {
+    return "it is not an ordinary self^ method";
+  }
+  int named = 0;
+  for (int k = 0; k < iface->methods.n; k++) {
+    named += !strcmp(((Function *)iface->methods.v[k])->name, f->name);
+  }
+  if (named > 1) {
+    return "it is overloaded";
+  }
+  for (int j = 1; j < f->params.n; j++) {
+    Type *t = parameter_type(p, f->params.v[j]);
+    Type *base = t && t->kind == T_REF ? t->elem : t;
+    if (!t || callable_type(t) || (base->kind == T_STRUCT && base->def->abstract)) {
+      return "its parameters need concrete type annotations";
+    }
+  }
+  if (f->result && type_spec(p, f->result)->owned) {
+    return "it returns an owned value";
+  }
+  if (!f->result && !f->procedure) {
+    return "its result needs a type annotation";
+  }
+  return NULL;
+}
+/* An omitted result means the method returns nothing through dyn^. */
+static Type *dyn_result(Program *p, Function *f)
+{
+  return f->result ? type_spec(p, f->result) : type_builtin(p, T_VOID);
+}
+/* The table of concrete's implementations of iface's methods. */
+static DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
+{
+  for (int j = 0; j < p->dyn_tables.n; j++) {
+    DynTable *t = p->dyn_tables.v[j];
+    if (t->concrete == concrete && t->iface == iface) {
+      return t;
+    }
+  }
+  DynTable *table = mem(sizeof(*table));
+  *table = (DynTable){.concrete = concrete, .iface = iface, .id = p->dyn_tables.n};
+  add(&p->dyn_tables, table);
+  for (int k = 0; k < iface->methods.n; k++) {
+    Function *f = iface->methods.v[k];
+    Instance *in = NULL;
+    if (!dyn_unsafe(p, iface, f)) {
+      Function *impl = method(concrete, f->name);
+      List actual = {0};
+      add(&actual, type_wrap(p, T_REF, concrete->type, 0));
+      for (int j = 1; j < impl->params.n; j++) {
+        add(&actual, parameter_type(p, impl->params.v[j]));
+      }
+      in = instantiate(p, impl, concrete, &actual, loc);
+      if (in->result != dyn_result(p, f)) {
+        fail(loc, "'%s.%s' returns '%s', but dyn^ %s expects '%s'; annotate its result",
+             concrete->name, f->name, type_name(in->result), iface->name,
+             type_name(dyn_result(p, f)));
+      }
+    }
+    add(&table->entries, in);
+  }
+  return table;
+}
+/* Pair a reference to a concrete composing type with its method table. */
+static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
+{
+  if (dead(v) || v.type == dyn) {
+    return v;
+  }
+  Type *t = v.type->kind == T_REF ? v.type->elem : NULL;
+  if (!t || t->kind != T_STRUCT || t->def->abstract || !derives(t->def, dyn->elem->def)) {
+    fail(loc, "'%s' cannot become '%s'; pass a reference to a concrete type composing '%s'",
+         type_name(v.type), type_name(dyn), dyn->elem->def->name);
+  }
+  DynTable *table = dyn_table(c->p, t->def, dyn->elem->def, loc);
+  Value out = {.id = slot(c, dyn, false), .type = dyn, .deps = v.deps};
+  Instr *i = emit(c, I_DYN, loc);
+  i->dst = out.id;
+  i->a = v.id;
+  i->label = table->id;
+  i->type = dyn;
+  return out;
+}
+/* Call a method through the table carried by a ref^ dyn^ receiver. */
+static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected,
+                      int destination)
+{
+  Program *p = c->p;
+  Def *iface = receiver.type->elem->def;
+  int index = -1;
+  for (int k = 0; k < iface->methods.n && index < 0; k++) {
+    if (!strcmp(((Function *)iface->methods.v[k])->name, e->a->text)) {
+      index = k;
+    }
+  }
+  if (index < 0) {
+    fail(e->loc, "'%s' has no method '%s'", iface->name, e->a->text);
+  }
+  Function *f = iface->methods.v[index];
+  access_check(c, f->priv, f->owner, e->loc, f->name);
+  const char *why = dyn_unsafe(p, iface, f);
+  if (why) {
+    fail(e->loc, "'%s' cannot be called through dyn^: %s", f->name, why);
+  }
+  if (f->procedure && !c->in->fn->procedure) {
+    fail(e->loc, "f^ cannot call p^ '%s'", f->name);
+  }
+  if (f->params.n != e->args.n + 1) {
+    fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - 1);
+  }
+  if (f->procedure || f->mutable_self) {
+    /* The same mutation rules as a static call to a receiver in that storage. */
+    store_check(c, (Value){.storage = receiver.deps}, (Value){0}, e->loc);
+  }
+  Instr *i = mem(sizeof(*i));
+  i->op = I_DYNCALL;
+  i->loc = e->loc;
+  add(&i->args, (void *)(intptr_t)(receiver.id + 1));
+  uint64_t deps = receiver.deps;
+  for (int j = 0; j < e->args.n; j++) {
+    Type *want = parameter_type(p, f->params.v[j + 1]);
+    Value v = expression(c, e->args.v[j], want);
+    if (c->terminated) {
+      return abrupt(c);
+    }
+    /* Every table entry was specialized for exactly the declared types. */
+    if (v.type != want) {
+      fail(e->loc, "argument to '%s' through dyn^ must be '%s', found '%s'",
+           f->name, type_name(want), type_name(v.type));
+    }
+    v = snapshot(c, v, e->loc);
+    deps |= v.deps;
+    add(&i->args, (void *)(intptr_t)(v.id + 1));
+  }
+  Type *t = dyn_result(p, f);
+  if (expected && expected != t) {
+    fail(e->loc, "call returns '%s', expected '%s'", type_name(t), type_name(expected));
+  }
+  Value out = {.type = t,
+               .id = t->kind == T_VOID ? -1
+                     : destination >= 0 ? destination
+                                        : slot(c, t, false),
+               .deps = t->refs ? deps : 0};
+  i->dst = out.id;
+  i->type = t;
+  i->label = index;
+  add(&c->in->code, i);
+  if (f->procedure || f->mutable_self) {
+    forget_roots(&c->vars, deps, false);
+  }
+  return out;
+}
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
@@ -2172,6 +2379,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       i->b = v.id;
       i->type = base.type;
       return out;
+    }
+    if (base.type->kind == T_DYN) {
+      return dyn_call(c, e, snapshot(c, base, e->loc), expected, destination);
     }
     if (base.type->kind != T_STRUCT)
       fail(e->loc, "method call requires a structure");
@@ -2861,6 +3071,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_CATCH) {
     return catch_value(c, e, expected, -1);
+  }
+  if (expected && expected->kind == T_DYN) {
+    return dyn_value(c, expression(c, e, NULL), expected, e->loc);
   }
   if (expected && expected->kind == T_UNION)
     return construct(c, e, expected, -1);
@@ -4661,6 +4874,27 @@ void analyze(Program *p) {
       layout(t, t->def->loc);
     }
   }
+  /* fits^ dyn^ D needs D's table for each concrete type it may find; building
+   * tables lowers methods, which may convert or cast again. */
+  for (int built = -1; built != p->dyn_tables.n;) {
+    built = p->dyn_tables.n;
+    for (int j = 0; j < p->instances.n; j++) {
+      Instance *in = p->instances.v[j];
+      for (int k = 0; k < in->code.n; k++) {
+        Instr *i = in->code.v[k];
+        if (i->op != I_DYNCAST) {
+          continue;
+        }
+        Def *from = ((Slot *)in->slots.v[i->a])->type->elem->def;
+        for (int n = 0; n < built; n++) {
+          DynTable *table = p->dyn_tables.v[n];
+          if (table->iface == from && derives(table->concrete, i->type->elem->def)) {
+            dyn_table(p, table->concrete, i->type->elem->def, i->loc);
+          }
+        }
+      }
+    }
+  }
   /* Inference may inspect a specialization whose arguments never return. */
   List materialized = {0};
   for (int j = 0; j < p->instances.n; j++) {
@@ -4671,4 +4905,21 @@ void analyze(Program *p) {
     }
   }
   p->instances = materialized;
+  /* A dyn^ call may reach the entry of every table built for its def. */
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    for (int k = 0; k < in->code.n; k++) {
+      Instr *i = in->code.v[k];
+      if (i->op != I_DYNCALL) {
+        continue;
+      }
+      Slot *receiver = in->slots.v[(int)(intptr_t)i->args.v[0] - 1];
+      for (int n = 0; n < p->dyn_tables.n; n++) {
+        DynTable *table = p->dyn_tables.v[n];
+        if (table->iface == receiver->type->elem->def && table->entries.v[i->label]) {
+          add(&i->targets, table->entries.v[i->label]);
+        }
+      }
+    }
+  }
 }

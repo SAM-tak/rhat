@@ -56,7 +56,7 @@ static void local_plan(Instance *in) {
       if (!state.n || owners[state.n - 1] != i->a)
         fail(i->loc, "data stack release does not match its owner");
       state.n--;
-    } else if (i->op == I_CALL) {
+    } else if (i->op == I_CALL || i->op == I_DYNCALL) {
       i->stack_index = state.n;
       if (state.n) {
         for (int j = 0; j < n; j++) {
@@ -93,6 +93,18 @@ static void local_plan(Instance *in) {
       join(states, k + 1, &state, &queue, i->loc);
   }
 }
+/* The instances a call may enter: its callee, or every dyn^ table entry. */
+static List callees(Instr *i)
+{
+  List out = {0};
+  if (i->op == I_CALL) {
+    add(&out, i->callee);
+  }
+  else if (i->op == I_DYNCALL) {
+    out = i->targets;
+  }
+  return out;
+}
 void plan_stacks(Program *p) {
   int n = p->instances.n;
   /* Reachability identifies recursive SCC membership. Specializations have
@@ -105,9 +117,10 @@ void plan_stacks(Program *p) {
     }
     in->stack_need = in->stack_own;
     for (int k = 0; k < in->code.n; k++) {
-      Instr *i = in->code.v[k];
-      if (i->op == I_CALL)
-        reach[a * n + i->callee->id] = 1;
+      List targets = callees(in->code.v[k]);
+      for (int t = 0; t < targets.n; t++) {
+        reach[a * n + ((Instance *)targets.v[t])->id] = 1;
+      }
     }
   }
   for (int k = 0; k < n; k++)
@@ -119,13 +132,17 @@ void plan_stacks(Program *p) {
     Instance *in = p->instances.v[a];
     for (int k = 0; k < in->code.n; k++) {
       Instr *i = in->code.v[k];
-      if (i->op == I_CALL && reach[i->callee->id * n + a] && i->stack_index) {
-        const char *name = i->text ? i->text : "local owned value";
-        fail(i->loc,
-             "recursive call to '%s' holds local owned value '%s' on a data "
-             "stack; end its scope first or borrow storage owned outside the "
-             "cycle",
-             i->callee->fn->name, name);
+      List targets = callees(i);
+      for (int t = 0; t < targets.n && i->stack_index; t++) {
+        Instance *callee = targets.v[t];
+        if (reach[callee->id * n + a]) {
+          const char *name = i->text ? i->text : "local owned value";
+          fail(i->loc,
+               "recursive call to '%s' holds local owned value '%s' on a data "
+               "stack; end its scope first or borrow storage owned outside the "
+               "cycle",
+               callee->fn->name, name);
+        }
       }
     }
   }
@@ -136,14 +153,16 @@ void plan_stacks(Program *p) {
       Instance *in = p->instances.v[a];
       for (int k = 0; k < in->code.n; k++) {
         Instr *i = in->code.v[k];
-        if (i->op != I_CALL)
-          continue;
-        if (i->callee->stack_need > INT_MAX - i->stack_index)
-          fail(i->loc, "data stack count overflows");
-        int need = i->stack_index + i->callee->stack_need;
-        if (need > in->stack_need) {
-          in->stack_need = need;
-          changed = true;
+        List targets = callees(i);
+        for (int t = 0; t < targets.n; t++) {
+          Instance *callee = targets.v[t];
+          if (callee->stack_need > INT_MAX - i->stack_index)
+            fail(i->loc, "data stack count overflows");
+          int need = i->stack_index + callee->stack_need;
+          if (need > in->stack_need) {
+            in->stack_need = need;
+            changed = true;
+          }
         }
       }
     }

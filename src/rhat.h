@@ -66,7 +66,8 @@ enum {
   SPEC_SLICE,
   SPEC_UNION, /* An inline set of alternative types. */
   SPEC_FUNCTION, /* A callable signature ending in a semicolon. */
-  SPEC_INTERSECTION /* A value satisfying every callable signature. */
+  SPEC_INTERSECTION, /* A value satisfying every callable signature. */
+  SPEC_DYN /* dyn^ D, valid only as ref^ dyn^ D. */
 };
 enum {
   E_INT,
@@ -244,7 +245,9 @@ enum {
   T_UNION,
   T_NEVER, /* Compiler-only type for an expression with no normal value path. */
   T_FUNCTION, /* A callable signature, optionally tied to a static declaration. */
-  T_INTERSECTION /* A canonical set of callable signatures. */
+  T_INTERSECTION, /* A canonical set of callable signatures. */
+  T_DYN /* ref^ dyn^ D: data reference and method table of a type composing
+           elem's def. */
 };
 struct Type {
   char *symbol;
@@ -269,6 +272,8 @@ typedef struct {
   Module *emitting;
   const char *stdlib_dir;
   List defs, functions, types, instances, strings;
+  List dyn_tables; /* DynTable records, one per converted concrete type and
+                      dyn^ def. */
   Function *entry;
   int stack_count;
   char *source;
@@ -327,7 +332,12 @@ enum {
   I_STACK_SAVE,   /* Save the caller-owned result stack frontier. */
   I_STACK_REWIND, /* Restore a result construction checkpoint after an error. */
   I_RANGE_GUARD,
-  I_TERMINATE /* Exit with the string in slot a; label 1 marks panic^. */
+  I_TERMINATE, /* Exit with the string in slot a; label 1 marks panic^. */
+  I_DYN,       /* Pair reference a with method table label. */
+  I_DYNCALL,   /* Call method table entry label through args[0]. */
+  I_DYNIS,     /* Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers. */
+  I_DYNCAST,   /* Swap dyn^ a's table for the ref^ dyn^ type of the same value. */
+  I_DYNDATA    /* The data reference of dyn^ a, proven to be type. */
 };
 enum {
   RANGE_SLOT,
@@ -365,6 +375,7 @@ typedef struct {
   int index_data;
   RangePlan *range;
   List args;
+  List targets; /* I_DYNCALL: every Instance a table holds at its entry. */
 } Instr;
 typedef struct {
   Type *type;
@@ -382,6 +393,13 @@ struct Instance {
   int stack_own, stack_need;
   bool may_shrink, emitted, cross_module;
 };
+/* The methods of def iface specialized for concrete, by iface method index;
+ * entries are NULL for methods that cannot be called through dyn^. */
+typedef struct {
+  Def *concrete, *iface;
+  List entries;
+  int id;
+} DynTable;
 void plan_stacks(Program *p);
 void analyze_array_growth(Program *p);
 void version_range_loops(Program *p);

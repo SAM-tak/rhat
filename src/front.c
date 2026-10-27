@@ -572,6 +572,11 @@ static Spec *spec_part(Parser *p)
     need(p, ";");
     return s;
   }
+  if (take(p, "dyn^")) {
+    s->kind = SPEC_DYN;
+    s->elem = spec_part(p);
+    return s;
+  }
   if (take(p, "grow^")) {
     s = spec_part(p);
     if (s->kind != SPEC_ARRAY || s->count) {
