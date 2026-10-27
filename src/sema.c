@@ -4951,6 +4951,9 @@ void analyze(Program *p) {
     if (!d->opaque) {
       layout(d->type, d->loc);
     }
+    if (d->lhat_value) {
+      lhat_def_validate(p, d);
+    }
   }
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];

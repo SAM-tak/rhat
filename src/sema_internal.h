@@ -236,6 +236,8 @@ Type *dyn_fits_target(Program *p, Spec *s, Loc loc);
 
 /* Reject an exportC^ function whose signature C cannot call. */
 void export_validate(Program *p, Function *f);
+/* Check an exportL^ def^ as an L^ host value type and mark its methods. */
+void lhat_def_validate(Program *p, Def *d);
 
 /* Reject an externC^ signature without a plain C shape or a usable symbol. */
 void external_validate(Program *p, Function *f);

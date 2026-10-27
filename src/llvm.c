@@ -426,7 +426,7 @@ static void export_entry(Instance *in, FILE *f)
    * through two out pointers. */
   bool out = t->kind == T_STRUCT, text = t->kind == T_STRING;
   fprintf(f, "\ndefine %s @rh_entry_%s(%s",
-          out || text || t->kind == T_VOID ? "void" : c_abi(t, true), c_function_symbol(in->fn),
+          out || text || t->kind == T_VOID ? "void" : c_abi(t, true), in->symbol,
           out ? "ptr %out" : text ? "ptr %text, ptr %length" : "");
   for (int j = 0; j < in->params.n; j++) {
     Type *param = in->params.v[j];
@@ -1825,7 +1825,8 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
     Field *field = t->def->fields.v[j];
     add(&names, t->def->c_name ? field->name : fmt("f%d", j));
   }
-  if (!headers) {
+  /* A header defines only the C-named types. */
+  if (!headers || !t->def->c_name) {
     fputs("typedef struct {", f);
     for (int j = 0; j < t->def->fields.n; j++) {
       Type *base = ((Field *)t->def->fields.v[j])->type;
@@ -1853,86 +1854,165 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
     offset += field->size;
   }
 }
-/* The L^ spelling of a value an exportL^ function takes or answers. */
+/* The L^ spelling of a value an exportL^ function takes or answers; a host
+ * value type is qualified by the module, which the registration receives. */
 static const char *l_name(Type *t)
 {
-  return t->kind == T_STRING ? "string^" : t->kind == T_BOOL ? "bool^" : "number^";
+  return t->kind == T_STRUCT   ? fmt("%%s.%s", t->def->name)
+         : t->kind == T_STRING ? "string^"
+         : t->kind == T_BOOL   ? "bool^"
+                               : "number^";
 }
-/* LhatHostFn wrappers for exportL^ functions, and the function that
- * registers them under an L^ module path with signatures R^'s types imply.
- * Each converts the L^ arguments, calls the R^ entry, and answers its result;
- * a string argument is borrowed for the call, a string result copied. */
-static void lhat_glue(FILE *f, List *hosts)
+/* The LhatHostValueFieldKind L^ reads a scalar field with, or NULL. */
+static const char *l_field(Type *t)
 {
-  if (!hosts->n) {
-    return;
+  switch (t->kind) {
+  case T_F32:
+  case T_F64:
+    return fmt("LHAT_HVFIELD_F%d", numeric_bits(t->kind));
+  case T_I8:
+  case T_I16:
+  case T_I32:
+  case T_I64:
+    return fmt("LHAT_HVFIELD_I%d", numeric_bits(t->kind));
+  case T_U8:
+  case T_U16:
+  case T_U32:
+    return fmt("LHAT_HVFIELD_U%d", numeric_bits(t->kind));
+  default:
+    return NULL;
   }
-  fputs("void rh_terminate(const char *, int64_t, int32_t, int32_t);\n", f);
+}
+/* A registration whose signature names host value types: the module goes
+ * in once for each. */
+static char *l_register(const char *call, const char *signature)
+{
+  char *modules = "";
+  for (const char *s = strstr(signature, "%s"); s; s = strstr(s + 2, "%s")) {
+    modules = fmt("%s, module", modules);
+  }
+  return fmt("  snprintf(s, sizeof s, \"%s;\"%s);\n  if (!%s) {\n    return false;\n  }\n",
+             signature, modules, call);
+}
+/* LhatHostFn wrappers for exportL^ functions and methods, and the function
+ * that registers them, with the exportL^ def^ host value types and their
+ * scalar fields, under an L^ module path with signatures R^'s types imply.
+ * Each wrapper converts the L^ arguments, calls the R^ entry, and answers
+ * its result; a string argument is borrowed for the call, a string result
+ * copied, and a host value copied either way. */
+static void lhat_glue(Program *p, FILE *f, List *hosts)
+{
+  fputs("#include <stdio.h>\n#include <string.h>\n"
+        "void rh_terminate(const char *, int64_t, int32_t, int32_t);\n"
+        "static void *rh_lhat_value(LhatValue v, const LhatHostValueTag *tag)\n{\n"
+        "  void *bytes = lhat_hostvalue_data(v, tag);\n  if (!bytes) {\n"
+        "    static const char m[] = \"exportL^ received another host value type\";\n"
+        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return bytes;\n}\n",
+        f);
   char *registrations = "";
+  for (int j = 0; j < p->defs.n; j++) {
+    Def *d = p->defs.v[j];
+    if (!d->lhat_value) {
+      continue;
+    }
+    char *name = c_name(d->type);
+    fprintf(f, "static const LhatHostValueTag *rh_lhat_tag_%d;\n", d->type->id);
+    registrations = fmt("%s  rh_lhat_tag_%d = lhat_register_hostvalue_type(program, module, \"%s\", "
+                        "sizeof(%s));\n  if (!rh_lhat_tag_%d) {\n    return false;\n  }\n",
+                        registrations, d->type->id, d->name, name, d->type->id);
+    for (int k = 0; k < d->fields.n; k++) {
+      Field *field = d->fields.v[k];
+      if (l_field(field->type) && !field->priv) {
+        registrations = fmt("%s  if (!lhat_register_hostvalue_field(program, module, \"%s\", \"%s\", "
+                            "offsetof(%s, %s), %s)) {\n    return false;\n  }\n",
+                            registrations, d->name, field->name, name,
+                            d->c_name ? field->name : fmt("f%d", k), l_field(field->type));
+      }
+    }
+  }
   for (int j = 0; j < hosts->n; j++) {
     Instance *in = hosts->v[j];
-    const char *name = c_function_symbol(in->fn);
+    const char *name = c_function_symbol(in->fn), *symbol = in->symbol;
     Type *t = in->result;
-    bool text = t->kind == T_STRING, none = t->kind == T_VOID;
-    char *entry = text ? "const char **, int64_t *" : "", *call = text ? "&rt, &rl" : "";
+    bool text = t->kind == T_STRING, none = t->kind == T_VOID, value = t->kind == T_STRUCT;
+    char *entry = text ? "const char **, int64_t *" : value ? fmt("%s *", c_name(t)) : "";
+    char *call = text ? "&rt, &rl" : value ? "&r" : "";
     char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
     for (int k = 0; k < in->params.n; k++) {
       Type *param = in->params.v[k];
-      char *sep = *entry ? ", " : "";
-      signature = fmt("%s%s%s", signature, k ? ", " : "", l_name(param));
+      char *sep = *entry ? ", " : "", *comma = *call ? ", " : "";
+      /* A method's receiver comes as ref^ to the host value. */
+      Type *held = param->kind == T_REF ? param->elem : param;
+      signature = fmt("%s%s%s", signature, k ? ", " : "",
+                      param->kind == T_REF ? "self^" : l_name(param));
+      if (held->kind == T_STRUCT) {
+        entry = fmt("%s%s%s *", entry, sep, c_name(held));
+        body = fmt("%s  %s v%d;\n  memcpy(&v%d, rh_lhat_value(arguments[%d], rh_lhat_tag_%d), "
+                   "sizeof v%d);\n",
+                   body, c_name(held), k, k, k, held->id, k);
+        call = fmt("%s%s&v%d", call, comma, k);
+        continue;
+      }
       if (param->kind == T_STRING) {
         entry = fmt("%s%sconst char *, int64_t", entry, sep);
         body = fmt("%s  const LhatString *s%d = (const LhatString *)lhat_as_object(arguments[%d]);\n",
                    body, k, k);
-        call = fmt("%s%ss%d->text, (int64_t)s%d->length", call, *call ? ", " : "", k, k);
+        call = fmt("%s%ss%d->text, (int64_t)s%d->length", call, comma, k, k);
         continue;
       }
       entry = fmt("%s%s%s", entry, sep, c_name(param));
       if (param->kind == T_BOOL) {
-        call = fmt("%s%sarguments[%d].as.boolean", call, *call ? ", " : "", k);
+        call = fmt("%s%sarguments[%d].as.boolean", call, comma, k);
       }
       else if (kind_float(param->kind)) {
-        call = fmt("%s%s(%s)lhat_number_as_real(arguments[%d])", call, *call ? ", " : "",
-                   c_name(param), k);
+        call = fmt("%s%s(%s)lhat_number_as_real(arguments[%d])", call, comma, c_name(param), k);
       }
       else {
         body = fmt("%s  LhatInteger w%d;\n  if (!lhat_number_as_whole(arguments[%d], &w%d)) {\n"
                    "    static const char m[] = \"exportL^ %s needs a whole number\";\n"
                    "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n",
                    body, k, k, k, name);
-        call = fmt("%s%s(%s)w%d", call, *call ? ", " : "", c_name(param), k);
+        call = fmt("%s%s(%s)w%d", call, comma, c_name(param), k);
       }
     }
     if (!none) {
       signature = fmt("%s -> %s", signature, l_name(t));
     }
-    fprintf(f, "%s rh_entry_%s(%s);\n", none || text ? "void" : c_name(t), name,
+    fprintf(f, "%s rh_entry_%s(%s);\n", none || text || value ? "void" : c_name(t), symbol,
             *entry ? entry : "void");
     fprintf(f,
             "static void rh_lhat_%s(LhatMachine *machine, void *context, const LhatValue "
             "*arguments, size_t count, LhatValue *answers, int *answer_count)\n{\n"
             "  (void)machine; (void)context; (void)count;\n%s",
-            name, body);
+            symbol, body);
     if (none) {
-      fprintf(f, "  rh_entry_%s(%s);\n  *answer_count = 0;\n}\n", name, call);
+      fprintf(f, "  rh_entry_%s(%s);\n  *answer_count = 0;\n}\n", symbol, call);
     }
-    else if (text) {
+    else if (text || value) {
       fprintf(f,
-              "  const char *rt; int64_t rl;\n  rh_entry_%s(%s);\n"
-              "  if (!lhat_machine_make_string(machine, rt, (size_t)rl, &answers[0])) {\n"
+              "  %s;\n  rh_entry_%s(%s);\n  if (!%s) {\n"
               "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
-              name, call);
+              text ? "const char *rt; int64_t rl" : fmt("%s r", c_name(t)), symbol, call,
+              text ? "lhat_machine_make_string(machine, rt, (size_t)rl, &answers[0])"
+                   : fmt("lhat_make_hostvalue(machine, rh_lhat_tag_%d, &r, &answers[0])", t->id));
     }
     else {
       fprintf(f, "  answers[0] = %s(rh_entry_%s(%s));\n  *answer_count = 1;\n}\n",
               t->kind == T_BOOL ? "lhat_bool" : kind_float(t->kind) ? "lhat_real" : "lhat_integer",
-              name, call);
+              symbol, call);
     }
-    registrations = fmt("%s &&\n         lhat_register_func(program, module, \"%s\", \"%s;\", rh_lhat_%s, NULL)",
-                        registrations, name, signature, name);
+    Def *owner = in->fn->owner;
+    registrations = fmt("%s%s", registrations,
+                        l_register(owner ? fmt("lhat_register_hostvalue_member(program, module, "
+                                               "\"%s\", \"%s\", s, rh_lhat_%s, NULL)",
+                                               owner->name, name, symbol)
+                                         : fmt("lhat_register_func(program, module, \"%s\", s, "
+                                               "rh_lhat_%s, NULL)",
+                                               name, symbol),
+                                   signature));
   }
   fprintf(f, "bool rhat_lhat_register(LhatProgram *program, const char *module)\n{\n"
-             "  return true%s;\n}\n",
+             "  char s[1024];\n  (void)s;\n%s  return true;\n}\n",
           registrations);
 }
 bool emit_c_shims(Program *p, const char *path, bool headers)
@@ -1965,7 +2045,11 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       add(&hosts, in);
     }
   }
-  if (!shims.n && !exports.n && !hosts.n) {
+  bool lhat = hosts.n > 0;
+  for (int j = 0; headers && j < p->defs.n; j++) {
+    lhat |= ((Def *)p->defs.v[j])->lhat_value;
+  }
+  if (!shims.n && !exports.n && !lhat) {
     return false;
   }
   FILE *f = fopen(path, "wb");
@@ -2015,17 +2099,25 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       call = fmt("%s%s%sa%d", call, *call ? ", " : "", value ? "&" : "", k);
     }
     char *result = none || out ? "void" : c_name(in->result);
-    fprintf(f, "%s rh_entry_%s(%s);\n", result, name, *entry ? entry : "void");
+    fprintf(f, "%s rh_entry_%s(%s);\n", result, in->symbol, *entry ? entry : "void");
     fprintf(f, "%s %s(%s) { ", none ? "void" : c_name(in->result), name,
             *wrapper ? wrapper : "void");
     if (out) {
-      fprintf(f, "%s r; rh_entry_%s(%s); return r; }\n", c_name(in->result), name, call);
+      fprintf(f, "%s r; rh_entry_%s(%s); return r; }\n", c_name(in->result), in->symbol, call);
     }
     else {
-      fprintf(f, "%srh_entry_%s(%s); }\n", none ? "" : "return ", name, call);
+      fprintf(f, "%srh_entry_%s(%s); }\n", none ? "" : "return ", in->symbol, call);
     }
   }
-  lhat_glue(f, &hosts);
+  if (lhat) {
+    for (int j = 0; j < p->defs.n; j++) {
+      Def *d = p->defs.v[j];
+      if (d->lhat_value) {
+        c_struct(f, d->type, &done, headers);
+      }
+    }
+    lhat_glue(p, f, &hosts);
+  }
   for (int j = 0; j < shims.n; j++) {
     Instance *in = shims.v[j];
     bool out = in->result->kind == T_STRUCT, none = in->result->kind == T_VOID;

@@ -223,6 +223,7 @@ struct Def {
   Type *type;
   char *c_name; /* externC^ def^: the C type of this name it lays out as. */
   bool opaque;  /* externC^ def^ Name; with no body, usable only as ref^. */
+  bool lhat_value; /* exportL^ def^: an L^ host value type, its methods members. */
 };
 enum {
   T_VOID,

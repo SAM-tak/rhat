@@ -2014,7 +2014,8 @@ void parse_file(Program *p, const char *path, Module *module) {
     if (overload && !is(&q, "let^") && !is(&q, "externC^")) {
       fail(overload_at, "overload^ applies only to a function declaration");
     }
-    /* exportC^ and exportL^ mark a function entered from C or from L^. */
+    /* exportC^ and exportL^ mark a function entered from C or from L^;
+     * exportL^ also marks a def^ L^ holds by value. */
     Loc export_at = tok(&q)->loc;
     bool exported = false, lhat_export = false;
     for (;;) {
@@ -2028,8 +2029,15 @@ void parse_file(Program *p, const char *path, Module *module) {
         break;
       }
     }
-    if ((exported || lhat_export) && !is(&q, "let^")) {
-      fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
+    if (lhat_export && is(&q, "ref^")) {
+      fail(export_at, "exportL^ ref^ def^ (L^ host data) is not supported yet");
+    }
+    bool lhat_def = lhat_export && !exported &&
+                    (is(&q, "def^") || (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
+                                        !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^")));
+    if ((exported || lhat_export) && !lhat_def && !is(&q, "let^")) {
+      fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
+                      " (or exportL^ to a def^)");
     }
     if (take(&q, "import^") ||
         (is(&q, "let^") && q.at + 3 < q.tokens.n &&
@@ -2125,6 +2133,7 @@ void parse_file(Program *p, const char *path, Module *module) {
       d->c_name = name;
       d->module = module;
       d->public = public;
+      d->lhat_value = lhat_def;
       add(&module->defs, d);
       continue;
     }
@@ -2133,6 +2142,7 @@ void parse_file(Program *p, const char *path, Module *module) {
       Def *d = p->defs.v[p->defs.n - 1];
       d->module = module;
       d->public = public;
+      d->lhat_value = lhat_def;
       add(&module->defs, d);
       continue;
     }

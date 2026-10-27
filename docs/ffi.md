@@ -149,8 +149,9 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
 - `exportL^` を付けた関数ごとに、中継コードが L^ の `LhatHostFn` ラッパー `rh_lhat_<名前>` を生成し、
   `bool rhat_lhat_register(LhatProgram *program, const char *module)` が全部を `lhat_register_func` で
   `module` の下に登録します。R^ からは上のように `externC^` で宣言して呼びます。
-- 署名は R^ の型から決まります。数値型は `number^`、`bool^` は `bool^`、`string^` は `string^` です
-  （例: `f^number^, number^ -> number^;`）。それ以外の型は引数にも結果にもできません。
+- 署名は R^ の型から決まります。数値型は `number^`、`bool^` は `bool^`、`string^` は `string^`、
+  `exportL^ def^` は `<module>.<名前>` です（例: `f^number^, number^ -> number^;`）。
+  それ以外の型は引数にも結果にもできません。
   `f^` / `p^` と結果型の注釈、`template^` などの制限は `exportC^` と同じです。
 - 整数型の引数に整数でない数が渡ると「exportL^ NAME needs a whole number」で終了します。浮動小数点型は
   整数も受け取ります。文字列の引数は呼び出しの間 L^ の文字列を借り、結果の文字列は
@@ -159,6 +160,28 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
   （データスタックの受け渡しは上と同じ）。
 - `exportL^` には `includeC^ "lhat.h"` を書いたモジュールが必要です。L^ のライブラリは MSVC で
   `/MD`（DLL 版 CRT）でビルドされるため、Windows でリンクするときは `--crt-dll` を付けます。
+
+### 値として渡す型（exportL^ def^）
+
+```rhat
+exportL^ def^ Vec3 {
+  self^{ x:f32^ = 0.0, y:f32^ = 0.0, z:f32^ = 0.0 }
+  length = f^ self^ -> f64^ { ... }                 # L^ からは v.length()
+}
+exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { ... } # L^ からは rhat.sum(a, b)
+```
+
+- `exportL^ def^` は L^ の host value 型（`lhat_register_hostvalue_type`）として登録します。L^ はその値を
+  バイト列としてスタックに持ち、寿命の管理はありません。フラットな `def^` で、248 バイト以下に限ります。
+- `f32^` / `f64^` / `i8^`〜`i64^` / `u8^`〜`u32^` のフィールドは `lhat_register_hostvalue_field` で登録し、
+  L^ から `v.x` で直接読み書きできます。`bool^`・`u64^`・入れ子の `def^`・配列・`private^` のフィールドは
+  L^ からは見えず、メソッドを通して扱います。
+- `private^` でないメソッドはすべて `lhat_register_hostvalue_member` で登録します（受け手は `self^`）。
+  署名は関数と同じ規則で、L^ は値の複製を渡すため `mutable^ self^` のメソッドは拒否します
+  （L^ から外すには `private^` にします）。
+- 引数の値は L^ のバイト列を複製して受け取り、結果は `lhat_make_hostvalue` で返します。
+  別の host value 型が渡されると「exportL^ received another host value type」で終了します。
+- 参照として渡す型（`exportL^ ref^ def^`、L^ の host data）は未対応です。
 
 ## 効果と安全性
 

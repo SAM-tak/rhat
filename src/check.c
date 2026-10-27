@@ -129,10 +129,10 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   return call;
 }
 /* A value L^ hands a host function: number^ (integers to 64 bits and
- * floats), bool^ or string^. */
-static bool l_scalar(Type *t)
+ * floats), bool^, string^ or an exportL^ def^ host value. */
+static bool l_value(Type *t)
 {
-  return t->kind == T_STRING || c_scalar(t);
+  return t->kind == T_STRING || c_scalar(t) || (t->kind == T_STRUCT && t->def->lhat_value);
 }
 /* An ASCII C identifier other than main, which the entry file defines. */
 static bool c_identifier(const char *s)
@@ -148,11 +148,15 @@ void export_validate(Program *p, Function *f)
 {
   const char *s = strrchr(f->name, '.') ? strrchr(f->name, '.') + 1 : f->name;
   const char *kind = f->exported ? "exportC^" : "exportL^";
-  if (!c_identifier(s) || !strncmp(s, "rh_", 3)) {
+  if (!f->owner && (!c_identifier(s) || !strncmp(s, "rh_", 3))) {
     fail(f->declaration, "%s name '%s' is not a usable C identifier", kind, s);
   }
-  if (f->templ || f->variadic || f->owner) {
+  if (f->templ || f->variadic || (f->owner && !f->owner->lhat_value)) {
     fail(f->loc, "%s function cannot be template^, variadic or a method", kind);
+  }
+  if (f->mutable_self) {
+    fail(f->loc, "exportL^ def^ method '%s' cannot change self^; L^ hands host values by copy",
+         s);
   }
   if (!f->result && !f->procedure) {
     fail(f->loc, "%s f^ needs a result type annotation", kind);
@@ -177,18 +181,38 @@ void export_validate(Program *p, Function *f)
   for (int j = 0; j < f->params.n; j++) {
     Param *param = f->params.v[j];
     Type *t = param->spec ? type_spec(p, param->spec) : NULL;
+    if (param->self) {
+      continue;
+    }
     if (!t || (f->exported && !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) ||
-        (f->lhat_export && !l_scalar(t))) {
+        (f->lhat_export && !l_value(t))) {
       fail(param->loc, "%s parameter '%s' needs a %s type annotation, not '%s'", kind, param->name,
-           f->exported ? "C" : "number, bool^ or string^", t ? type_name(t) : "?");
+           f->exported ? "C" : "number, bool^, string^ or exportL^ def^", t ? type_name(t) : "?");
     }
   }
   Type *result = f->result ? type_spec(p, f->result) : NULL;
   if (result && f->exported && !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
     fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
   }
-  if (result && f->lhat_export && !l_scalar(result)) {
-    fail(f->result->loc, "exportL^ result must be a number, bool^ or string^");
+  if (result && f->lhat_export && !l_value(result)) {
+    fail(f->result->loc, "exportL^ result must be a number, bool^, string^ or exportL^ def^");
+  }
+}
+void lhat_def_validate(Program *p, Def *d)
+{
+  if (d->opaque || d->abstract || !c_flat(d->type)) {
+    fail(d->loc, "exportL^ def^ '%s' needs a flat def^ of scalars and flat def^ values", d->name);
+  }
+  if (d->type->size > 248) {
+    fail(d->loc, "exportL^ def^ '%s' is %zu bytes; an L^ host value holds at most 248", d->name,
+         d->type->size);
+  }
+  for (int j = 0; j < d->own_methods.n; j++) {
+    Function *f = d->own_methods.v[j];
+    if (!f->priv) {
+      f->lhat_export = true;
+      export_validate(p, f);
+    }
   }
 }
 void external_validate(Program *p, Function *f)
