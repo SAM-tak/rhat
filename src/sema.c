@@ -724,6 +724,8 @@ void layout(Type *t, Loc l)
   }
   if (t->kind < T_STRUCT || t->kind == T_REF)
     return;
+  if (t->kind == T_STRUCT && t->def->opaque)
+    fail(l, "C type '%s' is opaque; use it only through ref^", t->def->name);
   if (t->size == SIZE_MAX)
     fail(l, "recursive by-value layout in '%s'", type_name(t));
   if (t->align)
@@ -4925,7 +4927,9 @@ void analyze(Program *p) {
     compose(p, p->defs.v[j]);
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
-    layout(d->type, d->loc);
+    if (!d->opaque) {
+      layout(d->type, d->loc);
+    }
   }
   for (int j = 0; j < p->functions.n; j++) {
     Function *f = p->functions.v[j];

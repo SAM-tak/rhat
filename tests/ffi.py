@@ -93,12 +93,80 @@ print^(s.x, s.y, m.a, m.b, m.c, ffi_pair_sum(Pair{lo = 40, hi = 2}))
 print^(b.v[0], b.v[3], p.x, p.y, ffi_sum(ps[::], 2), n.p.lo, n.ok, n.w[2], q.quot, q.rem)
 ''', '11 22 6 6 95 42\n10 40 4 6 7 1 true 3 3 2\n', extra=('--runtime', structs))
 
+    # includeC^: a header's static inline functions, its struct and opaque types.
+    (suite.work / 'ffi_lib.h').write_text('''#include <stdbool.h>
+#include <stdint.h>
+typedef struct { union { int64_t i; double r; } as; int32_t tag; } FfiValue;
+typedef struct FfiBox FfiBox;
+static inline FfiValue ffi_int(int64_t i) { FfiValue v; v.as.i = i; v.tag = 1; return v; }
+static inline FfiValue ffi_real(double r) { FfiValue v; v.as.r = r; v.tag = 2; return v; }
+static inline int64_t ffi_twice(int64_t n) { return 2 * n; }
+static inline double ffi_as_real(FfiValue v) { return v.tag == 1 ? (double)v.as.i : v.as.r; }
+FfiBox *ffi_box_new(int64_t n);
+FfiBox *ffi_box_find(int64_t n);
+int64_t ffi_box_get(const FfiBox *b);
+int64_t ffi_box_or(const FfiBox *b, int64_t fallback);
+void ffi_box_free(FfiBox *b);
+''', encoding='utf-8')
+    boxes = suite.work / 'ffi_boxes.c'
+    boxes.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
+#include "ffi_lib.h"
+struct FfiBox {{ int64_t n; }};
+FfiBox *ffi_box_new(int64_t n) {{ FfiBox *b = malloc(sizeof *b); b->n = n; return b; }}
+FfiBox *ffi_box_find(int64_t n) {{ return n ? ffi_box_new(n) : NULL; }}
+int64_t ffi_box_get(const FfiBox *b) {{ return b->n; }}
+int64_t ffi_box_or(const FfiBox *b, int64_t fallback) {{ return b ? b->n : fallback; }}
+void ffi_box_free(FfiBox *b) {{ free(b); }}
+''', encoding='utf-8')
+    header = 'includeC^ "ffi_lib.h"\n'
+    value = header + 'externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }\nexternC^ ffi_int:f^ i:i64^ -> FfiValue;\n'
+    positive('ffi_header_inline_and_opaque', header + '''externC^ def^ FfiBox;
+externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
+externC^ ffi_int:f^ i:i64^ -> FfiValue;
+externC^ ffi_real:f^ r:f64^ -> FfiValue;
+externC^ ffi_twice:f^ n:i64^ -> i64^;
+externC^ ffi_as_real:f^ v:FfiValue -> f64^;
+externC^ ffi_box_new:p^ n:i64^ -> ref^ FfiBox;
+externC^ ffi_box_find:p^ n:i64^ -> ref^ FfiBox | nil^;
+externC^ ffi_box_get:f^ b:ref^ FfiBox -> i64^;
+externC^ ffi_box_or:f^ b:ref^ FfiBox | nil^, fallback:i64^ -> i64^;
+externC^ ffi_box_free:p^ b:ref^ FfiBox;
+let^ v = ffi_int(21)
+print^(v.tag, ffi_twice(21), ffi_as_real(v), ffi_as_real(ffi_real(2.5)))
+let^ b = ffi_box_new(7)
+let^ found = ffi_box_find(9)
+let^ missing = ffi_box_find(0)
+print^(ffi_box_get(b), found fits^ nil^, missing fits^ nil^, ffi_box_or(found, -1), ffi_box_or(missing, -1), ffi_box_or(nil^, -2))
+if^ found fits^ ref^ FfiBox { print^(ffi_box_get(found)) ffi_box_free(found) }
+ffi_box_free(b)
+''', '1 42 21 2.5\n7 false true 9 -1 -2\n9\n', extra=('--runtime', boxes))
+
+    def rejected_by_c(name, text, diagnostic):
+        """The C compiler checks shims against the header's declarations."""
+        def body():
+            path = suite.source(name, text)
+            p = suite.run([suite.compiler, 'build', path, '-o', suite.work / (name + '.exe'),
+                           '--clang', suite.clang, '--runtime', boxes], False)
+            assert diagnostic in p.stderr, (name, p.stderr)
+        if not suite.args.checks_only:
+            suite.case(name, body)
+    rejected_by_c('ffi_header_field_name', value.replace('tag:i32^', 'kind:i32^').replace('ffi_int(1)', '') + 'print^(ffi_int(1).kind)',
+                  "no member named 'kind'")
+    rejected_by_c('ffi_header_field_size', value.replace('tag:i32^', 'tag:i64^') + 'print^(ffi_int(1).tag)',
+                  'R^ layout of FfiValue.tag differs from C')
+    rejected_by_c('ffi_header_pointer_for_integer', header + 'externC^ ffi_twice:f^ n:ref^ i64^ -> i64^;\nvar^ x:i64^ = 1\nprint^(ffi_twice(ref^ x))',
+                  'incompatible pointer to integer conversion')
+    rejected_by_c('ffi_header_undeclared', header + 'externC^ ffi_nothing:f^ n:i64^ -> i64^;\nprint^(ffi_nothing(1))', 'ffi_nothing')
+    negative('ffi_header_plain_def', header + 'def^ P { self^{ x:i32^ = 0 } }\nexternC^ ffi_p:f^ p:P -> i32^;', 'declare it with externC^ def^')
+    negative('ffi_opaque_value', header + 'externC^ def^ FfiBox;\nvar^ boxed:FfiBox = FfiBox{}', 'opaque; use it only through ref^')
+    negative('ffi_include_public', 'public^ includeC^ "ffi_lib.h"', 'cannot be public^')
+
     negative('ffi_struct_string_field', 'def^ P { self^{s:string^=""} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_reference_field', 'var^ n:i32^=0\ndef^ P { self^{r:ref^ i32^} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_empty', 'def^ P { }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_array_value', 'externC^ f:f^ a:i32^[4] ->i32^;', "parameter 'a' has no C shape")
     negative('ffi_wide_integer', 'externC^ f:f^ x:i128^;', 'has no C shape')
-    negative('ffi_reference_result', 'externC^ f:f^ ->ref^ i32^;', 'C scalar, a flat def^, or omitted')
+    negative('ffi_string_result', 'externC^ f:f^ ->string^;', 'a C pointer, or omitted')
     negative('ffi_unannotated', 'externC^ f:f^ x ->i32^;', 'requires a type annotation')
     negative('ffi_template', 'externC^ f:template^ f^ x:i32^;', 'cannot be template^')
     negative('ffi_body', 'externC^ f:f^ x:i32^ { x }', "expected ';'")

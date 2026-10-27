@@ -130,7 +130,7 @@ const char *tool_resource(const char *compiler, const char *fallback,
 }
 static char *compile(const char *input, const char *identity, const char *name,
                      const char *clang, const char *opt, const char *cache,
-                     bool reuse, bool verbose) {
+                     bool reuse, bool verbose, List *includes) {
   /* Hash the complete native translation unit, including headers and expanded
    * macros. This also makes custom --runtime wrappers safe to cache. The .i
    * input is what Clang subsequently compiles, so the cache key and object
@@ -140,9 +140,18 @@ static char *compile(const char *input, const char *identity, const char *name,
     static int sequence;
     char *preprocessed =
         fmt("%s/native-%d-%d.tmp.i", cache, (int)pid(), sequence++);
-    char *preprocess_args[] = {(char *)clang, "-std=c11",   "-E", (char *)input,
-                               "-o",          preprocessed, NULL};
-    int status = run_process(preprocess_args);
+    List preprocess = {0};
+    add(&preprocess, (char *)clang);
+    add(&preprocess, "-std=c11");
+    for (int j = 0; includes && j < includes->n; j++) {
+      add(&preprocess, fmt("-I%s", (char *)includes->v[j]));
+    }
+    add(&preprocess, "-E");
+    add(&preprocess, (char *)input);
+    add(&preprocess, "-o");
+    add(&preprocess, preprocessed);
+    add(&preprocess, NULL);
+    int status = run_process((char *const *)preprocess.v);
     if (status)
       fail((Loc){input, 1, 1}, "Clang preprocessing failed (%d)", status);
     char *expanded_hash = digest_file(preprocessed);
@@ -215,7 +224,7 @@ static char *file_stamp(const char *path)
 int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
                   const char *cache, bool reuse, bool verbose,
-                  List *libraries) {
+                  List *libraries, List *c_includes) {
   if (!cache)
     cache = fmt("%s/.rhat-cache", directory(out));
   mkdirs(cache);
@@ -263,22 +272,36 @@ int build_objects(Program *p, const char *compiler, const char *clang,
     if (verbose)
       fprintf(stderr, "IR: %s -> %s\n", m->name ? m->name : "<entry>", ir);
     add(&args, compile(ir, identity, m->name ? m->name : "<entry>", clang_path,
-                       opt, cache, reuse, verbose));
+                       opt, cache, reuse, verbose, NULL));
   }
   p->emitting = NULL;
-  char *shims = fmt("%s/shims-%d.tmp.c", cache, (int)pid());
-  if (emit_c_shims(p, shims)) {
-    char *source = fmt("%s/%s.c", cache, digest_file(shims));
-    publish(shims, source);
-    add(&args, compile(source, identity, "C shims", clang_path, opt, cache, reuse,
-                       verbose));
+  /* includeC^ headers resolve beside their module, then on --c-include. */
+  List includes = {0};
+  for (int j = 0; j < p->modules.n; j++) {
+    Module *m = p->modules.v[j];
+    if (m->c_headers.n) {
+      add(&includes, directory(m->path));
+    }
+  }
+  for (int j = 0; j < c_includes->n; j++) {
+    add(&includes, c_includes->v[j]);
+  }
+  for (int headers = 0; headers < 2; headers++) {
+    char *shims = fmt("%s/shims-%d-%d.tmp.c", cache, (int)pid(), headers);
+    if (emit_c_shims(p, shims, headers)) {
+      char *source = fmt("%s/%s.c", cache, digest_file(shims));
+      publish(shims, source);
+      add(&args, compile(source, identity, headers ? "C header shims" : "C shims",
+                         clang_path, opt, cache, reuse, verbose,
+                         headers ? &includes : NULL));
+    }
   }
   add(&args, compile(runtime, identity, "runtime", clang_path, opt, cache,
-                     reuse, verbose));
+                     reuse, verbose, NULL));
   if (random) {
     add(&args, compile(tool_resource(compiler, RH_RANDOM_PATH, "rhat_random.c"),
                        identity, "random OS bridge", clang_path, opt, cache,
-                       reuse, verbose));
+                       reuse, verbose, NULL));
 #if defined(_WIN32)
     add(&args, "-lbcrypt");
 #endif

@@ -93,7 +93,7 @@ static void usage(void) {
        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
        "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
        "--dump-ir "
-       "PATH, --module-path DIR, --link-lib NAME, --cache-dir DIR, --no-cache, "
+       "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --cache-dir DIR, --no-cache, "
        "--verbose\n"
        "Target: host x86-64, C runtime ABI");
 }
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     runtime = tool_resource(argv[0], RH_RUNTIME_PATH, "rhat_runtime.c");
   bool stacks = false, reuse = true, verbose = false;
   const char *cache = NULL;
-  List module_paths = {0}, libraries = {0};
+  List module_paths = {0}, libraries = {0}, c_includes = {0};
   int program_args = argc;
   for (int j = 3; j < argc; j++) {
     char *s = argv[j];
@@ -163,6 +163,8 @@ int main(int argc, char **argv) {
       }
       add(&libraries, (void *)v);
     }
+    else if (!strcmp(s, "--c-include"))
+      add(&c_includes, (void *)v);
     else if (!strcmp(s, "--cache-dir"))
       cache = v;
     else if (!strcmp(s, "-o"))
@@ -235,7 +237,8 @@ int main(int argc, char **argv) {
   }
   emit_llvm(&p, ll);
   int status = build_objects(&p, argv[0], clang, runtime, opt, out, cache,
-                             reuse, verbose, &libraries);
+                             reuse, verbose, &libraries,
+                             &c_includes);
   if (status < 0) {
     int error = errno;
     fprintf(stderr,

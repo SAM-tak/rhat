@@ -294,7 +294,9 @@ static DynTable *table_for(Program *p, Def *concrete, Def *iface)
  * string passes its data pointer only; small integers carry their extension. */
 static char *c_abi(Type *t, bool attributes)
 {
-  if (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_STRING) {
+  /* A union here is ref^ T | nil^, a pointer that may be NULL. */
+  if (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_STRING ||
+      t->kind == T_UNION) {
     return "ptr";
   }
   const char *extension = "";
@@ -311,11 +313,17 @@ static char *c_abi(Type *t, bool attributes)
  * that takes those values by pointer. */
 static bool needs_shim(Instance *in)
 {
-  bool any = in->result->kind == T_STRUCT;
+  /* With includeC^, every call goes through the header's own prototype. */
+  bool any = in->result->kind == T_STRUCT || in->fn->module->c_headers.n;
   for (int j = 0; j < in->params.n; j++) {
     any |= ((Type *)in->params.v[j])->kind == T_STRUCT;
   }
   return !in->fn->intrinsic && any;
+}
+/* The tag of the ref^ alternative of a nullable C pointer type. */
+static int pointer_tag(Type *t)
+{
+  return ((Type *)t->def->alternatives.v[0])->kind == T_NIL;
 }
 /* A direct C call without the stack position or result destination. */
 static void external_call(Output *o, Instr *i)
@@ -333,6 +341,21 @@ static void external_call(Output *o, Instr *i)
       operands = fmt("%s%sptr %%p%d", operands, sep, id);
       continue;
     }
+    if (param->kind == T_UNION) {
+      int tagp = ++o->tmp, tag = ++o->tmp, payload = ++o->tmp, ptr = ++o->tmp;
+      int present = ++o->tmp, arg = ++o->tmp;
+      fprintf(o->f,
+              "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
+              "  %%t%d = load i32, ptr %%t%d\n"
+              "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
+              "  %%t%d = load ptr, ptr %%t%d\n"
+              "  %%t%d = icmp eq i32 %%t%d, %d\n"
+              "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr null\n",
+              tagp, llvm_type(param), id, tag, tagp, payload, llvm_type(param), id, ptr,
+              payload, present, tag, pointer_tag(param), arg, present, ptr);
+      operands = fmt("%s%sptr %%t%d", operands, sep, arg);
+      continue;
+    }
     int v = load(o, id);
     if (param->kind == T_SLICE || param->kind == T_STRING) {
       int data = ++o->tmp;
@@ -347,8 +370,23 @@ static void external_call(Output *o, Instr *i)
     return;
   }
   int r = ++o->tmp;
-  fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, llvm_type(i->type), symbol,
+  fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, c_abi(i->type, false), symbol,
           operands);
+  if (i->type->kind == T_UNION) {
+    /* A NULL result becomes nil^. */
+    int present = ++o->tmp, tag = ++o->tmp, tagp = ++o->tmp, payload = ++o->tmp;
+    fprintf(o->f,
+            "  %%t%d = icmp ne ptr %%t%d, null\n"
+            "  %%t%d = select i1 %%t%d, i32 %d, i32 %d\n"
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
+            "  store i32 %%t%d, ptr %%t%d\n"
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
+            "  store ptr %%t%d, ptr %%t%d\n",
+            present, r, tag, present, pointer_tag(i->type), !pointer_tag(i->type), tagp,
+            llvm_type(i->type), i->dst, tag, tagp, payload, llvm_type(i->type), i->dst, r,
+            payload);
+    return;
+  }
   save(o, i->dst, i->type, fmt("%%t%d", r));
 }
 /* Declare a C function once per IR module. An f^ declaration over scalars
@@ -1589,8 +1627,8 @@ void dump_ir(Program *p, const char *path) {
   if (fclose(f))
     fail((Loc){path, 1, 1}, "failed to write R^ IR");
 }
-/* The C spelling of a shim value. Pointers are untyped: the shim names no
- * header, and only the calling convention has to agree. */
+/* The C spelling of a shim value. Pointers are untyped: C converts void *
+ * to the pointer types a prototype names, so only the convention matters. */
 static char *c_name(Type *t)
 {
   switch (t->kind) {
@@ -1611,19 +1649,20 @@ static char *c_name(Type *t)
   case T_F64:
     return "double";
   case T_STRUCT:
-    return fmt("rh_c_%d", t->id);
+    return t->def->c_name ? t->def->c_name : fmt("rh_c_%d", t->id);
   default:
     return "void *";
   }
 }
-/* Define t's C struct after those of its fields, and let the C compiler
- * prove that it lays the struct out as R^ does. */
-static void c_struct(FILE *f, Type *t, List *done)
+/* Define t's C struct after those of its fields, unless a header defines
+ * it, and let the C compiler prove that it lays the struct out as R^ does.
+ * An externC^ def^ checks its own field names against the C type. */
+static void c_struct(FILE *f, Type *t, List *done, bool headers)
 {
   while (t->kind == T_ARRAY) {
     t = t->elem;
   }
-  if (t->kind != T_STRUCT) {
+  if (t->kind != T_STRUCT || t->def->opaque) {
     return;
   }
   for (int j = 0; j < done->n; j++) {
@@ -1633,32 +1672,43 @@ static void c_struct(FILE *f, Type *t, List *done)
   }
   add(done, t);
   for (int j = 0; j < t->def->fields.n; j++) {
-    c_struct(f, ((Field *)t->def->fields.v[j])->type, done);
+    c_struct(f, ((Field *)t->def->fields.v[j])->type, done, headers);
   }
-  fputs("typedef struct {", f);
+  char *name = c_name(t);
+  List names = {0};
   for (int j = 0; j < t->def->fields.n; j++) {
-    Type *base = ((Field *)t->def->fields.v[j])->type;
-    char *dims = "";
-    for (; base->kind == T_ARRAY; base = base->elem) {
-      dims = fmt("%s[%d]", dims, base->count);
-    }
-    fprintf(f, " %s f%d%s;", c_name(base), j, dims);
+    Field *field = t->def->fields.v[j];
+    add(&names, t->def->c_name ? field->name : fmt("f%d", j));
   }
-  fprintf(f, " } rh_c_%d;\n", t->id);
+  if (!headers) {
+    fputs("typedef struct {", f);
+    for (int j = 0; j < t->def->fields.n; j++) {
+      Type *base = ((Field *)t->def->fields.v[j])->type;
+      char *dims = "";
+      for (; base->kind == T_ARRAY; base = base->elem) {
+        dims = fmt("%s[%d]", dims, base->count);
+      }
+      fprintf(f, " %s %s%s;", c_name(base), (char *)names.v[j], dims);
+    }
+    fprintf(f, " } %s;\n", name);
+  }
   fprintf(f,
-          "_Static_assert(sizeof(rh_c_%d) == %zu && _Alignof(rh_c_%d) == %zu, "
+          "_Static_assert(sizeof(%s) == %zu && _Alignof(%s) == %zu, "
           "\"R^ layout of %s differs from C\");\n",
-          t->id, t->size, t->id, t->align, t->def->name);
+          name, t->size, name, t->align, t->def->name);
   size_t offset = 0;
   for (int j = 0; j < t->def->fields.n; j++) {
     Type *field = ((Field *)t->def->fields.v[j])->type;
     offset = (offset + field->align - 1) / field->align * field->align;
-    fprintf(f, "_Static_assert(offsetof(rh_c_%d, f%d) == %zu, \"R^ layout of %s differs from C\");\n",
-            t->id, j, offset, t->def->name);
+    fprintf(f,
+            "_Static_assert(offsetof(%s, %s) == %zu && sizeof(((%s *)0)->%s) == %zu, "
+            "\"R^ layout of %s.%s differs from C\");\n",
+            name, (char *)names.v[j], offset, name, (char *)names.v[j], field->size,
+            t->def->name, (char *)names.v[j]);
     offset += field->size;
   }
 }
-bool emit_c_shims(Program *p, const char *path)
+bool emit_c_shims(Program *p, const char *path, bool headers)
 {
   List shims = {0};
   for (int j = 0; j < p->instances.n; j++) {
@@ -1667,7 +1717,8 @@ bool emit_c_shims(Program *p, const char *path)
     for (int k = 0; k < shims.n; k++) {
       seen |= !strcmp(((Instance *)shims.v[k])->symbol, in->symbol);
     }
-    if (in->fn->external && needs_shim(in) && !seen) {
+    if (in->fn->external && needs_shim(in) && !seen &&
+        (in->fn->module->c_headers.n > 0) == headers) {
       add(&shims, in);
     }
   }
@@ -1678,15 +1729,30 @@ bool emit_c_shims(Program *p, const char *path)
   if (!f) {
     fail((Loc){path, 1, 1}, "cannot write C shims");
   }
-  fputs("/* Generated by rhat: by-value def^ arguments of externC^ functions. */\n"
+  fputs("/* Generated by rhat: C shims for externC^ functions. */\n"
         "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n",
         f);
+  /* Every includeC^ header of the program, once, in declaration order. */
+  List included = {0};
+  for (int j = 0; headers && j < p->modules.n; j++) {
+    Module *m = p->modules.v[j];
+    for (int k = 0; k < m->c_headers.n; k++) {
+      bool seen = false;
+      for (int n = 0; n < included.n; n++) {
+        seen |= !strcmp(included.v[n], m->c_headers.v[k]);
+      }
+      if (!seen) {
+        add(&included, m->c_headers.v[k]);
+        fprintf(f, "#include \"%s\"\n", (char *)m->c_headers.v[k]);
+      }
+    }
+  }
   List done = {0};
   for (int j = 0; j < shims.n; j++) {
     Instance *in = shims.v[j];
-    c_struct(f, in->result, &done);
+    c_struct(f, in->result, &done, headers);
     for (int k = 0; k < in->params.n; k++) {
-      c_struct(f, in->params.v[k], &done);
+      c_struct(f, in->params.v[k], &done, headers);
     }
   }
   for (int j = 0; j < shims.n; j++) {
@@ -1701,8 +1767,11 @@ bool emit_c_shims(Program *p, const char *path)
                  value ? fmt("%s *", c_name(param)) : c_name(param), k);
       call = fmt("%s%s%sa%d", call, k ? ", " : "", value ? "*" : "", k);
     }
-    fprintf(f, "%s %s(%s);\n", none ? "void" : c_name(in->result), in->symbol,
-            *declared ? declared : "void");
+    /* A header declares its own functions; otherwise R^'s signature does. */
+    if (!headers) {
+      fprintf(f, "%s %s(%s);\n", none ? "void" : c_name(in->result), in->symbol,
+              *declared ? declared : "void");
+    }
     fprintf(f, "%s rh_shim_%s(%s) { %s%s(%s); }\n", out || none ? "void" : c_name(in->result),
             in->symbol, *shim ? shim : "void", out ? "*out = " : none ? "" : "return ",
             in->symbol, call);

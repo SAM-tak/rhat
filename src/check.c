@@ -57,6 +57,29 @@ static bool c_flat(Type *t)
   }
   return true;
 }
+/* The reference a C pointer stands for: ref^ to a flat or opaque def^ (or
+ * a scalar), or ref^ T | nil^ for a pointer that may be NULL. */
+static Type *c_pointer(Type *t)
+{
+  if (t->kind == T_UNION && t->def->alternatives.n == 2) {
+    Type *a = t->def->alternatives.v[0], *b = t->def->alternatives.v[1];
+    t = a->kind == T_NIL ? b : b->kind == T_NIL ? a : t;
+  }
+  if (t->kind != T_REF) {
+    return NULL;
+  }
+  bool opaque = t->elem->kind == T_STRUCT && t->elem->def->opaque;
+  return opaque || c_flat(t->elem) ? t : NULL;
+}
+/* A header's prototype names its own struct types, so a def^ passed by
+ * value to a function from includeC^ headers must name its C type. */
+static void c_named(Function *f, Type *t, Loc loc)
+{
+  if (t->kind == T_STRUCT && f->module->c_headers.n && !t->def->c_name) {
+    fail(loc, "'%s' crosses an includeC^ header by value; declare it with externC^ def^",
+         t->def->name);
+  }
+}
 static bool same_signature(Program *p, Function *a, Function *b)
 {
   if (a->procedure != b->procedure || a->params.n != b->params.n ||
@@ -133,19 +156,26 @@ void external_validate(Program *p, Function *f)
   for (int j = 0; j < f->params.n; j++) {
     Param *param = f->params.v[j];
     Type *t = parameter_type(p, param);
-    layout(t, param->loc);
-    if (!(c_flat(t) && t->kind != T_ARRAY) && t->kind != T_STRING &&
-        !((t->kind == T_REF || t->kind == T_SLICE) && c_flat(t->elem))) {
+    if (!c_pointer(t)) {
+      layout(t, param->loc);
+    }
+    if (!(c_flat(t) && t->kind != T_ARRAY) && t->kind != T_STRING && !c_pointer(t) &&
+        !(t->kind == T_SLICE && c_flat(t->elem))) {
       fail(param->loc, "externC^ parameter '%s' has no C shape: '%s'",
            param->name, type_name(t));
     }
+    c_named(f, t, param->loc);
   }
   Type *result = f->result ? type_spec(p, f->result) : NULL;
-  if (result) {
+  if (result && !c_pointer(result)) {
     layout(result, f->result->loc);
   }
-  if (result && (!c_flat(result) || result->kind == T_ARRAY)) {
-    fail(f->result->loc, "externC^ result must be a C scalar, a flat def^, or omitted");
+  if (result && (!c_flat(result) || result->kind == T_ARRAY) && !c_pointer(result)) {
+    fail(f->result->loc,
+         "externC^ result must be a C scalar, a flat def^, a C pointer, or omitted");
+  }
+  if (result) {
+    c_named(f, result, f->result->loc);
   }
   for (int j = 0; j < p->functions.n; j++) {
     Function *other = p->functions.v[j];

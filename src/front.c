@@ -2058,17 +2058,49 @@ void parse_file(Program *p, const char *path, Module *module) {
       }
       continue;
     }
+    if (is(&q, "includeC^")) {
+      Loc at = next(&q)->loc;
+      Token *header = next(&q);
+      if (header->kind != TOK_STRING || public) {
+        fail(at, "includeC^ takes a header name string and cannot be public^");
+      }
+      add(&module->c_headers, header->text);
+      take(&q, ";");
+      continue;
+    }
     if (take(&q, "externC^")) {
-      Loc declaration = tok(&q)->loc;
+      if (!take(&q, "def^")) {
+        Loc declaration = tok(&q)->loc;
+        char *name = decl_word(&q);
+        Function *f = external_function(&q, name, name);
+        f->declaration = declaration;
+        f->module = module;
+        f->public = public;
+        f->overload = overload;
+        overload = false;
+        add(&module->functions, f);
+        add(&p->functions, f);
+        continue;
+      }
+      /* A def^ laid out as the C type of the same name, or opaque. */
+      Loc loc = tok(&q)->loc;
+      int start = q.at;
       char *name = decl_word(&q);
-      Function *f = external_function(&q, name, name);
-      f->declaration = declaration;
-      f->module = module;
-      f->public = public;
-      f->overload = overload;
-      overload = false;
-      add(&module->functions, f);
-      add(&p->functions, f);
+      Def *d = NULL;
+      if (take(&q, ";")) {
+        d = mem(sizeof(*d));
+        *d = (Def){.loc = loc, .name = name, .id = p->defs.n, .opaque = true};
+        add(&p->defs, d);
+      }
+      else {
+        q.at = start;
+        definition(&q);
+        d = p->defs.v[p->defs.n - 1];
+      }
+      d->c_name = name;
+      d->module = module;
+      d->public = public;
+      add(&module->defs, d);
       continue;
     }
     if (take(&q, "def^")) {

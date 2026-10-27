@@ -44,6 +44,7 @@ typedef struct {
 struct Module {
   char *name, *path;
   List imports, defs, functions, constants;
+  List c_headers; /* includeC^ headers its externC^ shims read. */
   Function *entry;
   bool root;
   int state;
@@ -217,6 +218,8 @@ struct Def {
   int state, id;
   bool abstract;
   Type *type;
+  char *c_name; /* externC^ def^: the C type of this name it lays out as. */
+  bool opaque;  /* externC^ def^ Name; with no body, usable only as ref^. */
 };
 enum {
   T_VOID,
@@ -418,10 +421,11 @@ int run_process(char *const *args);
 int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
                   const char *cache, bool reuse, bool verbose,
-                  List *libraries);
+                  List *libraries, List *c_includes);
 void dump_ir(Program *p, const char *path);
 /* Write the C shims for externC^ functions that take or return a def^ by
- * value; false when the program needs none. */
-bool emit_c_shims(Program *p, const char *path);
+ * value, or that come from modules with includeC^ headers (headers selects
+ * which); false when the program needs none. */
+bool emit_c_shims(Program *p, const char *path, bool headers);
 char *llvm_type(Type *t);
 #endif
