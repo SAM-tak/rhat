@@ -306,28 +306,49 @@ static char *c_abi(Type *t, bool attributes)
   }
   return fmt("%s%s", extension, llvm_type(t));
 }
+/* LLVM IR does not lower C's struct passing for the target, so a C function
+ * taking or returning a def^ by value is reached through a generated C shim
+ * that takes those values by pointer. */
+static bool needs_shim(Instance *in)
+{
+  bool any = in->result->kind == T_STRUCT;
+  for (int j = 0; j < in->params.n; j++) {
+    any |= ((Type *)in->params.v[j])->kind == T_STRUCT;
+  }
+  return !in->fn->intrinsic && any;
+}
 /* A direct C call without the stack position or result destination. */
 static void external_call(Output *o, Instr *i)
 {
+  bool shim = needs_shim(i->callee);
   char *operands = "";
+  if (shim && i->type->kind == T_STRUCT) {
+    operands = fmt("ptr %%p%d", i->dst);
+  }
   for (int j = 0; j < i->args.n; j++) {
     Type *param = i->callee->params.v[j];
-    int v = load(o, (int)(intptr_t)i->args.v[j] - 1);
+    int id = (int)(intptr_t)i->args.v[j] - 1;
+    char *sep = *operands ? ", " : "";
+    if (param->kind == T_STRUCT) {
+      operands = fmt("%s%sptr %%p%d", operands, sep, id);
+      continue;
+    }
+    int v = load(o, id);
     if (param->kind == T_SLICE || param->kind == T_STRING) {
       int data = ++o->tmp;
       fprintf(o->f, "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n", data, v);
       v = data;
     }
-    operands =
-        fmt("%s%s%s %%t%d", operands, j ? ", " : "", c_abi(param, false), v);
+    operands = fmt("%s%s%s %%t%d", operands, sep, c_abi(param, false), v);
   }
-  if (i->type->kind == T_VOID) {
-    fprintf(o->f, "  call void @%s(%s)\n", i->callee->symbol, operands);
+  const char *symbol = shim ? fmt("rh_shim_%s", i->callee->symbol) : i->callee->symbol;
+  if (i->type->kind == T_VOID || (shim && i->type->kind == T_STRUCT)) {
+    fprintf(o->f, "  call void @%s(%s)\n", symbol, operands);
     return;
   }
   int r = ++o->tmp;
-  fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, llvm_type(i->type),
-          i->callee->symbol, operands);
+  fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, llvm_type(i->type), symbol,
+          operands);
   save(o, i->dst, i->type, fmt("%%t%d", r));
 }
 /* Declare a C function once per IR module. An f^ declaration over scalars
@@ -351,6 +372,19 @@ static void external_declaration(Program *p, int index, FILE *f)
       fprintf(f, "%s%s", j ? ", " : "", c_abi(in->params.v[j], false));
     }
     fputs(")\n", f);
+    return;
+  }
+  if (needs_shim(in)) {
+    bool out = in->result->kind == T_STRUCT;
+    fprintf(f, "\ndeclare %s @rh_shim_%s(%s", out || in->result->kind == T_VOID ? "void"
+                                              : c_abi(in->result, true),
+            in->symbol, out ? "ptr" : "");
+    for (int j = 0; j < in->params.n; j++) {
+      Type *param = in->params.v[j];
+      fprintf(f, "%s%s", j || out ? ", " : "",
+              param->kind == T_STRUCT ? "ptr" : c_abi(param, true));
+    }
+    fputs(") nounwind\n", f);
     return;
   }
   bool pure = !in->fn->procedure;
@@ -1554,4 +1588,127 @@ void dump_ir(Program *p, const char *path) {
   }
   if (fclose(f))
     fail((Loc){path, 1, 1}, "failed to write R^ IR");
+}
+/* The C spelling of a shim value. Pointers are untyped: the shim names no
+ * header, and only the calling convention has to agree. */
+static char *c_name(Type *t)
+{
+  switch (t->kind) {
+  case T_BOOL:
+    return "bool";
+  case T_U8:
+  case T_U16:
+  case T_U32:
+  case T_U64:
+    return fmt("uint%d_t", numeric_bits(t->kind));
+  case T_I8:
+  case T_I16:
+  case T_I32:
+  case T_I64:
+    return fmt("int%d_t", numeric_bits(t->kind));
+  case T_F32:
+    return "float";
+  case T_F64:
+    return "double";
+  case T_STRUCT:
+    return fmt("rh_c_%d", t->id);
+  default:
+    return "void *";
+  }
+}
+/* Define t's C struct after those of its fields, and let the C compiler
+ * prove that it lays the struct out as R^ does. */
+static void c_struct(FILE *f, Type *t, List *done)
+{
+  while (t->kind == T_ARRAY) {
+    t = t->elem;
+  }
+  if (t->kind != T_STRUCT) {
+    return;
+  }
+  for (int j = 0; j < done->n; j++) {
+    if (done->v[j] == t) {
+      return;
+    }
+  }
+  add(done, t);
+  for (int j = 0; j < t->def->fields.n; j++) {
+    c_struct(f, ((Field *)t->def->fields.v[j])->type, done);
+  }
+  fputs("typedef struct {", f);
+  for (int j = 0; j < t->def->fields.n; j++) {
+    Type *base = ((Field *)t->def->fields.v[j])->type;
+    char *dims = "";
+    for (; base->kind == T_ARRAY; base = base->elem) {
+      dims = fmt("%s[%d]", dims, base->count);
+    }
+    fprintf(f, " %s f%d%s;", c_name(base), j, dims);
+  }
+  fprintf(f, " } rh_c_%d;\n", t->id);
+  fprintf(f,
+          "_Static_assert(sizeof(rh_c_%d) == %zu && _Alignof(rh_c_%d) == %zu, "
+          "\"R^ layout of %s differs from C\");\n",
+          t->id, t->size, t->id, t->align, t->def->name);
+  size_t offset = 0;
+  for (int j = 0; j < t->def->fields.n; j++) {
+    Type *field = ((Field *)t->def->fields.v[j])->type;
+    offset = (offset + field->align - 1) / field->align * field->align;
+    fprintf(f, "_Static_assert(offsetof(rh_c_%d, f%d) == %zu, \"R^ layout of %s differs from C\");\n",
+            t->id, j, offset, t->def->name);
+    offset += field->size;
+  }
+}
+bool emit_c_shims(Program *p, const char *path)
+{
+  List shims = {0};
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    bool seen = false;
+    for (int k = 0; k < shims.n; k++) {
+      seen |= !strcmp(((Instance *)shims.v[k])->symbol, in->symbol);
+    }
+    if (in->fn->external && needs_shim(in) && !seen) {
+      add(&shims, in);
+    }
+  }
+  if (!shims.n) {
+    return false;
+  }
+  FILE *f = fopen(path, "wb");
+  if (!f) {
+    fail((Loc){path, 1, 1}, "cannot write C shims");
+  }
+  fputs("/* Generated by rhat: by-value def^ arguments of externC^ functions. */\n"
+        "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n",
+        f);
+  List done = {0};
+  for (int j = 0; j < shims.n; j++) {
+    Instance *in = shims.v[j];
+    c_struct(f, in->result, &done);
+    for (int k = 0; k < in->params.n; k++) {
+      c_struct(f, in->params.v[k], &done);
+    }
+  }
+  for (int j = 0; j < shims.n; j++) {
+    Instance *in = shims.v[j];
+    bool out = in->result->kind == T_STRUCT, none = in->result->kind == T_VOID;
+    char *declared = "", *shim = out ? fmt("%s *out", c_name(in->result)) : "", *call = "";
+    for (int k = 0; k < in->params.n; k++) {
+      Type *param = in->params.v[k];
+      bool value = param->kind == T_STRUCT;
+      declared = fmt("%s%s%s", declared, k ? ", " : "", c_name(param));
+      shim = fmt("%s%s%s%s a%d", shim, *shim ? ", " : "", value ? "const " : "",
+                 value ? fmt("%s *", c_name(param)) : c_name(param), k);
+      call = fmt("%s%s%sa%d", call, k ? ", " : "", value ? "*" : "", k);
+    }
+    fprintf(f, "%s %s(%s);\n", none ? "void" : c_name(in->result), in->symbol,
+            *declared ? declared : "void");
+    fprintf(f, "%s rh_shim_%s(%s) { %s%s(%s); }\n", out || none ? "void" : c_name(in->result),
+            in->symbol, *shim ? shim : "void", out ? "*out = " : none ? "" : "return ",
+            in->symbol, call);
+  }
+  if (fclose(f)) {
+    fail((Loc){path, 1, 1}, "cannot write C shims");
+  }
+  return true;
 }

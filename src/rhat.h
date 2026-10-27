@@ -420,5 +420,8 @@ int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *cache, bool reuse, bool verbose,
                   List *libraries);
 void dump_ir(Program *p, const char *path);
+/* Write the C shims for externC^ functions that take or return a def^ by
+ * value; false when the program needs none. */
+bool emit_c_shims(Program *p, const char *path);
 char *llvm_type(Type *t);
 #endif

@@ -266,6 +266,13 @@ int build_objects(Program *p, const char *compiler, const char *clang,
                        opt, cache, reuse, verbose));
   }
   p->emitting = NULL;
+  char *shims = fmt("%s/shims-%d.tmp.c", cache, (int)pid());
+  if (emit_c_shims(p, shims)) {
+    char *source = fmt("%s/%s.c", cache, digest_file(shims));
+    publish(shims, source);
+    add(&args, compile(source, identity, "C shims", clang_path, opt, cache, reuse,
+                       verbose));
+  }
   add(&args, compile(runtime, identity, "runtime", clang_path, opt, cache,
                      reuse, verbose));
   if (random) {

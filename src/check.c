@@ -37,6 +37,26 @@ static bool c_scalar(Type *t)
          (t->kind >= T_I8 && t->kind <= T_I64) || t->kind == T_F32 ||
          t->kind == T_F64;
 }
+/* A value C can lay out the same way: a scalar, or a non-empty def^ or
+ * fixed array built only of such values (no references, strings or unions). */
+static bool c_flat(Type *t)
+{
+  if (c_scalar(t)) {
+    return true;
+  }
+  if (t->kind == T_ARRAY) {
+    return c_flat(t->elem);
+  }
+  if (t->kind != T_STRUCT || t->def->abstract || !t->def->fields.n) {
+    return false;
+  }
+  for (int j = 0; j < t->def->fields.n; j++) {
+    if (!c_flat(((Field *)t->def->fields.v[j])->type)) {
+      return false;
+    }
+  }
+  return true;
+}
 static bool same_signature(Program *p, Function *a, Function *b)
 {
   if (a->procedure != b->procedure || a->params.n != b->params.n ||
@@ -108,18 +128,24 @@ void external_validate(Program *p, Function *f)
   if (f->templ || f->variadic) {
     fail(f->loc, "externC^ declaration cannot be template^ or variadic");
   }
-  /* Scalars cross as their C types; ref^, slices and strings as a data pointer. */
+  /* Scalars and flat def^ values cross as their C types, the latter through
+   * a generated C shim; ref^, slices and strings as a data pointer. */
   for (int j = 0; j < f->params.n; j++) {
     Param *param = f->params.v[j];
     Type *t = parameter_type(p, param);
-    if (!c_scalar(t) && t->kind != T_STRING &&
-        !((t->kind == T_REF || t->kind == T_SLICE) && c_scalar(t->elem))) {
+    layout(t, param->loc);
+    if (!(c_flat(t) && t->kind != T_ARRAY) && t->kind != T_STRING &&
+        !((t->kind == T_REF || t->kind == T_SLICE) && c_flat(t->elem))) {
       fail(param->loc, "externC^ parameter '%s' has no C shape: '%s'",
            param->name, type_name(t));
     }
   }
-  if (f->result && !c_scalar(type_spec(p, f->result))) {
-    fail(f->result->loc, "externC^ result must be a C scalar or omitted");
+  Type *result = f->result ? type_spec(p, f->result) : NULL;
+  if (result) {
+    layout(result, f->result->loc);
+  }
+  if (result && (!c_flat(result) || result->kind == T_ARRAY)) {
+    fail(f->result->loc, "externC^ result must be a C scalar, a flat def^, or omitted");
   }
   for (int j = 0; j < p->functions.n; j++) {
     Function *other = p->functions.v[j];
