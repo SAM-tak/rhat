@@ -164,10 +164,41 @@ static void fp8_encode(FILE *f, bool wide) {
         f);
 }
 
+/* After a flex^ shrink, lower the stack top to the new end. The committed
+ * field keeps the highest end seen; once more than 4 MiB lies above the end,
+ * the runtime returns those pages to the OS. */
+static void flex_release(FILE *f)
+{
+  fputs("define internal void @rh_flex_release(ptr %stack, ptr %data, i64 %bytes) "
+        "alwaysinline {\nentry:\n"
+        "  %end = getelementptr i8, ptr %data, i64 %bytes\n"
+        "  %topp = getelementptr %RhStack, ptr %stack, i32 0, i32 1\n"
+        "  %old = load ptr, ptr %topp\n"
+        "  store ptr %end, ptr %topp\n"
+        "  %highp = getelementptr %RhStack, ptr %stack, i32 0, i32 3\n"
+        "  %committed = load ptr, ptr %highp\n"
+        "  %above = icmp ugt ptr %old, %committed\n"
+        "  %high = select i1 %above, ptr %old, ptr %committed\n"
+        "  store ptr %high, ptr %highp\n"
+        "  %hi = ptrtoint ptr %high to i64\n"
+        "  %ei = ptrtoint ptr %end to i64\n"
+        "  %spare = sub i64 %hi, %ei\n"
+        "  %large = icmp ugt i64 %spare, 4194304\n"
+        "  br i1 %large, label %trim, label %done\n"
+        "trim:\n"
+        "  call void @rh_flex_trim(ptr %stack, ptr %end)\n"
+        "  br label %done\n"
+        "done:\n"
+        "  ret void\n}\n"
+        "declare void @rh_flex_trim(ptr, ptr)\n",
+        f);
+}
+
 void emit_llvm_builtins(FILE *f) {
   fputs("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n"
         "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n",
         f);
+  flex_release(f);
   append_helper(f, true);
   append_helper(f, false);
   fp8_decode(f);

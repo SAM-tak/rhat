@@ -577,12 +577,15 @@ static Spec *spec_part(Parser *p)
     s->elem = spec_part(p);
     return s;
   }
-  if (take(p, "grow^")) {
+  if (is(p, "grow^") || is(p, "flex^")) {
+    /* A flex^ array also returns storage when it shrinks; count marks it. */
+    const char *kind = next(p)->text;
     s = spec_part(p);
     if (s->kind != SPEC_ARRAY || s->count) {
-      fail(s->loc, "grow^ needs an array type ending in [], as in grow^ T[]");
+      fail(s->loc, "%s needs an array type ending in [], as in %s T[]", kind, kind);
     }
     s->kind = SPEC_GROW;
+    s->count = !strcmp(kind, "flex^");
     return s;
   }
   if (take(p, "(")) {
@@ -763,13 +766,14 @@ static Expr *primary(Parser *p) {
     e = expr(p, 0);
     p->header = header;
     need(p, ")");
-  } else if (!strcmp(t->text, "[") || !strcmp(t->text, "grow^")) {
+  } else if (!strcmp(t->text, "[") || !strcmp(t->text, "grow^") ||
+             !strcmp(t->text, "flex^")) {
     e = node(E_ARRAY, t->loc);
     if (strcmp(t->text, "[")) {
       e->text = t->text;
     }
     if (strcmp(t->text, "[") && !take(p, "[")) {
-      p->at--; /* grow^ T[] names an empty array of that type. */
+      p->at--; /* grow^ T[] or flex^ T[] names an empty array of that type. */
       e->test_spec = spec_part(p);
     }
     else {

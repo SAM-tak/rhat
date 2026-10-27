@@ -35,8 +35,11 @@ static bool dyn_shrinks(Instr *i)
   }
   return any;
 }
+/* A flex^ shrink lowers the stack top with the length, so its end and top
+ * stay equal; only grow^ shrinks retain a high-water mark above the end. */
 static bool shrinks(Instr *i) {
-  return i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE ||
+  return ((i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE) &&
+          !i->type->count) ||
          (i->op == I_CALL && i->callee->may_shrink) || dyn_shrinks(i);
 }
 void analyze_array_growth(Program *p) {
@@ -107,7 +110,7 @@ void analyze_array_growth(Program *p) {
     for (int k = 0; k < n; k++) {
       Instr *i = in->code.v[k];
       if (i->op == I_PUSH && states[k].seen)
-        i->push_at_top = never_shrinks ||
+        i->push_at_top = never_shrinks || i->type->count ||
                          states[k].top[((Slot *)in->slots.v[i->a])->owner] != 0;
     }
   }

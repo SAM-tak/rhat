@@ -365,6 +365,21 @@ static void external_declaration(Program *p, int index, FILE *f)
   }
   fprintf(f, ") nounwind%s\n", pure ? " memory(none)" : "");
 }
+/* Lower the stack top of a shrunk flex^ array to its new length. */
+static void flex_release(Output *o, Instr *i, const char *length)
+{
+  if (!i->type->count) {
+    return;
+  }
+  int desc = load(o, i->a), data = ++o->tmp, stack = ++o->tmp, bytes = ++o->tmp;
+  fprintf(o->f,
+          "  %%t%d = extractvalue { ptr, i64, ptr } %%t%d, 0\n"
+          "  %%t%d = extractvalue { ptr, i64, ptr } %%t%d, 2\n"
+          "  %%t%d = mul i64 %s, %zu\n"
+          "  call void @rh_flex_release(ptr %%t%d, ptr %%t%d, i64 %%t%d)\n",
+          data, desc, stack, desc, bytes, length, i->type->elem->size, stack, data,
+          bytes);
+}
 static void instruction(Output *o, Instr *i) {
   FILE *f = o->f;
   Type *t = i->type;
@@ -612,9 +627,11 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f,
             "  %%t%d = getelementptr {ptr,i64,ptr}, ptr %%p%d, i32 0, i32 1\n",
             lenaddr, i->a);
-    /* Shrinking changes only logical length. References keep the physical
-     * storage alive, and a later push must retain its high-water mark. */
+    /* A grow^ shrink changes only logical length. References keep the
+     * physical storage alive, and a later push must retain its high-water
+     * mark. A flex^ shrink also returns the tail (sema proved it unused). */
     fprintf(f, "  store i64 %%t%d, ptr %%t%d\n", last, lenaddr);
+    flex_release(o, i, fmt("%%t%d", last));
     break;
   }
   case I_CLEAR:
@@ -623,6 +640,7 @@ static void instruction(Output *o, Instr *i) {
             "  %%t%d = getelementptr {ptr,i64,ptr}, ptr %%p%d, i32 0, i32 1\n",
             a, i->a);
     fprintf(f, "  store i64 0, ptr %%t%d\n", a);
+    flex_release(o, i, "0");
     break;
   case I_UNION: {
     Type *arm = slot_type(o, i->a);
@@ -678,6 +696,7 @@ static void instruction(Output *o, Instr *i) {
             "unreachable\ntruncate_ok_%d:\n",
             i->loc.line, valid);
     fprintf(f, "  store i64 %%t%d, ptr %%t%d, !tbaa !5\n", a, lenaddr);
+    flex_release(o, i, fmt("%%t%d", a));
     break;
   }
   case I_APPEND:

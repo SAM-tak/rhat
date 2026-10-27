@@ -914,7 +914,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
       return type_builtin(c->p, T_NEVER);
     }
     return !elem ? NULL
-           : e->text ? type_wrap(c->p, T_GROW, elem, 0)
+           : e->text ? type_wrap(c->p, T_GROW, elem, !strcmp(e->text, "flex^"))
                      : type_wrap(c->p, T_ARRAY, elem, e->args.n);
   }
   case E_MEMBER: {

@@ -84,6 +84,8 @@ typedef struct {
   bool in_default;
   Expr *operator_target; /* The operator constructing an owning destination. */
   int operator_destination; /* Valid only when operator_target is non-NULL. */
+  List inflight; /* Values a statement still uses while evaluating later ones. */
+  uint64_t param_deps[64]; /* The external root of each reference parameter. */
 } Context;
 
 /* Type inference and concrete-instance registry, implemented in check.c. */

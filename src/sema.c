@@ -250,9 +250,9 @@ char *type_name(Type *t) {
                type_name(t->elem));
   if (t->kind == T_GROW)
     return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION)
-                   ? "grow^ (%s)[]"
-                   : "grow^ %s[]",
-               type_name(t->elem));
+                   ? "%s (%s)[]"
+                   : "%s %s[]",
+               t->count ? "flex^" : "grow^", type_name(t->elem));
   return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[%d]"
                                                                   : "%s[%d]",
              type_name(t->elem), t->count);
@@ -2052,6 +2052,111 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
   }
   return overload_select(c->p, candidates, &actual, e->loc, true);
 }
+/* Whether a value of type part could be stored inside a value of type whole. */
+static bool contains(Type *whole, Type *part)
+{
+  if (whole == part) {
+    return true;
+  }
+  if (whole->kind == T_ARRAY) {
+    return contains(whole->elem, part);
+  }
+  if (whole->kind == T_UNION) {
+    for (int j = 0; j < whole->def->alternatives.n; j++) {
+      if (contains(whole->def->alternatives.v[j], part)) {
+        return true;
+      }
+    }
+  }
+  if (whole->kind == T_STRUCT) {
+    for (int j = 0; j < whole->def->fields.n; j++) {
+      if (contains(((Field *)whole->def->fields.v[j])->type, part)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+/* Whether a value of type t may refer to a location inside an element of
+ * type elem. */
+static bool may_reference(Type *t, Type *elem)
+{
+  if (!t->refs) {
+    return false;
+  }
+  if (t->kind == T_REF || t->kind == T_SLICE) {
+    return contains(elem, t->elem);
+  }
+  if (t->kind == T_STRING) {
+    return false; /* Strings view literals or other strings, never arrays. */
+  }
+  if (t->kind == T_DYN) {
+    return elem->kind == T_STRUCT; /* Any composer of the dyn^ def. */
+  }
+  if (t->kind == T_ARRAY || t->kind == T_GROW) {
+    return may_reference(t->elem, elem);
+  }
+  if (t->kind == T_UNION) {
+    for (int j = 0; j < t->def->alternatives.n; j++) {
+      if (may_reference(t->def->alternatives.v[j], elem)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (t->kind == T_STRUCT) {
+    for (int j = 0; j < t->def->fields.n; j++) {
+      if (may_reference(((Field *)t->def->fields.v[j])->type, elem)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+/* The element type of the flex^ storage an argument of type t leads a
+ * callee to (the array itself or a struct's flex^ tail), or NULL. */
+static Type *flex_elements(Type *t)
+{
+  if (t->kind == T_REF) {
+    t = t->elem;
+  }
+  if (t->kind == T_GROW) {
+    return t->count ? t->elem : NULL;
+  }
+  if (t->kind == T_STRUCT) {
+    for (int j = 0; j < t->def->fields.n; j++) {
+      Type *field = ((Field *)t->def->fields.v[j])->type;
+      if (field->kind == T_GROW && field->count) {
+        return field->elem;
+      }
+    }
+  }
+  return NULL;
+}
+/* Shrinking flex^ storage returns its tail to the data stack and the OS, so
+ * no variable in scope or value still in use may refer into it. skip is the
+ * shrinking argument itself. */
+static void shrink_check(Context *c, uint64_t storage, Type *elem, Value *skip, Loc loc)
+{
+  for (int j = 0; j < c->vars.n; j++) {
+    Var *v = c->vars.v[j];
+    if (!(v->root & storage) && (v->deps & storage) && may_reference(v->type, elem)) {
+      fail(loc, "cannot shrink flex^ storage while '%s' may refer into it; end its scope first",
+           v->name);
+    }
+  }
+  for (int j = 0; j < c->inflight.n; j++) {
+    Value *v = c->inflight.v[j];
+    if (v != skip && (v->deps & storage) && may_reference(v->type, elem)) {
+      fail(loc, "cannot shrink flex^ storage while an earlier operand may refer into it");
+    }
+  }
+  for (int k = 0; k < c->in->params.n && k < 64; k++) {
+    if (c->param_deps[k] & storage) {
+      c->in->shrinks |= UINT64_C(1) << k;
+    }
+  }
+}
 /* Why method f of iface cannot occupy a dyn^ table entry, or NULL. Entries
  * share one signature across every concrete type. */
 static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
@@ -2095,6 +2200,10 @@ static DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
     if (t->concrete == concrete && t->iface == iface) {
       return t;
     }
+  }
+  /* A dyn^ call has no shrink summary, so it must not reach flex^ storage. */
+  if (flex_elements(concrete->type)) {
+    fail(loc, "'%s' has a flex^ field and cannot be used through dyn^", concrete->name);
   }
   DynTable *table = mem(sizeof(*table));
   *table = (DynTable){.concrete = concrete, .iface = iface, .id = p->dyn_tables.n};
@@ -2304,6 +2413,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (len.type->kind != T_I64)
         fail(e->loc, "truncate length must be i64^");
       store_check(c, base, (Value){0}, e->loc);
+      if (base.type->count) {
+        shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
+      }
       Type *t = type_builtin(p, T_VOID);
       if (expected && expected != t)
         fail(e->loc, "truncate returns void^");
@@ -2341,6 +2453,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (e->args.n)
         fail(e->loc, "%s expects no arguments", target->text);
       store_check(c, base, (Value){0}, e->loc);
+      if (base.type->count) {
+        shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
+      }
       Type *t = pop ? base.type->elem : type_builtin(p, T_VOID);
       if (expected && expected != t)
         fail(e->loc, "%s returns '%s', expected '%s'", target->text,
@@ -2466,11 +2581,17 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
          f->variadic ? "at least " : "", f->params.n - offset - f->variadic);
   if (f->procedure && !c->in->fn->procedure)
     fail(e->loc, "f^ cannot call p^ '%s'", f->name);
+  /* Arguments evaluated so far stay in use while later ones may shrink. */
+  int inflight = c->inflight.n;
+  for (int j = 0; j < values.n; j++) {
+    add(&c->inflight, values.v[j]);
+  }
   for (int j = 0; j < e->args.n; j++) {
     Param *param = f->params.v[right_self ? j : j + offset];
     Type *want = parameter_type(p, param);
     Value v = expression(c, e->args.v[j], parameter_hint(p, param, e->args.v[j]));
     if (c->terminated) {
+      c->inflight.n = inflight;
       return abrupt(c);
     }
     if (v.type->kind == T_VOID)
@@ -2499,6 +2620,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     Value *saved = mem(sizeof(*saved));
     *saved = v;
     add(&values, saved);
+    add(&c->inflight, saved);
     add(&actual, v.type);
   }
   if (right_self) {
@@ -2506,6 +2628,15 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     add(&actual, right_self->type);
   }
   Instance *in = instantiate(p, f, self, &actual, e->loc);
+  /* A callee still being lowered has no summary yet; assume it shrinks. */
+  for (int j = 0; j < values.n && j < 64; j++) {
+    Value *v = values.v[j];
+    Type *elem = flex_elements(v->type);
+    if (elem && (in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps) {
+      shrink_check(c, v->deps, elem, v, e->loc);
+    }
+  }
+  c->inflight.n = inflight;
   Type *t = in->result;
   if (expected && expected != t)
     fail(e->loc, "call returns '%s', expected '%s'", type_name(t),
@@ -2726,6 +2857,9 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     Value out = {0};
     out.type = t;
     out.id = dst >= 0 ? dst : slot(c, t, false);
+    /* Fields built so far stay in use while later ones are evaluated. */
+    int inflight = c->inflight.n;
+    add(&c->inflight, &out);
     if (!t->def->fields.n) {
       Instr *z = emit(c, I_ZERO, e->loc);
       z->dst = out.id;
@@ -2792,22 +2926,25 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       if (default_value)
         c->default_stack.n--;
       if (c->terminated) {
+        c->inflight.n = inflight;
         return abrupt(c);
       }
       out.deps |= v.deps;
     }
+    c->inflight.n = inflight;
     return out;
   }
   if (e->kind == E_ARRAY) {
-    bool grow = e->text != NULL; /* grow^[...] or grow^ T[] */
+    bool grow = e->text != NULL; /* grow^/flex^ [...] or grow^/flex^ T[] */
+    int flex = grow && !strcmp(e->text, "flex^");
     if (e->test_spec) {
       Type *named = type_spec(c->p, e->test_spec);
       if (t && t != named)
         fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
       t = named;
     }
-    if (grow && t && t->kind != T_GROW)
-      fail(e->loc, "grow^ array literal cannot initialize '%s'", type_name(t));
+    if (grow && t && (t->kind != T_GROW || t->count != flex))
+      fail(e->loc, "%s array literal cannot initialize '%s'", e->text, type_name(t));
     Value first = {0};
     if (!t) {
       if (!e->args.n)
@@ -2815,7 +2952,7 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       first = expression(c, e->args.v[0], NULL);
     }
     if (!t && grow)
-      t = type_wrap(c->p, T_GROW, first.type, 0);
+      t = type_wrap(c->p, T_GROW, first.type, flex);
     if (!t) {
       t = type_wrap(c->p, T_ARRAY, first.type, e->args.n);
       layout(t, e->loc); /* Re-evaluation of inference expressions is avoided
@@ -2851,6 +2988,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       a->dst = out.id;
       a->type = t;
     }
+    int inflight = c->inflight.n;
+    add(&c->inflight, &out);
     for (int j = 0; j < e->args.n; j++) {
       if (t->kind == T_GROW) {
         Value v = j || !first.type ? expression(c, e->args.v[j], t->elem) : first;
@@ -2871,11 +3010,13 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
         ix->label = j;
         Value v = construct(c, e->args.v[j], t->elem, d);
         if (c->terminated) {
+          c->inflight.n = inflight;
           return abrupt(c);
         }
         out.deps |= v.deps;
       }
     }
+    c->inflight.n = inflight;
     return out;
   }
   Expr *old_target = c->operator_target;
@@ -4737,6 +4878,9 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     v->root = root(&c, 1, false, a->loc);
     if (t->refs)
       v->deps = root(&c, 0, true, a->loc);
+    if (j < 64) {
+      c.param_deps[j] = v->deps;
+    }
     if (a->self)
       c.self_roots = v->deps;
     add(&c.vars, v);

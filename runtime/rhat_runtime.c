@@ -241,6 +241,28 @@ _Noreturn void rh_truncate_fail(int32_t line) {
 _Noreturn void rh_slice_fail(int32_t line) {
   rh_panic("slice range out of bounds", line);
 }
+/* Return the pages of shrunk flex^ storage to the OS. One commit chunk above
+ * the new end stays committed so that small regrowth does not fault again. */
+void rh_flex_trim(RhStack *s, unsigned char *end)
+{
+  uint64_t used = (uint64_t)(end - s->base);
+  uint64_t keep = (used + RH_COMMIT_BYTES - 1) / RH_COMMIT_BYTES * RH_COMMIT_BYTES +
+                  RH_COMMIT_BYTES;
+  if (keep >= (uint64_t)(s->committed - s->base)) {
+    return;
+  }
+  unsigned char *from = s->base + keep;
+#if defined(_WIN32)
+  if (!VirtualFree(from, (SIZE_T)(s->committed - from), MEM_DECOMMIT)) {
+    rh_panic("data stack decommit failed", 0);
+  }
+#else
+  if (madvise(from, (size_t)(s->committed - from), MADV_DONTNEED)) {
+    rh_panic("data stack release failed", 0);
+  }
+#endif
+  s->committed = from;
+}
 /* panic^, or an error that try^ passed out of the entry file, ends the
  * process with its message or error variant name. */
 _Noreturn void rh_terminate(const char *text, int64_t length, int32_t line,

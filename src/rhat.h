@@ -392,6 +392,7 @@ struct Instance {
   char *result_local;
   int stack_own, stack_need;
   bool may_shrink, emitted, cross_module;
+  uint64_t shrinks; /* Parameters through which this may shrink flex^ storage. */
 };
 /* The methods of def iface specialized for concrete, by iface method index;
  * entries are NULL for methods that cannot be called through dyn^. */
