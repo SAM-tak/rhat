@@ -126,8 +126,9 @@ static size_t identifier_at(const char *text, Loc loc, const char *name)
     if (n > at && (text[n] == '\n' || text[n] == '{' || text[n] == '}')) {
       break;
     }
+    /* A name token may follow a hat directly, as in let^name. */
     if (!strncmp(text + n, name, length) &&
-        (n == 0 || !word_byte((unsigned char)text[n - 1])) &&
+        (n == 0 || n == at || !word_byte((unsigned char)text[n - 1])) &&
         !word_byte((unsigned char)text[n + length])) {
       return n;
     }
@@ -173,6 +174,9 @@ static char *spec_text(Spec *s)
     }
     return fmt("%s -> %s;", out, s->elem ? spec_text(s->elem) : "void^");
   }
+  if (s->kind == SPEC_DYN) {
+    return fmt("dyn^ %s", spec_text(s->elem));
+  }
   if (s->kind == SPEC_REF) {
     return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION) ? "ref^ (%s)" : "ref^ %s",
                spec_text(s->elem));
@@ -193,7 +197,8 @@ static char *signature(Program *p, Function *f)
     Param *a = f->params.v[j];
     Type *t = a->self && f->owner ? f->owner->type : a->inferred;
     out = fmt("%s%s%s:%s", out, j ? ", " : "", a->name,
-              a->spec ? spec_text(a->spec)
+              a->spec && !strcmp(a->name, "...") ? spec_text(a->spec->elem)
+              : a->spec ? spec_text(a->spec)
               : t     ? type_name(t)
                       : "?");
   }

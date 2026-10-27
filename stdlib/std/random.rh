@@ -76,7 +76,8 @@ public^let^new = f^seed:i64^-> Random {
     r.load(i64^(seeded(seed)))
     return^r
 }
-public^let^new = f^-> NewResult {
+
+public^overload^let^new = f^-> NewResult {
     var^state:u64^= 0
     if^rh_random_seed(ref^ state) = 0 { return^Error.SeedUnavailable{} }
     if^state = 0 { state := seeded(0) }

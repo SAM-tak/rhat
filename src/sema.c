@@ -4790,6 +4790,19 @@ void analyze(Program *p) {
     if (f->external) {
       external_validate(p, f);
     }
+    /* As for members, a further signature of a name must say overload^. */
+    bool earlier = false;
+    for (int k = 0; k < j && !earlier; k++) {
+      earlier = !strcmp(f->name, ((Function *)p->functions.v[k])->name);
+    }
+    if (earlier && !f->overload) {
+      fail(f->declaration.file ? f->declaration : f->loc,
+           "adding a signature to '%s' requires overload^", f->name);
+    }
+    if (!earlier && f->overload) {
+      fail(f->declaration.file ? f->declaration : f->loc,
+           "overload^ has no existing function '%s'", f->name);
+    }
   }
   infer_parameters(p);
   overload_validate(p, &p->functions);

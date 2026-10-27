@@ -54,7 +54,7 @@ for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i], ...[i].len
 
     negative('variadic_not_last', 'let^ s = f^ ...:i32^, x:i32^ { }', 'must be last')
     negative('variadic_untyped', 'let^ s = f^ ... { }', 'needs an element type')
-    negative('variadic_overload', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nlet^ s = f^ x:string^ -> i64^ { 0 }', 'cannot be overloaded')
+    negative('variadic_overload', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\noverload^ let^ s = f^ x:string^ -> i64^ { 0 }', 'cannot be overloaded')
     negative('variadic_missing_fixed', 'let^ s = f^ x:i32^, ...:i32^ -> i64^ { ....len }\nprint^(s())', 'expects at least 1 arguments')
     negative('variadic_element_type', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nprint^(s(1, "x"))', "expected 'i32^'")
     negative('variadic_mixed_forward', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nvar^ a:i32^[1] = [1]\nprint^(s(1, a...))', 'only variadic argument')

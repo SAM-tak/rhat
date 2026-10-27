@@ -1,11 +1,14 @@
 # 関数・手続きの交差型と演算子定義
 
 同じ名前のトップレベル関数・手続きは、引数個数だけでなく引数型でも多重定義できます。
+メソッドと同じく、二つ目以降の宣言には `overload^` を付けて意図的な同名宣言であることを示します
+（`public^ overload^ let^ name = ...`、`overload^ externC^ ...` の順に書きます）。
+付け忘れは「adding a signature to 'name' requires overload^」、既存の宣言がない `overload^` は拒否します。
 型の交差は `&` です。交差は合併 `|` より強く結合します。現在の交差型の対象は関数・手続きです。
 
 ```rhat
 let^read = f^value:i32^ -> i32^{ value+1 }
-let^read = f^value:string^ -> i32^{ 42 }
+overload^let^read = f^value:string^ -> i32^{ 42 }
 let^alias:f^i32^ -> i32^; & f^string^ -> i32^; = read
 print^(alias(2),alias("text"))
 ```
@@ -40,7 +43,7 @@ def^ Reader {
     read = f^ self^,value:i32^ ->i32^ { value+1 }
     overload^ read = f^ self^,value:string^ ->i32^ { 42 }
 }
-def^ Derived:Reader {
+def^ Derived : Reader {
     override^ read = f^ self^,value:i32^ ->i32^ { value+10 }
 }
 ```
