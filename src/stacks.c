@@ -105,6 +105,32 @@ static List callees(Instr *i)
   }
   return out;
 }
+/* Raise each instance's stack need to cover its calls, to a fixed point. */
+static void propagate(Program *p)
+{
+  int n = p->instances.n;
+  bool changed;
+  do {
+    changed = false;
+    for (int a = 0; a < n; a++) {
+      Instance *in = p->instances.v[a];
+      for (int k = 0; k < in->code.n; k++) {
+        Instr *i = in->code.v[k];
+        List targets = callees(i);
+        for (int t = 0; t < targets.n; t++) {
+          Instance *callee = targets.v[t];
+          if (callee->stack_need > INT_MAX - i->stack_index)
+            fail(i->loc, "data stack count overflows");
+          int need = i->stack_index + callee->stack_need;
+          if (need > in->stack_need) {
+            in->stack_need = need;
+            changed = true;
+          }
+        }
+      }
+    }
+  } while (changed);
+}
 void plan_stacks(Program *p) {
   int n = p->instances.n;
   /* Reachability identifies recursive SCC membership. Specializations have
@@ -146,28 +172,35 @@ void plan_stacks(Program *p) {
       }
     }
   }
-  bool changed;
-  do {
-    changed = false;
-    for (int a = 0; a < n; a++) {
-      Instance *in = p->instances.v[a];
-      for (int k = 0; k < in->code.n; k++) {
-        Instr *i = in->code.v[k];
-        List targets = callees(i);
-        for (int t = 0; t < targets.n; t++) {
-          Instance *callee = targets.v[t];
-          if (callee->stack_need > INT_MAX - i->stack_index)
-            fail(i->loc, "data stack count overflows");
-          int need = i->stack_index + callee->stack_need;
-          if (need > in->stack_need) {
-            in->stack_need = need;
-            changed = true;
-          }
-        }
-      }
+  propagate(p);
+  /* An exportC^ entered from C starts above the stacks the interrupted R^
+   * call keeps, so every C call is planned to admit one level of callback;
+   * deeper nesting is checked when an entry starts. */
+  int callback = 0;
+  for (int a = 0; a < n; a++) {
+    Instance *in = p->instances.v[a];
+    if (in->fn->exported) {
+      p->callbacks = true;
+      in->callback_need = in->stack_need;
+      callback = in->stack_need > callback ? in->stack_need : callback;
     }
-  } while (changed);
+  }
+  for (int a = 0; callback && a < n; a++) {
+    Instance *in = p->instances.v[a];
+    if (in->fn->external) {
+      in->stack_need = callback;
+    }
+  }
+  if (callback) {
+    propagate(p);
+  }
   p->stack_count = ((Instance *)p->instances.v[0])->stack_need;
+  /* Stacks are reserved address space, so admit at least eight levels of
+   * callbacks that each hold owned values across their C call. */
+  if (callback > (INT_MAX - p->stack_count) / 7) {
+    fail(((Instance *)p->instances.v[0])->fn->loc, "data stack count overflows");
+  }
+  p->stack_count += 7 * callback;
 }
 void report_stacks(Program *p) {
   printf("data stacks: %d; 1 GiB usable + 1 MiB guard per stack\n",

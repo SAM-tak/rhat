@@ -308,6 +308,13 @@ static char *c_abi(Type *t, bool attributes)
   }
   return fmt("%s%s", extension, llvm_type(t));
 }
+/* A parameter's attributes follow its type, unlike a result's. */
+static char *c_param(Type *t)
+{
+  bool zero = t->kind == T_BOOL || t->kind == T_U8 || t->kind == T_U16;
+  bool sign = t->kind == T_I8 || t->kind == T_I16;
+  return fmt("%s%s", c_abi(t, false), zero ? " zeroext" : sign ? " signext" : "");
+}
 /* LLVM IR does not lower C's struct passing for the target, so a C function
  * taking or returning a def^ by value is reached through a generated C shim
  * that takes those values by pointer. */
@@ -326,7 +333,7 @@ static int pointer_tag(Type *t)
   return ((Type *)t->def->alternatives.v[0])->kind == T_NIL;
 }
 /* A direct C call without the stack position or result destination. */
-static void external_call(Output *o, Instr *i)
+static void external_invoke(Output *o, Instr *i)
 {
   bool shim = needs_shim(i->callee);
   char *operands = "";
@@ -389,6 +396,92 @@ static void external_call(Output *o, Instr *i)
   }
   save(o, i->dst, i->type, fmt("%%t%d", r));
 }
+/* A C call may enter exportC^ functions, which use the data stacks above
+ * those this frame keeps live at the call. */
+static void external_call(Output *o, Instr *i)
+{
+  int saved = 0;
+  if (o->p->callbacks && !i->callee->fn->intrinsic) {
+    saved = ++o->tmp;
+    int mark = ++o->tmp;
+    fprintf(o->f,
+            "  %%t%d = load i64, ptr @rh_callback_sp\n"
+            "  %%t%d = add i64 %%sp, %d\n"
+            "  store i64 %%t%d, ptr @rh_callback_sp\n",
+            saved, mark, i->stack_index, mark);
+  }
+  external_invoke(o, i);
+  if (saved) {
+    fprintf(o->f, "  store i64 %%t%d, ptr @rh_callback_sp\n", saved);
+  }
+}
+/* The C name of an exportC^ function: its name without the module path. */
+static const char *short_symbol(Function *f)
+{
+  const char *dot = strrchr(f->name, '.');
+  return dot ? dot + 1 : f->name;
+}
+/* An exportC^ function's entry from its C wrapper: by-value def^ values come
+ * by pointer, a nullable pointer as a plain one, and the data stacks start
+ * where the interrupted R^ call left them. */
+static void export_entry(Instance *in, FILE *f)
+{
+  Type *t = in->result;
+  bool out = t->kind == T_STRUCT;
+  fprintf(f, "\ndefine %s @rh_entry_%s(%s",
+          out || t->kind == T_VOID ? "void" : c_abi(t, true), short_symbol(in->fn), out ? "ptr %out" : "");
+  for (int j = 0; j < in->params.n; j++) {
+    Type *param = in->params.v[j];
+    fprintf(f, "%s%s %%c%d", j || out ? ", " : "",
+            param->kind == T_STRUCT ? "ptr" : c_param(param), j);
+  }
+  fprintf(f, ") {\nentry:\n  %%base = call i64 @rh_callback_enter(i64 %d)\n", in->callback_need);
+  char *args = "";
+  for (int j = 0; j < in->params.n; j++) {
+    Type *param = in->params.v[j];
+    char *ll = llvm_type(param);
+    if (param->kind == T_UNION) {
+      fprintf(f,
+              "  %%u%d = alloca %s\n  store %s zeroinitializer, ptr %%u%d\n"
+              "  %%n%d = icmp ne ptr %%c%d, null\n"
+              "  %%g%d = select i1 %%n%d, i32 %d, i32 %d\n"
+              "  %%h%d = getelementptr %s, ptr %%u%d, i32 0, i32 0\n  store i32 %%g%d, ptr %%h%d\n"
+              "  %%q%d = getelementptr %s, ptr %%u%d, i32 0, i32 2\n  store ptr %%c%d, ptr %%q%d\n",
+              j, ll, ll, j, j, j, j, j, pointer_tag(param), !pointer_tag(param), j, ll, j, j, j,
+              j, ll, j, j, j);
+      fprintf(f, "  %%v%d = load %s, ptr %%u%d\n", j, ll, j);
+      args = fmt("%s, %s %%v%d", args, ll, j);
+    }
+    else if (param->kind == T_STRUCT && direct(param)) {
+      fprintf(f, "  %%v%d = load %s, ptr %%c%d\n", j, ll, j);
+      args = fmt("%s, %s %%v%d", args, ll, j);
+    }
+    else {
+      args = fmt("%s, %s %%c%d", args, param->kind == T_STRUCT ? "ptr" : ll, j);
+    }
+  }
+  if (t->kind == T_VOID || (out && !direct(t))) {
+    fprintf(f, "  call void @%s(i64 %%base%s%s)\n  ret void\n}\n", in->symbol,
+            out ? ", ptr %out" : "", args);
+    return;
+  }
+  fprintf(f, "  %%r = call %s @%s(i64 %%base%s)\n", llvm_type(t), in->symbol, args);
+  if (out) {
+    fprintf(f, "  store %s %%r, ptr %%out\n  ret void\n}\n", llvm_type(t));
+  }
+  else if (t->kind == T_UNION) {
+    fprintf(f,
+            "  %%ru = alloca %s\n  store %s %%r, ptr %%ru\n"
+            "  %%rh = getelementptr %s, ptr %%ru, i32 0, i32 0\n  %%rg = load i32, ptr %%rh\n"
+            "  %%rq = getelementptr %s, ptr %%ru, i32 0, i32 2\n  %%rp = load ptr, ptr %%rq\n"
+            "  %%rn = icmp eq i32 %%rg, %d\n  %%rv = select i1 %%rn, ptr %%rp, ptr null\n"
+            "  ret ptr %%rv\n}\n",
+            llvm_type(t), llvm_type(t), llvm_type(t), llvm_type(t), pointer_tag(t));
+  }
+  else {
+    fprintf(f, "  ret %s %%r\n}\n", llvm_type(t));
+  }
+}
 /* Declare a C function once per IR module. An f^ declaration over scalars
  * promises a result that depends only on its arguments. */
 static void external_declaration(Program *p, int index, FILE *f)
@@ -420,7 +513,7 @@ static void external_declaration(Program *p, int index, FILE *f)
     for (int j = 0; j < in->params.n; j++) {
       Type *param = in->params.v[j];
       fprintf(f, "%s%s", j || out ? ", " : "",
-              param->kind == T_STRUCT ? "ptr" : c_abi(param, true));
+              param->kind == T_STRUCT ? "ptr" : c_param(param));
     }
     fputs(") nounwind\n", f);
     return;
@@ -433,7 +526,7 @@ static void external_declaration(Program *p, int index, FILE *f)
     Type *param = in->params.v[j];
     pure &= param->kind != T_REF && param->kind != T_SLICE &&
             param->kind != T_STRING;
-    fprintf(f, "%s%s", j ? ", " : "", c_abi(param, true));
+    fprintf(f, "%s%s", j ? ", " : "", c_param(param));
   }
   fprintf(f, ") nounwind%s\n", pure ? " memory(none)" : "");
 }
@@ -1485,6 +1578,15 @@ void emit_llvm(Program *p, const char *path) {
       instruction(&o, in->code.v[k]);
     fputs("}\n", f);
   }
+  if (p->callbacks) {
+    fputs("\n@rh_callback_sp = external global i64\ndeclare i64 @rh_callback_enter(i64)\n", f);
+  }
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    if (in->fn->exported && (!p->emitting || in->fn->module == p->emitting)) {
+      export_entry(in, f);
+    }
+  }
   if (!p->emitting || p->emitting->root) {
     /* The entry receives the command arguments as its ... string slice. */
     fprintf(f,
@@ -1722,7 +1824,15 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       add(&shims, in);
     }
   }
-  if (!shims.n) {
+  /* exportC^ wrappers name only R^'s own types, so they need no header. */
+  List exports = {0};
+  for (int j = 0; !headers && j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    if (in->fn->exported) {
+      add(&exports, in);
+    }
+  }
+  if (!shims.n && !exports.n) {
     return false;
   }
   FILE *f = fopen(path, "wb");
@@ -1747,12 +1857,39 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       }
     }
   }
-  List done = {0};
-  for (int j = 0; j < shims.n; j++) {
-    Instance *in = shims.v[j];
+  List done = {0}, typed = shims;
+  for (int j = 0; j < exports.n; j++) {
+    add(&typed, exports.v[j]);
+  }
+  for (int j = 0; j < typed.n; j++) {
+    Instance *in = typed.v[j];
     c_struct(f, in->result, &done, headers);
     for (int k = 0; k < in->params.n; k++) {
       c_struct(f, in->params.v[k], &done, headers);
+    }
+  }
+  for (int j = 0; j < exports.n; j++) {
+    Instance *in = exports.v[j];
+    const char *name = short_symbol(in->fn);
+    bool out = in->result->kind == T_STRUCT, none = in->result->kind == T_VOID;
+    char *entry = out ? fmt("%s *out", c_name(in->result)) : "", *wrapper = "";
+    char *call = out ? "&r" : "";
+    for (int k = 0; k < in->params.n; k++) {
+      Type *param = in->params.v[k];
+      bool value = param->kind == T_STRUCT;
+      entry = fmt("%s%s%s%s", entry, *entry ? ", " : "", c_name(param), value ? " *" : "");
+      wrapper = fmt("%s%s%s a%d", wrapper, k ? ", " : "", c_name(param), k);
+      call = fmt("%s%s%sa%d", call, *call ? ", " : "", value ? "&" : "", k);
+    }
+    char *result = none || out ? "void" : c_name(in->result);
+    fprintf(f, "%s rh_entry_%s(%s);\n", result, name, *entry ? entry : "void");
+    fprintf(f, "%s %s(%s) { ", none ? "void" : c_name(in->result), name,
+            *wrapper ? wrapper : "void");
+    if (out) {
+      fprintf(f, "%s r; rh_entry_%s(%s); return r; }\n", c_name(in->result), name, call);
+    }
+    else {
+      fprintf(f, "%srh_entry_%s(%s); }\n", none ? "" : "return ", name, call);
     }
   }
   for (int j = 0; j < shims.n; j++) {

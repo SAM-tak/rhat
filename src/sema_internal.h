@@ -231,6 +231,9 @@ Expr *pack_arguments(Function *f, Expr *e, int offset);
  * fits^ dyn^ D, otherwise a reference to exactly the named concrete def. */
 Type *dyn_fits_target(Program *p, Spec *s, Loc loc);
 
+/* Reject an exportC^ function whose signature C cannot call. */
+void export_validate(Program *p, Function *f);
+
 /* Reject an externC^ signature without a plain C shape or a usable symbol. */
 void external_validate(Program *p, Function *f);
 

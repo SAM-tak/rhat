@@ -124,6 +124,50 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   add(&call->args, pack);
   return call;
 }
+/* An ASCII C identifier other than main, which the entry file defines. */
+static bool c_identifier(const char *s)
+{
+  bool identifier = *s && !(*s >= '0' && *s <= '9');
+  for (const char *c = s; *c; c++) {
+    identifier &= *c == '_' || (*c >= '0' && *c <= '9') ||
+                  (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z');
+  }
+  return identifier && strcmp(s, "main");
+}
+void export_validate(Program *p, Function *f)
+{
+  const char *s = strrchr(f->name, '.') ? strrchr(f->name, '.') + 1 : f->name;
+  if (!c_identifier(s) || !strncmp(s, "rh_", 3)) {
+    fail(f->declaration, "exportC^ name '%s' is not a usable C identifier", s);
+  }
+  if (f->templ || f->variadic || f->owner) {
+    fail(f->loc, "exportC^ function cannot be template^, variadic or a method");
+  }
+  if (!f->result && !f->procedure) {
+    fail(f->loc, "exportC^ f^ needs a result type annotation");
+  }
+  for (int j = 0; j < p->functions.n; j++) {
+    Function *other = p->functions.v[j];
+    const char *name = strrchr(other->name, '.') ? strrchr(other->name, '.') + 1 : other->name;
+    if (other != f && (other->exported || other->external) && !strcmp(name, s)) {
+      fail(f->declaration, "exportC^ symbol '%s' is already declared at %s:%d", s,
+           other->declaration.file, other->declaration.line);
+    }
+  }
+  /* C passes no lengths, so slices and strings cannot come in from C. */
+  for (int j = 0; j < f->params.n; j++) {
+    Param *param = f->params.v[j];
+    Type *t = param->spec ? type_spec(p, param->spec) : NULL;
+    if (!t || !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) {
+      fail(param->loc, "exportC^ parameter '%s' needs a C type annotation, not '%s'",
+           param->name, t ? type_name(t) : "?");
+    }
+  }
+  Type *result = f->result ? type_spec(p, f->result) : NULL;
+  if (result && !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
+    fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
+  }
+}
 void external_validate(Program *p, Function *f)
 {
   const char *s = f->external;
@@ -136,12 +180,7 @@ void external_validate(Program *p, Function *f)
     }
   }
   else {
-    bool identifier = !(*s >= '0' && *s <= '9');
-    for (const char *c = s; *c; c++) {
-      identifier &= *c == '_' || (*c >= '0' && *c <= '9') ||
-                    (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z');
-    }
-    if (!identifier || !strcmp(s, "main")) {
+    if (!c_identifier(s)) {
       fail(f->declaration, "externC^ symbol '%s' is not a usable C identifier", s);
     }
     if (!strncmp(s, "rh_", 3) && !standard) {
@@ -1642,7 +1681,7 @@ Type *parameter_hint(Program *p, Param *param, Expr *arg)
 }
 bool declaration_instance_needed(Program *p, Function *f)
 {
-  if (f->public || (f->owner && f->owner->public && !f->priv)) {
+  if (f->public || f->exported || (f->owner && f->owner->public && !f->priv)) {
     return true;
   }
   bool inferred = false;

@@ -161,6 +161,55 @@ ffi_box_free(b)
     negative('ffi_opaque_value', header + 'externC^ def^ FfiBox;\nvar^ boxed:FfiBox = FfiBox{}', 'opaque; use it only through ref^')
     negative('ffi_include_public', 'public^ includeC^ "ffi_lib.h"', 'cannot be public^')
 
+    # exportC^: C calls back into R^ during an externC^ call.
+    callbacks = suite.work / 'ffi_callbacks.c'
+    callbacks.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
+typedef struct {{ double x, y; }} Point;
+typedef struct Box Box;
+int64_t r_twice(int64_t x);
+Point r_mid(Point a, Point b);
+int64_t r_count(int64_t n);
+int64_t r_hold(int64_t n);
+bool r_flag(bool b);
+Box *r_pick(Box *a, Box *b);
+int64_t ffi_call_twice(int64_t x) {{ return r_twice(x) + 1; }}
+double ffi_call_mid(void) {{ Point a = {{0, 0}}, b = {{4, 6}}; Point m = r_mid(a, b); return m.x + m.y; }}
+int64_t ffi_recurse(int64_t n) {{ return r_count(n); }}
+int64_t ffi_hold(int64_t n) {{ return r_hold(n); }}
+int32_t ffi_flag(void) {{ return r_flag(true) ? 1 : 2; }}
+int32_t ffi_pick(void) {{ static int x; Box *b = (Box *)&x; return (r_pick(NULL, b) == b) + 2 * (r_pick(b, NULL) == NULL); }}
+''', encoding='utf-8')
+    exports = '''def^ Point { self^{ x:f64^ = 0.0, y:f64^ = 0.0 } }
+externC^ def^ Box;
+externC^ ffi_call_twice:f^ x:i64^ -> i64^;
+externC^ ffi_call_mid:f^ -> f64^;
+externC^ ffi_recurse:p^ n:i64^ -> i64^;
+externC^ ffi_hold:p^ n:i64^ -> i64^;
+externC^ ffi_flag:f^ -> i32^;
+externC^ ffi_pick:p^ -> i32^;
+exportC^ let^ r_twice = f^ x:i64^ -> i64^ { x * 2 }
+exportC^ let^ r_mid = f^ a:Point, b:Point -> Point { Point{x = (a.x + b.x) / 2.0, y = (a.y + b.y) / 2.0} }
+exportC^ let^ r_count = p^ n:i64^ -> i64^ { if^ n = 0 { return^ 0 } return^ ffi_recurse(n - 1) + 1 }
+exportC^ let^ r_hold = p^ n:i64^ -> i64^ {
+  var^ buf:grow^ i64^[] = []
+  buf.push(n)
+  if^ n = 0 { return^ 0 }
+  return^ ffi_hold(n - 1) + buf[0]
+}
+exportC^ let^ r_flag = f^ b:bool^ -> bool^ { !b }
+exportC^ let^ r_pick = f^ a:ref^ Box | nil^, b:ref^ Box | nil^ -> ref^ Box | nil^ { if^ a fits^ nil^ { return^ b } return^ nil^ }
+'''
+    positive('ffi_export_callbacks', exports + 'print^(ffi_call_twice(20), ffi_call_mid(), ffi_recurse(1000), ffi_flag(), ffi_pick(), ffi_hold(5))\n',
+             '41 5 1000 2 3 15\n', extra=('--runtime', callbacks))
+    suite.runtime_failure('ffi_export_nesting_limit', exports + 'print^(ffi_hold(100))\n',
+                          'C callbacks nest deeper than the data stacks allow', extra=('--runtime', callbacks))
+    negative('ffi_export_slice', 'exportC^ let^ g = f^ xs:i32^[:] -> i32^ { 0 }', "exportC^ parameter 'xs' needs a C type annotation")
+    negative('ffi_export_unannotated', 'exportC^ let^ g = f^ x -> i32^ { 0 }', "exportC^ parameter 'x' needs a C type annotation")
+    negative('ffi_export_result', 'exportC^ let^ g = f^ x:i32^ { x }', 'needs a result type annotation')
+    negative('ffi_export_template', 'exportC^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'cannot be template^')
+    negative('ffi_export_duplicate', 'externC^ g:f^ x:i32^ -> i32^;\nexportC^ let^ g = f^ x:i32^ -> i32^ { x }', 'already declared')
+    negative('ffi_export_not_function', 'exportC^ def^ D { self^{ n:i32^ = 0 } }', 'applies only to a let^ function')
+    negative('ffi_export_extern', 'exportC^ let^ g = externC^ abs:f^ n:i32^ -> i32^;', 'applies only to a let^ function')
     negative('ffi_struct_string_field', 'def^ P { self^{s:string^=""} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_reference_field', 'var^ n:i32^=0\ndef^ P { self^{r:ref^ i32^} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_empty', 'def^ P { }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")

@@ -193,6 +193,7 @@ struct Function {
   bool intrinsic; /* externLLVM^ binds an LLVM intrinsic instead of a C symbol. */
   bool procedure, templ, abstract, priv, override, mutable_self;
   bool overload, operator_member, right_receiver; /* Explicit member roles. */
+  bool exported; /* exportC^: callable from C under its own name. */
   bool variadic; /* The last parameter "..." collects trailing arguments as a
                     slice. */
 };
@@ -279,6 +280,7 @@ typedef struct {
                       dyn^ def. */
   Function *entry;
   int stack_count;
+  bool callbacks; /* Some exportC^ function may be entered from C. */
   char *source;
   const char *path;
 } Program;
@@ -394,6 +396,7 @@ struct Instance {
   int id, state, labels, result_slot;
   char *result_local;
   int stack_own, stack_need;
+  int callback_need; /* exportC^ entries: stacks used before any callback. */
   bool may_shrink, emitted, cross_module;
   uint64_t shrinks; /* Parameters through which this may shrink flex^ storage. */
 };

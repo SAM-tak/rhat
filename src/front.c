@@ -2006,6 +2006,11 @@ void parse_file(Program *p, const char *path, Module *module) {
     if (overload && !is(&q, "let^") && !is(&q, "externC^")) {
       fail(overload_at, "overload^ applies only to a function declaration");
     }
+    Loc export_at = tok(&q)->loc;
+    bool exported = take(&q, "exportC^");
+    if (exported && !is(&q, "let^")) {
+      fail(export_at, "exportC^ applies only to a let^ function declaration");
+    }
     if (take(&q, "import^") ||
         (is(&q, "let^") && q.at + 3 < q.tokens.n &&
          !strcmp(((Token *)q.tokens.v[q.at + 2])->text, "=") &&
@@ -2122,6 +2127,10 @@ void parse_file(Program *p, const char *path, Module *module) {
                  !strcmp(initializer->text, "externLLVM^") ||
                  !strcmp(initializer->text, "template^"));
     }
+    if (exported && (!binding || q.at + 3 >= q.tokens.n ||
+                     strstr(((Token *)q.tokens.v[q.at + 3])->text, "extern"))) {
+      fail(export_at, "exportC^ applies only to a let^ function declaration");
+    }
     if (!binding) {
       Stmt *s = stmt(&q);
       if (!module->root) {
@@ -2179,6 +2188,7 @@ void parse_file(Program *p, const char *path, Module *module) {
     parsed_function->module = module;
     parsed_function->public = public;
     parsed_function->overload = overload;
+    parsed_function->exported = exported;
     overload = false;
     add(&module->functions, parsed_function);
     add(&p->functions, parsed_function);

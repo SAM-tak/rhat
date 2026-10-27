@@ -30,6 +30,7 @@ typedef struct {
 static RhStack *rh_stacks;
 static uint64_t rh_stack_count;
 static _Noreturn void rh_panic(const char *why, int32_t line) {
+  fflush(stdout);
   fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, why);
   exit(1);
 }
@@ -240,6 +241,18 @@ _Noreturn void rh_truncate_fail(int32_t line) {
 }
 _Noreturn void rh_slice_fail(int32_t line) {
   rh_panic("slice range out of bounds", line);
+}
+/* The first data stack an exportC^ function entered from C may use: the
+ * stack index after those the R^ caller of the current externC^ call keeps. */
+uint64_t rh_callback_sp;
+/* Enter an exportC^ function needing need stacks. One level of callback is
+ * planned at every C call; deeper nesting must still fit the stacks. */
+uint64_t rh_callback_enter(uint64_t need)
+{
+  if (need > rh_stack_count || rh_callback_sp > rh_stack_count - need) {
+    rh_panic("C callbacks nest deeper than the data stacks allow", 0);
+  }
+  return rh_callback_sp;
 }
 /* Return the pages of shrunk flex^ storage to the OS. One commit chunk above
  * the new end stays committed so that small regrowth does not fault again. */
