@@ -226,8 +226,8 @@ print^(x,derived.x,twice(2))
 """
     client.change(path,scoped,7)
     assert client.diagnostics(path,7) == []
-    assert request('definition','print^(x)',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i64^=2')
-    assert request('definition','print^(x,',shift=6,text=scoped)['range']['start'] == at(scoped,'x:i32^=1')
+    assert request('definition','print^(x)',shift=7,text=scoped)['range']['start'] == at(scoped,'x:i64^=2')
+    assert request('definition','print^(x,',shift=7,text=scoped)['range']['start'] == at(scoped,'x:i32^=1')
     assert request('definition','this^',text=scoped)['range']['start'] == at(scoped,'twice=f^')
     completions=request('completion','derived.x',shift=8,text=scoped)
     assert 'x' in {x['label'] for x in completions}, completions
@@ -281,8 +281,8 @@ if^ local? {print^(local)}
 """
     client.change(path,narrowed,67)
     assert client.diagnostics(path,67) == []
-    assert request('hover','print^(box.value)',shift=10,text=narrowed)['contents']['value'] == 'value: i64^'
-    assert request('hover','print^(local)',shift=6,text=narrowed)['contents']['value'] == 'local: i64^'
+    assert request('hover','print^(box.value)',shift=11,text=narrowed)['contents']['value'] == 'value: i64^'
+    assert request('hover','print^(local)',shift=7,text=narrowed)['contents']['value'] == 'local: i64^'
     print('PASS narrowed local and member hover types',flush=True)
     reference='''var^ value:i32^=7
 let^ view:ref^ i32^=ref^ value
