@@ -107,6 +107,7 @@ FfiBox *ffi_box_find(int64_t n);
 int64_t ffi_box_get(const FfiBox *b);
 int64_t ffi_box_or(const FfiBox *b, int64_t fallback);
 void ffi_box_free(FfiBox *b);
+int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x);
 ''', encoding='utf-8')
     boxes = suite.work / 'ffi_boxes.c'
     boxes.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -117,6 +118,7 @@ FfiBox *ffi_box_find(int64_t n) {{ return n ? ffi_box_new(n) : NULL; }}
 int64_t ffi_box_get(const FfiBox *b) {{ return b->n; }}
 int64_t ffi_box_or(const FfiBox *b, int64_t fallback) {{ return b ? b->n : fallback; }}
 void ffi_box_free(FfiBox *b) {{ free(b); }}
+int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x) {{ return fn ? fn(x) : -1; }}
 ''', encoding='utf-8')
     header = 'includeC^ "ffi_lib.h"\n'
     value = header + 'externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }\nexternC^ ffi_int:f^ i:i64^ -> FfiValue;\n'
@@ -314,6 +316,24 @@ print^(rhat_lhat_register(mock_program(), "rhat"))
              "exportL^ parameter 'b' needs a number, bool^ or string^ type annotation")
     negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[:] { [] }', 'exportL^ result must be')
     negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
+
+    # externC^ function types: C function pointers to externC^ and exportC^ functions.
+    positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[:], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
+exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
+var^ xs:i32^[5] = [3, 1, 4, 1, 5]
+qsort(xs[0 :: 5], 5, 4, descending)
+print^(xs[0], xs[1], xs[2], xs[3], xs[4])
+''', '5 4 3 1 1\n')
+    positive('ffi_header_function_pointer', header + '''externC^ ffi_twice:f^ n:i64^ -> i64^;
+externC^ ffi_apply:p^ fn:(externC^ f^ i64^ -> i64^;) | nil^, x:i64^ -> i64^;
+exportC^ let^ r_negate = f^ n:i64^ -> i64^ { -n }
+let^ twice:externC^ f^ i64^ -> i64^; = r_negate
+print^(ffi_apply(r_negate, 5), ffi_apply(twice, 6), ffi_apply(nil^, 7))
+''', '-5 -6 -1\n', extra=('--runtime', boxes))
+    pointer = 'externC^ apply:p^ fn:externC^ f^ i64^ -> i64^;, x:i64^ -> i64^;\n'
+    negative('ffi_function_pointer_signature', pointer + 'externC^ abs:f^ n:i32^ -> i32^;\nprint^(apply(abs, 1))', "externC^ f^ i64^ -> i64^;")
+    negative('ffi_function_pointer_r_function', pointer + 'let^ g = f^ n:i64^ -> i64^ { n }\nprint^(apply(g, 1))', 'only externC^ and exportC^ functions have a C address')
+    negative('ffi_function_pointer_spec', 'externC^ apply:p^ fn:externC^ i64^ -> i64^;', 'externC^ in a type needs a signature')
     negative('ffi_struct_string_field', 'def^ P { self^{s:string^=""} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_reference_field', 'var^ n:i32^=0\ndef^ P { self^{r:ref^ i32^} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_empty', 'def^ P { }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")

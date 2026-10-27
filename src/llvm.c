@@ -37,6 +37,7 @@ char *llvm_type(Type *t) {
   case T_DYN:
     return "{ ptr, ptr }";
   case T_REF:
+  case T_CFUNC:
     return "ptr";
   case T_ARRAY:
     return fmt("[%d x %s]", t->count, llvm_type(t->elem));
@@ -415,12 +416,6 @@ static void external_call(Output *o, Instr *i)
     fprintf(o->f, "  store i64 %%t%d, ptr @rh_callback_sp\n", saved);
   }
 }
-/* The C name of an exportC^ function: its name without the module path. */
-static const char *short_symbol(Function *f)
-{
-  const char *dot = strrchr(f->name, '.');
-  return dot ? dot + 1 : f->name;
-}
 /* An exportC^ function's entry from its C wrapper: by-value def^ values come
  * by pointer, a nullable pointer as a plain one, and the data stacks start
  * where the interrupted R^ call left them. */
@@ -431,7 +426,7 @@ static void export_entry(Instance *in, FILE *f)
    * through two out pointers. */
   bool out = t->kind == T_STRUCT, text = t->kind == T_STRING;
   fprintf(f, "\ndefine %s @rh_entry_%s(%s",
-          out || text || t->kind == T_VOID ? "void" : c_abi(t, true), short_symbol(in->fn),
+          out || text || t->kind == T_VOID ? "void" : c_abi(t, true), c_function_symbol(in->fn),
           out ? "ptr %out" : text ? "ptr %text, ptr %length" : "");
   for (int j = 0; j < in->params.n; j++) {
     Type *param = in->params.v[j];
@@ -549,6 +544,32 @@ static void external_declaration(Program *p, int index, FILE *f)
     fprintf(f, "%s%s", j ? ", " : "", c_param(param));
   }
   fprintf(f, ") nounwind%s\n", pure ? " memory(none)" : "");
+}
+/* Declare the C functions whose addresses the emitted code takes, once and
+ * unless a direct call already declared them. */
+static void address_declarations(Program *p, FILE *f)
+{
+  List done = {0};
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    if (in->emitted && in->fn->external && !in->fn->intrinsic && !needs_shim(in)) {
+      add(&done, in->symbol);
+    }
+  }
+  for (int j = 0; j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    for (int k = 0; in->emitted && !in->fn->external && k < in->code.n; k++) {
+      Instr *i = in->code.v[k];
+      bool seen = !(i->op == I_CONST && i->type->kind == T_CFUNC);
+      for (int m = 0; !seen && m < done.n; m++) {
+        seen = !strcmp(done.v[m], i->text + 1);
+      }
+      if (!seen) {
+        add(&done, i->text + 1);
+        fprintf(f, "\ndeclare void %s()\n", i->text);
+      }
+    }
+  }
 }
 /* Lower the stack top of a shrunk flex^ array to its new length. */
 static void flex_release(Output *o, Instr *i, const char *length)
@@ -1598,6 +1619,7 @@ void emit_llvm(Program *p, const char *path) {
       instruction(&o, in->code.v[k]);
     fputs("}\n", f);
   }
+  address_declarations(p, f);
   if (p->callbacks) {
     fputs("\n@rh_callback_sp = external global i64\ndeclare i64 @rh_callback_enter(i64)\n", f);
   }
@@ -1849,7 +1871,7 @@ static void lhat_glue(FILE *f, List *hosts)
   char *registrations = "";
   for (int j = 0; j < hosts->n; j++) {
     Instance *in = hosts->v[j];
-    const char *name = short_symbol(in->fn);
+    const char *name = c_function_symbol(in->fn);
     Type *t = in->result;
     bool text = t->kind == T_STRING, none = t->kind == T_VOID;
     char *entry = text ? "const char **, int64_t *" : "", *call = text ? "&rt, &rl" : "";
@@ -1981,7 +2003,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
   }
   for (int j = 0; j < exports.n; j++) {
     Instance *in = exports.v[j];
-    const char *name = short_symbol(in->fn);
+    const char *name = c_function_symbol(in->fn);
     bool out = in->result->kind == T_STRUCT, none = in->result->kind == T_VOID;
     char *entry = out ? fmt("%s *out", c_name(in->result)) : "", *wrapper = "";
     char *call = out ? "&r" : "";

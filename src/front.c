@@ -572,6 +572,14 @@ static Spec *spec_part(Parser *p)
     need(p, ";");
     return s;
   }
+  if (take(p, "externC^")) {
+    s = spec_part(p);
+    if (s->kind != SPEC_FUNCTION) {
+      fail(s->loc, "externC^ in a type needs a signature, as in externC^ f^ i32^ -> i32^;");
+    }
+    s->foreign = true;
+    return s;
+  }
   if (take(p, "dyn^")) {
     s->kind = SPEC_DYN;
     s->elem = spec_part(p);

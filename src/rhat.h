@@ -58,6 +58,7 @@ struct Spec {
   int kind, count;
   List params; /* Parameter specifications of a callable signature. */
   bool procedure; /* A p^ signature carries the procedure effect. */
+  bool foreign;   /* externC^ before a signature: a C function pointer. */
 };
 enum {
   SPEC_NAME,
@@ -251,8 +252,9 @@ enum {
   T_NEVER, /* Compiler-only type for an expression with no normal value path. */
   T_FUNCTION, /* A callable signature, optionally tied to a static declaration. */
   T_INTERSECTION, /* A canonical set of callable signatures. */
-  T_DYN /* ref^ dyn^ D: data reference and method table of a type composing
+  T_DYN, /* ref^ dyn^ D: data reference and method table of a type composing
            elem's def. */
+  T_CFUNC /* externC^ f^ ...;: a C function pointer with elem's signature. */
 };
 struct Type {
   char *symbol;
@@ -432,5 +434,8 @@ void dump_ir(Program *p, const char *path);
  * value, or that come from modules with includeC^ headers (headers selects
  * which); false when the program needs none. */
 bool emit_c_shims(Program *p, const char *path, bool headers);
+/* The C symbol of an externC^ or exportC^ function (the latter's name
+ * without its module path). */
+const char *c_function_symbol(Function *f);
 char *llvm_type(Type *t);
 #endif

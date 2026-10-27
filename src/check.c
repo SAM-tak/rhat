@@ -58,12 +58,16 @@ static bool c_flat(Type *t)
   return true;
 }
 /* The reference a C pointer stands for: ref^ to a flat or opaque def^ (or
- * a scalar), or ref^ T | nil^ for a pointer that may be NULL. */
+ * a scalar), a C function pointer, or either | nil^ for one that may be
+ * NULL. */
 static Type *c_pointer(Type *t)
 {
   if (t->kind == T_UNION && t->def->alternatives.n == 2) {
     Type *a = t->def->alternatives.v[0], *b = t->def->alternatives.v[1];
     t = a->kind == T_NIL ? b : b->kind == T_NIL ? a : t;
+  }
+  if (t->kind == T_CFUNC) {
+    return t;
   }
   if (t->kind != T_REF) {
     return NULL;
@@ -610,7 +614,8 @@ static Type *infer_call(Infer *c, Expr *e)
     Param *param = f->params.v[j];
     Type *want = parameter_type(c->p, param), *t = actual.v[j];
     if (param->spec && t && want &&
-        (sum_accepts(want, t) || (want->kind == T_DYN && parameter_accepts(want, t)))) {
+        (sum_accepts(want, t) || c_function_arm(want, t) ||
+         (want->kind == T_DYN && parameter_accepts(want, t)))) {
       actual.v[j] = want;
     }
   }
@@ -1664,7 +1669,7 @@ Type *parameter_type(Program *p, Param *param)
 }
 bool parameter_accepts(Type *want, Type *actual)
 {
-  if (want == actual || callable_accepts(want, actual)) {
+  if (want == actual || callable_accepts(want, actual) || c_function_arm(want, actual)) {
     return true;
   }
   if (sum_accepts(want, actual)) {

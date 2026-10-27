@@ -52,9 +52,9 @@ Type *type_wrap(Program *p, int k, Type *e, int n) {
   t->elem = e;
   t->count = n;
   t->id = p->types.n;
-  if (k == T_REF) {
+  if (k == T_REF || k == T_CFUNC) {
     t->size = t->align = 8;
-    t->refs = true;
+    t->refs = k == T_REF;
   } else if (k == T_SLICE || k == T_DYN) {
     t->size = 16;
     t->align = 8;
@@ -183,7 +183,8 @@ Type *type_spec(Program *p, Spec *s) {
       }
       add(&params, param);
     }
-    return callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
+    Type *t = callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
+    return s->foreign ? type_wrap(p, T_CFUNC, t, 0) : t;
   }
   if (s->kind == SPEC_ARRAY && !s->count)
     fail(s->loc, "an array type without a length needs grow^, as in grow^ T[]");
@@ -228,6 +229,9 @@ char *type_name(Type *t) {
       name = fmt("%s%s%s", name, j ? " & " : "", type_name(t->arms.v[j]));
     }
     return name;
+  }
+  if (t->kind == T_CFUNC) {
+    return fmt("externC^ %s", type_name(t->elem));
   }
   if (t->kind == T_FUNCTION) {
     char *name = str(t->procedure ? "p^" : "f^");
@@ -1284,6 +1288,16 @@ static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
                .deps = to->refs ? src.deps : 0};
   if (src.type == to) {
     return copy_to(c, out, src, loc, true);
+  }
+  Type *pointer = c_function_arm(to, src.type);
+  if (pointer) {
+    /* A C-ABI declaration named as a value is the address of its symbol. */
+    Value address = pointer == to ? out : value(c, pointer);
+    Instr *i = emit(c, I_CONST, loc);
+    i->dst = address.id;
+    i->type = pointer;
+    i->text = fmt("@%s", c_function_symbol(src.type->function));
+    return pointer == to ? out : convert_value(c, address, to, out.id, loc);
   }
   if (src.type->kind == T_DYN) {
     /* A fits^ test on the dyn^ value proved its concrete type or composer. */
@@ -2758,7 +2772,7 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     if (dead(arm)) {
       return arm;
     }
-    if (!sum_accepts(t, arm.type)) {
+    if (!sum_accepts(t, arm.type) && !c_function_arm(t, arm.type)) {
       fail(e->loc, "'%s' is not an alternative of nominal union '%s'",
            type_name(arm.type), type_name(t));
     }
@@ -3043,7 +3057,14 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
 }
 static Value callable_value(Context *c, Type *type, Type *expected, Loc loc)
 {
-  if (expected && (!callable_type(expected) || !callable_accepts(expected, type))) {
+  bool pointer = expected && c_function_arm(expected, type);
+  Type *bare = expected ? without_nil(c->p, expected, loc) : NULL;
+  Function *f = type->kind == T_FUNCTION ? type->function : NULL;
+  if (bare && bare->kind == T_CFUNC && f && !f->exported && !f->external) {
+    fail(loc, "only externC^ and exportC^ functions have a C address for '%s'",
+         type_name(bare));
+  }
+  if (expected && !pointer && (!callable_type(expected) || !callable_accepts(expected, type))) {
     fail(loc, "callable '%s' does not satisfy '%s'", type_name(type), type_name(expected));
   }
   Value out = value(c, type);
@@ -3051,7 +3072,7 @@ static Value callable_value(Context *c, Type *type, Type *expected, Loc loc)
   i->dst = out.id;
   i->type = type;
   i->text = "0";
-  return out;
+  return pointer ? convert_value(c, out, expected, -1, loc) : out;
 }
 static void operator_contract(Function *f, Type *result, Loc loc)
 {

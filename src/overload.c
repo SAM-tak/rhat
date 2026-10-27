@@ -163,6 +163,39 @@ bool callable_accepts(Type *want, Type *actual)
   return true;
 }
 
+static Type *returned(Type *t)
+{
+  return t && t->kind != T_VOID ? t : NULL;
+}
+Type *c_function_arm(Type *want, Type *actual)
+{
+  if (want->kind == T_UNION) {
+    for (int j = 0; j < want->def->alternatives.n; j++) {
+      Type *arm = c_function_arm(want->def->alternatives.v[j], actual);
+      if (arm) {
+        return arm;
+      }
+    }
+    return NULL;
+  }
+  Function *f = actual->kind == T_FUNCTION ? actual->function : NULL;
+  if (want->kind != T_CFUNC || !f || !(f->exported || (f->external && !f->intrinsic))) {
+    return NULL;
+  }
+  Type *signature = want->elem;
+  bool same = signature->procedure == actual->procedure &&
+              signature->params.n == actual->params.n &&
+              returned(signature->result) == returned(actual->result);
+  for (int j = 0; same && j < actual->params.n; j++) {
+    same = signature->params.v[j] == actual->params.v[j];
+  }
+  return same ? want : NULL;
+}
+const char *c_function_symbol(Function *f)
+{
+  const char *dot = strrchr(f->name, '.');
+  return f->external ? f->external : dot ? dot + 1 : f->name;
+}
 Type *callable_group(Program *p, Def *owner, const char *name)
 {
   List *functions = owner ? &owner->methods : &p->functions;

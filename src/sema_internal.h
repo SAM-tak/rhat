@@ -153,6 +153,9 @@ Type *callable_contract(Type *type, List *actual);
 /* Identify callable types and check their structural contracts. */
 bool callable_type(Type *t);
 bool callable_accepts(Type *want, Type *actual);
+/* The C function pointer type in want (itself or a union arm) that the
+ * C-ABI declaration actual can be passed as, or NULL. */
+Type *c_function_arm(Type *want, Type *actual);
 /* Select an operator member; a missing member leaves built-in handling intact. */
 Function *operator_select(Program *p, const char *op, Type *a, Type *b, Loc loc);
 /* Contextualize a literal operand only when all operator arms agree. */
