@@ -427,12 +427,19 @@ static const char *short_symbol(Function *f)
 static void export_entry(Instance *in, FILE *f)
 {
   Type *t = in->result;
-  bool out = t->kind == T_STRUCT;
+  /* A string (exportL^ only) comes as data and length, and goes back
+   * through two out pointers. */
+  bool out = t->kind == T_STRUCT, text = t->kind == T_STRING;
   fprintf(f, "\ndefine %s @rh_entry_%s(%s",
-          out || t->kind == T_VOID ? "void" : c_abi(t, true), short_symbol(in->fn), out ? "ptr %out" : "");
+          out || text || t->kind == T_VOID ? "void" : c_abi(t, true), short_symbol(in->fn),
+          out ? "ptr %out" : text ? "ptr %text, ptr %length" : "");
   for (int j = 0; j < in->params.n; j++) {
     Type *param = in->params.v[j];
-    fprintf(f, "%s%s %%c%d", j || out ? ", " : "",
+    if (param->kind == T_STRING) {
+      fprintf(f, "%sptr %%c%d, i64 %%l%d", j || out || text ? ", " : "", j, j);
+      continue;
+    }
+    fprintf(f, "%s%s %%c%d", j || out || text ? ", " : "",
             param->kind == T_STRUCT ? "ptr" : c_param(param), j);
   }
   fprintf(f, ") {\nentry:\n  %%base = call i64 @rh_callback_enter(i64 %d)\n", in->callback_need);
@@ -452,6 +459,13 @@ static void export_entry(Instance *in, FILE *f)
       fprintf(f, "  %%v%d = load %s, ptr %%u%d\n", j, ll, j);
       args = fmt("%s, %s %%v%d", args, ll, j);
     }
+    else if (param->kind == T_STRING) {
+      fprintf(f,
+              "  %%s%d = insertvalue { ptr, i64 } undef, ptr %%c%d, 0\n"
+              "  %%v%d = insertvalue { ptr, i64 } %%s%d, i64 %%l%d, 1\n",
+              j, j, j, j, j);
+      args = fmt("%s, { ptr, i64 } %%v%d", args, j);
+    }
     else if (param->kind == T_STRUCT && direct(param)) {
       fprintf(f, "  %%v%d = load %s, ptr %%c%d\n", j, ll, j);
       args = fmt("%s, %s %%v%d", args, ll, j);
@@ -468,6 +482,12 @@ static void export_entry(Instance *in, FILE *f)
   fprintf(f, "  %%r = call %s @%s(i64 %%base%s)\n", llvm_type(t), in->symbol, args);
   if (out) {
     fprintf(f, "  store %s %%r, ptr %%out\n  ret void\n}\n", llvm_type(t));
+  }
+  else if (text) {
+    fputs("  %rt = extractvalue { ptr, i64 } %r, 0\n  store ptr %rt, ptr %text\n"
+          "  %rl = extractvalue { ptr, i64 } %r, 1\n  store i64 %rl, ptr %length\n"
+          "  ret void\n}\n",
+          f);
   }
   else if (t->kind == T_UNION) {
     fprintf(f,
@@ -1583,7 +1603,8 @@ void emit_llvm(Program *p, const char *path) {
   }
   for (int j = 0; j < p->instances.n; j++) {
     Instance *in = p->instances.v[j];
-    if (in->fn->exported && (!p->emitting || in->fn->module == p->emitting)) {
+    if ((in->fn->exported || in->fn->lhat_export) &&
+        (!p->emitting || in->fn->module == p->emitting)) {
       export_entry(in, f);
     }
   }
@@ -1810,6 +1831,88 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
     offset += field->size;
   }
 }
+/* The L^ spelling of a value an exportL^ function takes or answers. */
+static const char *l_name(Type *t)
+{
+  return t->kind == T_STRING ? "string^" : t->kind == T_BOOL ? "bool^" : "number^";
+}
+/* LhatHostFn wrappers for exportL^ functions, and the function that
+ * registers them under an L^ module path with signatures R^'s types imply.
+ * Each converts the L^ arguments, calls the R^ entry, and answers its result;
+ * a string argument is borrowed for the call, a string result copied. */
+static void lhat_glue(FILE *f, List *hosts)
+{
+  if (!hosts->n) {
+    return;
+  }
+  fputs("void rh_terminate(const char *, int64_t, int32_t, int32_t);\n", f);
+  char *registrations = "";
+  for (int j = 0; j < hosts->n; j++) {
+    Instance *in = hosts->v[j];
+    const char *name = short_symbol(in->fn);
+    Type *t = in->result;
+    bool text = t->kind == T_STRING, none = t->kind == T_VOID;
+    char *entry = text ? "const char **, int64_t *" : "", *call = text ? "&rt, &rl" : "";
+    char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
+    for (int k = 0; k < in->params.n; k++) {
+      Type *param = in->params.v[k];
+      char *sep = *entry ? ", " : "";
+      signature = fmt("%s%s%s", signature, k ? ", " : "", l_name(param));
+      if (param->kind == T_STRING) {
+        entry = fmt("%s%sconst char *, int64_t", entry, sep);
+        body = fmt("%s  const LhatString *s%d = (const LhatString *)lhat_as_object(arguments[%d]);\n",
+                   body, k, k);
+        call = fmt("%s%ss%d->text, (int64_t)s%d->length", call, *call ? ", " : "", k, k);
+        continue;
+      }
+      entry = fmt("%s%s%s", entry, sep, c_name(param));
+      if (param->kind == T_BOOL) {
+        call = fmt("%s%sarguments[%d].as.boolean", call, *call ? ", " : "", k);
+      }
+      else if (kind_float(param->kind)) {
+        call = fmt("%s%s(%s)lhat_number_as_real(arguments[%d])", call, *call ? ", " : "",
+                   c_name(param), k);
+      }
+      else {
+        body = fmt("%s  LhatInteger w%d;\n  if (!lhat_number_as_whole(arguments[%d], &w%d)) {\n"
+                   "    static const char m[] = \"exportL^ %s needs a whole number\";\n"
+                   "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n",
+                   body, k, k, k, name);
+        call = fmt("%s%s(%s)w%d", call, *call ? ", " : "", c_name(param), k);
+      }
+    }
+    if (!none) {
+      signature = fmt("%s -> %s", signature, l_name(t));
+    }
+    fprintf(f, "%s rh_entry_%s(%s);\n", none || text ? "void" : c_name(t), name,
+            *entry ? entry : "void");
+    fprintf(f,
+            "static void rh_lhat_%s(LhatMachine *machine, void *context, const LhatValue "
+            "*arguments, size_t count, LhatValue *answers, int *answer_count)\n{\n"
+            "  (void)machine; (void)context; (void)count;\n%s",
+            name, body);
+    if (none) {
+      fprintf(f, "  rh_entry_%s(%s);\n  *answer_count = 0;\n}\n", name, call);
+    }
+    else if (text) {
+      fprintf(f,
+              "  const char *rt; int64_t rl;\n  rh_entry_%s(%s);\n"
+              "  if (!lhat_machine_make_string(machine, rt, (size_t)rl, &answers[0])) {\n"
+              "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
+              name, call);
+    }
+    else {
+      fprintf(f, "  answers[0] = %s(rh_entry_%s(%s));\n  *answer_count = 1;\n}\n",
+              t->kind == T_BOOL ? "lhat_bool" : kind_float(t->kind) ? "lhat_real" : "lhat_integer",
+              name, call);
+    }
+    registrations = fmt("%s &&\n         lhat_register_func(program, module, \"%s\", \"%s;\", rh_lhat_%s, NULL)",
+                        registrations, name, signature, name);
+  }
+  fprintf(f, "bool rhat_lhat_register(LhatProgram *program, const char *module)\n{\n"
+             "  return true%s;\n}\n",
+          registrations);
+}
 bool emit_c_shims(Program *p, const char *path, bool headers)
 {
   List shims = {0};
@@ -1832,7 +1935,15 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       add(&exports, in);
     }
   }
-  if (!shims.n && !exports.n) {
+  /* exportL^ glue names L^'s types, so it goes with the headers. */
+  List hosts = {0};
+  for (int j = 0; headers && j < p->instances.n; j++) {
+    Instance *in = p->instances.v[j];
+    if (in->fn->lhat_export) {
+      add(&hosts, in);
+    }
+  }
+  if (!shims.n && !exports.n && !hosts.n) {
     return false;
   }
   FILE *f = fopen(path, "wb");
@@ -1892,6 +2003,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       fprintf(f, "%srh_entry_%s(%s); }\n", none ? "" : "return ", name, call);
     }
   }
+  lhat_glue(f, &hosts);
   for (int j = 0; j < shims.n; j++) {
     Instance *in = shims.v[j];
     bool out = in->result->kind == T_STRUCT, none = in->result->kind == T_VOID;
@@ -1909,9 +2021,11 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       fprintf(f, "%s %s(%s);\n", none ? "void" : c_name(in->result), in->symbol,
               *declared ? declared : "void");
     }
-    fprintf(f, "%s rh_shim_%s(%s) { %s%s(%s); }\n", out || none ? "void" : c_name(in->result),
+    /* A header's pointer result may be const; R^ keeps it as void *. */
+    bool pointer = !out && !none && !strcmp(c_name(in->result), "void *");
+    fprintf(f, "%s rh_shim_%s(%s) { %s%s%s(%s); }\n", out || none ? "void" : c_name(in->result),
             in->symbol, *shim ? shim : "void", out ? "*out = " : none ? "" : "return ",
-            in->symbol, call);
+            pointer ? "(void *)" : "", in->symbol, call);
   }
   if (fclose(f)) {
     fail((Loc){path, 1, 1}, "cannot write C shims");

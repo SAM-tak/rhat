@@ -194,6 +194,7 @@ struct Function {
   bool procedure, templ, abstract, priv, override, mutable_self;
   bool overload, operator_member, right_receiver; /* Explicit member roles. */
   bool exported; /* exportC^: callable from C under its own name. */
+  bool lhat_export; /* exportL^: registered as an L^ host function. */
   bool variadic; /* The last parameter "..." collects trailing arguments as a
                     slice. */
 };
@@ -281,6 +282,7 @@ typedef struct {
   Function *entry;
   int stack_count;
   bool callbacks; /* Some exportC^ function may be entered from C. */
+  bool crt_dll;   /* --crt-dll: build and link against the C runtime DLL. */
   char *source;
   const char *path;
 } Program;

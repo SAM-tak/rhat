@@ -4938,7 +4938,7 @@ void analyze(Program *p) {
     if (f->external) {
       external_validate(p, f);
     }
-    if (f->exported) {
+    if (f->exported || f->lhat_export) {
       export_validate(p, f);
     }
     /* As for members, a further signature of a name must say overload^. */

@@ -124,6 +124,12 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   add(&call->args, pack);
   return call;
 }
+/* A value L^ hands a host function: number^ (integers to 64 bits and
+ * floats), bool^ or string^. */
+static bool l_scalar(Type *t)
+{
+  return t->kind == T_STRING || c_scalar(t);
+}
 /* An ASCII C identifier other than main, which the entry file defines. */
 static bool c_identifier(const char *s)
 {
@@ -137,16 +143,17 @@ static bool c_identifier(const char *s)
 void export_validate(Program *p, Function *f)
 {
   const char *s = strrchr(f->name, '.') ? strrchr(f->name, '.') + 1 : f->name;
+  const char *kind = f->exported ? "exportC^" : "exportL^";
   if (!c_identifier(s) || !strncmp(s, "rh_", 3)) {
-    fail(f->declaration, "exportC^ name '%s' is not a usable C identifier", s);
+    fail(f->declaration, "%s name '%s' is not a usable C identifier", kind, s);
   }
   if (f->templ || f->variadic || f->owner) {
-    fail(f->loc, "exportC^ function cannot be template^, variadic or a method");
+    fail(f->loc, "%s function cannot be template^, variadic or a method", kind);
   }
   if (!f->result && !f->procedure) {
-    fail(f->loc, "exportC^ f^ needs a result type annotation");
+    fail(f->loc, "%s f^ needs a result type annotation", kind);
   }
-  for (int j = 0; j < p->functions.n; j++) {
+  for (int j = 0; f->exported && j < p->functions.n; j++) {
     Function *other = p->functions.v[j];
     const char *name = strrchr(other->name, '.') ? strrchr(other->name, '.') + 1 : other->name;
     if (other != f && (other->exported || other->external) && !strcmp(name, s)) {
@@ -154,18 +161,30 @@ void export_validate(Program *p, Function *f)
            other->declaration.file, other->declaration.line);
     }
   }
-  /* C passes no lengths, so slices and strings cannot come in from C. */
+  bool header = false;
+  for (int j = 0; j < p->modules.n; j++) {
+    header |= ((Module *)p->modules.v[j])->c_headers.n > 0;
+  }
+  if (f->lhat_export && !header) {
+    fail(f->declaration, "exportL^ needs a module with includeC^ \"lhat.h\"");
+  }
+  /* C passes no lengths, so slices and strings cannot come in from C. L^
+   * passes numbers, booleans and strings. */
   for (int j = 0; j < f->params.n; j++) {
     Param *param = f->params.v[j];
     Type *t = param->spec ? type_spec(p, param->spec) : NULL;
-    if (!t || !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) {
-      fail(param->loc, "exportC^ parameter '%s' needs a C type annotation, not '%s'",
-           param->name, t ? type_name(t) : "?");
+    if (!t || (f->exported && !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) ||
+        (f->lhat_export && !l_scalar(t))) {
+      fail(param->loc, "%s parameter '%s' needs a %s type annotation, not '%s'", kind, param->name,
+           f->exported ? "C" : "number, bool^ or string^", t ? type_name(t) : "?");
     }
   }
   Type *result = f->result ? type_spec(p, f->result) : NULL;
-  if (result && !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
+  if (result && f->exported && !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
     fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
+  }
+  if (result && f->lhat_export && !l_scalar(result)) {
+    fail(f->result->loc, "exportL^ result must be a number, bool^ or string^");
   }
 }
 void external_validate(Program *p, Function *f)
@@ -1681,7 +1700,8 @@ Type *parameter_hint(Program *p, Param *param, Expr *arg)
 }
 bool declaration_instance_needed(Program *p, Function *f)
 {
-  if (f->public || f->exported || (f->owner && f->owner->public && !f->priv)) {
+  if (f->public || f->exported || f->lhat_export ||
+      (f->owner && f->owner->public && !f->priv)) {
     return true;
   }
   bool inferred = false;

@@ -208,8 +208,112 @@ exportC^ let^ r_pick = f^ a:ref^ Box | nil^, b:ref^ Box | nil^ -> ref^ Box | nil
     negative('ffi_export_result', 'exportC^ let^ g = f^ x:i32^ { x }', 'needs a result type annotation')
     negative('ffi_export_template', 'exportC^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'cannot be template^')
     negative('ffi_export_duplicate', 'externC^ g:f^ x:i32^ -> i32^;\nexportC^ let^ g = f^ x:i32^ -> i32^ { x }', 'already declared')
-    negative('ffi_export_not_function', 'exportC^ def^ D { self^{ n:i32^ = 0 } }', 'applies only to a let^ function')
-    negative('ffi_export_extern', 'exportC^ let^ g = externC^ abs:f^ n:i32^ -> i32^;', 'applies only to a let^ function')
+    negative('ffi_export_not_function', 'exportC^ def^ D { self^{ n:i32^ = 0 } }', 'only to a let^ function')
+    negative('ffi_export_extern', 'exportC^ let^ g = externC^ abs:f^ n:i32^ -> i32^;', 'only to a let^ function')
+    # exportL^: a mock lhat.h records the registrations and calls the wrappers.
+    mock = suite.work / 'mock_lhat'
+    mock.mkdir(exist_ok=True)
+    (mock / 'lhat.h').write_text('''#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+typedef int64_t LhatInteger;
+typedef enum { LHAT_VALUE_NIL, LHAT_VALUE_BOOL, LHAT_VALUE_INTEGER, LHAT_VALUE_REAL, LHAT_VALUE_OBJECT } LhatValueTag;
+typedef struct { int kind; } LhatObject;
+typedef struct { LhatObject header; size_t length; char text[]; } LhatString;
+typedef struct { union { bool boolean; LhatInteger integer; double real; LhatObject *object; } as; LhatValueTag tag; } LhatValue;
+typedef struct LhatProgram LhatProgram;
+typedef struct LhatMachine LhatMachine;
+typedef void (*LhatHostFn)(LhatMachine *, void *, const LhatValue *, size_t, LhatValue *, int *);
+static inline LhatValue lhat_nil(void) { LhatValue v; v.tag = LHAT_VALUE_NIL; return v; }
+static inline LhatValue lhat_bool(bool b) { LhatValue v; v.as.boolean = b; v.tag = LHAT_VALUE_BOOL; return v; }
+static inline LhatValue lhat_integer(LhatInteger i) { LhatValue v; v.as.integer = i; v.tag = LHAT_VALUE_INTEGER; return v; }
+static inline LhatValue lhat_real(double r) { LhatValue v; v.as.real = r; v.tag = LHAT_VALUE_REAL; return v; }
+static inline LhatObject *lhat_as_object(LhatValue v) { return v.as.object; }
+static inline double lhat_number_as_real(LhatValue v) { return v.tag == LHAT_VALUE_INTEGER ? (double)v.as.integer : v.as.real; }
+static inline bool lhat_number_as_whole(LhatValue v, LhatInteger *out)
+{
+    if (v.tag == LHAT_VALUE_INTEGER) { *out = v.as.integer; return true; }
+    if (v.as.real == (double)(LhatInteger)v.as.real) { *out = (LhatInteger)v.as.real; return true; }
+    return false;
+}
+bool lhat_register_func(LhatProgram *program, const char *module, const char *name, const char *signature, LhatHostFn call, void *context);
+bool lhat_machine_make_string(LhatMachine *machine, const char *text, size_t length, LhatValue *out);
+LhatProgram *mock_program(void);
+void mock_run(int32_t mode);
+''', encoding='utf-8')
+    host = suite.work / 'mock_lhat.c'
+    host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
+#include "lhat.h"
+struct LhatProgram {{ int n; const char *names[8]; LhatHostFn fns[8]; }};
+static LhatProgram program;
+LhatProgram *mock_program(void) {{ return &program; }}
+bool lhat_register_func(LhatProgram *p, const char *module, const char *name, const char *signature, LhatHostFn call, void *context)
+{{
+    (void)context;
+    printf("%s.%s %s\\n", module, name, signature);
+    p->names[p->n] = name;
+    p->fns[p->n++] = call;
+    return true;
+}}
+bool lhat_machine_make_string(LhatMachine *machine, const char *text, size_t length, LhatValue *out)
+{{
+    (void)machine;
+    LhatString *s = malloc(sizeof *s + length + 1);
+    s->length = length;
+    memcpy(s->text, text, length);
+    s->text[length] = 0;
+    out->as.object = &s->header;
+    out->tag = LHAT_VALUE_OBJECT;
+    return true;
+}}
+static LhatValue call(const char *name, LhatValue *arguments, size_t count)
+{{
+    LhatValue answer = lhat_nil();
+    int answers = 0;
+    for (int j = 0; j < program.n; j++) {{
+        if (!strcmp(program.names[j], name)) {{
+            program.fns[j](NULL, NULL, arguments, count, &answer, &answers);
+        }}
+    }}
+    return answers ? answer : lhat_nil();
+}}
+static LhatValue text(const char *t) {{ LhatValue v; lhat_machine_make_string(NULL, t, strlen(t), &v); return v; }}
+void mock_run(int32_t mode)
+{{
+    LhatValue sum[2] = {{lhat_integer(40), lhat_real(mode ? 1.5 : 2.0)}};
+    LhatValue five = lhat_integer(5), yes = lhat_bool(true), name = text("from L^"), hi = text("hi");
+    LhatInteger added = call("add", sum, 2).as.integer;
+    double halved = call("half", &five, 1).as.real;
+    const char *greeted = ((LhatString *)lhat_as_object(call("greet", &name, 1)))->text;
+    bool flipped = call("flip", &yes, 1).as.boolean;
+    printf("%lld %g %s %d\\n", (long long)added, halved, greeted, flipped);
+    fflush(stdout);
+    call("shout", &hi, 1);
+}}
+''', encoding='utf-8')
+    lhat = '''includeC^ "lhat.h"
+externC^ def^ LhatProgram;
+externC^ mock_program:p^ -> ref^ LhatProgram;
+externC^ mock_run:p^ mode:i32^;
+externC^ rhat_lhat_register:p^ program:ref^ LhatProgram, module:string^ -> bool^;
+exportL^ let^ add = f^ a:i64^, b:i32^ -> i64^ { a + i64^(b) }
+exportL^ let^ half = f^ x:f64^ -> f64^ { x / 2.0 }
+exportL^ let^ greet = f^ name:string^ -> string^ { name }
+exportL^ let^ flip = f^ b:bool^ -> bool^ { !b }
+exportL^ let^ shout = p^ text:string^ { print^("R^ says:", text) }
+print^(rhat_lhat_register(mock_program(), "rhat"))
+'''
+    lhat_extra = ('--runtime', host, '--c-include', mock)
+    positive('ffi_export_lhat', lhat + 'mock_run(0)\n',
+             'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'true\n42 2.5 from L^ 0\nR^ says: hi\n', extra=lhat_extra)
+    suite.runtime_failure('ffi_export_lhat_whole', lhat + 'mock_run(1)\n', 'exportL^ add needs a whole number', extra=lhat_extra)
+    negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
+    negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
+             "exportL^ parameter 'b' needs a number, bool^ or string^ type annotation")
+    negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[:] { [] }', 'exportL^ result must be')
+    negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
     negative('ffi_struct_string_field', 'def^ P { self^{s:string^=""} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_reference_field', 'var^ n:i32^=0\ndef^ P { self^{r:ref^ i32^} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")
     negative('ffi_struct_empty', 'def^ P { }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")

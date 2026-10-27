@@ -93,7 +93,7 @@ static void usage(void) {
        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
        "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
        "--dump-ir "
-       "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --cache-dir DIR, --no-cache, "
+       "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --crt-dll, --cache-dir DIR, --no-cache, "
        "--verbose\n"
        "Target: host x86-64, C runtime ABI");
 }
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     clang = RH_DEFAULT_CLANG;
   if (!runtime)
     runtime = tool_resource(argv[0], RH_RUNTIME_PATH, "rhat_runtime.c");
-  bool stacks = false, reuse = true, verbose = false;
+  bool stacks = false, reuse = true, verbose = false, crt_dll = false;
   const char *cache = NULL;
   List module_paths = {0}, libraries = {0}, c_includes = {0};
   int program_args = argc;
@@ -139,6 +139,10 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(s, "--verbose")) {
       verbose = true;
+      continue;
+    }
+    if (!strcmp(s, "--crt-dll")) {
+      crt_dll = true;
       continue;
     }
     if (!strcmp(s, "--stacks")) {
@@ -211,6 +215,7 @@ int main(int argc, char **argv) {
   }
   Program p = {0};
   p.module_paths = module_paths;
+  p.crt_dll = crt_dll;
   p.stdlib_dir = tool_resource(argv[0], RH_STDLIB_PATH, "stdlib");
   parse(&p, source);
   for (int j = 0; j < p.modules.n; j++) {

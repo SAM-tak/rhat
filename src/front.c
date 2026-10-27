@@ -2006,10 +2006,22 @@ void parse_file(Program *p, const char *path, Module *module) {
     if (overload && !is(&q, "let^") && !is(&q, "externC^")) {
       fail(overload_at, "overload^ applies only to a function declaration");
     }
+    /* exportC^ and exportL^ mark a function entered from C or from L^. */
     Loc export_at = tok(&q)->loc;
-    bool exported = take(&q, "exportC^");
-    if (exported && !is(&q, "let^")) {
-      fail(export_at, "exportC^ applies only to a let^ function declaration");
+    bool exported = false, lhat_export = false;
+    for (;;) {
+      if (take(&q, "exportC^")) {
+        exported = true;
+      }
+      else if (take(&q, "exportL^")) {
+        lhat_export = true;
+      }
+      else {
+        break;
+      }
+    }
+    if ((exported || lhat_export) && !is(&q, "let^")) {
+      fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
     }
     if (take(&q, "import^") ||
         (is(&q, "let^") && q.at + 3 < q.tokens.n &&
@@ -2127,9 +2139,10 @@ void parse_file(Program *p, const char *path, Module *module) {
                  !strcmp(initializer->text, "externLLVM^") ||
                  !strcmp(initializer->text, "template^"));
     }
-    if (exported && (!binding || q.at + 3 >= q.tokens.n ||
-                     strstr(((Token *)q.tokens.v[q.at + 3])->text, "extern"))) {
-      fail(export_at, "exportC^ applies only to a let^ function declaration");
+    if ((exported || lhat_export) &&
+        (!binding || q.at + 3 >= q.tokens.n ||
+         strstr(((Token *)q.tokens.v[q.at + 3])->text, "extern"))) {
+      fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
     }
     if (!binding) {
       Stmt *s = stmt(&q);
@@ -2189,6 +2202,7 @@ void parse_file(Program *p, const char *path, Module *module) {
     parsed_function->public = public;
     parsed_function->overload = overload;
     parsed_function->exported = exported;
+    parsed_function->lhat_export = lhat_export;
     overload = false;
     add(&module->functions, parsed_function);
     add(&p->functions, parsed_function);

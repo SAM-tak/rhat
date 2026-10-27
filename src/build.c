@@ -128,6 +128,9 @@ const char *tool_resource(const char *compiler, const char *fallback,
   struct stat info;
   return !stat(candidate, &info) ? candidate : fallback;
 }
+/* --crt-dll for the build in progress: C units and the link use the DLL C
+ * runtime, as libraries built with MSVC's /MD expect. */
+static bool crt_dll;
 static char *compile(const char *input, const char *identity, const char *name,
                      const char *clang, const char *opt, const char *cache,
                      bool reuse, bool verbose, List *includes) {
@@ -143,6 +146,9 @@ static char *compile(const char *input, const char *identity, const char *name,
     List preprocess = {0};
     add(&preprocess, (char *)clang);
     add(&preprocess, "-std=c11");
+    if (crt_dll) {
+      add(&preprocess, "-fms-runtime-lib=dll");
+    }
     for (int j = 0; includes && j < includes->n; j++) {
       add(&preprocess, fmt("-I%s", (char *)includes->v[j]));
     }
@@ -186,14 +192,23 @@ static char *compile(const char *input, const char *identity, const char *name,
   char *temporary = fmt("%s/%s.%d.tmp.obj", cache, key, (int)pid());
   /* COFF objects embed a timestamp unless told otherwise. Deterministic
    * objects let parallel builds publish identical cache entries. */
-  char *args[] = {
-      (char *)clang, "-Wno-override-module", "-std=c11", (char *)opt,
+  List args = {0};
+  add(&args, (char *)clang);
+  add(&args, "-Wno-override-module");
+  add(&args, "-std=c11");
+  add(&args, (char *)opt);
 #if defined(_WIN32)
-      "-mno-incremental-linker-compatible",
+  add(&args, "-mno-incremental-linker-compatible");
 #endif
-      "-c",          (char *)input,          "-o",       temporary,
-      NULL};
-  int status = run_process(args);
+  if (crt_dll) {
+    add(&args, "-fms-runtime-lib=dll");
+  }
+  add(&args, "-c");
+  add(&args, (char *)input);
+  add(&args, "-o");
+  add(&args, temporary);
+  add(&args, NULL);
+  int status = run_process((char *const *)args.v);
   if (status)
     fail((Loc){input, 1, 1},
          "Clang object compilation failed (%d); input retained", status);
@@ -225,6 +240,7 @@ int build_objects(Program *p, const char *compiler, const char *clang,
                   const char *runtime, const char *opt, const char *out,
                   const char *cache, bool reuse, bool verbose,
                   List *libraries, List *c_includes) {
+  crt_dll = p->crt_dll;
   if (!cache)
     cache = fmt("%s/.rhat-cache", directory(out));
   mkdirs(cache);
@@ -259,6 +275,9 @@ int build_objects(Program *p, const char *compiler, const char *clang,
   List args = {0};
   add(&args, clang_path);
   add(&args, "-rtlib=compiler-rt");
+  if (crt_dll) {
+    add(&args, "-fms-runtime-lib=dll");
+  }
   bool random = false;
   for (int j = 0; j < p->modules.n; j++) {
     Module *m = p->modules.v[j];
@@ -296,8 +315,9 @@ int build_objects(Program *p, const char *compiler, const char *clang,
                          headers ? &includes : NULL));
     }
   }
+  /* A --runtime wrapper may include the same headers. */
   add(&args, compile(runtime, identity, "runtime", clang_path, opt, cache,
-                     reuse, verbose, NULL));
+                     reuse, verbose, &includes));
   if (random) {
     add(&args, compile(tool_resource(compiler, RH_RANDOM_PATH, "rhat_random.c"),
                        identity, "random OS bridge", clang_path, opt, cache,
@@ -306,8 +326,12 @@ int build_objects(Program *p, const char *compiler, const char *clang,
     add(&args, "-lbcrypt");
 #endif
   }
-  for (int j = 0; j < libraries->n; j++)
-    add(&args, fmt("-l%s", (char *)libraries->v[j]));
+  for (int j = 0; j < libraries->n; j++) {
+    /* A path to an archive or object goes to the linker as written. */
+    char *library = libraries->v[j];
+    bool path = strchr(library, '/') || strchr(library, '\\') || strchr(library, '.');
+    add(&args, path ? library : fmt("-l%s", library));
+  }
 #if !defined(_WIN32)
   add(&args, "-lm");
 #endif

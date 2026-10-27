@@ -179,7 +179,7 @@ void plan_stacks(Program *p) {
   int callback = 0;
   for (int a = 0; a < n; a++) {
     Instance *in = p->instances.v[a];
-    if (in->fn->exported) {
+    if (in->fn->exported || in->fn->lhat_export) {
       p->callbacks = true;
       in->callback_need = in->stack_need;
       callback = in->stack_need > callback ? in->stack_need : callback;

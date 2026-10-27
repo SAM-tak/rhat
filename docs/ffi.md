@@ -109,6 +109,33 @@ R^ から `externC^` を呼ぶ直前に、呼び出し元がその時点で使�
 - `rh_callback_sp` はスレッドごとではありません。`exportC^` 関数は、R^ を実行しているスレッドから、
   R^ が呼んだ C 関数の中で呼ばれる場合に限ります。
 
+## L^ に R^ を公開する（exportL^）
+
+```rhat
+includeC^ "lhat.h"
+externC^ def^ LhatProgram;
+externC^ rhat_lhat_register:p^ program:ref^ LhatProgram, module:string^ -> bool^;
+exportL^ let^ add = f^ a:i64^, b:i64^ -> i64^ { a + b }      # L^ からは rhat.add(40, 2)
+exportL^ let^ greet = f^ name:string^ -> string^ { name }
+exportL^ let^ shout = p^ text:string^ { print^("R^ says:", text) }
+
+rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
+```
+
+- `exportL^` を付けた関数ごとに、中継コードが L^ の `LhatHostFn` ラッパー `rh_lhat_<名前>` を生成し、
+  `bool rhat_lhat_register(LhatProgram *program, const char *module)` が全部を `lhat_register_func` で
+  `module` の下に登録します。R^ からは上のように `externC^` で宣言して呼びます。
+- 署名は R^ の型から決まります。数値型は `number^`、`bool^` は `bool^`、`string^` は `string^` です
+  （例: `f^number^, number^ -> number^;`）。それ以外の型は引数にも結果にもできません。
+  `f^` / `p^` と結果型の注釈、`template^` などの制限は `exportC^` と同じです。
+- 整数型の引数に整数でない数が渡ると「exportL^ NAME needs a whole number」で終了します。浮動小数点型は
+  整数も受け取ります。文字列の引数は呼び出しの間 L^ の文字列を借り、結果の文字列は
+  `lhat_machine_make_string` で L^ 側に複製します。
+- 呼び出しは `exportC^` と同じ入口を通るため、L^ の `lhat_run` を R^ から呼んでいる間に限ります
+  （データスタックの受け渡しは上と同じ）。
+- `exportL^` には `includeC^ "lhat.h"` を書いたモジュールが必要です。L^ のライブラリは MSVC で
+  `/MD`（DLL 版 CRT）でビルドされるため、Windows でリンクするときは `--crt-dll` を付けます。
+
 ## 効果と安全性
 
 `f^` の宣言は副作用がないことの約束です。引数がすべてスカラーの `f^` 宣言には LLVM の `memory(none)` を付けるため、
@@ -130,6 +157,8 @@ LLVM の宣言は IR ごとに一度だけ出力します。
 
 C 標準ライブラリと、Windows 以外での `libm` は常にリンクします。その他のライブラリは
 `rhat build` / `rhat run` の `--link-lib NAME` で指定します（`-lNAME` として Clang に渡します。複数指定可）。
+パス（`/` や `.lib` などを含むもの）はそのまま渡します。
+Windows で DLL 版 CRT（`/MD`）でビルドされたライブラリをリンクするときは `--crt-dll` を付けます。
 
 ## 標準ライブラリでの利用
 
