@@ -7,8 +7,8 @@ let^twice=f^n:i32^{ return^(try^read(n))*2 }
 
 print^(read(-1) catch^ 42)
 do^{
-    print^(try^twice(-1))
+    print^try^twice(-1)
 catch^Error.Invalid:
-    print^("invalid input")
+    print^"invalid input"
 }
-print^((twice(21) catch^ 0))
+print^twice(21) catch^ 0

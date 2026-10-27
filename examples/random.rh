@@ -5,7 +5,7 @@ let^saved = rng.save()
 print^(rng.next())
 let^roll=rng.rangeint(1,6)
 if^roll fits^ i64^ { print^(roll) }
-assert^((rng.load(saved) fits^ nil^))
+assert^(rng.load(saved) fits^ nil^)
 print^(rng.next()) # replay the first draw
 
 let^automatic = std.random.new()

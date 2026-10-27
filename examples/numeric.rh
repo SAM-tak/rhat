@@ -1,14 +1,14 @@
 # Built-in type names always end in ^. Plain names remain available.
-def^bool { self^{ value:bool^=true^ } }
-let^u8 = f^n:u8^ { n+1 }
+def^bool { self^{ value:bool^= true^ } }
+let^u8 = f^n:u8^ { n + 1 }
 print^(bool.new().value,u8(41))
 
-let^small:i8^=-128
-let^wide:u128^=340282366920938463463374607431768211455
-let^signed:i128^=-170141183460469231731687303715884105728
+let^small:i8^= -128
+let^wide:u128^= 340282366920938463463374607431768211455
+let^signed:i128^= -170141183460469231731687303715884105728
 print^(small,wide,signed)
 
-let^a:f8^=1.125
-let^b:f16^=1.0009765625
-let^c:f32^=1.00000011920928955078125
-print^(a,b,c)
+let^a:f8^= 1.125
+let^b:f16^= 1.0009765625
+let^c:f32^= 1.00000011920928955078125
+print^(a, b, c)

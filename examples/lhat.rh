@@ -1,0 +1,12 @@
+module^lhat
+includeC^"lhat.h"
+externC^def^LhatProgram;
+externC^mock_program:p^ -> ref^ LhatProgram;
+externC^mock_run:p^ mode:i32^;
+externC^rhat_lhat_register:p^ program:ref^ LhatProgram, module:string^ -> bool^;
+exportL^let^add = f^ a:i64^, b:i32^ -> i64^ { a + i64^(b) }
+exportL^let^half = f^ x:f64^ -> f64^ { x / 2.0 }
+exportL^let^greet = f^ name:string^ -> string^ { name }
+exportL^let^flip = f^ b:bool^ -> bool^ { !b }
+exportL^let^shout = p^ text:string^ { print^("R^ says:", text) }
+print^(rhat_lhat_register(mock_program(), "rhat"))

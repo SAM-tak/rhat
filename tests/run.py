@@ -42,7 +42,7 @@ def top_cleanup_ir(ir, ll):
 
 
 def factorial_ir(ir, ll):
-    assert "<anonymous@1:8> -> i64^" in ir
+    assert "<anonymous@1:7> -> i64^" in ir
     body = ir.split("function rh_fn_1", 1)[1]
     assert "target=rh_fn_1" in body
     assert "branch.if" in body

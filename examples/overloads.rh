@@ -1,14 +1,14 @@
-let^ show = f^ value:i32^ ->i32^ { value+1 }
+let^show = f^ value:i32^ ->i32^ { value+1 }
 overload^ let^ show = f^ value:string^ ->i32^ { 42 }
-let^ alias:f^i32^->i32^; & f^string^->i32^; = show
+let^alias:f^i32^->i32^; & f^string^->i32^; = show
 print^(alias(2),alias("text"))
 
-let^ apply = f^ callback:f^i32^->i32^;,value:i32^ ->i32^ {
+let^apply = f^ callback:f^i32^->i32^;,value:i32^ ->i32^ {
     callback(value)
 }
-print^(apply(show,10))
+print^apply(show,10)
 
-def^ Vec {
+def^Vec {
     self^{x:i32^=0}
     op^+ = f^ self^,rhs:Vec ->Vec { Vec{x=self^.x+rhs.x} }
     overload^ op^+ = f^ self^,rhs:i32^ ->Vec { Vec{x=self^.x+rhs} }
@@ -16,7 +16,7 @@ def^ Vec {
     op^- = f^ self^ ->Vec { Vec{x=-self^.x} }
     op^<=> = f^ self^,rhs:Vec ->i32^ { self^.x-rhs.x }
 }
-var^ a,b=Vec{x=2},Vec{x=5}
-print^((a+b).x,(a+3).x,(3+a).x,(-a).x,a<b)
+var^a, b = Vec{x=2}, Vec{x=5}
+print^((a+b).x, (a+3).x, (3+a).x, (-a).x,a<b)
 a+=3
-print^(a.x,a=b)
+print^(a.x, a=b)

@@ -1,20 +1,20 @@
 def^Named {
     abstract^name : f^self^ -> string^;
-    greet = p^self^ { print^(self^.name()) },
+    greet = p^self^ { print^self^.name() },
 }
 
 def^Person : Named {
     self^{ private^text : string^ = "R^ Person" },
-    override^name = f^self^ -> string^ { return^self^.text },
+    override^name = f^self^ -> string^ { self^.text },
 }
 
 def^File {
-    name = f^self^ -> string^ { return^"file.rh" },
+    name = f^self^ -> string^ { "file.rh" },
 }
 
 let^nominal = p^ item:Named { item.greet() }
 
-let^structural = template^p^ item { print^(item.name()) }
+let^structural = template^p^ item { print^item.name() }
 
 var^person = Person.new()
 let^file = File.new()
