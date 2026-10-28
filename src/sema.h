@@ -445,4 +445,46 @@ Value text_method(Context *c, Expr *e, int destination);
 /* The open end of a range^: the minimum i64^. */
 #define RANGE_OPEN "-9223372036854775808"
 
+/* More of IR construction (sema.c), used by statements. */
+/* The innermost visible binding named name, or NULL. */
+Var *lookup(Context *c, const char *name);
+/* e evaluated as a place to write, its name read without narrowing. */
+Value place_expression(Context *c, Expr *e);
+/* The value of binding v, in its slot. */
+Value variable(Var *v);
+/* Reject storing src into dst when a borrow in src would outlive dst. */
+void store_check(Context *c, Value dst, Value src, Loc l);
+/* src copied into a new slot, unless it is owned or void. */
+Value snapshot(Context *c, Value src, Loc l);
+/* Whether src, which may be nil^, holds a value. */
+Value present_value(Context *c, Value src, Loc loc);
+/* An expression standing for the already computed value. */
+Expr *saved_value(Value value, Loc loc);
+/* The bool^ of a fits^ test e. */
+Value fits_value(Context *c, Expr *e);
+/* Walk optional chain e, jumping to absent when a guarded link is nil^;
+ * never says whether the chain cannot be nil^. */
+Value chain_walk(Context *c, Expr *e, int absent, bool *never);
+/* Where a binding of type want builds the owned result: the result, its
+ * owned alternative, or that one's owned last part; -1 if it cannot. */
+int result_place(Context *c, Type *want, Loc loc);
+/* Release, innermost first, the owning bindings from index from on. */
+void cleanup(Context *c, int from, Loc l);
+/* Reject a callable actual that cannot stand for want without a statically
+ * selected implementation. */
+void check_callable(Program *p, Type *want, Type *actual, Loc loc);
+/* The table of concrete's implementations of iface's methods. */
+DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc);
+/* Check what op^= and op^<=> must return. */
+void operator_contract(Function *f, Type *result, Loc loc);
+
+/* Statements (statements.c). */
+/* A block with ordered catch^ arms. */
+void handle_statements(Context *c, Stmt *s);
+/* The statements of body, in a scope of their own when scope is set. */
+void statements(Context *c, List *body, bool scope);
+/* The instance of f, or of method f of self, for argument types actual,
+ * its IR built on first use. */
+Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at);
+
 #endif

@@ -17,9 +17,16 @@
 無効なプログラムについて LLVM の型検査や実行時の型判定に処理を委譲しません。
 
 `src/front.c` は構文木、`src/check.c` は本体からの引数型推論・呼び出し形の検査・返り値型推論・式の型問い合わせ、
-`src/sema.c` は型配置・合成・寿命検査と中間表現の構築、
+中間表現の構築は次の5つに分かれます。
+
+- `src/types.c`: 型の構築・部分型・合併とエラー型の計算・def^ の合成・配置。
+- `src/sema.c`: 値と IR の基本操作、絞り込みと借用の事実、呼び出しの選択、式の構築。
+- `src/statements.c`: 文・ループ・代入・catch^ 節、関数単位の構築（`instantiate`）と `analyze`。
+- `src/errors.c`: エラー値の判定・梱包・伝播、`try^`・`catch^`、`message()`、未処理エラーでの終了。
+- `src/text.c`: 組み込みの `char^`・`string^`・範囲、`write_text`・`tostring`、文字列補間。
+
+`src/sema.h` は型推論と IR 構築で共有する状態・フロー操作と、上の5つの間で使う関数を宣言します。
 `src/llvm.c` は LLVM IR と中間表現ダンプ、`src/main.c` は CLI と Clang の起動を担当します。
-`src/sema.h` は型推論と IR 構築で共有する状態・フロー操作・関数を宣言します。型の構築・部分型・配置は `src/types.c` にあります。
 `runtime/rhat_runtime.c` は OS 領域、入出力、境界・除算・assert の検査です。
 
 ## トップレベル実行
