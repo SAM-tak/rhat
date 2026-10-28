@@ -861,6 +861,15 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(arm), a, payload);
     break;
   }
+  case I_CASE_AT:
+    if (i->b) {
+      a = ++o->tmp;
+      fprintf(f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n  store i32 %d, ptr %%t%d\n",
+              a, llvm_type(t), i->a, i->label, a);
+    }
+    fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n", i->dst, llvm_type(t),
+            i->a);
+    break;
   case I_CASE_IS:
   case I_CASE_GET: {
     if (i->op == I_CASE_IS) {
@@ -1695,7 +1704,8 @@ void dump_ir(Program *p, const char *path) {
                          "dyn.call",
                          "dyn.is",
                          "dyn.cast",
-                         "dyn.data"};
+                         "dyn.data",
+                         "union.place"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,
@@ -1751,7 +1761,7 @@ void dump_ir(Program *p, const char *path) {
         fprintf(f, " target=%s", i->callee->symbol);
       if (i->op == I_BR || i->op == I_CBR || i->op == I_LABEL)
         fprintf(f, " label=%d other=%d", i->label, i->other);
-      if (i->op == I_UNION || i->op == I_CASE_IS || i->op == I_CASE_GET)
+      if (i->op == I_UNION || i->op == I_CASE_IS || i->op == I_CASE_GET || i->op == I_CASE_AT)
         fprintf(f, " tag=%d", i->label);
       if (i->op == I_CASE_GET) {
         fputs(" proof=flow", f);

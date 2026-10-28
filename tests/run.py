@@ -395,7 +395,6 @@ negative("union_removed_is", union_types+"let^ value:Expr=Num{value=1}; value.is
 negative("union_duplicate", "def^ A {} def^ Value = A | A", "duplicate union alternative")
 negative("union_unknown", "def^ A {} def^ Value = A | Missing", "unknown union alternative")
 negative("union_cycle", "def^ A = B def^ B = A", "cyclic")
-negative("union_owned", "def^ A { self^{data:grow^ u8^[]} } def^ B {} def^ Value = A | B", "non-owning fixed-size")
 negative("union_abstract", "def^ A { self^{abstract^x:i32^} } def^ B {} def^ Value = A | B", "must be concrete")
 negative("union_composition", union_types+"def^ Bad : Expr {}", "composition base must be a structure")
 negative("union_direct_constructor", union_types+"let^ value=Expr{}", "construct union")

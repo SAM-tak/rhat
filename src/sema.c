@@ -800,8 +800,7 @@ void layout(Type *t, Loc l)
       if (arm->kind == T_STRUCT && arm->def->abstract) {
         fail(l, "union alternative '%s' must be concrete", type_name(arm));
       }
-      if (arm->owned)
-        fail(l, "union alternatives must be non-owning fixed-size values");
+      t->owned |= arm->owned;
       if (arm->size > size)
         size = arm->size;
       if (arm->align > align)
@@ -1293,7 +1292,7 @@ static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
   if (dst.type != src.type)
     fail(l, "expected '%s', found '%s'", type_name(dst.type),
          type_name(src.type));
-  if (src.type->owned)
+  if (src.type->owned && !src.held)
     fail(l, "owned region values cannot be copied; construct at the "
             "destination or borrow with 'ref^'");
   if (!init) {
@@ -1316,9 +1315,47 @@ static Value snapshot(Context *c, Value src, Loc l) {
   Value dst = value(c, src.type);
   return copy_to(c, dst, src, l, true);
 }
+/* The place of union u's alternative arm, setting the tag when it writes. */
+static int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
+{
+  int id = slot(c, arm, true);
+  Instr *i = emit(c, I_CASE_AT, loc);
+  i->dst = id;
+  i->a = u.id;
+  i->b = write;
+  i->type = u.type;
+  i->label = union_alternative(u.type, arm);
+  return id;
+}
+/* An owned operand of try^, catch^ or ?? is built on the data stack of dst,
+ * which then takes the value it holds without a copy. */
+static Value held_operand(Context *c, Expr *e, int dst)
+{
+  Type *t = expression_type(c, e, NULL);
+  if (t && t->kind != T_NEVER) {
+    layout(t, e->loc);
+  }
+  if (!t || !t->owned || e->kind == E_NAME) {
+    return snapshot(c, expression(c, e, NULL), e->loc);
+  }
+  if (dst < 0) {
+    fail(e->loc, "an owned value needs a construction destination");
+  }
+  int id = slot(c, t, false);
+  ((Slot *)c->in->slots.v[id])->owner = dst;
+  Value v = construct(c, e, t, id);
+  v.held = true;
+  return v;
+}
 static Value case_value(Context *c, Value src, Type *arm, Loc loc)
 {
   layout(arm, loc);
+  if (arm->owned) {
+    /* An owned alternative is used where it lies. */
+    return (Value){.id = case_at(c, src, arm, false, loc), .type = arm,
+                   .deps = arm->refs ? src.deps : 0, .storage = src.storage,
+                   .var = src.var, .addressable = src.addressable, .held = src.held};
+  }
   Value out = value(c, arm);
   out.deps = arm->refs ? src.deps : 0;
   out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
@@ -1366,15 +1403,23 @@ static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
   }
   int tag = union_alternative(to, src.type);
   if (tag >= 0) {
+    if (src.type->owned && !src.held) {
+      fail(loc, "owned region values cannot be copied; construct at the destination");
+    }
     Instr *i = emit(c, I_UNION, loc);
     i->dst = out.id;
     i->a = src.id;
     i->type = to;
     i->label = tag;
+    out.held = src.held;
     return out;
   }
   if (src.type->kind != T_UNION) {
     fail(loc, "expected '%s', found '%s'", type_name(to), type_name(src.type));
+  }
+  if (dst < 0 && to->owned && union_alternative(src.type, to) >= 0) {
+    /* A narrowed owned alternative is used where it lies. */
+    return case_value(c, src, to, loc);
   }
   List selected = {0};
   for (int j = 0; j < src.type->def->alternatives.n; j++) {
@@ -1419,6 +1464,7 @@ static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
   Instr *i = emit(c, I_LABEL, loc);
   i->label = end;
   out.guarded_copy = to->kind == T_STRUCT || to->kind == T_ARRAY;
+  out.held = src.held && to->owned;
   return out;
 }
 static Value nil_base(Context *c, Value value, Loc loc)
@@ -1639,9 +1685,9 @@ static Value chain_value(Context *c, Expr *e)
   nil_label(c, end, e->loc);
   return out;
 }
-static Value coalesce_value(Context *c, Expr *e)
+static Value coalesce_value(Context *c, Expr *e, int dst)
 {
-  Value base = expression(c, e->a, NULL);
+  Value base = held_operand(c, e->a, dst);
   if (dead(base)) {
     return base;
   }
@@ -1654,7 +1700,7 @@ static Value coalesce_value(Context *c, Expr *e)
     return construct(c, e->b, result, -1);
   }
   layout(result, e->loc);
-  Value out = value(c, result);
+  Value out = dst >= 0 ? (Value){.id = dst, .type = result} : value(c, result);
   int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
   nil_branch(c, present_value(c, base, e->loc), yes, no, e->loc);
   nil_label(c, yes, e->loc);
@@ -1687,6 +1733,35 @@ static Value field_value(Context *c, Value base, Field *f, Loc l) {
   i->type = base.type;
   i->label = f->index;
   return r;
+}
+/* Where a binding of type want builds the owned result: the result, its
+ * owned alternative, or that one's owned last part; -1 if it cannot. */
+static int result_place(Context *c, Type *want, Loc loc)
+{
+  Value v = {.id = c->in->result_slot, .type = c->in->result};
+  if (v.type->kind == T_UNION) {
+    Type *arm = NULL;
+    for (int j = 0; j < v.type->def->alternatives.n; j++) {
+      Type *a = v.type->def->alternatives.v[j];
+      Type *part = a->kind == T_STRUCT && a->def->tuple
+                       ? ((Field *)a->def->fields.v[a->def->fields.n - 1])->type
+                       : a;
+      if (a->owned && part == want) {
+        arm = a;
+      }
+    }
+    if (!arm) {
+      return -1;
+    }
+    v = (Value){.id = case_at(c, v, arm, true, loc), .type = arm};
+  }
+  if (v.type->kind == T_STRUCT && v.type->def->tuple) {
+    v.id = field_value(c, v, v.type->def->fields.v[v.type->def->fields.n - 1], loc).id;
+  }
+  if (v.id != c->in->result_slot) {
+    c->result_part = v.id + 1;
+  }
+  return v.id;
 }
 static void release(Context *c, Type *t, int id, Loc l) {
   Instr *i = emit(c, I_RELEASE, l);
@@ -1935,9 +2010,9 @@ static void error_focus(Context *c, Value error, Loc loc)
   v->root = root(c, c->depth, false, loc);
   add(&c->vars, v);
 }
-static Value try_value(Context *c, Expr *e)
+static Value try_value(Context *c, Expr *e, int dst)
 {
-  Value src = snapshot(c, expression(c, e->a, NULL), e->loc);
+  Value src = held_operand(c, e->a, dst);
   if (dead(src)) {
     return src;
   }
@@ -1968,7 +2043,7 @@ static Value catch_value(Context *c, Expr *e, Type *expected, int dst)
   if (result->owned && dst < 0) {
     fail(e->loc, "owned catch^ result requires a construction destination");
   }
-  Value src = snapshot(c, expression(c, e->a, NULL), e->loc);
+  Value src = held_operand(c, e->a, dst);
   if (dead(src)) {
     return src;
   }
@@ -2787,6 +2862,9 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
   if (e->kind == E_CATCH) {
     return catch_value(c, e, t, dst);
   }
+  if (e->kind == E_COALESCE && t && t->owned && t == expression_type(c, e, NULL)) {
+    return coalesce_value(c, e, dst);
+  }
   if (e->kind == E_TRY) {
     bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT ||
                    e->a->kind == E_RECORD || e->a->kind == E_ARRAY;
@@ -2794,7 +2872,7 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     if (source && !has_error(source)) {
       return construct(c, e->a, t, dst);
     }
-    Value src = try_value(c, e);
+    Value src = try_value(c, e, dst);
     if (dead(src) || !t) {
       return src;
     }
@@ -2832,7 +2910,22 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       fail(e->loc, "contextual construction requires a single nominal struct "
                    "type; write Type{field=value}");
     }
-    Value arm = expression(c, e, union_literal_hint(t, e));
+    Type *hint = union_literal_hint(t, e), *built = hint ? hint : expression_type(c, e, NULL);
+    if (built && built->kind != T_NEVER) {
+      layout(built, e->loc);
+    }
+    bool forwarded = built == t && e->kind == E_CALL && !guarded_chain(e);
+    if (built && built->owned && (forwarded || (built != t && union_alternative(t, built) >= 0))) {
+      if (dst < 0) {
+        fail(e->loc, "owned construction requires a destination");
+      }
+      Value u = {.id = dst, .type = t};
+      Value v = forwarded ? call(c, e, t, dst)
+                           : construct(c, e, built, case_at(c, u, built, true, e->loc));
+      u.deps = v.deps;
+      return dead(v) ? v : u;
+    }
+    Value arm = expression(c, e, hint);
     if (dead(arm)) {
       return arm;
     }
@@ -3394,7 +3487,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return fits_value(c, e);
   }
   if (e->kind == E_COALESCE) {
-    return coalesce_value(c, e);
+    return coalesce_value(c, e, -1);
   }
   if (guarded_chain(e)) {
     return chain_value(c, e);
@@ -4517,19 +4610,11 @@ static void statements(Context *c, List *body, bool scope) {
       bool alias_result = c->in->result_local &&
                           !strcmp(c->in->result_local, s->name) &&
                           c->depth == 1;
-      int dest = -1;
-      if (alias_result) {
-        /* Multiple results build their owned last part in place. */
-        Type *r = c->in->result;
-        dest = c->in->result_slot;
-        if (r->kind == T_STRUCT && r->def->tuple) {
-          dest = field_value(c, (Value){.id = dest, .type = r},
-                             r->def->fields.v[r->def->fields.n - 1], s->loc).id;
-          c->result_part = dest + 1;
-        }
-        if (!t) {
-          t = ((Slot *)c->in->slots.v[dest])->type;
-        }
+      int dest = alias_result ? result_place(c, t ? t : expression_type(c, s->a, NULL), s->loc)
+                              : -1;
+      alias_result = dest >= 0;
+      if (alias_result && !t) {
+        t = ((Slot *)c->in->slots.v[dest])->type;
       }
       if (callable_type(t)) {
         Type *actual = expression_type(c, s->a, t);
@@ -4821,32 +4906,33 @@ static void statements(Context *c, List *body, bool scope) {
           }
           fail(s->loc, "procedure or void function cannot return a value");
         }
-        if (t->owned && c->in->result_local && !s->a->tuple) {
-          if (s->a->kind != E_NAME || strcmp(s->a->text, c->in->result_local))
-            fail(
-                s->loc,
-                "owned result must return the designated construction binding");
-          Var *r = lookup(c, s->a->text);
-          if (!r || r->slot != c->in->result_slot)
+        Expr *named = s->a->tuple ? s->a->args.v[s->a->args.n - 1] : s->a;
+        bool designated = t->owned && c->in->result_local && named->kind == E_NAME &&
+                          !strcmp(named->text, c->in->result_local);
+        if (t->owned && c->in->result_local && t->kind != T_UNION && !designated) {
+          fail(s->loc, "owned result must return the designated construction binding");
+        }
+        if (designated) {
+          Var *r = lookup(c, named->text);
+          if (!r || (r->slot != c->in->result_slot && r->slot + 1 != c->result_part))
             fail(s->loc, "owned result binding was shadowed");
           v = variable(r);
-        }
-        else if (t->owned && s->a->tuple && c->in->result_local &&
-                 t->def->fields.n == s->a->args.n) {
           /* The owned last part is already in place; build the others. */
-          Expr *last = s->a->args.v[s->a->args.n - 1];
-          Var *r = c->in->result_local && last->kind == E_NAME &&
-                           !strcmp(last->text, c->in->result_local)
-                       ? lookup(c, last->text)
-                       : NULL;
-          if (!r || r->slot + 1 != c->result_part) {
-            fail(s->loc, "the owned last result must be the binding every return^ gives");
+          Value base = {.id = c->in->result_slot, .type = t};
+          for (int j = 0; s->a->tuple && t->kind == T_UNION && j < t->def->alternatives.n; j++) {
+            Type *arm = t->def->alternatives.v[j];
+            if (arm->owned && arm->kind == T_STRUCT && arm->def->tuple) {
+              base = (Value){.id = case_at(c, base, arm, true, s->loc), .type = arm};
+            }
           }
-          v = (Value){.id = c->in->result_slot, .type = t};
-          for (int j = 0; j + 1 < s->a->args.n; j++) {
-            Field *f = t->def->fields.v[j];
+          if (s->a->tuple && (base.type->kind != T_STRUCT || !base.type->def->tuple ||
+                              base.type->def->fields.n != s->a->args.n)) {
+            fail(s->loc, "%d values returned for '%s'", s->a->args.n, type_name(t));
+          }
+          for (int j = 0; s->a->tuple && j + 1 < s->a->args.n; j++) {
+            Field *f = base.type->def->fields.v[j];
             Value part = construct(c, s->a->args.v[j], f->type,
-                                   field_value(c, v, f, s->loc).id);
+                                   field_value(c, base, f, s->loc).id);
             if (dead(part)) {
               v = part;
               break;
@@ -4967,13 +5053,15 @@ static void statements(Context *c, List *body, bool scope) {
     c->lexical--;
   }
 }
-static void return_names(List *body, char **name, bool *valid) {
+/* The local every return^ gives as the owned result; returns of another
+ * alternative of a union result do not take part. */
+static void return_names(List *body, char **name, bool *valid, bool others) {
   for (int j = 0; j < body->n; j++) {
     Stmt *s = body->v[j];
     if (s->kind == S_RETURN) {
       Expr *a = s->a && s->a->tuple ? s->a->args.v[s->a->args.n - 1] : s->a;
-      if (!a || a->kind != E_NAME) {
-        *valid = false;
+      if (!a || a->kind != E_NAME || !strcmp(a->text, "nil^")) {
+        *valid &= others;
         continue;
       }
       if (*name && strcmp(*name, a->text))
@@ -4981,16 +5069,16 @@ static void return_names(List *body, char **name, bool *valid) {
       else
         *name = a->text;
     }
-    return_names(&s->body, name, valid);
-    return_names(&s->other, name, valid);
-    return_names(&s->prolog, name, valid);
-    return_names(&s->pre, name, valid);
-    return_names(&s->first, name, valid);
-    return_names(&s->last, name, valid);
-    return_names(&s->epilog, name, valid);
-    return_names(&s->update, name, valid);
+    return_names(&s->body, name, valid, others);
+    return_names(&s->other, name, valid, others);
+    return_names(&s->prolog, name, valid, others);
+    return_names(&s->pre, name, valid, others);
+    return_names(&s->first, name, valid, others);
+    return_names(&s->last, name, valid, others);
+    return_names(&s->epilog, name, valid, others);
+    return_names(&s->update, name, valid, others);
     for (int k = 0; k < s->handlers.n; k++) {
-      return_names(&((CatchArm *)s->handlers.v[k])->body, name, valid);
+      return_names(&((CatchArm *)s->handlers.v[k])->body, name, valid, others);
     }
   }
 }
@@ -5024,7 +5112,7 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     in->result_slot = slot(&c, in->result, true);
     if (in->result->owned) {
       bool valid = true;
-      return_names(&f->body, &in->result_local, &valid);
+      return_names(&f->body, &in->result_local, &valid, in->result->kind == T_UNION);
       if (!valid)
         in->result_local = NULL;
     }

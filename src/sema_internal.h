@@ -32,6 +32,7 @@ typedef struct {
   uint64_t deps, storage;
   Var *var;
   bool addressable, guarded_copy;
+  bool held; /* An owned part of a value no binding releases: copying it moves it. */
 } Value;
 /* Loop targets and scope boundaries used by control-flow analysis. */
 typedef struct {

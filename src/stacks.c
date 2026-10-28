@@ -31,8 +31,14 @@ static void local_plan(Instance *in) {
     Instr *i = in->code.v[k];
     if (i->op == I_LABEL)
       labels[i->label] = k;
-    if (i->op == I_FIELD)
+    if (i->op == I_FIELD || i->op == I_CASE_AT)
       ((Slot *)in->slots.v[i->dst])->owner = ((Slot *)in->slots.v[i->a])->owner;
+  }
+  /* A value built on another owner's data stack names that owner. */
+  for (int k = 0; k < in->slots.n; k++) {
+    Slot *s = in->slots.v[k];
+    while (((Slot *)in->slots.v[s->owner])->owner != s->owner)
+      s->owner = ((Slot *)in->slots.v[s->owner])->owner;
   }
   List queue = {0};
   State empty = {0};

@@ -351,7 +351,8 @@ enum {
   I_DYNCALL,   /* Call method table entry label through args[0]. */
   I_DYNIS,     /* Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers. */
   I_DYNCAST,   /* Swap dyn^ a's table for the ref^ dyn^ type of the same value. */
-  I_DYNDATA    /* The data reference of dyn^ a, proven to be type. */
+  I_DYNDATA,   /* The data reference of dyn^ a, proven to be type. */
+  I_CASE_AT    /* Place dst at union a's payload for alternative label; b also sets the tag. */
 };
 enum {
   RANGE_SLOT,

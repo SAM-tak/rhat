@@ -250,7 +250,6 @@ print^(ref?[-1]??0)
     prefix = 'def^ Item {self^{n:i32^=7}}\n'
     cases = [
         ('nil_wrong_arm', 'let^ x:i32^|nil^="bad"', 'not an alternative'),
-        ('nil_owned_union', 'let^ x:grow^ i32^[]|nil^=nil^', 'non-owning fixed-size'),
         ('nil_void_union', 'let^ x:void^|nil^=nil^', 'void cannot'),
         ('nil_void_presence', 'let^ noop=p^ {} print^(noop()?)', 'presence test requires'),
         ('nil_void_fallback', 'let^ noop=p^ {} let^ x:i32^|nil^=nil^ let^ y=x??noop()', 'value-producing fallback'),

@@ -242,6 +242,64 @@ if^ !(v fits^ Error.Zero) { let^ m,n=v print^(m,n) }
 do^{ let^ m,n=try^ dm(7,0) print^(m,n) catch^: print^("caught") }
 ''', '0 0 3 1 4 -1 3 4 9 9 8 ok 0 none\n3 1\ncaught\n')
 
+    positive('owned_unions', '''
+errordef^ E { Bad }
+let^ make=f^ n:i64^ ->grow^ i64^[] | E.Bad {
+ if^ n<0 { return^ E.Bad{} }
+ var^ xs:grow^ i64^[]=[]
+ xs.push(n) xs.push(n+1)
+ return^ xs
+}
+let^ use=f^ n:i64^ ->i64^ | E.Bad {
+ var^ ys=try^ make(n)
+ ys.push(9)
+ return^ ys[0]+ys[2]
+}
+print^(use(3) catch^ -1,use(-1) catch^ -1)
+var^ a=make(4) catch^ grow^[0]
+let^ b=make(-1) catch^ grow^[7,7]
+a.push(1)
+print^(a.len,a[2],b.len,b[0])
+let^ literal=f^ n:i64^ { if^ n<0 { return^ E.Bad{} } return^ grow^[n,n] }
+let^ again=f^ n:i64^ ->grow^ i64^[] | E.Bad { return^ make(n) }
+let^ x=literal(5) catch^ grow^[0]
+let^ z=again(8) catch^ grow^[0]
+print^(x.len,z[1])
+let^ find=f^ n:i64^ ->grow^ i64^[] | nil^ { if^ n=0 { return^ nil^ } return^ grow^[n] }
+let^ p=find(2) ?? grow^[0,0]
+let^ q=find(0) ?? grow^[0,0]
+print^(p.len,q.len)
+var^ v=make(2)
+if^ !(v fits^ E.Bad) { print^(v.len,v[1]) }
+if^ v fits^ grow^ i64^[] { v.push(5) }
+if^ v fits^ grow^ i64^[] { print^(v.len) }
+var^ total:i64^=0
+repeat^ 100000 { let^ t=make(1) catch^ grow^[0] total+=t[1] }
+print^(total)
+def^ A { self^{ data:grow^ u8^[]=[] } }
+def^ B {}
+def^ Value = A | B
+let^ w:Value=B{}
+let^ none:grow^ i32^[] | nil^=nil^
+print^(w fits^ B,none fits^ nil^)
+let^ count=f^ n:i64^ ->(i64^,grow^ i64^[]) | E.Bad {
+ if^ n<0 { return^ E.Bad{} }
+ var^ xs:grow^ i64^[]=[]
+ xs.push(n) xs.push(n*10)
+ return^ n*2,xs
+}
+let^ k,ys=count(3) catch^ (0,grow^[0])
+let^ j,zs=count(-1) catch^ (0,grow^[5])
+let^ g=f^ ->i64^ | E.Bad { var^ m,ws=try^ count(2) ws.push(1) return^ m+ws.len }
+print^(k,ys.len,ys[1],j,zs[0],g() catch^ -1)
+let^ forward=f^ n:i64^ ->grow^ i64^[] | E.Bad { return^ try^ make(n) }
+let^ settle=f^ n:i64^ ->grow^ i64^[] { return^ make(n) catch^ grow^[0] }
+let^ f3=forward(3) catch^ grow^[9]
+let^ s1=settle(-1)
+let^ s6=settle(6)
+print^(f3[1],s1.len,s6[1])
+''', '12 -1\n3 1 2 7\n2 9\n1 2\n2 3\n3\n200000\ntrue true\n6 2 30 0 5 7\n4 1 7\n')
+
     positive('multiple_owned_results', '''
 let^ count=f^ n:i64^ ->(i64^,grow^ i64^[]) {
  var^ xs:grow^ i64^[]=[]
@@ -503,7 +561,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values go only where'),
         ('results_tuple_value', 'let^ t=(1,2)', 'need a name each'),
         ('results_union_bare', 'errordef^ E { Bad }\nlet^ f=f^ ->(i32^,i32^) | E.Bad {return^ 1,2}\nlet^ a,b=f()', 'take them out with try^'),
-        ('results_union_owned', 'let^ f=f^ ->(i32^,grow^ i32^[]) | nil^ {return^ nil^}', 'non-owning'),
+        ('owned_union_copy', 'errordef^ E { Bad }\nlet^ m=f^ ->grow^ i32^[] | E.Bad {return^ grow^[1]}\nlet^ v=m()\nif^ !(v fits^ E.Bad) { let^ w=v }', 'cannot be copied'),
         ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
         ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
         ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),
