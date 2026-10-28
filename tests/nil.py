@@ -107,8 +107,8 @@ print^(copy[0],copy[1])
 
     positive('nil_strings', r'''
 var^ text:string^|nil^="a\0b"
-print^(text?.len??0,text?[2]??u8^(0))
-print^((text?[:: 1])?.len??0)
+print^(text?.bytes.len??0,text?.bytes[2]??u8^(0))
+print^((text?.bytes[:: 1])?.len??0)
 text:=nil^
 print^(text??"fallback")
 ''', '3 98\n1\nfallback\n')

@@ -9,7 +9,7 @@ def exercise(suite):
     cases = [
         ('fixed', 'var^ a:i32^[4]=[1,2,3,4]; var^ i:i64^=0; repeat^ while^ i < 4 { a[i] := a[i]+1; i := i+1 }; print^(a[0],a[3])', '2 5\n', True, None),
         ('grow', 'var^ a:grow^ i32^[]=[1,2,3,4]; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < a.len { s := s+a[i]; i := i+1 }; print^(s)', '10\n', True, None),
-        ('string', 'let^ a="abc"; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < a.len { s := s+i32^(a[i]); i := i+1 }; print^(s)', '294\n', True, None),
+        ('string', 'let^ a="abc".bytes; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < a.len { s := s+i32^(a[i]); i := i+1 }; print^(s)', '294\n', True, None),
         ('slice', 'var^ a:grow^ i32^[]=[1,2,3,4]; let^ v=a[1 :: 3]; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < v.len { s := s+v[i]; i := i+1 }; print^(s)', '5\n', True, None),
         ('nested', 'var^ a:i32^[6]=[0,1,2,3,4,5]; var^ y:i64^=0; var^ s:i32^=0; repeat^ while^ y < 2 { var^ x:i64^=0; repeat^ while^ x < 3 { s := s+a[y*3+x]; x := x+1 }; y := y+1 }; print^(s)', '15\n', True, None),
         ('negative_scale', 'let^ a:i32^[4]=[1,2,3,4]; var^ i:i64^=0; var^ s:i32^=0; repeat^ while^ i < 4 { s := s+a[i*(-1)+3]; i := i+1 }; print^(s)', '10\n', True, None),

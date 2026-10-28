@@ -352,6 +352,26 @@ let^ next=f^ c:char^ ->char^ { char^(i64^(c)+1) catch^ c }
 print^(arr[1],i64^(arr[2]),next(char^"m"))
 ''', 'あ a 😀 12354 128512 true true 1\nA ? x ?\nnot a Unicode scalar value\ny 122 n\n')
 
+    positive('strings_utf8', '''
+let^ s="aあ😀b"
+print^(s.bytes.len,s.count_chars(),s.bytes[0])
+var^ at:i64^=0
+repeat^ while^ at<s.bytes.len {
+ let^ c,next=s.decode(at)
+ print^(c,s.slice(at :: next))
+ at:=next
+}
+let^ cs=s.chars()
+print^(cs.len,cs[1],cs[2])
+print^(s.find("😀") ?? -1,s.find("z") ?? -1,s.starts_with("aあ"),s.ends_with("b"),s.ends_with("x"))
+print^("abc"="abc","abc"<"abd","b">"abc","a"<=>"b","x"!="y")
+let^ raw:u8^[3]=[104,105,33]
+let^ t=string^(raw[::]) catch^ "?"
+let^ bad:u8^[2]=[255,1]
+let^ u=string^(bad[::]) catch^ "invalid"
+print^(t,u,s.slice(1 :: 4),s.slice((4 ::)))
+''', '9 4 97\na a\nあ あ\n😀 😀\nb b\n4 あ 😀\n4 -1 true true false\ntrue true true -1 true\nhi! invalid あ 😀b\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -492,7 +512,7 @@ let^ 変数=0xFF+0o10+0b11+1_000
 let^ `not a name`=7 let^ `a``b`=8
 print^(変数,`not a name`,`a``b`)
 let^ s="A\0B\x43\u{1f600}"
-print^(s.len,s[1],s[2])
+print^(s.bytes.len,s.bytes[1],s.bytes[2])
 var^ bytes:grow^ u8^[]=[] bytes.append("a\0b")
 print^(bytes.len,bytes[1],bytes[2])
 print^('a''b')
@@ -590,6 +610,11 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
+        ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
+        ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 :: 1]', 'slice it with s.slice'),
+        ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
+        ('string_chars_owned', 'let^ n=f^ s:string^ { s.chars().len }', 'bind it'),
         ('char_literal_two', 'let^ a=char^"ab"', 'exactly one Unicode scalar value'),
         ('char_literal_empty', 'let^ a=char^""', 'exactly one Unicode scalar value'),
         ('char_arithmetic', 'let^ a=char^"a"+char^"b"', "operator '+' is not defined for 'char^'"),
@@ -634,6 +659,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     for name, text, diagnostic in cases:
         negative(name, text, diagnostic)
 
+    suite.runtime_failure('string_slice_cut', 'let^ s="あい"\nprint^(s.slice(1 :: 3))', 'string slice cuts a character')
+    suite.runtime_failure('string_decode_middle', 'let^ s="あ"\nlet^ c,n=s.decode(1)', 'not the start of a character')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ::)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
     suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 :: 5\nprint^(xs[r].len)', 'slice range out of bounds')

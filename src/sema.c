@@ -1368,7 +1368,7 @@ static Value constant(Context *c, int k, const char *text, Loc loc)
 /* a op b over a's type; a comparison answers bool^. */
 static Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
 {
-  bool compare = strchr("<=>", op[0]) != NULL;
+  bool compare = strchr("<=>!", op[0]) != NULL;
   Value v = value(c, compare ? type_builtin(c->p, T_BOOL) : a.type);
   Instr *i = emit(c, I_BIN, loc);
   i->dst = v.id;
@@ -2712,6 +2712,168 @@ static Value char_cast(Context *c, Expr *e, int destination)
   nil_label(c, done, e->loc);
   return out;
 }
+/* dst = helper(args..., line), or no result when t is void. */
+static Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc)
+{
+  Value out = k == T_VOID ? (Value){.id = -1, .type = type_builtin(c->p, T_VOID)}
+                          : value(c, type_builtin(c->p, T_I64));
+  Instr *i = emit(c, I_HELPER, loc);
+  i->dst = out.id;
+  i->text = (char *)name;
+  for (int j = 0; j < n; j++) {
+    add(&i->args, (void *)(intptr_t)(args[j].id + 1));
+  }
+  return out;
+}
+/* string^(bytes): the bytes as a string^ when they are UTF-8, else
+ * std.text.Error.Invalid. */
+static Value text_cast(Context *c, Expr *e, int destination)
+{
+  Program *p = c->p;
+  Type *t = text_cast_type(p, e->loc), *text = type_builtin(p, T_STRING);
+  if (e->args.n != 1) {
+    fail(e->loc, "string^(...) casts one u8^[:]");
+  }
+  Value bytes = expression(c, e->args.v[0], NULL);
+  if (dead(bytes)) {
+    return bytes;
+  }
+  if (bytes.type->kind != T_SLICE || bytes.type->elem->kind != T_U8) {
+    fail(e->loc, "string^(...) casts a u8^[:] of UTF-8");
+  }
+  Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
+               .deps = bytes.deps};
+  int good = ++c->in->labels, bad = ++c->in->labels, done = ++c->in->labels;
+  Value valid = helper(c, "rh_text_valid", &bytes, 1, T_I64, e->loc);
+  nil_branch(c, operate(c, "!=", valid, constant(c, T_I64, "0", e->loc), e->loc), good, bad, e->loc);
+  nil_label(c, good, e->loc);
+  Value view = {.id = slot(c, text, false), .type = text, .deps = bytes.deps};
+  Instr *i = emit(c, I_COPY, e->loc);
+  i->dst = view.id;
+  i->a = bytes.id;
+  i->type = text;
+  convert_value(c, view, t, out.id, e->loc);
+  nil_jump(c, done, e->loc);
+  nil_label(c, bad, e->loc);
+  Expr message = {.kind = E_STRING, .loc = e->loc, .text = "not valid UTF-8"};
+  message.length = strlen(message.text);
+  Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
+  add(&invalid.names, "message");
+  add(&invalid.args, &message);
+  construct(c, &invalid, t, out.id);
+  nil_jump(c, done, e->loc);
+  nil_label(c, done, e->loc);
+  return out;
+}
+/* The built-in methods of string^, which address it by byte offsets. */
+static Value text_method(Context *c, Expr *e, int destination)
+{
+  Program *p = c->p;
+  Expr *target = e->a;
+  const char *name = target->text;
+  Type *t = text_method_type(p, name, e->loc), *whole = type_builtin(p, T_I64);
+  Value s = deref(c, expression(c, target->a, NULL), e->loc);
+  if (dead(s)) {
+    return s;
+  }
+  bool unary = !strcmp(name, "count_chars") || !strcmp(name, "chars");
+  if (e->args.n != !unary) {
+    fail(e->loc, "s.%s takes %s", name, unary ? "no arguments" : "one argument");
+  }
+  Type *want = !strcmp(name, "slice") ? type_range(p) : !strcmp(name, "decode") ? whole
+                                                                               : type_builtin(p, T_STRING);
+  Value arg = unary ? s : expression(c, e->args.v[0], want);
+  if (dead(arg)) {
+    return arg;
+  }
+  if (!unary && arg.type != want) {
+    fail(e->loc, "s.%s takes '%s', found '%s'", name, type_name(want), type_name(arg.type));
+  }
+  Value both[2] = {s, arg};
+  if (!strcmp(name, "count_chars")) {
+    return helper(c, "rh_text_count", both, 1, T_I64, e->loc);
+  }
+  if (!strcmp(name, "starts_with") || !strcmp(name, "ends_with")) {
+    Value r = helper(c, name[0] == 's' ? "rh_text_starts" : "rh_text_ends", both, 2, T_I64, e->loc);
+    return operate(c, "!=", r, constant(c, T_I64, "0", e->loc), e->loc);
+  }
+  if (!strcmp(name, "find")) {
+    Value at = helper(c, "rh_text_find", both, 2, T_I64, e->loc);
+    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
+    int none = ++c->in->labels, found = ++c->in->labels, done = ++c->in->labels;
+    nil_branch(c, operate(c, "<", at, constant(c, T_I64, "0", e->loc), e->loc), none, found, e->loc);
+    nil_label(c, none, e->loc);
+    convert_value(c, nil_literal(c, e->loc), t, out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, found, e->loc);
+    convert_value(c, at, t, out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, done, e->loc);
+    return out;
+  }
+  if (!strcmp(name, "slice")) {
+    /* A byte range of s whose ends fall between characters. */
+    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
+                 .deps = s.deps};
+    int lo = field_value(c, arg, arg.type->def->fields.v[0], e->loc).id;
+    int hi = field_value(c, arg, arg.type->def->fields.v[1], e->loc).id;
+    Instr *i = emit(c, I_SLICE, e->loc);
+    i->dst = out.id;
+    i->a = s.id;
+    i->b = lo;
+    i->other = hi;
+    i->text = "text";
+    i->type = s.type;
+    return out;
+  }
+  if (!strcmp(name, "decode")) {
+    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
+    Value code = helper(c, "rh_text_decode", both, 2, T_I64, e->loc);
+    Value scalar = value(c, type_builtin(p, T_CHAR));
+    Instr *i = emit(c, I_CONVERT, e->loc);
+    i->dst = scalar.id;
+    i->a = code.id;
+    i->type = scalar.type;
+    copy_to(c, field_value(c, out, t->def->fields.v[0], e->loc), scalar, e->loc, true);
+    copy_to(c, field_value(c, out, t->def->fields.v[1], e->loc),
+            helper(c, "rh_text_next", both, 2, T_I64, e->loc), e->loc, true);
+    return out;
+  }
+  /* chars(): decode every character, pushed onto an array built at the destination. */
+  if (destination < 0) {
+    fail(e->loc, "s.chars() builds an owned array; bind it, as in let^ cs = s.chars()");
+  }
+  Expr empty = {.kind = E_ARRAY, .loc = e->loc};
+  Value out = construct(c, &empty, t, destination);
+  Value at = value(c, whole), length = value(c, whole);
+  copy_to(c, at, constant(c, T_I64, "0", e->loc), e->loc, true);
+  Instr *i = emit(c, I_LENGTH, e->loc);
+  i->dst = length.id;
+  i->a = s.id;
+  i->type = s.type;
+  int head = ++c->in->labels, body = ++c->in->labels, done = ++c->in->labels;
+  nil_jump(c, head, e->loc);
+  nil_label(c, head, e->loc);
+  nil_branch(c, operate(c, "<", at, length, e->loc), body, done, e->loc);
+  nil_label(c, body, e->loc);
+  Value from[2] = {s, at};
+  Value code = helper(c, "rh_text_decode", from, 2, T_I64, e->loc);
+  Value scalar = value(c, type_builtin(p, T_CHAR));
+  i = emit(c, I_CONVERT, e->loc);
+  i->dst = scalar.id;
+  i->a = code.id;
+  i->type = scalar.type;
+  Value pushed = value(c, type_wrap(p, T_REF, scalar.type, 0));
+  i = emit(c, I_PUSH, e->loc);
+  i->dst = pushed.id;
+  i->a = out.id;
+  i->b = scalar.id;
+  i->type = out.type;
+  copy_to(c, at, helper(c, "rh_text_next", from, 2, T_I64, e->loc), e->loc, true);
+  nil_jump(c, head, e->loc);
+  nil_label(c, done, e->loc);
+  return out;
+}
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
@@ -2765,6 +2927,18 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   if (target->kind == E_NAME && !strcmp(target->text, "char^")) {
     return char_cast(c, e, destination);
+  }
+  if (target->kind == E_NAME && !strcmp(target->text, "string^")) {
+    return text_cast(c, e, destination);
+  }
+  if (target->kind == E_MEMBER && text_method_type(p, target->text, e->loc)) {
+    Type *base = expression_type(c, target->a, NULL);
+    if (base && base->kind == T_REF) {
+      base = base->elem;
+    }
+    if (base && base->kind == T_STRING) {
+      return text_method(c, e, destination);
+    }
   }
   if (target->kind == E_NAME &&
       (!strcmp(target->text, "print^") || !strcmp(target->text, "assert^"))) {
@@ -3609,9 +3783,12 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
   if (c->terminated) {
     return abrupt(c);
   }
+  if (base.type->kind == T_STRING) {
+    fail(e->loc, "string^ has no []; slice it with s.slice(a :: b), or its bytes with s.bytes[a :: b]");
+  }
   if (base.type->kind != T_ARRAY && base.type->kind != T_GROW &&
-      base.type->kind != T_SLICE && base.type->kind != T_STRING) {
-    fail(e->loc, "slicing requires an array, slice or string");
+      base.type->kind != T_SLICE) {
+    fail(e->loc, "slicing requires an array or slice");
   }
   if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) &&
       !base.addressable) {
@@ -3924,6 +4101,21 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (range_type(base.type) && strcmp(e->text, "start")) {
       return range_member(c, base, e->text, e->loc);
     }
+    if (base.type->kind == T_STRING) {
+      /* s.bytes views the same bytes; string^ itself has no len. */
+      if (strcmp(e->text, "bytes")) {
+        fail(e->loc, "string^ has no %s; use s.bytes for bytes, or s.decode(at), s.slice(r) and "
+                     "s.count_chars()", e->text);
+      }
+      Value bytes = {.id = slot(c, type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0), false),
+                     .deps = base.deps};
+      bytes.type = ((Slot *)c->in->slots.v[bytes.id])->type;
+      Instr *i = emit(c, I_COPY, e->loc);
+      i->dst = bytes.id;
+      i->a = base.id;
+      i->type = bytes.type;
+      return bytes;
+    }
     Type *view = error_view(base.type, e->text);
     if (view != base.type) {
       /* Every error variant starts with the same fields, so the first one reads them. */
@@ -3977,8 +4169,11 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (dead(base)) {
       return base;
     }
+    if (base.type->kind == T_STRING) {
+      fail(e->loc, "string^ has no []; read bytes with s.bytes[i], or characters with s.decode(at)");
+    }
     if (base.type->kind != T_ARRAY && base.type->kind != T_GROW &&
-        base.type->kind != T_SLICE && base.type->kind != T_STRING)
+        base.type->kind != T_SLICE)
       fail(e->loc, "indexing requires an array");
     Value index = expression(c, e->b, type_builtin(p, T_I64));
     if (dead(index)) {
@@ -4183,6 +4378,20 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     if (!shift && a.type != b.type)
       fail(e->loc, "binary operands have different types");
     bool cmp = strchr("=!<>", e->text[0]) != NULL;
+    if (cmp && a.type->kind == T_STRING) {
+      /* Byte order, which UTF-8 makes the order of scalar values. */
+      Value both[2] = {a, b};
+      Value order = helper(c, "rh_text_compare", both, 2, T_I64, e->loc);
+      if (strcmp(e->text, "<=>")) {
+        return operate(c, e->text, order, constant(c, T_I64, "0", e->loc), e->loc);
+      }
+      Value sign = value(c, type_builtin(p, T_I32));
+      Instr *i = emit(c, I_CONVERT, e->loc);
+      i->dst = sign.id;
+      i->a = order.id;
+      i->type = sign.type;
+      return sign;
+    }
     if (!kind_integer(a.type->kind) && !kind_float(a.type->kind) &&
         !(cmp && a.type->kind == T_BOOL && strchr("=!", e->text[0])) &&
         !(cmp && a.type->kind == T_CHAR))

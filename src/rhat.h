@@ -358,6 +358,9 @@ enum {
   I_CASE_AT,   /* Place dst at union a's payload for alternative label; b also sets the tag. */
   I_CHAR,      /* dst (i64^) = the scalar a holds, or -1: a is the one character of a
                   string^, or else an i64^ to check. */
+  I_HELPER,    /* dst (i64^, or none when -1) = runtime function text applied to args: a
+                  string^ or slice passes its data and length, an i64^ itself, and the
+                  source line goes last. */
   I_SITE       /* dst = the static record of where an error is built: its source, line,
                   column and message; text is the source (length bytes), a NUL, the message. */
 };

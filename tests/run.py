@@ -92,13 +92,13 @@ let^ text="ab"
 let^ index:{kind}^=1
 fixed[index]:=21
 grow[index]:=41
-print^(fixed[index],grow[index],view[index],text[index])
+print^(fixed[index],grow[index],view[index],text.bytes[index])
 ''', "21 41 41 98\n", direct_index_ir)
 
 for name,setup,access in (
     ("grow", "var^ a:grow^ i32^[]=[1,2]", "a[i]"),
     ("view", "var^ a:grow^ i32^[]=[1,2]; let^ v=a[:: 2]", "v[i]"),
-    ("string", 'let^ text="ab"', "text[i]"),
+    ("string", 'let^ text="ab"', "text.bytes[i]"),
 ):
     for suffix,kind,value in (("wide", "u128", "18446744073709551617"),
                               ("negative", "i128", "-170141183460469231731687303715884105728")):
@@ -423,8 +423,8 @@ b.append(live)
 print^(middle.len,middle[0],live[0],b[0],b[1])
 var^ bytes:grow^ u8^[]=[]
 bytes.append("hello")
-bytes.append("world"[1 :: 4])
-print^(bytes.len,bytes[5],"hello"[4],"abc"[3 :: 3].len)
+bytes.append("world".bytes[1 :: 4])
+print^(bytes.len,bytes[5],"hello".bytes[4],"abc".bytes[3 :: 3].len)
 """, "2 20 30 42 30\n8 111 111 0\n")
 positive("grow_literal_and_range_slices", """
 var^ g=grow^[10,20,30,40]
@@ -434,7 +434,7 @@ let^ all=g[::]
 let^ closed=g[1 to^ 3]
 let^ empty=g[3 to^ 2]
 let^ text:string^|nil^="hello"
-print^(g.len,tail.len,tail[0],all.len,closed.len,closed[2],empty.len,(text?[1 to^ 3])?.len??0)
+print^(g.len,tail.len,tail[0],all.len,closed.len,closed[2],empty.len,(text?.bytes[1 to^ 3])?.len??0)
 """, "5 2 40 5 3 40 0 3\n")
 negative("grow_unsized_type", "var^ a:i32^[]=[]", "needs grow^")
 negative("grow_literal_fixed_target", "var^ a:i32^[2]=grow^[1,2]", "cannot initialize")
@@ -463,7 +463,7 @@ var^ a:grow^ i32^[]=[1,2,3,4]
 let^ view=sub(borrowed(ref^ a))
 a.push(5)
 print^(view.len,view[0])
-let^ literal=f^ { return^ "hello"[1 :: 4] }
+let^ literal=f^ { return^ "hello".bytes[1 :: 4] }
 print^(literal()[0])
 """, "1 3\n101\n")
 positive("slice_record_copy", """
@@ -506,9 +506,9 @@ for name,text in (
 ):
     runtime_failure("slice_"+name, "var^ a:grow^ i32^[]=[1,2]; let^ v="+text, "slice range out of bounds")
 runtime_failure("slice_index_bounds", "let^ a:i32^[2]=[1,2]; let^ v=a[:: 1]; print^(v[1])", "array index out of bounds")
-runtime_failure("string_index_bounds", 'print^("abc"[3])', "array index out of bounds")
+runtime_failure("string_index_bounds", 'print^("abc".bytes[3])', "array index out of bounds")
 negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a[:: 2] }", "cannot return a reference")
-negative("slice_outer_escape", "var^ v=\"abc\"[:: 0]; do^{ var^ a:grow^ u8^[]=[1]; v := a[:: 1] }", "reference would outlive its owner")
+negative("slice_outer_escape", "var^ v=\"abc\".bytes[:: 0]; do^{ var^ a:grow^ u8^[]=[1]; v := a[:: 1] }", "reference would outlive its owner")
 negative("slice_write", "var^ a:grow^ i32^[]=[1]; var^ v=a[:: 1]; v[0] := 2", "not addressable")
 negative("slice_borrow_element", "var^ a:grow^ i32^[]=[1]; let^ v=a[:: 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
 negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:grow^ Item[]=[Item{x=1}]; a[:: 1][0].x := 2", "not addressable")
@@ -1242,7 +1242,7 @@ calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^ n:i64^",1)[0]
 positive("calc_errors_and_precedence",calc_helpers+"""
 let^ check=p^ text:string^, pool:ref^ grow^ Expr[] {
     pool.clear()
-    let^ result=run(text[::],pool)
+    let^ result=run(text.bytes,pool)
     if^ result fits^ Ok { print^(result.value) else^: print^(0-result.code) }
 }
 var^ pool:grow^ Expr[]=[]
@@ -1263,7 +1263,7 @@ check("1/0 + (",ref^ pool)
 check("1/0 #",ref^ pool)
 check("4294967296",ref^ pool)
 pool.clear()
-let^ failed=run("1+(2*"[:: 5],ref^ pool)
+let^ failed=run("1+(2*".bytes[:: 5],ref^ pool)
 assert^(failed fits^ Failure)
 print^(failed.code,pool.len)
 """, "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
@@ -1279,8 +1279,8 @@ text.clear()
 text.append("xxxxxxxxxxxxxxxxxxx")
 print^(pool.len-1,roots.len,walk(ref^ pool,ref^ symbols,roots[0],0))
 roots.clear()
-print^(parse_all("("[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
-print^(parse_all(")"[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
+print^(parse_all("(".bytes[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
+print^(parse_all(")".bytes[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
 """, "0\n4 1 4294967398\n8 0\n5 0\n")
 packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^ n:i64^",1)[0]
 positive("packed_words_own_copies", packed_word_helpers+"""
@@ -1838,7 +1838,7 @@ var^ v:i32^=42
 let^ pair=id(Pair{a=12,b=30})
 let^ ref=id(Ref{p=ref^ v})
 let^ text=id("abc")
-let^ view=id(text[1 :: 3])
+let^ view=id(text.bytes[1 :: 3])
 let^ ary=id([1,2,3,4])
 let^ u:U=A{value=42}
 let^ got=id(u)

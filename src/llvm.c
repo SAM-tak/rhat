@@ -877,6 +877,30 @@ static void instruction(Output *o, Instr *i) {
     }
     save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", o->tmp));
     break;
+  case I_HELPER: {
+    char *args = "";
+    for (int k = 0; k < i->args.n; k++) {
+      int id = (int)(intptr_t)i->args.v[k] - 1;
+      Type *at = slot_type(o, id);
+      a = load(o, id);
+      if (at->kind == T_STRING || at->kind == T_SLICE) {
+        fprintf(f, "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n", ++o->tmp, a);
+        fprintf(f, "  %%t%d = extractvalue { ptr, i64 } %%t%d, 1\n", ++o->tmp, a);
+        args = fmt("%sptr %%t%d, i64 %%t%d, ", args, o->tmp - 1, o->tmp);
+      }
+      else {
+        args = fmt("%s%s %%t%d, ", args, llvm_type(at), a);
+      }
+    }
+    if (i->dst >= 0) {
+      fprintf(f, "  %%t%d = call i64 @%s(%si32 %d)\n", ++o->tmp, i->text, args, i->loc.line);
+      save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", o->tmp));
+    }
+    else {
+      fprintf(f, "  call void @%s(%si32 %d)\n", i->text, args, i->loc.line);
+    }
+    break;
+  }
   case I_SITE:
     fprintf(f, "  store ptr @%s_site_%d, ptr %%p%d\n", o->in->symbol, i->label, i->dst);
     break;
@@ -980,7 +1004,7 @@ static void instruction(Output *o, Instr *i) {
        wrapped end fails the ordering check. */
     char *lo = i->b >= 0 ? fmt("%%t%d", load(o, i->b)) : "0";
     char *hi = i->other >= 0 ? fmt("%%t%d", load(o, i->other)) : length;
-    if (i->text && !strcmp(i->text, "open")) {
+    if (i->text && (!strcmp(i->text, "open") || !strcmp(i->text, "text"))) {
       /* A range^ value's open end, the minimum i64, closes at the length. */
       int open = ++o->tmp;
       fprintf(f, "  %%t%d = icmp eq i64 %s, -9223372036854775808\n", open, hi);
@@ -1007,6 +1031,11 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f,
             "  call void @rh_slice_fail(i32 %d)\n  unreachable\nslice_ok_%d:\n",
             i->loc.line, valid);
+    if (i->text && !strcmp(i->text, "text")) {
+      /* A string^ is cut only between characters. */
+      fprintf(f, "  call void @rh_text_boundary(ptr %s, i64 %s, i64 %s, i64 %s, i32 %d)\n", data,
+              length, lo, hi, i->loc.line);
+    }
     int ptr = ++o->tmp, first = ++o->tmp, view = ++o->tmp;
     fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %s\n", ptr,
             t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, lo);
@@ -1622,6 +1651,15 @@ void emit_llvm(Program *p, const char *path) {
         "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
         "declare void @rh_unhandled(ptr, i64, ptr, i64, ptr, i32, i32) cold noreturn\n"
         "declare void @rh_print_char(i32)\n"
+        "declare i64 @rh_text_valid(ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_count(ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_find(ptr, i64, ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_starts(ptr, i64, ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_ends(ptr, i64, ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_compare(ptr, i64, ptr, i64, i32) readonly\n"
+        "declare i64 @rh_text_decode(ptr, i64, i64, i32)\n"
+        "declare i64 @rh_text_next(ptr, i64, i64, i32)\n"
+        "declare void @rh_text_boundary(ptr, i64, i64, i64, i32)\n"
         "declare i64 @rh_char_of_text(ptr, i64) readonly\n"
         "declare i64 @rh_char_of_whole(i64) readnone\n"
         "declare void @rh_runtime_shutdown()\n"
@@ -1773,6 +1811,7 @@ void dump_ir(Program *p, const char *path) {
                          "dyn.data",
                          "union.place",
                          "char.check",
+                         "runtime.helper",
                          "error.site"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];

@@ -66,6 +66,25 @@ typedef struct {
   int kind;
   size_t length;
 } Token;
+/* The width of the UTF-8 encoded scalar value at s within n bytes, with
+ * its value in *code, or 0 when the bytes there encode none. */
+static size_t utf8_scalar(const unsigned char *s, size_t n, unsigned long *code)
+{
+  size_t width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
+  if (!width || width > n || (s[0] >= 0x80 && (s[0] < 0xC2 || s[0] > 0xF4))) {
+    return 0;
+  }
+  unsigned long c = width == 1 ? s[0] : s[0] & (0x7Fu >> width);
+  for (size_t j = 1; j < width; j++) {
+    if ((s[j] & 0xC0) != 0x80) {
+      return 0;
+    }
+    c = c << 6 | (s[j] & 0x3F);
+  }
+  unsigned long least = width == 2 ? 0x80 : width == 3 ? 0x800 : width == 4 ? 0x10000 : 0;
+  *code = c;
+  return c < least || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF) ? 0 : width;
+}
 enum {
   TOK_WORD = 256,
   TOK_INT,
@@ -82,7 +101,7 @@ typedef struct {
   List tokens;
   int at, serial, scope_depth;
   bool header;
-  bool text_cast; /* A char^(...) cast needs std.text for its error. */
+  bool text_cast; /* A char^(...) or string^(...) cast needs std.text for its error. */
 } Parser;
 static Token *tok(Parser *p) { return p->tokens.v[p->at]; }
 static bool is(Parser *p, const char *s) {
@@ -433,6 +452,9 @@ static void lex(Parser *p) {
             int b = digit_value((unsigned char)s[1]);
             if (b < 0)
               fail(t->loc, "hex escape requires two digits");
+            if (a > 7) {
+              fail(t->loc, "\\x escapes stop at \\x7F to keep strings UTF-8; write \\u{...}");
+            }
             out[n++] = (char)((a << 4) | b);
             s += 2;
             break;
@@ -462,6 +484,12 @@ static void lex(Parser *p) {
       }
       if (!closed)
         fail(t->loc, "unterminated string");
+      unsigned long code;
+      for (size_t j = 0, w; j < n; j += w) {
+        if (!(w = utf8_scalar((const unsigned char *)out + j, n - j, &code))) {
+          fail(t->loc, "string literal is not valid UTF-8");
+        }
+      }
       t->kind = TOK_STRING;
       t->text = out;
       t->length = n;
@@ -883,7 +911,8 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
-  p->text_cast |= t->kind == TOK_WORD && !strcmp(t->text, "char^") && is(p, "(");
+  p->text_cast |= t->kind == TOK_WORD && (!strcmp(t->text, "char^") || !strcmp(t->text, "string^")) &&
+                  is(p, "(");
   if (t->kind == TOK_WORD &&
       (!strcmp(t->text, "externC^") || !strcmp(t->text, "externLLVM^"))) {
     fail(t->loc, "%s declarations are only allowed at the top level", t->text);
@@ -904,17 +933,8 @@ static Expr *primary(Parser *p) {
   } else if (t->kind == TOK_WORD && !strcmp(t->text, "char^") && tok(p)->kind == TOK_STRING) {
     /* char^"x": exactly one Unicode scalar value, checked here. */
     Token *text = next(p);
-    const unsigned char *s = (const unsigned char *)text->text;
-    size_t n = text->length, width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
-    unsigned long code = width == 1 ? s[0] : width ? s[0] & (0x7F >> width) : 0;
-    bool valid = n && n == width && (s[0] < 0x80 || (s[0] >= 0xC2 && s[0] <= 0xF4));
-    for (size_t j = 1; valid && j < width; j++) {
-      valid = (s[j] & 0xC0) == 0x80;
-      code = code << 6 | (s[j] & 0x3F);
-    }
-    valid &= code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF) &&
-             code >= (width == 2 ? 0x80UL : width == 3 ? 0x800UL : width == 4 ? 0x10000UL : 0);
-    if (!valid) {
+    unsigned long code = 0;
+    if (!text->length || utf8_scalar((const unsigned char *)text->text, text->length, &code) != text->length) {
       fail(text->loc, "char^\"...\" holds exactly one Unicode scalar value");
     }
     e = node(E_CHAR, t->loc);
@@ -2449,7 +2469,7 @@ void parse_file(Program *p, const char *path, Module *module) {
     add(&p->functions, parsed_function);
     take(&q, ";");
   }
-  /* A char^(...) cast fails with std.text's error, imported out of sight. */
+  /* A char^(...) or string^(...) cast fails with std.text's error, imported out of sight. */
   bool text = q.text_cast && !(module->name && !strcmp(module->name, "std.text"));
   for (int j = 0; text && j < module->imports.n; j++) {
     text = strcmp(((Import *)module->imports.v[j])->name, "std.text");

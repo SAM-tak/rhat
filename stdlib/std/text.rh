@@ -12,14 +12,15 @@ externC^rh_parse_f32:f^text:string^, length:i64^, out:ref^ f32^ -> i32^;
 # An optional + or - followed by decimal digits, without spaces. The value
 # accumulates toward its sign so that the minimum of the range is reachable.
 let^integer = f^s:string^, low:i64^, high:i64^ -> i64^ | Error.Invalid | Error.OutOfRange {
-    if^s.len = 0 { return^Error.Invalid{} }
-    let^negative = s[0] = 45
+    let^b = s.bytes
+    if^b.len = 0 { return^Error.Invalid{} }
+    let^negative = b[0] = 45
     var^start:i64^ = 0
-    if^negative or^ s[0] = 43 { start := 1 }
-    if^start = s.len { return^Error.Invalid{} }
+    if^negative or^ b[0] = 43 { start := 1 }
+    if^start = b.len { return^Error.Invalid{} }
     var^n:i64^ = 0
-    for^ var^ i:i64^ = start while^ i < s.len next^ i += 1 {
-        let^d = i64^(s[i]) - 48
+    for^ var^ i:i64^ = start while^ i < b.len next^ i += 1 {
+        let^d = i64^(b[i]) - 48
         if^d < 0 or^ d > 9 { return^Error.Invalid{} }
         if^negative {
             if^n < low / 10 or^ (n = low / 10 and^ d > -(low % 10)) { return^Error.OutOfRange{} }
@@ -42,14 +43,14 @@ public^let^parse_i32 = f^s:string^ -> i32^ | Error.Invalid | Error.OutOfRange {
 # surrounding spaces. Underflow rounds toward zero; overflow is OutOfRange.
 public^let^parse_f64 = f^s:string^ -> f64^ | Error.Invalid | Error.OutOfRange {
     var^out:f64^ = 0.0
-    let^status = rh_parse_f64(s, s.len, ref^ out)
+    let^status = rh_parse_f64(s, s.bytes.len, ref^ out)
     if^status = 1 { return^Error.Invalid{} }
     if^status = 2 { return^Error.OutOfRange{} }
     return^out
 }
 public^let^parse_f32 = f^s:string^ -> f32^ | Error.Invalid | Error.OutOfRange {
     var^out:f32^ = 0.0
-    let^status = rh_parse_f32(s, s.len, ref^ out)
+    let^status = rh_parse_f32(s, s.bytes.len, ref^ out)
     if^status = 1 { return^Error.Invalid{} }
     if^status = 2 { return^Error.OutOfRange{} }
     return^out

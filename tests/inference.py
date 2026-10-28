@@ -13,7 +13,7 @@ def main():
 
     positive('inference_identity', '''
 let^ id=f^ x {x}
-print^(id(42),id(i64^(43)),id("hello"),id("hello").len)
+print^(id(42),id(i64^(43)),id("hello"),id("hello").bytes.len)
 ''', '42 43 hello 5\n', instances)
 
     positive('inference_mixed_annotations', '''

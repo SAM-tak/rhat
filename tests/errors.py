@@ -429,8 +429,8 @@ print^(unguarded(ref^ items) fits^ E.Bad)
  Eof
 }
 let^ parse=f^ s:string^ ->i64^|ParseError.Syntax|ParseError.Eof {
- if^ s.len=0 {return^ ParseError.Eof{message="no input"}}
- if^ s.len>3 {return^ ParseError.Eof{}}
+ if^ s.bytes.len=0 {return^ ParseError.Eof{message="no input"}}
+ if^ s.bytes.len>3 {return^ ParseError.Eof{}}
  return^ ParseError.Syntax{at=3,near=s}
 }
 '''
@@ -438,7 +438,7 @@ let^ parse=f^ s:string^ ->i64^|ParseError.Syntax|ParseError.Eof {
 if^ r fits^ ParseError.Syntax {print^(r.message(),r.at,r.near,r.line,r.column)}
 print^(parse("") catch^ i64^(it^.line))
 do^{ let^ x=try^ parse("y") print^(x) catch^: print^(it^.message(),it^.line,it^.column) }
-do^{ let^ x=try^ parse("") print^(x) catch^: print^(it^.message(),it^.source.len>0) }
+do^{ let^ x=try^ parse("") print^(x) catch^: print^(it^.message(),it^.source.bytes.len>0) }
 do^{ let^ x=try^ parse("long") print^(x) catch^: print^(it^.message()) }
 let^ e=ParseError.Eof{}
 print^(e.message(),e.line)

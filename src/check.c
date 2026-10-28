@@ -137,6 +137,48 @@ bool error_messages(Program *p, Expr *target, int arguments, Type *base)
   return target->kind == E_MEMBER && !strcmp(target->text, "message") && !arguments && base &&
          base->kind == T_UNION && only_errors(base);
 }
+Type *text_cast_type(Program *p, Loc loc)
+{
+  Def *invalid = lookup_def(p, "std.text.Error.Invalid");
+  if (!invalid) {
+    fail(loc, "internal: string^(...) needs std.text");
+  }
+  return type_union(p, type_builtin(p, T_STRING), invalid->type, loc);
+}
+Type *text_method_type(Program *p, const char *name, Loc loc)
+{
+  Type *whole = type_builtin(p, T_I64), *text = type_builtin(p, T_STRING);
+  if (!strcmp(name, "slice")) {
+    return text;
+  }
+  if (!strcmp(name, "count_chars")) {
+    return whole;
+  }
+  if (!strcmp(name, "find")) {
+    return type_union(p, whole, type_builtin(p, T_NIL), loc);
+  }
+  if (!strcmp(name, "starts_with") || !strcmp(name, "ends_with")) {
+    return type_builtin(p, T_BOOL);
+  }
+  if (!strcmp(name, "decode")) {
+    List parts = {0};
+    add(&parts, type_builtin(p, T_CHAR));
+    add(&parts, whole);
+    return type_tuple(p, &parts, loc);
+  }
+  if (!strcmp(name, "chars")) {
+    return type_wrap(p, T_GROW, type_builtin(p, T_CHAR), 0);
+  }
+  return NULL;
+}
+/* Reject reading a string^ as bytes without .bytes. */
+static void text_bytes_only(Type *t, const char *what, Loc loc)
+{
+  if (t && t->kind == T_STRING) {
+    fail(loc, "string^ has no %s; use s.bytes for bytes, or s.decode(at), s.slice(r) and s.count_chars()",
+         what);
+  }
+}
 Type *char_cast_type(Program *p, Loc loc)
 {
   Def *invalid = lookup_def(p, "std.text.Error.Invalid");
@@ -547,6 +589,18 @@ static Type *infer_call(Infer *c, Expr *e)
       error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {
     return type_builtin(c->p, T_STRING);
   }
+  if (target->kind == E_MEMBER && text_method_type(c->p, target->text, e->loc)) {
+    Type *base = infer_expr(c, target->a, NULL);
+    if (base && base->kind == T_REF) {
+      base = base->elem;
+    }
+    if (base && base->kind == T_STRING) {
+      for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], NULL);
+      }
+      return c->terminated ? type_builtin(c->p, T_NEVER) : text_method_type(c->p, target->text, e->loc);
+    }
+  }
   if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
       range_type(infer_expr(c, target->a, NULL))) {
     infer_expr(c, e->args.v[0], type_builtin(c->p, T_I64));
@@ -558,11 +612,13 @@ static Type *infer_call(Infer *c, Expr *e)
   if (target->kind == E_FUNCTION) {
     f = target->function;
   }
-  else if (target->kind == E_NAME && !strcmp(target->text, "char^")) {
+  else if (target->kind == E_NAME && (!strcmp(target->text, "char^") || !strcmp(target->text, "string^"))) {
     for (int j = 0; j < e->args.n; j++) {
       infer_expr(c, e->args.v[j], NULL);
     }
-    return c->terminated ? type_builtin(c->p, T_NEVER) : char_cast_type(c->p, e->loc);
+    return c->terminated               ? type_builtin(c->p, T_NEVER)
+           : target->text[0] == 'c' ? char_cast_type(c->p, e->loc)
+                                    : text_cast_type(c->p, e->loc);
   }
   else if (target->kind == E_NAME) {
     for (int k = T_U8; k <= T_F64; k++) {
@@ -1161,6 +1217,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (error_site(base, e->text) >= 0) {
       return type_builtin(c->p, error_site(base, e->text) % 3 ? T_U32 : T_STRING);
     }
+    if (base && base->kind == T_STRING) {
+      if (strcmp(e->text, "bytes")) {
+        text_bytes_only(base, e->text, e->loc);
+      }
+      return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+    }
     if (range_type(base) && strcmp(e->text, "start")) {
       Type *whole = type_builtin(c->p, T_I64);
       if (strcmp(e->text, "end") && strcmp(e->text, "len")) {
@@ -1248,6 +1310,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (c->terminated) {
       return type_builtin(c->p, T_NEVER);
     }
+    text_bytes_only(base, "[]", e->loc);
     if (range_type(index)) {
       return base && base->kind == T_STRING
                  ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)

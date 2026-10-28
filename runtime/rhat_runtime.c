@@ -189,7 +189,7 @@ static int32_t rh_parse_float(const char *text, int64_t length, bool single,
     *wide = value = strtod(copy, &end);
   }
   int32_t status = end != copy + length ? 1
-                   : errno == ERANGE && isinf(value) ? 2
+                  : errno == ERANGE && isinf(value) ? 2
                                                     : 0;
   if (copy != small) {
     free(copy);
@@ -333,6 +333,110 @@ void rh_print_char(uint32_t c)
   }
   fwrite(out, 1, (size_t)n, stdout);
 }
+/* The width of the UTF-8 scalar value at s within n bytes, with its value
+ * in *code, or 0 when the bytes there encode none. */
+static int64_t rh_utf8(const unsigned char *s, int64_t n, int64_t *code)
+{
+  int64_t width = n <= 0 ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
+  if (!width || width > n || (s[0] >= 0x80 && (s[0] < 0xC2 || s[0] > 0xF4))) {
+    return 0;
+  }
+  int64_t c = width == 1 ? s[0] : s[0] & (0x7F >> width);
+  for (int64_t j = 1; j < width; j++) {
+    if ((s[j] & 0xC0) != 0x80) {
+      return 0;
+    }
+    c = c << 6 | (s[j] & 0x3F);
+  }
+  int64_t least = width == 2 ? 0x80 : width == 3 ? 0x800 : width == 4 ? 0x10000 : 0;
+  *code = c;
+  return c < least || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF) ? 0 : width;
+}
+/* Whether the bytes are UTF-8. */
+int64_t rh_text_valid(const unsigned char *s, int64_t n, int32_t line)
+{
+  (void)line;
+  int64_t code;
+  for (int64_t at = 0, w; at < n; at += w) {
+    if (!(w = rh_utf8(s + at, n - at, &code))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+/* The number of scalar values in UTF-8 text: its bytes that start one. */
+int64_t rh_text_count(const unsigned char *s, int64_t n, int32_t line)
+{
+  (void)line;
+  int64_t count = 0;
+  for (int64_t at = 0; at < n; at++) {
+    count += (s[at] & 0xC0) != 0x80;
+  }
+  return count;
+}
+/* The first offset where t occurs in s, or -1. */
+int64_t rh_text_find(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
+                     int32_t line)
+{
+  (void)line;
+  for (int64_t at = 0; at + m <= n; at++) {
+    if (!memcmp(s + at, t, (size_t)m)) {
+      return at;
+    }
+  }
+  return -1;
+}
+int64_t rh_text_starts(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
+                       int32_t line)
+{
+  (void)line;
+  return m <= n && !memcmp(s, t, (size_t)m);
+}
+int64_t rh_text_ends(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
+                     int32_t line)
+{
+  (void)line;
+  return m <= n && !memcmp(s + n - m, t, (size_t)m);
+}
+/* -1, 0 or 1 as s orders before, with or after t byte by byte. */
+int64_t rh_text_compare(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
+                        int32_t line)
+{
+  (void)line;
+  int order = memcmp(s, t, (size_t)(n < m ? n : m));
+  return order < 0 ? -1 : order > 0 ? 1 : n < m ? -1 : n > m;
+}
+_Noreturn static void rh_text_fail(const char *what, int32_t line)
+{
+  fflush(stdout);
+  fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s\n", line, what);
+  exit(1);
+}
+/* The scalar value at byte offset at, which must start one. */
+int64_t rh_text_decode(const unsigned char *s, int64_t n, int64_t at, int32_t line)
+{
+  int64_t code;
+  if (at < 0 || at >= n || !rh_utf8(s + at, n - at, &code)) {
+    rh_text_fail("decode position is not the start of a character", line);
+  }
+  return code;
+}
+/* The offset after the scalar value at byte offset at. */
+int64_t rh_text_next(const unsigned char *s, int64_t n, int64_t at, int32_t line)
+{
+  int64_t code, width = at < 0 || at >= n ? 0 : rh_utf8(s + at, n - at, &code);
+  if (!width) {
+    rh_text_fail("decode position is not the start of a character", line);
+  }
+  return at + width;
+}
+/* Fail unless lo and hi both fall between characters. */
+void rh_text_boundary(const unsigned char *s, int64_t n, int64_t lo, int64_t hi, int32_t line)
+{
+  if ((lo < n && (s[lo] & 0xC0) == 0x80) || (hi < n && (s[hi] & 0xC0) == 0x80)) {
+    rh_text_fail("string slice cuts a character", line);
+  }
+}
 /* The scalar value c if it is one, else -1. */
 int64_t rh_char_of_whole(int64_t c)
 {
@@ -341,19 +445,8 @@ int64_t rh_char_of_whole(int64_t c)
 /* The scalar value of text if it is exactly one in UTF-8, else -1. */
 int64_t rh_char_of_text(const unsigned char *s, int64_t n)
 {
-  int width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
-  if (n != width || (s[0] >= 0x80 && (s[0] < 0xC2 || s[0] > 0xF4))) {
-    return -1;
-  }
-  int64_t c = width == 1 ? s[0] : s[0] & (0x7F >> width);
-  for (int j = 1; j < width; j++) {
-    if ((s[j] & 0xC0) != 0x80) {
-      return -1;
-    }
-    c = c << 6 | (s[j] & 0x3F);
-  }
-  int64_t least = width == 2 ? 0x80 : width == 3 ? 0x800 : width == 4 ? 0x10000 : 0;
-  return c < least ? -1 : rh_char_of_whole(c);
+  int64_t code;
+  return n && rh_utf8(s, n, &code) == n ? code : -1;
 }
 void rh_print_newline(void) { fputc('\n', stdout); }
 /* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and

@@ -178,7 +178,7 @@ repeat^ while^ x fits^ i32^ {print^(x) x:=nil^}
 var^ y:i32^|string^=5
 repeat^ until^ y fits^ string^ {print^(y) y:="done"}
 let^ run=template^p^ value {
- repeat^ while^ value fits^ string^ {print^(value.len) break^}
+ repeat^ while^ value fits^ string^ {print^(value.bytes.len) break^}
 }
 run(1) run("abc")
 ''', '3\n5\n3\n')

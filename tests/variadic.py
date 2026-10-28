@@ -42,7 +42,7 @@ print^(alias("a", "b", "c"), generic(1, 2), box.add(1, 2), total(ref^ a, ref^ b)
     def arguments():
         suite.source('variadic_command_arguments', '''
 print^(....len)
-for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i], ...[i].len) }
+for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i], ...[i].bytes.len) }
 ''')
         for opt in suite.opts:
             exe, _ = suite.build('variadic_command_arguments', opt)
