@@ -1,4 +1,4 @@
-#include "sema_internal.h"
+#include "sema.h"
 
 /* Body requirements resolve signatures first; local call shapes fill gaps. */
 Param *inferred_parameter(Function *f)

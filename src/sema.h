@@ -1,9 +1,9 @@
-#ifndef RHAT_SEMA_INTERNAL_H
-#define RHAT_SEMA_INTERNAL_H
+#ifndef RHAT_SEMA_H
+#define RHAT_SEMA_H
 #include "rhat.h"
 
-/* Private interface between semantic IR construction and type inference.
- * This is not part of the compiler's public API. */
+/* The interface shared by semantic IR construction (sema.c and the files
+ * split from it) and type inference (check.c). */
 /* Local bindings and branch facts shared by inference and IR construction. */
 typedef struct Var Var;
 typedef struct {
@@ -331,5 +331,19 @@ Type *parameter_hint(Program *p, Param *param, Expr *arg);
 bool parameter_accepts(Type *want, Type *actual);
 /* Avoid redundant declaration instances for locally specialized bodies. */
 bool declaration_instance_needed(Program *p, Function *f);
+
+/* Types (types.c), shared with IR construction. */
+/* The index of alternative arm in union sum, or -1. */
+int union_alternative(Type *sum, Type *arm);
+/* Whether every value of from passes fits^ to: an alternative, a callable it
+ * satisfies, or a def^ (or ref^ to one) composing to's. */
+bool fits_type(Type *from, Type *to);
+/* Whether error type to admits every error from may be. */
+bool error_accepts(Type *to, Type *from);
+/* Whether some error from may be is one that to admits. */
+bool error_overlap(Type *to, Type *from);
+/* Gather d's fields and methods from its composition bases and its own
+ * declaration, checking overrides, overloads and union alternatives. */
+void compose(Program *p, Def *d);
 
 #endif

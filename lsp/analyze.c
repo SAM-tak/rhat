@@ -1,6 +1,6 @@
 #include "analyze.h"
 #include "position.h"
-#include "sema_internal.h"
+#include "sema.h"
 #include "tooling.h"
 #include "uri.h"
 #include <ctype.h>

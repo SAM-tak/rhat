@@ -19,7 +19,7 @@
 `src/front.c` は構文木、`src/check.c` は本体からの引数型推論・呼び出し形の検査・返り値型推論・式の型問い合わせ、
 `src/sema.c` は型配置・合成・寿命検査と中間表現の構築、
 `src/llvm.c` は LLVM IR と中間表現ダンプ、`src/main.c` は CLI と Clang の起動を担当します。
-`src/sema_internal.h` は型推論と IR 構築で共有する内部状態・フロー操作を宣言し、公開 API から分離します。
+`src/sema.h` は型推論と IR 構築で共有する状態・フロー操作・関数を宣言します。型の構築・部分型・配置は `src/types.c` にあります。
 `runtime/rhat_runtime.c` は OS 領域、入出力、境界・除算・assert の検査です。
 
 ## トップレベル実行

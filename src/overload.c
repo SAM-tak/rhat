@@ -1,4 +1,4 @@
-#include "sema_internal.h"
+#include "sema.h"
 
 bool callable_type(Type *t)
 {
