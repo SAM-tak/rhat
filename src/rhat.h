@@ -103,7 +103,8 @@ enum {
                  single forwarded sequence in a. */
   E_PANIC,    /* panic^ a: end the process; it produces no value. */
   E_RANGE,    /* a :: b or a to^ b (text): a range^ value; a or b may be omitted. */
-  E_CHAR      /* char^"x": the Unicode scalar value in text, as decimal digits. */
+  E_CHAR,     /* char^"x": the Unicode scalar value in text, as decimal digits. */
+  E_INTERP    /* $"...": text and holes in args, each hole's format in names. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */

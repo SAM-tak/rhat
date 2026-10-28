@@ -1282,6 +1282,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     return type_builtin(c->p, T_NEVER);
   case E_CHAR:
     return type_builtin(c->p, T_CHAR);
+  case E_INTERP: {
+    for (int j = 0; j < e->args.n; j++) {
+      infer_expr(c, e->args.v[j], NULL);
+    }
+    Def *builder = lookup_def(c->p, "std.text.Builder");
+    return c->terminated ? type_builtin(c->p, T_NEVER) : builder ? builder->type : NULL;
+  }
   case E_RANGE:
     infer_expr(c, e->a, type_builtin(c->p, T_I64));
     infer_expr(c, e->b, type_builtin(c->p, T_I64));

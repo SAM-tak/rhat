@@ -2768,6 +2768,7 @@ static Value text_cast(Context *c, Expr *e, int destination)
 /* x.write_text(out) appends x to Builder out; x.tostring() builds a new
  * Builder at the destination with it. x is a number, bool^, char^ or
  * string^; the others are written into a local buffer first. */
+static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc);
 static Value value_text(Context *c, Expr *e, int destination)
 {
   Program *p = c->p;
@@ -2777,8 +2778,9 @@ static Value value_text(Context *c, Expr *e, int destination)
   if (!builder) {
     fail(e->loc, "internal: %s needs std.text", target->text);
   }
-  if (e->args.n != !build) {
-    fail(e->loc, build ? "x.tostring() takes no arguments" : "x.write_text(out) takes a ref^ std.text.Builder");
+  if (e->args.n != !build && e->args.n != !build + 1) {
+    fail(e->loc, build ? "x.tostring() takes an optional format"
+                       : "x.write_text(out) takes a ref^ std.text.Builder and an optional format");
   }
   Value x = expression(c, target->a, NULL);
   if (dead(x)) {
@@ -2798,40 +2800,58 @@ static Value value_text(Context *c, Expr *e, int destination)
       fail(e->loc, "x.write_text(out) takes a ref^ std.text.Builder, found '%s'", type_name(into.type));
     }
   }
+  write_value(c, x, into, e->args.n > !build ? e->args.v[e->args.n - 1] : NULL, e->loc);
+  return out;
+}
+/* Append x, written with the C format format when there is one, to the
+ * Builder into. */
+static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc)
+{
+  Program *p = c->p;
+  Def *builder = into.type->def;
+  bool number = kind_integer(x.type->kind) || kind_float(x.type->kind);
+  if (format && !number) {
+    fail(loc, "a format applies to a number, not '%s'", type_name(x.type));
+  }
   Value text = x;
   if (x.type->kind != T_STRING) {
     if (x.type->kind == T_F8 || x.type->kind == T_F16) {
       Value wide = value(c, type_builtin(p, T_F64));
-      Instr *i = emit(c, I_CONVERT, e->loc);
+      Instr *i = emit(c, I_CONVERT, loc);
       i->dst = wide.id;
       i->a = x.id;
       i->type = wide.type;
       x = wide;
     }
-    Type *buffer = type_wrap(p, T_ARRAY, type_builtin(p, T_U8), 48);
+    Type *buffer = type_wrap(p, T_ARRAY, type_builtin(p, T_U8), 256);
     Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
     int bytes = slot(c, buffer, false);
-    Value args[3] = {{.id = slot(c, view, false), .type = view},
+    Expr none = {.kind = E_STRING, .loc = loc, .text = ""};
+    Value args[4] = {{.id = slot(c, view, false), .type = view},
                      {.id = slot(c, type_wrap(p, T_REF, x.type, 0), false)},
                      constant(c, T_I64,
                               fmt("%d", numeric_bits(x.type->kind) |
                                             (kind_unsigned(x.type->kind) ? 1 : kind_float(x.type->kind) ? 2
                                              : x.type->kind == T_BOOL ? 3 : x.type->kind == T_CHAR ? 4 : 0)
                                                 << 8),
-                              e->loc)};
-    Instr *i = emit(c, I_SLICE, e->loc);
+                              loc),
+                     expression(c, format ? format : &none, type_builtin(p, T_STRING))};
+    if (args[3].type->kind != T_STRING) {
+      fail(loc, "a format is a string^, as in \"%%5.2f\"");
+    }
+    Instr *i = emit(c, I_SLICE, loc);
     i->dst = args[0].id;
     i->a = bytes;
     i->b = i->other = -1;
     i->type = buffer;
-    i = emit(c, I_ADDR, e->loc);
+    i = emit(c, I_ADDR, loc);
     i->dst = args[1].id;
     i->a = x.id;
     i->type = ((Slot *)c->in->slots.v[args[1].id])->type;
-    Value length = helper(c, "rh_text_format", args, 3, T_I64, e->loc);
+    Value length = helper(c, "rh_text_format", args, 4, T_I64, loc);
     text = (Value){.id = slot(c, type_builtin(p, T_STRING), false), .type = type_builtin(p, T_STRING)};
-    Value start = constant(c, T_I64, "0", e->loc);
-    i = emit(c, I_SLICE, e->loc);
+    Value start = constant(c, T_I64, "0", loc);
+    i = emit(c, I_SLICE, loc);
     i->dst = text.id;
     i->a = bytes;
     i->b = start.id;
@@ -2840,16 +2860,67 @@ static Value value_text(Context *c, Expr *e, int destination)
   }
   Field *bytes = field(builder, "bytes");
   int place = slot(c, bytes->type, true);
-  Instr *i = emit(c, I_FIELD, e->loc);
+  Instr *i = emit(c, I_FIELD, loc);
   i->dst = place;
   i->a = into.id;
   i->type = builder->type;
   i->label = bytes->index;
-  i = emit(c, I_APPEND, e->loc);
+  i = emit(c, I_APPEND, loc);
   i->a = place;
   i->b = text.id;
   i->type = bytes->type;
-  return out;
+}
+/* Append the text and holes of $"..." e to the Builder into. */
+static void interp_into(Context *c, Expr *e, Value into)
+{
+  for (int j = 0; j < e->args.n && !c->terminated; j++) {
+    Expr *part = e->args.v[j];
+    char *format = e->names.v[j];
+    if (part->kind == E_INTERP && !*format) {
+      /* A nested $"..." goes on in the same Builder. */
+      interp_into(c, part, into);
+      continue;
+    }
+    Value x = expression(c, part, NULL);
+    if (dead(x)) {
+      return;
+    }
+    if (x.type == into.type && !*format) {
+      /* A Builder in a hole gives its text. */
+      Function *text = NULL;
+      for (int k = 0; k < into.type->def->methods.n; k++) {
+        Function *m = into.type->def->methods.v[k];
+        text = !strcmp(m->name, "text") ? m : text;
+      }
+      x = invoke_operator(c, text, x, x, part);
+    }
+    if (!textual(x.type)) {
+      fail(part->loc, "an interpolation hole takes a number, bool^, char^ or string^, found '%s'",
+           type_name(x.type));
+    }
+    Expr spec = {.kind = E_STRING, .loc = part->loc, .text = format, .length = strlen(format)};
+    write_value(c, x, into, *format ? &spec : NULL, part->loc);
+  }
+}
+/* $"..." for print^: built in a Builder living until the print, which
+ * shows its text. */
+static Value interp_print(Context *c, Expr *e, List *temps)
+{
+  Def *builder = lookup_def(c->p, "std.text.Builder");
+  int temp = slot(c, builder->type, false);
+  Instr *i = emit(c, I_STACK_BEGIN, e->loc);
+  i->dst = temp;
+  i->type = builder->type;
+  i->text = "$\"...\"";
+  add(&c->pending_owners, (void *)(intptr_t)(temp + 1));
+  add(temps, (void *)(intptr_t)temp);
+  Value out = construct(c, e, builder->type, temp);
+  Function *text = NULL;
+  for (int j = 0; j < builder->methods.n; j++) {
+    Function *m = builder->methods.v[j];
+    text = !strcmp(m->name, "text") ? m : text;
+  }
+  return dead(out) ? out : invoke_operator(c, text, out, out, e);
 }
 /* The built-in methods of string^, which address it by byte offsets. */
 static Value text_method(Context *c, Expr *e, int destination)
@@ -3017,6 +3088,18 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   if (target->kind == E_NAME && !strcmp(target->text, "string^")) {
     return text_cast(c, e, destination);
   }
+  if (target->kind == E_MEMBER && !strcmp(target->text, "append") && e->args.n == 1 &&
+      ((Expr *)e->args.v[0])->kind == E_INTERP) {
+    Value into = deref(c, expression(c, target->a, NULL), e->loc);
+    if (dead(into)) {
+      return into;
+    }
+    if (into.type->kind != T_STRUCT || strcmp(into.type->def->name, "std.text.Builder")) {
+      fail(e->loc, "$\"...\" is appended to a std.text.Builder, not '%s'", type_name(into.type));
+    }
+    interp_into(c, e->args.v[0], into);
+    return (Value){.id = -1, .type = type_builtin(p, T_VOID)};
+  }
   if (target->kind == E_MEMBER &&
       (!strcmp(target->text, "tostring") || !strcmp(target->text, "write_text")) &&
       textual(expression_type(c, target->a, NULL))) {
@@ -3042,9 +3125,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
     i->op = print ? I_PRINT : I_ASSERT;
     i->loc = e->loc;
     i->dst = -1;
+    List temps = {0};
     for (int j = 0; j < e->args.n; j++) {
-      Value v =
-          expression(c, e->args.v[j], print ? NULL : type_builtin(p, T_BOOL));
+      Expr *arg = e->args.v[j];
+      Value v = print && arg->kind == E_INTERP
+                    ? interp_print(c, arg, &temps)
+                    : expression(c, arg, print ? NULL : type_builtin(p, T_BOOL));
       if (c->terminated) {
         return abrupt(c);
       }
@@ -3057,6 +3143,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     add(&c->in->code, i);
+    for (int j = temps.n - 1; j >= 0; j--) {
+      release(c, lookup_def(p, "std.text.Builder")->type, (int)(intptr_t)temps.v[j], e->loc);
+      c->pending_owners.n--;
+    }
     if (!print) {
       refine_condition(p, &c->vars, &c->flow, e->args.v[0], true);
     }
@@ -3409,6 +3499,19 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     return copy_to(c, out, src, e->loc, true);
+  }
+  if (e->kind == E_INTERP) {
+    Def *builder = lookup_def(c->p, "std.text.Builder");
+    if (t && t != builder->type) {
+      fail(e->loc, "$\"...\" builds a std.text.Builder, expected '%s'", type_name(t));
+    }
+    if (dst < 0) {
+      fail(e->loc, "$\"...\" builds a std.text.Builder; bind it, or pass it to print^ or append");
+    }
+    Expr empty = {.kind = E_RECORD, .loc = e->loc, .text = builder->name};
+    Value out = construct(c, &empty, builder->type, dst);
+    interp_into(c, e, out);
+    return c->terminated ? abrupt(c) : out;
   }
   if (e->kind == E_RANGE) {
     Type *range = type_range(c->p);
@@ -4172,7 +4275,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return v;
   }
   if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF ||
-      e->kind == E_SCOPE || e->kind == E_RANGE)
+      e->kind == E_SCOPE || e->kind == E_RANGE || e->kind == E_INTERP)
     return construct(c, e, expected, -1);
   if (e->kind == E_MEMBER) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);

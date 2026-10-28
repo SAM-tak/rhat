@@ -367,12 +367,12 @@ void rh_print_string(const char *s, uint64_t n) {
 }
 void rh_print_space(void) { fputc(' ', stdout); }
 int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
-                       int32_t line);
+                       const char *format, int64_t length, int32_t line);
 /* Write a Unicode scalar value as UTF-8. */
 void rh_print_char(uint32_t c)
 {
   unsigned char out[48];
-  fwrite(out, 1, (size_t)rh_text_format(out, sizeof out, &c, 32 | 4 << 8, 0), stdout);
+  fwrite(out, 1, (size_t)rh_text_format(out, sizeof out, &c, 32 | 4 << 8, "", 0, 0), stdout);
 }
 /* The width of the UTF-8 scalar value at s within n bytes, with its value
  * in *code, or 0 when the bytes there encode none. */
@@ -529,17 +529,81 @@ void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
   char text[41];
   fwrite(text, 1, (size_t)rh_integer_text(text, value, bits, uns), stdout);
 }
-/* Write the value at value into out, at least 48 bytes, and answer its
- * length. kind is its width in bits, plus 256 for unsigned, 512 for a real,
- * 768 for bool^ and 1024 for char^. */
-int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
-                       int32_t line)
+/* A number in C format f of length n, which holds exactly one numeric
+ * conversion with flags, width and precision, no * and no length modifier;
+ * the conversion decides whether the number reads as integer or real.
+ * Anything else ends the program, as does text longer than cap. */
+static int64_t rh_formatted(char *out, int64_t cap, const char *f, int64_t n, int bits, int form,
+                            const void *value, int32_t line)
 {
-  (void)cap;
-  (void)line;
+  char spec[80];
+  int length = 0, conversions = 0;
+  char conversion = 0;
+  for (int64_t j = 0; j < n; j++) {
+    if (length > 72) {
+      rh_text_fail("a format is at most 72 bytes", line);
+    }
+    spec[length++] = f[j];
+    if (f[j] != '%') {
+      continue;
+    }
+    if (j + 1 < n && f[j + 1] == '%') {
+      spec[length++] = f[++j];
+      continue;
+    }
+    while (j + 1 < n && strchr("-+ #0", f[j + 1]) && length < 72) {
+      spec[length++] = f[++j];
+    }
+    while (j + 1 < n && ((f[j + 1] >= '0' && f[j + 1] <= '9') || f[j + 1] == '.') && length < 72) {
+      spec[length++] = f[++j];
+    }
+    conversion = j + 1 < n ? f[++j] : 0;
+    if (!conversion || !strchr("diouxXfFeEgGaA", conversion) || ++conversions > 1) {
+      rh_text_fail("a format holds one numeric conversion such as %d or %.2f", line);
+    }
+    if (strchr("diouxX", conversion)) {
+      spec[length++] = 'l';
+      spec[length++] = 'l';
+    }
+    spec[length++] = conversion;
+  }
+  if (!conversions || bits > 64) {
+    rh_text_fail(bits > 64 ? "a format writes integers of at most 64 bits"
+                           : "a format holds one numeric conversion such as %d or %.2f",
+                 line);
+  }
+  spec[length] = 0;
+  double real = form == 2 ? (bits == 32 ? *(const float *)value : *(const double *)value) : 0;
+  long long whole = 0;
+  if (form != 2) {
+    whole = bits == 8    ? (form ? *(const uint8_t *)value : *(const int8_t *)value)
+            : bits == 16 ? (form ? *(const uint16_t *)value : *(const int16_t *)value)
+            : bits == 32 ? (form ? (long long)*(const uint32_t *)value : *(const int32_t *)value)
+                         : *(const long long *)value;
+    real = form ? (double)(unsigned long long)whole : (double)whole;
+  }
+  bool integral = strchr("diouxX", conversion) != NULL;
+  if (integral && form == 2) {
+    whole = (long long)real;
+  }
+  int written = integral ? snprintf(out, (size_t)cap, spec, whole) : snprintf(out, (size_t)cap, spec, real);
+  if (written < 0 || written >= cap) {
+    rh_text_fail("formatted text is longer than 255 bytes", line);
+  }
+  return written;
+}
+/* Write the value at value into out, at least 256 bytes, and answer its
+ * length: in format f of length n when n > 0. kind is its width in bits,
+ * plus 256 for unsigned, 512 for a real, 768 for bool^ and 1024 for char^. */
+int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
+                       const char *format, int64_t length, int32_t line)
+{
   int bits = (int)(kind & 255), form = (int)(kind >> 8);
+  if (length) {
+    return rh_formatted((char *)out, cap, format, length, bits, form, value, line);
+  }
   if (form == 2) {
-    return rh_real_text((char *)out, 48, bits == 32 ? *(const float *)value : *(const double *)value);
+    return rh_real_text((char *)out, (size_t)cap, bits == 32 ? *(const float *)value : *(const double *)value);
   }
   if (form == 3) {
     bool truth = *(const unsigned char *)value & 1;

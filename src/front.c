@@ -92,6 +92,11 @@ enum {
   TOK_STRING,
   TOK_QUOTED,
   TOK_SCOPE,
+  TOK_INTERP,     /* $" opening an interpolated string. */
+  TOK_HOLE,       /* { opening one of its holes. */
+  TOK_FORMAT,     /* The raw format after a hole's first top-level :. */
+  TOK_HOLE_END,   /* } closing a hole. */
+  TOK_INTERP_END, /* " closing the string. */
   TOK_EOF
 };
 typedef struct {
@@ -260,10 +265,159 @@ static void unicode_escape(char *out, size_t *n, unsigned value, Loc loc) {
     out[(*n)++] = (char)(0x80 | (value & 63));
   }
 }
+/* Decode the escape after a backslash at s into out, answering where the
+ * string goes on. */
+static const char *string_escape(const char *s, char *out, size_t *n, Loc loc)
+{
+  char c = *s++;
+  switch (c) {
+  case 'n':
+    out[(*n)++] = '\n';
+    break;
+  case 'r':
+    out[(*n)++] = '\r';
+    break;
+  case 't':
+    out[(*n)++] = '\t';
+    break;
+  case '0':
+    out[(*n)++] = 0;
+    break;
+  case '\\':
+  case '"':
+    out[(*n)++] = c;
+    break;
+  case '\n':
+    break;
+  case '\r':
+    if (*s == '\n')
+      s++;
+    break;
+  case 'x': {
+    int a = digit_value((unsigned char)s[0]);
+    if (a < 0 || !s[0])
+      fail(loc, "hex escape requires two digits");
+    int b = digit_value((unsigned char)s[1]);
+    if (b < 0)
+      fail(loc, "hex escape requires two digits");
+    if (a > 7) {
+      fail(loc, "\\x escapes stop at \\x7F to keep strings UTF-8; write \\u{...}");
+    }
+    out[(*n)++] = (char)((a << 4) | b);
+    s += 2;
+    break;
+  }
+  case 'u': {
+    if (*s++ != '{')
+      fail(loc, "Unicode escape requires braces");
+    unsigned cp = 0;
+    int count = 0;
+    while (*s && *s != '}') {
+      int d = digit_value((unsigned char)*s++);
+      if (d < 0 || ++count > 6)
+        fail(loc, "invalid Unicode escape");
+      cp = cp * 16 + (unsigned)d;
+    }
+    if (*s != '}' || !count)
+      fail(loc, "invalid Unicode escape");
+    s++;
+    unicode_escape(out, n, cp, loc);
+    break;
+  }
+  default:
+    fail(loc, "unsupported string escape");
+  }
+  return s;
+}
+/* Fail unless the n bytes at out are UTF-8. */
+static void utf8_text(const char *out, size_t n, Loc loc)
+{
+  unsigned long code;
+  for (size_t j = 0, w; j < n; j += w) {
+    if (!(w = utf8_scalar((const unsigned char *)out + j, n - j, &code))) {
+      fail(loc, "string literal is not valid UTF-8");
+    }
+  }
+}
+/* The text of an interpolated string up to its next hole or its end, with
+ * {{ and }} for braces. */
+static const char *interp_text(const char *s, Token *t)
+{
+  char *out = mem(strlen(s) + 1);
+  size_t n = 0;
+  while (*s && *s != '"' && !(*s == '{' && s[1] != '{')) {
+    if ((*s == '{' || *s == '}') && s[1] == *s) {
+      out[n++] = *s;
+      s += 2;
+    }
+    else if (*s == '\\') {
+      s = string_escape(s + 1, out, &n, t->loc);
+    }
+    else if (*s == '\r' && s[1] == '\n') {
+      out[n++] = '\n';
+      s += 2;
+    }
+    else {
+      out[n++] = *s++;
+    }
+  }
+  if (!*s) {
+    fail(t->loc, "unterminated interpolated string");
+  }
+  utf8_text(out, n, t->loc);
+  t->kind = TOK_STRING;
+  t->text = out;
+  t->length = n;
+  return s;
+}
 static void lex(Parser *p) {
   const char *s = p->p->source;
   int line = 1, col = 1;
+  /* Open interpolated strings, the bracket depth inside each one's hole,
+   * and whether the innermost is in its text rather than a hole. */
+  int level = 0, nest[33] = {0};
+  bool text = false;
   while (*s) {
+    if (text || (level && !nest[level] && (*s == '}' || *s == ':'))) {
+      Token *t = mem(sizeof(*t));
+      t->loc = (Loc){p->p->path, line, col};
+      const char *start = s;
+      if (text && (*s == '"' || *s == '{')) {
+        bool hole = *s++ == '{';
+        t->kind = hole ? TOK_HOLE : TOK_INTERP_END;
+        t->text = hole ? "\001hole" : "\001end";
+        level -= !hole;
+        nest[level] = hole ? 0 : nest[level];
+        text = false;
+      }
+      else if (text) {
+        s = interp_text(s, t);
+      }
+      else if (*s == '}') {
+        s++;
+        t->kind = TOK_HOLE_END;
+        t->text = "\001hole_end";
+        text = true;
+      }
+      else {
+        /* A format is raw text up to the hole's }. */
+        const char *format = ++s;
+        while (*s && *s != '}' && *s != '\n') {
+          s++;
+        }
+        if (*s != '}') {
+          fail(t->loc, "unterminated format in an interpolated string");
+        }
+        t->kind = TOK_FORMAT;
+        t->text = slice(format, (size_t)(s - format));
+      }
+      for (; start < s; start++) {
+        line += *start == '\n';
+        col = *start == '\n' ? 1 : col + 1;
+      }
+      add(&p->tokens, t);
+      continue;
+    }
     if (isspace((unsigned char)*s)) {
       if (*s++ == '\n') {
         line++;
@@ -314,6 +468,16 @@ static void lex(Parser *p) {
       s += strlen(operators[unicode]);
       t->text = unicode < 2 ? "<=" : unicode < 4 ? ">=" : "!=";
       t->kind = '=';
+    } else if (s[0] == '$' && s[1] == '"') {
+      s += 2;
+      t->kind = TOK_INTERP;
+      t->text = "\001interp";
+      if (++level > 32) {
+        fail(t->loc, "interpolated strings nest deeper than 32");
+      }
+      text = true;
+    } else if (s[0] == '$' && s[1] == '\'') {
+      fail(t->loc, "interpolation is written $\"...\"; $'...' does not interpolate");
     } else if (*s == '$') {
       s++;
       if (*s == '^') {
@@ -420,76 +584,13 @@ static void lex(Parser *p) {
           continue;
         }
         if (!line_string && quote == '"' && *s == '\\') {
-          s++;
-          char c = *s++;
-          switch (c) {
-          case 'n':
-            out[n++] = '\n';
-            break;
-          case 'r':
-            out[n++] = '\r';
-            break;
-          case 't':
-            out[n++] = '\t';
-            break;
-          case '0':
-            out[n++] = 0;
-            break;
-          case '\\':
-          case '"':
-            out[n++] = c;
-            break;
-          case '\n':
-            break;
-          case '\r':
-            if (*s == '\n')
-              s++;
-            break;
-          case 'x': {
-            int a = digit_value((unsigned char)s[0]);
-            if (a < 0 || !s[0])
-              fail(t->loc, "hex escape requires two digits");
-            int b = digit_value((unsigned char)s[1]);
-            if (b < 0)
-              fail(t->loc, "hex escape requires two digits");
-            if (a > 7) {
-              fail(t->loc, "\\x escapes stop at \\x7F to keep strings UTF-8; write \\u{...}");
-            }
-            out[n++] = (char)((a << 4) | b);
-            s += 2;
-            break;
-          }
-          case 'u': {
-            if (*s++ != '{')
-              fail(t->loc, "Unicode escape requires braces");
-            unsigned cp = 0;
-            int count = 0;
-            while (*s && *s != '}') {
-              int d = digit_value((unsigned char)*s++);
-              if (d < 0 || ++count > 6)
-                fail(t->loc, "invalid Unicode escape");
-              cp = cp * 16 + (unsigned)d;
-            }
-            if (*s != '}' || !count)
-              fail(t->loc, "invalid Unicode escape");
-            s++;
-            unicode_escape(out, &n, cp, t->loc);
-            break;
-          }
-          default:
-            fail(t->loc, "unsupported string escape");
-          }
+          s = string_escape(s + 1, out, &n, t->loc);
         } else
           out[n++] = *s++;
       }
       if (!closed)
         fail(t->loc, "unterminated string");
-      unsigned long code;
-      for (size_t j = 0, w; j < n; j += w) {
-        if (!(w = utf8_scalar((const unsigned char *)out + j, n - j, &code))) {
-          fail(t->loc, "string literal is not valid UTF-8");
-        }
-      }
+      utf8_text(out, n, t->loc);
       t->kind = TOK_STRING;
       t->text = out;
       t->length = n;
@@ -548,7 +649,14 @@ static void lex(Parser *p) {
       } else
         col++;
     }
+    if (level && t->kind != TOK_STRING && t->kind != TOK_QUOTED && s - start <= 2) {
+      /* Brackets inside a hole keep its } and : from closing it. */
+      nest[level] += strchr("([{", s[-1]) ? 1 : strchr(")]}", s[-1]) && s - start == 1 ? -1 : 0;
+    }
     add(&p->tokens, t);
+  }
+  if (level) {
+    fail((Loc){p->p->path, line, col}, "unterminated interpolated string");
   }
   Token *end = mem(sizeof(*end));
   end->kind = TOK_EOF;
@@ -939,6 +1047,32 @@ static Expr *primary(Parser *p) {
     }
     e = node(E_CHAR, t->loc);
     e->text = fmt("%lu", code);
+  } else if (t->kind == TOK_INTERP) {
+    /* $"...{x}...{y:format}...": text and holes in order, each with its
+     * format, "" for none. */
+    e = node(E_INTERP, t->loc);
+    p->text_cast = true;
+    bool header = p->header;
+    p->header = false;
+    while (tok(p)->kind != TOK_INTERP_END) {
+      Token *part = next(p);
+      if (part->kind == TOK_STRING) {
+        Expr *x = node(E_STRING, part->loc);
+        x->text = part->text;
+        x->length = part->length;
+        add(&e->args, x);
+        add(&e->names, "");
+        continue;
+      }
+      add(&e->args, expr(p, 0));
+      add(&e->names, tok(p)->kind == TOK_FORMAT ? next(p)->text : "");
+      if (next(p)->kind != TOK_HOLE_END) {
+        fail(p->at ? ((Token *)p->tokens.v[p->at - 1])->loc : t->loc,
+             "an interpolation hole holds one expression; put one with : at its top in ( )");
+      }
+    }
+    next(p);
+    p->header = header;
   } else if (t->kind == TOK_WORD && !strcmp(t->text, "panic^")) {
     e = node(E_PANIC, t->loc);
     e->a = expr(p, 0);

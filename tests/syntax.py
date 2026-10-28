@@ -400,6 +400,29 @@ let^ z=0.0
 print^(1.0/z,-1.0/z,z/z)
 ''', '42 18446744073709551615 0.1 2.0 false あ text\n-170141183460469231731687303715884105728 / 😀é3.251.5\n0\n2500.0 0.3333333333333333 1.5e-07 1e+21 123456789012345680000.0 -0.0 100.5\ninf -inf nan\n')
 
+    positive('interpolation', r'''
+let^ name="R^"
+let^ n=42
+let^ pi=3.14159
+print^($"hello {name}, n = {n}, pi = {pi:%.2f}, hex {n:%04x}, braces {{}} and }")
+let^ s=$"x={n+1} {true^} {char^"あ"} {pi:%8.3e}|\t."
+print^(s.text())
+import^ std.text
+var^ out=std.text.Builder{}
+out.append($"[{n:%5d}]")
+out.append($"{ (if^ n>1: "big" el^: "small";) }")
+let^ hex=(n).tostring("%x")
+let^ wide=f64^(n)
+wide.write_text(ref^ out,"%.1f")
+print^(out.text(),hex.text())
+let^ b=$"b{n}c"
+print^($"a{b.text()}d",$"{ $"{n}" }")
+let^ u:u64^=18446744073709551615
+print^($"{u:%u} {u} {2.5:%d} {7:%e}")
+let^ xs=[1,2,3]
+print^($"{xs[1 :: 3].len} {xs[2]}")
+''', 'hello R^, n = 42, pi = 3.14, hex 002a, braces {} and }\nx=43 true あ 3.142e+00|\t.\n[   42]big42.0 2a\nab42cd 42\n18446744073709551615 18446744073709551615 2 7.000000e+00\n2 3\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -638,6 +661,11 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('interp_unterminated', 'print^($"abc)', 'unterminated interpolated string'),
+        ('interp_single_quote', "print^($'x')", 'does not interpolate'),
+        ('interp_hole_type', 'def^ P {}\nlet^ p=P{}\nprint^($"{p}")', 'an interpolation hole takes'),
+        ('interp_text_format', 'print^($"{"x":%d}")', 'a format applies to a number'),
+        ('interp_owned', 'let^ f=f^ { $"x".text() }', 'bind it, or pass it to print^ or append'),
         ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
@@ -690,6 +718,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
 
     suite.runtime_failure('string_slice_cut', 'let^ s="あい"\nprint^(s.slice(1 :: 3))', 'string slice cuts a character')
     suite.runtime_failure('string_decode_middle', 'let^ s="あ"\nlet^ c,n=s.decode(1)', 'not the start of a character')
+    suite.runtime_failure('interp_bad_format', 'print^($"{1:%s}")', 'one numeric conversion')
+    suite.runtime_failure('interp_two_conversions', 'print^($"{1:%d%d}")', 'one numeric conversion')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ::)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
     suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 :: 5\nprint^(xs[r].len)', 'slice range out of bounds')
