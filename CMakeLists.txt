@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(RHAT_FRONTEND_SOURCES
-  src/front.c src/modules.c src/sema.c src/types.c src/check.c src/digest.c
+  src/front.c src/modules.c src/sema.c src/types.c src/errors.c src/text.c src/check.c src/digest.c
   src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
   ${RHAT_FRONTEND_SOURCES})

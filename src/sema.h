@@ -346,4 +346,103 @@ bool error_overlap(Type *to, Type *from);
  * declaration, checking overrides, overloads and union alternatives. */
 void compose(Program *p, Def *d);
 
+/* IR construction (sema.c), shared with the files split from it. */
+/* Append an instruction of op at l to the instance under construction. */
+Instr *emit(Context *c, int op, Loc l);
+/* A new slot of type t; an alias slot is a place another instruction sets. */
+int slot(Context *c, Type *t, bool alias);
+/* A value of type t in a new slot. */
+Value value(Context *c, Type *t);
+/* The value of an expression whose evaluation does not go on. */
+Value abrupt(Context *c);
+/* Whether v is abrupt: evaluation stopped before producing it. */
+bool dead(Value v);
+/* A new borrow root at lexical depth, or for storage from outside. */
+uint64_t root(Context *c, int depth, bool external, Loc l);
+/* The value v refers to when it is a ref^, else v. */
+Value deref(Context *c, Value v, Loc l);
+/* Copy src into dst, converting to dst's union; init skips the store
+ * checks of a first write. */
+Value copy_to(Context *c, Value dst, Value src, Loc l, bool init);
+/* A constant of builtin kind k. */
+Value constant(Context *c, int k, const char *text, Loc loc);
+/* a op b over a's type; a comparison answers bool^. */
+Value operate(Context *c, const char *op, Value a, Value b, Loc loc);
+/* The place of union u's alternative arm, setting the tag when it writes. */
+int case_at(Context *c, Value u, Type *arm, bool write, Loc loc);
+/* An owned operand of try^, catch^ or ?? is built on the data stack of dst,
+ * which then takes the value it holds without a copy. */
+Value held_operand(Context *c, Expr *e, int dst);
+/* The alternative arm of union src, which flow has proven it holds. */
+Value case_value(Context *c, Value src, Type *arm, Loc loc);
+/* src as type to, into dst unless it is negative: wrapping into a union,
+ * projecting a proven subset of one, or taking a C function's address. */
+Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc);
+/* Branch to yes or no on bool^ condition. */
+void nil_branch(Context *c, Value condition, int yes, int no, Loc loc);
+/* Place label here. */
+void nil_label(Context *c, int label, Loc loc);
+/* Jump to label. */
+void nil_jump(Context *c, int label, Loc loc);
+/* The value nil^. */
+Value nil_literal(Context *c, Loc loc);
+/* The place of field f of base. */
+Value field_value(Context *c, Value base, Field *f, Loc l);
+/* Release, innermost first, the owners from bindings and pending owners from
+ * pending onward, before leaving their scope early. */
+void escape_cleanup(Context *c, int bindings, int pending, Loc loc);
+/* Build e as type t into slot dst, or into a new slot when dst is negative. */
+Value construct(Context *c, Expr *e, Type *t, int dst);
+/* Call operator or method f on a and b (b is a for a unary one). */
+Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin);
+/* The value of e, typed as expected when that is given. */
+Value expression(Context *c, Expr *e, Type *expected);
+
+/* Errors (errors.c). */
+/* src as error type to, into dst unless it is negative. */
+Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc);
+/* The source an error site names: under std/ for the standard library,
+ * else as the compiler was given it, with / between directories. */
+char *site_source(Program *p, const char *file);
+/* The message() of error err, by the variant it holds when it is a union. */
+Value error_message(Context *c, Value err, Loc loc);
+/* End the program on subject: a panic^ message, or an error that no catch^
+ * took, with its message() and where it was built. */
+void terminate(Context *c, Value subject, bool panic, Loc loc);
+/* Hand error to the innermost catch^, or return it from the function. */
+void route_error(Context *c, Value error, Loc loc);
+/* Bind the caught error as it^ for a catch^ arm. */
+void error_focus(Context *c, Value error, Loc loc);
+/* try^ e: its success, or the error routed out; into dst when owned. */
+Value try_value(Context *c, Expr *e, int dst);
+/* e catch^ replacement, typed as expected, into dst. */
+Value catch_value(Context *c, Expr *e, Type *expected, int dst);
+
+/* Built-in text, characters and ranges (text.c). */
+/* r.end (i64^ | nil^, nil^ when open) or r.len. */
+Value range_member(Context *c, Value r, const char *name, Loc loc);
+/* r.contains(i): start <= i and, unless r is open, i < end. */
+Value range_contains(Context *c, Value r, Value i, Loc loc);
+/* char^(x): the one character of string^ x, or integer x as a scalar
+ * value, else std.text.Error.Invalid. */
+Value char_cast(Context *c, Expr *e, int destination);
+/* dst = the runtime function name applied to args, or no result when k is
+ * T_VOID. */
+Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc);
+/* string^(bytes): the bytes as a string^ when they are UTF-8, else
+ * std.text.Error.Invalid. */
+Value text_cast(Context *c, Expr *e, int destination);
+/* x.write_text(out) appends x to Builder out; x.tostring() builds a new
+ * Builder at the destination with it. */
+Value value_text(Context *c, Expr *e, int destination);
+/* Append the text and holes of $"..." e to the Builder into. */
+void interp_into(Context *c, Expr *e, Value into);
+/* $"..." for print^: built in a Builder living until the print, which
+ * shows its text. */
+Value interp_print(Context *c, Expr *e, List *temps);
+/* The built-in methods of string^, which address it by byte offsets. */
+Value text_method(Context *c, Expr *e, int destination);
+/* The open end of a range^: the minimum i64^. */
+#define RANGE_OPEN "-9223372036854775808"
+
 #endif

@@ -43,11 +43,8 @@ Expr step_expression(Expr *step, Expr *receiver, Expr *member)
 static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
                              Loc at);
 static void statements(Context *c, List *body, bool scope);
-static Value expression(Context *c, Expr *e, Type *expected);
-static Value construct(Context *c, Expr *e, Type *t, int dst);
-static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc);
 static void handle_statements(Context *c, Stmt *s);
-static Instr *emit(Context *c, int op, Loc l) {
+Instr *emit(Context *c, int op, Loc l) {
   Instr *i = mem(sizeof(*i));
   i->op = op;
   i->loc = l;
@@ -55,7 +52,7 @@ static Instr *emit(Context *c, int op, Loc l) {
   add(&c->in->code, i);
   return i;
 }
-static int slot(Context *c, Type *t, bool alias) {
+int slot(Context *c, Type *t, bool alias) {
   layout(t, c->in->fn->loc);
   Slot *s = mem(sizeof(*s));
   s->type = t;
@@ -65,21 +62,21 @@ static int slot(Context *c, Type *t, bool alias) {
   add(&c->in->slots, s);
   return id;
 }
-static Value value(Context *c, Type *t) {
+Value value(Context *c, Type *t) {
   Value v = {0};
   v.id = slot(c, t, false);
   v.type = t;
   return v;
 }
-static Value abrupt(Context *c)
+Value abrupt(Context *c)
 {
   return (Value){.id = -1, .type = type_builtin(c->p, T_NEVER)};
 }
-static bool dead(Value v)
+bool dead(Value v)
 {
   return v.type->kind == T_NEVER;
 }
-static uint64_t root(Context *c, int depth, bool external, Loc l) {
+uint64_t root(Context *c, int depth, bool external, Loc l) {
   if (c->root_count == 64)
     fail(l, "function exceeds 64 provenance roots; split the function");
   int n = c->root_count++;
@@ -390,7 +387,7 @@ static void access_check(Context *c, bool priv, Def *owner, Loc l,
   if (priv && c->access != owner)
     fail(l, "private member '%s' belongs to '%s'", name, owner->name);
 }
-static Value deref(Context *c, Value v, Loc l) {
+Value deref(Context *c, Value v, Loc l) {
   if (dead(v)) {
     return v;
   }
@@ -435,7 +432,7 @@ static void store_check(Context *c, Value dst, Value src, Loc l) {
   if (dst.var && dst.var->type->refs)
     dst.var->deps |= src.deps;
 }
-static Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
+Value copy_to(Context *c, Value dst, Value src, Loc l, bool init) {
   if (dead(src)) {
     return src;
   }
@@ -469,7 +466,7 @@ static Value snapshot(Context *c, Value src, Loc l) {
   return copy_to(c, dst, src, l, true);
 }
 /* A constant of builtin kind k. */
-static Value constant(Context *c, int k, const char *text, Loc loc)
+Value constant(Context *c, int k, const char *text, Loc loc)
 {
   Value v = value(c, type_builtin(c->p, k));
   Instr *i = emit(c, I_CONST, loc);
@@ -479,7 +476,7 @@ static Value constant(Context *c, int k, const char *text, Loc loc)
   return v;
 }
 /* a op b over a's type; a comparison answers bool^. */
-static Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
+Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
 {
   bool compare = strchr("<=>!", op[0]) != NULL;
   Value v = value(c, compare ? type_builtin(c->p, T_BOOL) : a.type);
@@ -491,9 +488,8 @@ static Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
   i->text = (char *)op;
   return v;
 }
-#define RANGE_OPEN "-9223372036854775808"
 /* The place of union u's alternative arm, setting the tag when it writes. */
-static int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
+int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
 {
   int id = slot(c, arm, true);
   Instr *i = emit(c, I_CASE_AT, loc);
@@ -506,7 +502,7 @@ static int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
 }
 /* An owned operand of try^, catch^ or ?? is built on the data stack of dst,
  * which then takes the value it holds without a copy. */
-static Value held_operand(Context *c, Expr *e, int dst)
+Value held_operand(Context *c, Expr *e, int dst)
 {
   Type *t = expression_type(c, e, NULL);
   if (t && t->kind != T_NEVER) {
@@ -524,7 +520,7 @@ static Value held_operand(Context *c, Expr *e, int dst)
   v.held = true;
   return v;
 }
-static Value case_value(Context *c, Value src, Type *arm, Loc loc)
+Value case_value(Context *c, Value src, Type *arm, Loc loc)
 {
   layout(arm, loc);
   if (arm->owned) {
@@ -548,7 +544,7 @@ static Value case_value(Context *c, Value src, Type *arm, Loc loc)
 }
 /* This also projects a proven subset for nil narrowing. Callers validate all
    ordinary implicit conversions with sum_accepts before entering here. */
-static Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
+Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
 {
   layout(to, loc);
   if (src.type == to && dst < 0) {
@@ -689,24 +685,24 @@ static Expr *saved_value(Value value, Loc loc)
   e->compiler_value = v;
   return e;
 }
-static void nil_branch(Context *c, Value condition, int yes, int no, Loc loc)
+void nil_branch(Context *c, Value condition, int yes, int no, Loc loc)
 {
   Instr *i = emit(c, I_CBR, loc);
   i->a = condition.id;
   i->label = yes;
   i->other = no;
 }
-static void nil_label(Context *c, int label, Loc loc)
+void nil_label(Context *c, int label, Loc loc)
 {
   Instr *i = emit(c, I_LABEL, loc);
   i->label = label;
 }
-static void nil_jump(Context *c, int label, Loc loc)
+void nil_jump(Context *c, int label, Loc loc)
 {
   Instr *i = emit(c, I_BR, loc);
   i->label = label;
 }
-static Value nil_literal(Context *c, Loc loc)
+Value nil_literal(Context *c, Loc loc)
 {
   Expr e = {.kind = E_NAME, .loc = loc, .text = "nil^"};
   return expression(c, &e, NULL);
@@ -894,7 +890,7 @@ static Value coalesce_value(Context *c, Expr *e, int dst)
   nil_label(c, end, e->loc);
   return out;
 }
-static Value field_value(Context *c, Value base, Field *f, Loc l) {
+Value field_value(Context *c, Value base, Field *f, Loc l) {
   access_check(c, f->priv, f->owner, l, f->name);
   Value r = {0};
   r.type = f->type;
@@ -958,7 +954,7 @@ static void cleanup(Context *c, int from, Loc l) {
       release(c, v->type, v->slot, l);
   }
 }
-static void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
+void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
 {
   List ids = {0};
   for (int j = bindings; j < c->vars.n; j++) {
@@ -986,414 +982,6 @@ static void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
     int id = (int)(intptr_t)ids.v[j] - 1;
     release(c, ((Slot *)c->in->slots.v[id])->type, id, loc);
   }
-}
-static Value error_test(Context *c, Value src, Loc loc)
-{
-  Value out = value(c, type_builtin(c->p, T_BOOL));
-  if (only_errors(src.type) || !has_error(src.type)) {
-    Instr *i = emit(c, I_CONST, loc);
-    i->dst = out.id;
-    i->type = out.type;
-    i->text = only_errors(src.type) ? "1" : "0";
-    return out;
-  }
-  bool first = true;
-  for (int j = 0; j < src.type->def->alternatives.n; j++) {
-    if (!only_errors(src.type->def->alternatives.v[j])) {
-      continue;
-    }
-    Value test = value(c, out.type);
-    Instr *i = emit(c, I_CASE_IS, loc);
-    i->dst = test.id;
-    i->a = src.id;
-    i->type = src.type;
-    i->label = j;
-    if (first) {
-      copy_to(c, out, test, loc, true);
-    }
-    else {
-      i = emit(c, I_BIN, loc);
-      i->dst = out.id;
-      i->a = out.id;
-      i->b = test.id;
-      i->type = out.type;
-      i->text = "bitor^";
-    }
-    first = false;
-  }
-  return out;
-}
-static Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc)
-{
-  if (sum_accepts(to, src.type)) {
-    return convert_value(c, src, to, dst, loc);
-  }
-  Value out = {
-      .id = dst >= 0 ? dst : slot(c, to, false), .type = to, .deps = src.deps};
-  if (src.type->kind == T_UNION) {
-    List selected = {0};
-    for (int j = 0; j < src.type->def->alternatives.n; j++) {
-      if (error_overlap(to, src.type->def->alternatives.v[j])) {
-        add(&selected, src.type->def->alternatives.v[j]);
-      }
-    }
-    if (!selected.n) {
-      fail(loc, "error cannot be represented by '%s'", type_name(to));
-    }
-    int end = ++c->in->labels;
-    for (int j = 0; j < selected.n; j++) {
-      Type *arm = selected.v[j];
-      int next = 0;
-      if (j + 1 < selected.n) {
-        Value test = value(c, type_builtin(c->p, T_BOOL));
-        Instr *i = emit(c, I_CASE_IS, loc);
-        i->dst = test.id;
-        i->a = src.id;
-        i->type = src.type;
-        i->label = union_alternative(src.type, arm);
-        int yes = ++c->in->labels;
-        next = ++c->in->labels;
-        nil_branch(c, test, yes, next, loc);
-        nil_label(c, yes, loc);
-      }
-      pack_error(c, case_value(c, src, arm, loc), to, out.id, loc);
-      nil_jump(c, end, loc);
-      if (next) {
-        nil_label(c, next, loc);
-      }
-    }
-    nil_label(c, end, loc);
-    return out;
-  }
-  if (to->kind == T_UNION) {
-    for (int j = 0; j < to->def->alternatives.n; j++) {
-      Type *arm = to->def->alternatives.v[j];
-      if (only_errors(arm) && error_accepts(arm, src.type)) {
-        Value part = pack_error(c, src, arm, -1, loc);
-        return convert_value(c, part, to, out.id, loc);
-      }
-    }
-  }
-  fail(loc, "error '%s' is not included in '%s'", type_name(src.type),
-       type_name(to));
-}
-/* End the process with a message: a string^, or the name of the error
- * variant held by subject. panic^ and an error leaving the entry file differ
- * only in the reported prefix. */
-/* The source an error site names: under std/ for the standard library,
- * else as the compiler was given it, with / between directories. */
-static char *site_source(Program *p, const char *file)
-{
-  char *out = str(file ? file : "");
-  size_t n = p->stdlib_dir ? strlen(p->stdlib_dir) : 0;
-  if (n && !strncmp(out, p->stdlib_dir, n) && (out[n] == '/' || out[n] == '\\')) {
-    out += n + 1;
-  }
-  for (char *s = out; *s; s++) {
-    *s = *s == '\\' ? '/' : *s;
-  }
-  return out;
-}
-static void terminate(Context *c, Value subject, bool panic, Loc loc);
-/* r.end (i64^ | nil^, nil^ when open) or r.len. */
-static Value range_member(Context *c, Value r, const char *name, Loc loc)
-{
-  Type *range = r.type, *whole = type_builtin(c->p, T_I64);
-  Value start = field_value(c, r, range->def->fields.v[0], loc);
-  Value end = field_value(c, r, range->def->fields.v[1], loc);
-  Value open = operate(c, "=", end, constant(c, T_I64, RANGE_OPEN, loc), loc);
-  int yes = ++c->in->labels, no = ++c->in->labels, done = ++c->in->labels;
-  if (!strcmp(name, "end")) {
-    Type *t = type_union(c->p, whole, type_builtin(c->p, T_NIL), loc);
-    Value out = value(c, t);
-    nil_branch(c, open, yes, no, loc);
-    nil_label(c, yes, loc);
-    convert_value(c, nil_literal(c, loc), t, out.id, loc);
-    nil_jump(c, done, loc);
-    nil_label(c, no, loc);
-    convert_value(c, end, t, out.id, loc);
-    nil_jump(c, done, loc);
-    nil_label(c, done, loc);
-    return out;
-  }
-  if (strcmp(name, "len")) {
-    fail(loc, "range^ has start, end, len and contains(i)");
-  }
-  const char *message = "an open range has no length";
-  nil_branch(c, open, yes, no, loc);
-  nil_label(c, yes, loc);
-  Expr text = {.kind = E_STRING, .loc = loc, .text = (char *)message, .length = strlen(message)};
-  terminate(c, expression(c, &text, type_builtin(c->p, T_STRING)), true, loc);
-  c->terminated = false;
-  nil_label(c, no, loc);
-  Value out = value(c, whole), length = operate(c, "-", end, start, loc);
-  copy_to(c, out, length, loc, true);
-  int negative = ++c->in->labels;
-  nil_branch(c, operate(c, "<", length, constant(c, T_I64, "0", loc), loc), negative, done, loc);
-  nil_label(c, negative, loc);
-  copy_to(c, out, constant(c, T_I64, "0", loc), loc, true);
-  nil_jump(c, done, loc);
-  nil_label(c, done, loc);
-  return out;
-}
-/* r.contains(i): start <= i and, unless r is open, i < end. */
-static Value range_contains(Context *c, Value r, Value i, Loc loc)
-{
-  Value start = field_value(c, r, r.type->def->fields.v[0], loc);
-  Value end = field_value(c, r, r.type->def->fields.v[1], loc);
-  Value open = operate(c, "=", end, constant(c, T_I64, RANGE_OPEN, loc), loc);
-  Value below = operate(c, "bitor^", open, operate(c, "<", i, end, loc), loc);
-  return operate(c, "bitand^", operate(c, "<=", start, i, loc), below, loc);
-}
-static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin);
-/* The message() of error err, by the variant it holds when it is a union. */
-static Value error_message(Context *c, Value err, Loc loc)
-{
-  bool sum = err.type->kind == T_UNION;
-  int arms = sum ? err.type->def->alternatives.n : 1, end = ++c->in->labels;
-  Value out = value(c, type_builtin(c->p, T_STRING));
-  for (int j = 0; j < arms; j++) {
-    Type *arm = sum ? err.type->def->alternatives.v[j] : err.type;
-    int next = ++c->in->labels;
-    if (j + 1 < arms) {
-      Value test = value(c, type_builtin(c->p, T_BOOL));
-      Instr *is = emit(c, I_CASE_IS, loc);
-      is->dst = test.id;
-      is->a = err.id;
-      is->type = err.type;
-      is->label = j;
-      int here = ++c->in->labels;
-      nil_branch(c, test, here, next, loc);
-      nil_label(c, here, loc);
-    }
-    Value v = sum ? (Value){.id = case_at(c, err, arm, false, loc), .type = arm, .deps = err.deps,
-                            .storage = err.storage, .var = err.var, .addressable = err.addressable}
-                  : err;
-    Function *m = NULL;
-    for (int k = 0; k < arm->def->methods.n; k++) {
-      Function *candidate = arm->def->methods.v[k];
-      m = !strcmp(candidate->name, "message") && candidate->params.n == 1 ? candidate : m;
-    }
-    if (!m) {
-      fail(loc, "'%s' has no message() taking only self^", type_name(arm));
-    }
-    Value r = invoke_operator(c, m, v, v, &(Expr){.loc = loc});
-    out.deps |= r.deps;
-    copy_to(c, out, r, loc, true);
-    nil_jump(c, end, loc);
-    if (j + 1 < arms) {
-      nil_label(c, next, loc);
-    }
-  }
-  nil_label(c, end, loc);
-  return out;
-}
-static void terminate(Context *c, Value subject, bool panic, Loc loc)
-{
-  bool sum = subject.type->kind == T_UNION;
-  bool text = subject.type->kind == T_STRING;
-  int arms = sum ? subject.type->def->alternatives.n : 1;
-  for (int j = 0; j < arms; j++) {
-    int next = ++c->in->labels;
-    if (j + 1 < arms) {
-      Value test = value(c, type_builtin(c->p, T_BOOL));
-      Instr *is = emit(c, I_CASE_IS, loc);
-      is->dst = test.id;
-      is->a = subject.id;
-      is->type = subject.type;
-      is->label = j;
-      int here = ++c->in->labels;
-      nil_branch(c, test, here, next, loc);
-      nil_label(c, here, loc);
-    }
-    int message = subject.id;
-    if (!text) {
-      char *name = type_name(sum ? subject.type->def->alternatives.v[j] : subject.type);
-      Expr literal = {.kind = E_STRING, .loc = loc, .text = name, .length = strlen(name)};
-      message = expression(c, &literal, type_builtin(c->p, T_STRING)).id;
-    }
-    Type *arm = sum ? subject.type->def->alternatives.v[j] : subject.type;
-    bool error = !text && arm->kind == T_STRUCT && arm->def->error_variant;
-    Value detail = {0}, site = {0};
-    if (error) {
-      /* An error also reports its message() and where it was built. */
-      Value v = sum ? (Value){.id = case_at(c, subject, arm, false, loc), .type = arm,
-                              .addressable = subject.addressable}
-                    : subject;
-      detail = error_message(c, v, loc);
-      site = field_value(c, v, arm->def->fields.v[0], loc);
-    }
-    Instr *i = emit(c, I_TERMINATE, loc);
-    i->a = message;
-    i->label = panic;
-    i->other = error;
-    i->b = detail.id;
-    i->dst = site.id;
-    if (j + 1 < arms) {
-      nil_label(c, next, loc);
-    }
-  }
-  c->terminated = true;
-}
-static void route_error(Context *c, Value error, Loc loc)
-{
-  if (c->handlers.n) {
-    ErrorTarget *target = c->handlers.v[c->handlers.n - 1];
-    target->deps |= error.deps;
-    pack_error(c, error, target->errors, target->slot, loc);
-    List edge = save_facts(&c->vars);
-    edge.n = target->bindings;
-    if (!target->facts.n) {
-      target->facts = edge;
-    }
-    else {
-      for (int j = 0; j < edge.n; j++) {
-        NilFact *a = target->facts.v[j], *b = edge.v[j];
-        if (a->type != b->type) {
-          a->type = NULL;
-        }
-        if (a->paths.v != b->paths.v) {
-          a->paths = (List){0};
-        }
-        if (a->version < b->version) {
-          a->version = b->version;
-        }
-        if (a->path_version < b->path_version) {
-          a->path_version = b->path_version;
-        }
-      }
-    }
-    escape_cleanup(c, target->bindings, target->pending, loc);
-    if (c->building_result && target->checkpoint >= 0) {
-      Instr *i = emit(c, I_STACK_REWIND, loc);
-      i->a = c->in->result_slot;
-      i->dst = target->checkpoint;
-      i->type = c->in->result;
-    }
-    nil_jump(c, target->label, loc);
-  }
-  else {
-    if (c->in->fn == c->p->entry) {
-      /* The entry file has no caller: report the variant and exit. */
-      terminate(c, error, false, loc);
-      c->terminated = true;
-      return;
-    }
-    if (!error_accepts(c->in->result, error.type)) {
-      fail(loc,
-           "try^ error '%s' is not included in the function result '%s'; add "
-           "catch^ or widen the result",
-           type_name(error.type), type_name(c->in->result));
-    }
-    Value out = pack_error(c, error, c->in->result, c->in->result_slot, loc);
-    for (int j = 0; j < c->root_count; j++) {
-      if ((out.deps & (UINT64_C(1) << j)) && !c->root_external[j]) {
-        fail(loc, "cannot return a reference rooted in a local owner");
-      }
-    }
-    escape_cleanup(c, 0, 0, loc);
-    Instr *i = emit(c, I_RETURN, loc);
-    i->type = c->in->result;
-  }
-  c->terminated = true;
-}
-static void error_focus(Context *c, Value error, Loc loc)
-{
-  Var *v = mem(sizeof(*v));
-  v->name = "it^";
-  v->type = error.type;
-  v->slot = error.id;
-  v->depth = c->depth;
-  v->lexical = c->lexical;
-  v->deps = error.deps;
-  v->root = root(c, c->depth, false, loc);
-  add(&c->vars, v);
-}
-static Value try_value(Context *c, Expr *e, int dst)
-{
-  Value src = held_operand(c, e->a, dst);
-  if (dead(src)) {
-    return src;
-  }
-  Type *plain = success_type(c->p, src.type, e->loc);
-  Type *errors = error_leaves(c->p, src.type, e->loc);
-  if (!errors) {
-    return src;
-  }
-  if (plain->kind == T_NEVER) {
-    route_error(c, pack_error(c, src, errors, -1, e->loc), e->loc);
-    return abrupt(c);
-  }
-  int yes = ++c->in->labels, no = ++c->in->labels;
-  nil_branch(c, error_test(c, src, e->loc), no, yes, e->loc);
-  nil_label(c, no, e->loc);
-  route_error(c, pack_error(c, src, errors, -1, e->loc), e->loc);
-  c->terminated = false;
-  nil_label(c, yes, e->loc);
-  return convert_value(c, src, plain, -1, e->loc);
-}
-static Value catch_value(Context *c, Expr *e, Type *expected, int dst)
-{
-  Type *inferred = expression_type(c, e, expected);
-  if (!inferred) {
-    fail(e->loc, "cannot infer catch^ result type");
-  }
-  Type *result = expected ? expected : inferred;
-  if (result->owned && dst < 0) {
-    fail(e->loc, "owned catch^ result requires a construction destination");
-  }
-  Value src = held_operand(c, e->a, dst);
-  if (dead(src)) {
-    return src;
-  }
-  Type *plain = success_type(c->p, src.type, e->loc);
-  Type *errors = error_leaves(c->p, src.type, e->loc);
-  if (!errors) {
-    fail(e->loc, "catch^ requires an error alternative");
-  }
-  Value out = result->kind == T_NEVER
-                  ? abrupt(c)
-                  : (Value){.id = dst >= 0 ? dst : slot(c, result, false),
-                            .type = result};
-  int failed = ++c->in->labels, end = ++c->in->labels;
-  List facts = save_facts(&c->vars);
-  if (plain->kind != T_NEVER) {
-    int yes = ++c->in->labels;
-    nil_branch(c, error_test(c, src, e->loc), failed, yes, e->loc);
-    nil_label(c, yes, e->loc);
-    Value normal = convert_value(c, src, plain, -1, e->loc);
-    out.deps |= convert_value(c, normal, result, out.id, e->loc).deps;
-    nil_jump(c, end, e->loc);
-  }
-  else {
-    nil_jump(c, failed, e->loc);
-  }
-  nil_label(c, failed, e->loc);
-  int begin = c->vars.n;
-  c->depth++;
-  c->lexical++;
-  error_focus(c, pack_error(c, src, errors, -1, e->loc), e->loc);
-  Value replacement = construct(c, e->b, expected ? expected : result, out.id);
-  out.deps |= replacement.deps;
-  bool ended = c->terminated;
-  if (!ended) {
-    for (int j = 0; j < c->root_count; j++) {
-      if ((replacement.deps & (UINT64_C(1) << j)) &&
-          c->root_depth[j] > c->depth - 1) {
-        fail(e->loc, "catch^ expression cannot escape a local error focus");
-      }
-    }
-    nil_jump(c, end, e->loc);
-  }
-  c->vars.n = begin;
-  c->depth--;
-  c->lexical--;
-  restore_facts(&c->vars, facts);
-  c->terminated = plain->kind == T_NEVER && ended;
-  if (!c->terminated) {
-    nil_label(c, end, e->loc);
-  }
-  return c->terminated ? abrupt(c) : out;
 }
 static Value literal_int(Context *c, Expr *e, Type *expected) {
   Type *t = expected;
@@ -1769,379 +1357,6 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected,
   if (f->procedure || f->mutable_self) {
     forget_roots(&c->vars, deps, false);
   }
-  return out;
-}
-/* char^(x): the one character of string^ x, or integer x as a scalar
- * value, else std.text.Error.Invalid. */
-static Value char_cast(Context *c, Expr *e, int destination)
-{
-  Program *p = c->p;
-  Type *t = char_cast_type(p, e->loc);
-  if (e->args.n != 1) {
-    fail(e->loc, "char^(...) casts one string^ or integer");
-  }
-  Value v = expression(c, e->args.v[0], NULL);
-  if (dead(v)) {
-    return v;
-  }
-  bool text = v.type->kind == T_STRING;
-  if (!text && (!kind_integer(v.type->kind) || numeric_bits(v.type->kind) > 64)) {
-    fail(e->loc, "char^(...) casts a string^ or an integer of at most 64 bits");
-  }
-  if (!text && v.type->kind != T_I64) {
-    Value whole = value(c, type_builtin(p, T_I64));
-    Instr *i = emit(c, I_CONVERT, e->loc);
-    i->dst = whole.id;
-    i->a = v.id;
-    i->type = whole.type;
-    v = whole;
-  }
-  Value code = value(c, type_builtin(p, T_I64));
-  Instr *i = emit(c, I_CHAR, e->loc);
-  i->dst = code.id;
-  i->a = v.id;
-  i->type = v.type;
-  Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
-  int good = ++c->in->labels, bad = ++c->in->labels, done = ++c->in->labels;
-  nil_branch(c, operate(c, ">=", code, constant(c, T_I64, "0", e->loc), e->loc), good, bad, e->loc);
-  nil_label(c, good, e->loc);
-  Value scalar = value(c, type_builtin(p, T_CHAR));
-  i = emit(c, I_CONVERT, e->loc);
-  i->dst = scalar.id;
-  i->a = code.id;
-  i->type = scalar.type;
-  convert_value(c, scalar, t, out.id, e->loc);
-  nil_jump(c, done, e->loc);
-  nil_label(c, bad, e->loc);
-  Expr message = {.kind = E_STRING, .loc = e->loc,
-                  .text = text ? "not exactly one Unicode scalar value"
-                               : "not a Unicode scalar value"};
-  message.length = strlen(message.text);
-  Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
-  add(&invalid.names, "message");
-  add(&invalid.args, &message);
-  construct(c, &invalid, t, out.id);
-  nil_jump(c, done, e->loc);
-  nil_label(c, done, e->loc);
-  return out;
-}
-/* dst = helper(args..., line), or no result when t is void. */
-static Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc)
-{
-  Value out = k == T_VOID ? (Value){.id = -1, .type = type_builtin(c->p, T_VOID)}
-                          : value(c, type_builtin(c->p, T_I64));
-  Instr *i = emit(c, I_HELPER, loc);
-  i->dst = out.id;
-  i->text = (char *)name;
-  for (int j = 0; j < n; j++) {
-    add(&i->args, (void *)(intptr_t)(args[j].id + 1));
-  }
-  return out;
-}
-/* string^(bytes): the bytes as a string^ when they are UTF-8, else
- * std.text.Error.Invalid. */
-static Value text_cast(Context *c, Expr *e, int destination)
-{
-  Program *p = c->p;
-  Type *t = text_cast_type(p, e->loc), *text = type_builtin(p, T_STRING);
-  if (e->args.n != 1) {
-    fail(e->loc, "string^(...) casts one u8^[:]");
-  }
-  Value bytes = expression(c, e->args.v[0], NULL);
-  if (dead(bytes)) {
-    return bytes;
-  }
-  if (bytes.type->kind != T_SLICE || bytes.type->elem->kind != T_U8) {
-    fail(e->loc, "string^(...) casts a u8^[:] of UTF-8");
-  }
-  Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
-               .deps = bytes.deps};
-  int good = ++c->in->labels, bad = ++c->in->labels, done = ++c->in->labels;
-  Value valid = helper(c, "rh_text_valid", &bytes, 1, T_I64, e->loc);
-  nil_branch(c, operate(c, "!=", valid, constant(c, T_I64, "0", e->loc), e->loc), good, bad, e->loc);
-  nil_label(c, good, e->loc);
-  Value view = {.id = slot(c, text, false), .type = text, .deps = bytes.deps};
-  Instr *i = emit(c, I_COPY, e->loc);
-  i->dst = view.id;
-  i->a = bytes.id;
-  i->type = text;
-  convert_value(c, view, t, out.id, e->loc);
-  nil_jump(c, done, e->loc);
-  nil_label(c, bad, e->loc);
-  Expr message = {.kind = E_STRING, .loc = e->loc, .text = "not valid UTF-8"};
-  message.length = strlen(message.text);
-  Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
-  add(&invalid.names, "message");
-  add(&invalid.args, &message);
-  construct(c, &invalid, t, out.id);
-  nil_jump(c, done, e->loc);
-  nil_label(c, done, e->loc);
-  return out;
-}
-/* x.write_text(out) appends x to Builder out; x.tostring() builds a new
- * Builder at the destination with it. x is a number, bool^, char^ or
- * string^; the others are written into a local buffer first. */
-static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc);
-static Value value_text(Context *c, Expr *e, int destination)
-{
-  Program *p = c->p;
-  Expr *target = e->a;
-  bool build = !strcmp(target->text, "tostring");
-  Def *builder = lookup_def(p, "std.text.Builder");
-  if (!builder) {
-    fail(e->loc, "internal: %s needs std.text", target->text);
-  }
-  if (e->args.n != !build && e->args.n != !build + 1) {
-    fail(e->loc, build ? "x.tostring() takes an optional format"
-                       : "x.write_text(out) takes a ref^ std.text.Builder and an optional format");
-  }
-  Value x = expression(c, target->a, NULL);
-  if (dead(x)) {
-    return x;
-  }
-  Value out = {.id = -1, .type = type_builtin(p, T_VOID)}, into;
-  if (build) {
-    if (destination < 0) {
-      fail(e->loc, "x.tostring() builds a std.text.Builder; bind it, as in let^ s = x.tostring()");
-    }
-    Expr empty = {.kind = E_RECORD, .loc = e->loc, .text = builder->name};
-    out = into = construct(c, &empty, builder->type, destination);
-  }
-  else {
-    into = deref(c, expression(c, e->args.v[0], type_wrap(p, T_REF, builder->type, 0)), e->loc);
-    if (into.type != builder->type) {
-      fail(e->loc, "x.write_text(out) takes a ref^ std.text.Builder, found '%s'", type_name(into.type));
-    }
-  }
-  write_value(c, x, into, e->args.n > !build ? e->args.v[e->args.n - 1] : NULL, e->loc);
-  return out;
-}
-/* Append x, written with the C format format when there is one, to the
- * Builder into. */
-static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc)
-{
-  Program *p = c->p;
-  Def *builder = into.type->def;
-  bool number = kind_integer(x.type->kind) || kind_float(x.type->kind);
-  if (format && !number) {
-    fail(loc, "a format applies to a number, not '%s'", type_name(x.type));
-  }
-  Value text = x;
-  if (x.type->kind != T_STRING) {
-    if (x.type->kind == T_F8 || x.type->kind == T_F16) {
-      Value wide = value(c, type_builtin(p, T_F64));
-      Instr *i = emit(c, I_CONVERT, loc);
-      i->dst = wide.id;
-      i->a = x.id;
-      i->type = wide.type;
-      x = wide;
-    }
-    Type *buffer = type_wrap(p, T_ARRAY, type_builtin(p, T_U8), 256);
-    Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
-    int bytes = slot(c, buffer, false);
-    Expr none = {.kind = E_STRING, .loc = loc, .text = ""};
-    Value args[4] = {{.id = slot(c, view, false), .type = view},
-                     {.id = slot(c, type_wrap(p, T_REF, x.type, 0), false)},
-                     constant(c, T_I64,
-                              fmt("%d", numeric_bits(x.type->kind) |
-                                            (kind_unsigned(x.type->kind) ? 1 : kind_float(x.type->kind) ? 2
-                                             : x.type->kind == T_BOOL ? 3 : x.type->kind == T_CHAR ? 4 : 0)
-                                                << 8),
-                              loc),
-                     expression(c, format ? format : &none, type_builtin(p, T_STRING))};
-    if (args[3].type->kind != T_STRING) {
-      fail(loc, "a format is a string^, as in \"%%5.2f\"");
-    }
-    Instr *i = emit(c, I_SLICE, loc);
-    i->dst = args[0].id;
-    i->a = bytes;
-    i->b = i->other = -1;
-    i->type = buffer;
-    i = emit(c, I_ADDR, loc);
-    i->dst = args[1].id;
-    i->a = x.id;
-    i->type = ((Slot *)c->in->slots.v[args[1].id])->type;
-    Value length = helper(c, "rh_text_format", args, 4, T_I64, loc);
-    text = (Value){.id = slot(c, type_builtin(p, T_STRING), false), .type = type_builtin(p, T_STRING)};
-    Value start = constant(c, T_I64, "0", loc);
-    i = emit(c, I_SLICE, loc);
-    i->dst = text.id;
-    i->a = bytes;
-    i->b = start.id;
-    i->other = length.id;
-    i->type = buffer;
-  }
-  Field *bytes = field(builder, "bytes");
-  int place = slot(c, bytes->type, true);
-  Instr *i = emit(c, I_FIELD, loc);
-  i->dst = place;
-  i->a = into.id;
-  i->type = builder->type;
-  i->label = bytes->index;
-  i = emit(c, I_APPEND, loc);
-  i->a = place;
-  i->b = text.id;
-  i->type = bytes->type;
-}
-/* Append the text and holes of $"..." e to the Builder into. */
-static void interp_into(Context *c, Expr *e, Value into)
-{
-  for (int j = 0; j < e->args.n && !c->terminated; j++) {
-    Expr *part = e->args.v[j];
-    char *format = e->names.v[j];
-    if (part->kind == E_INTERP && !*format) {
-      /* A nested $"..." goes on in the same Builder. */
-      interp_into(c, part, into);
-      continue;
-    }
-    Value x = expression(c, part, NULL);
-    if (dead(x)) {
-      return;
-    }
-    if (x.type == into.type && !*format) {
-      /* A Builder in a hole gives its text. */
-      Function *text = NULL;
-      for (int k = 0; k < into.type->def->methods.n; k++) {
-        Function *m = into.type->def->methods.v[k];
-        text = !strcmp(m->name, "text") ? m : text;
-      }
-      x = invoke_operator(c, text, x, x, part);
-    }
-    if (!textual(x.type)) {
-      fail(part->loc, "an interpolation hole takes a number, bool^, char^ or string^, found '%s'",
-           type_name(x.type));
-    }
-    Expr spec = {.kind = E_STRING, .loc = part->loc, .text = format, .length = strlen(format)};
-    write_value(c, x, into, *format ? &spec : NULL, part->loc);
-  }
-}
-/* $"..." for print^: built in a Builder living until the print, which
- * shows its text. */
-static Value interp_print(Context *c, Expr *e, List *temps)
-{
-  Def *builder = lookup_def(c->p, "std.text.Builder");
-  int temp = slot(c, builder->type, false);
-  Instr *i = emit(c, I_STACK_BEGIN, e->loc);
-  i->dst = temp;
-  i->type = builder->type;
-  i->text = "$\"...\"";
-  add(&c->pending_owners, (void *)(intptr_t)(temp + 1));
-  add(temps, (void *)(intptr_t)temp);
-  Value out = construct(c, e, builder->type, temp);
-  Function *text = NULL;
-  for (int j = 0; j < builder->methods.n; j++) {
-    Function *m = builder->methods.v[j];
-    text = !strcmp(m->name, "text") ? m : text;
-  }
-  return dead(out) ? out : invoke_operator(c, text, out, out, e);
-}
-/* The built-in methods of string^, which address it by byte offsets. */
-static Value text_method(Context *c, Expr *e, int destination)
-{
-  Program *p = c->p;
-  Expr *target = e->a;
-  const char *name = target->text;
-  Type *t = text_method_type(p, name, e->loc), *whole = type_builtin(p, T_I64);
-  Value s = deref(c, expression(c, target->a, NULL), e->loc);
-  if (dead(s)) {
-    return s;
-  }
-  bool unary = !strcmp(name, "count_chars") || !strcmp(name, "chars");
-  if (e->args.n != !unary) {
-    fail(e->loc, "s.%s takes %s", name, unary ? "no arguments" : "one argument");
-  }
-  Type *want = !strcmp(name, "slice") ? type_range(p) : !strcmp(name, "decode") ? whole
-                                                                               : type_builtin(p, T_STRING);
-  Value arg = unary ? s : expression(c, e->args.v[0], want);
-  if (dead(arg)) {
-    return arg;
-  }
-  if (!unary && arg.type != want) {
-    fail(e->loc, "s.%s takes '%s', found '%s'", name, type_name(want), type_name(arg.type));
-  }
-  Value both[2] = {s, arg};
-  if (!strcmp(name, "count_chars")) {
-    return helper(c, "rh_text_count", both, 1, T_I64, e->loc);
-  }
-  if (!strcmp(name, "starts_with") || !strcmp(name, "ends_with")) {
-    Value r = helper(c, name[0] == 's' ? "rh_text_starts" : "rh_text_ends", both, 2, T_I64, e->loc);
-    return operate(c, "!=", r, constant(c, T_I64, "0", e->loc), e->loc);
-  }
-  if (!strcmp(name, "find")) {
-    Value at = helper(c, "rh_text_find", both, 2, T_I64, e->loc);
-    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
-    int none = ++c->in->labels, found = ++c->in->labels, done = ++c->in->labels;
-    nil_branch(c, operate(c, "<", at, constant(c, T_I64, "0", e->loc), e->loc), none, found, e->loc);
-    nil_label(c, none, e->loc);
-    convert_value(c, nil_literal(c, e->loc), t, out.id, e->loc);
-    nil_jump(c, done, e->loc);
-    nil_label(c, found, e->loc);
-    convert_value(c, at, t, out.id, e->loc);
-    nil_jump(c, done, e->loc);
-    nil_label(c, done, e->loc);
-    return out;
-  }
-  if (!strcmp(name, "slice")) {
-    /* A byte range of s whose ends fall between characters. */
-    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t,
-                 .deps = s.deps};
-    int lo = field_value(c, arg, arg.type->def->fields.v[0], e->loc).id;
-    int hi = field_value(c, arg, arg.type->def->fields.v[1], e->loc).id;
-    Instr *i = emit(c, I_SLICE, e->loc);
-    i->dst = out.id;
-    i->a = s.id;
-    i->b = lo;
-    i->other = hi;
-    i->text = "text";
-    i->type = s.type;
-    return out;
-  }
-  if (!strcmp(name, "decode")) {
-    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
-    Value code = helper(c, "rh_text_decode", both, 2, T_I64, e->loc);
-    Value scalar = value(c, type_builtin(p, T_CHAR));
-    Instr *i = emit(c, I_CONVERT, e->loc);
-    i->dst = scalar.id;
-    i->a = code.id;
-    i->type = scalar.type;
-    copy_to(c, field_value(c, out, t->def->fields.v[0], e->loc), scalar, e->loc, true);
-    copy_to(c, field_value(c, out, t->def->fields.v[1], e->loc),
-            helper(c, "rh_text_next", both, 2, T_I64, e->loc), e->loc, true);
-    return out;
-  }
-  /* chars(): decode every character, pushed onto an array built at the destination. */
-  if (destination < 0) {
-    fail(e->loc, "s.chars() builds an owned array; bind it, as in let^ cs = s.chars()");
-  }
-  Expr empty = {.kind = E_ARRAY, .loc = e->loc};
-  Value out = construct(c, &empty, t, destination);
-  Value at = value(c, whole), length = value(c, whole);
-  copy_to(c, at, constant(c, T_I64, "0", e->loc), e->loc, true);
-  Instr *i = emit(c, I_LENGTH, e->loc);
-  i->dst = length.id;
-  i->a = s.id;
-  i->type = s.type;
-  int head = ++c->in->labels, body = ++c->in->labels, done = ++c->in->labels;
-  nil_jump(c, head, e->loc);
-  nil_label(c, head, e->loc);
-  nil_branch(c, operate(c, "<", at, length, e->loc), body, done, e->loc);
-  nil_label(c, body, e->loc);
-  Value from[2] = {s, at};
-  Value code = helper(c, "rh_text_decode", from, 2, T_I64, e->loc);
-  Value scalar = value(c, type_builtin(p, T_CHAR));
-  i = emit(c, I_CONVERT, e->loc);
-  i->dst = scalar.id;
-  i->a = code.id;
-  i->type = scalar.type;
-  Value pushed = value(c, type_wrap(p, T_REF, scalar.type, 0));
-  i = emit(c, I_PUSH, e->loc);
-  i->dst = pushed.id;
-  i->a = out.id;
-  i->b = scalar.id;
-  i->type = out.type;
-  copy_to(c, at, helper(c, "rh_text_next", from, 2, T_I64, e->loc), e->loc, true);
-  nil_jump(c, head, e->loc);
-  nil_label(c, done, e->loc);
   return out;
 }
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
@@ -2589,7 +1804,7 @@ Type *union_literal_hint(Type *t, Expr *e)
   }
   return hint;
 }
-static Value construct(Context *c, Expr *e, Type *t, int dst) {
+Value construct(Context *c, Expr *e, Type *t, int dst) {
   if (c->terminated) {
     return abrupt(c);
   }
@@ -3053,7 +2268,7 @@ static void operator_contract(Function *f, Type *result, Loc loc)
     fail(loc, "op^<=> must return a signed integer");
   }
 }
-static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
+Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
 {
   Loc loc = origin->loc;
   Value receiver = deref(c, f->right_receiver ? b : a, loc);
@@ -3192,7 +2407,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
   i->type = array;
   return out;
 }
-static Value expression(Context *c, Expr *e, Type *expected) {
+Value expression(Context *c, Expr *e, Type *expected) {
   if (c->terminated) {
     return abrupt(c);
   }
