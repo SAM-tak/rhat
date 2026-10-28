@@ -1,5 +1,5 @@
 let^show = f^ value:i32^ ->i32^ { value+1 }
-overload^ let^ show = f^ value:string^ ->i32^ { 42 }
+let^show = f^ value:string^ ->i32^ { 42 }
 let^alias:f^i32^->i32^; & f^string^->i32^; = show
 print^(alias(2),alias("text"))
 
