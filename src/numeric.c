@@ -7,7 +7,7 @@ const char *builtin_name(int k) {
   static const char *names[] = {"void^", "bool^",   "u8^", "u16^", "u32^",
                                 "u64^",  "u128^",   "i8^", "i16^", "i32^",
                                 "i64^",  "i128^",   "f8^", "f16^", "f32^",
-                                "f64^",  "string^", "nil^"};
+                                "f64^",  "string^", "nil^",  "char^"};
   return k >= T_VOID && k < T_STRUCT ? names[k] : NULL;
 }
 bool kind_integer(int k) { return k >= T_U8 && k <= T_I128; }
@@ -16,7 +16,7 @@ bool kind_float(int k) { return k >= T_F8 && k <= T_F64; }
 int numeric_bits(int k) {
   static const int widths[] = {0,  1,  8,  16,  32, 64, 128, 8,
                                16, 32, 64, 128, 8,  16, 32,  64};
-  return k >= T_VOID && k <= T_F64 ? widths[k] : 0;
+  return k == T_CHAR ? 32 : k >= T_VOID && k <= T_F64 ? widths[k] : 0;
 }
 bool integer_fits(const char *text, int kind) {
   static const char *umax[] = {"255", "65535", "4294967295",

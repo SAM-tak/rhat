@@ -61,7 +61,7 @@ print^(x+y,f64^(x),i32^(3.5))
     run([compiler,'emit',str(path),'-o',str(raw)])
     llvm=raw.read_text()
     runtime=(repo/'runtime/rhat_runtime.c').read_text()
-    exported=set(re.findall(r'(?m)^(?:_Noreturn )?void (rh_\w+)\(',runtime))
+    exported=set(re.findall(r'(?m)^(?:_Noreturn )?(?:void|int64_t) (rh_\w+)\(',runtime))
     declared=set(re.findall(r'(?m)^declare [^\n]*?@(rh_\w+)\(',llvm))
     assert exported==declared,(exported-declared,declared-exported)
     obsolete=('rh_bounds','rh_array_at','rh_array_write','rh_array_append','rh_array_pop',

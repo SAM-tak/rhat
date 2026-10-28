@@ -295,6 +295,8 @@ Type *type_tuple(Program *p, List *elems, Loc loc);
 Type *type_range(Program *p);
 /* Whether t is range^. */
 bool range_type(Type *t);
+/* What char^(x) casts to: char^ | std.text.Error.Invalid. */
+Type *char_cast_type(Program *p, Loc loc);
 /* Reject destructuring t into a number of names other than its results. */
 void results_check(Type *t, int names, Loc loc);
 /* For member name of t: the first variant when t is a union of errors and

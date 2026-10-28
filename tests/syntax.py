@@ -336,6 +336,22 @@ print^(e.len,xs[e].len)
 for^ 2 { when^ 1 to^ 3: print^(it^) other^: print^(0) }
 ''', '3 30 2 40 3 40 5\n0 3 3 -1 3\ntrue false true false\n40 2\n0 0\n2\n')
 
+    positive('chars', '''
+let^ a=char^"あ"
+let^ b=char^'a'
+let^ e=char^"\\u{1F600}"
+print^(a,b,e,u32^(a),u32^(e),a=char^"あ",b<a,a<=>b)
+let^ c:char^=char^(0x41) catch^ char^"?"
+let^ d=char^(0xD800) catch^ char^"?"
+let^ f=char^("x") catch^ char^"?"
+let^ g=char^("xy") catch^ char^"?"
+print^(c,d,f,g)
+do^{ let^ h=try^ char^(-1) print^(h) catch^: print^(it^.message()) }
+let^ arr:char^[3]=[char^"x",char^"y",char^"z"]
+let^ next=f^ c:char^ ->char^ { char^(i64^(c)+1) catch^ c }
+print^(arr[1],i64^(arr[2]),next(char^"m"))
+''', 'あ a 😀 12354 128512 true true 1\nA ? x ?\nnot a Unicode scalar value\ny 122 n\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -574,6 +590,10 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('char_literal_two', 'let^ a=char^"ab"', 'exactly one Unicode scalar value'),
+        ('char_literal_empty', 'let^ a=char^""', 'exactly one Unicode scalar value'),
+        ('char_arithmetic', 'let^ a=char^"a"+char^"b"', "operator '+' is not defined for 'char^'"),
+        ('char_cast_wide', 'let^ n:u128^=65\nlet^ c=char^(n)', 'at most 64 bits'),
         ('range_open_end', 'let^ r=0 ::\nprint^(r)', 'goes right before ), ] or ,'),
         ('range_open_start', 'let^ r=:: 3', 'goes right after (, [ or ,'),
         ('range_inclusive_open', 'let^ r=(1 to^)', 'needs both bounds'),

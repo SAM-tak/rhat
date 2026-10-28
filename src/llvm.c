@@ -18,6 +18,7 @@ char *llvm_type(Type *t) {
     return "i16";
   case T_U32:
   case T_I32:
+  case T_CHAR:
     return "i32";
   case T_U64:
   case T_I64:
@@ -861,6 +862,21 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(arm), a, payload);
     break;
   }
+  case I_CHAR:
+    a = load(o, i->a);
+    if (t->kind == T_STRING) {
+      fprintf(f,
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n"
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 1\n"
+              "  %%t%d = call i64 @rh_char_of_text(ptr %%t%d, i64 %%t%d)\n",
+              o->tmp + 1, a, o->tmp + 2, a, o->tmp + 3, o->tmp + 1, o->tmp + 2);
+      o->tmp += 3;
+    }
+    else {
+      fprintf(f, "  %%t%d = call i64 @rh_char_of_whole(i64 %%t%d)\n", ++o->tmp, a);
+    }
+    save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", o->tmp));
+    break;
   case I_SITE:
     fprintf(f, "  store ptr @%s_site_%d, ptr %%p%d\n", o->in->symbol, i->label, i->dst);
     break;
@@ -1398,6 +1414,9 @@ static void instruction(Output *o, Instr *i) {
       } else if (ty->kind == T_BOOL) {
         a = integer64(o, id);
         fprintf(f, "  call void @rh_print_bool(i64 %%t%d)\n", a);
+      } else if (ty->kind == T_CHAR) {
+        a = load(o, id);
+        fprintf(f, "  call void @rh_print_char(i32 %%t%d)\n", a);
       } else {
         fprintf(f, "  call void @rh_print_integer(ptr %%p%d, i32 %d, i32 %d)\n",
                 id, numeric_bits(ty->kind), kind_unsigned(ty->kind));
@@ -1602,6 +1621,9 @@ void emit_llvm(Program *p, const char *path) {
         "declare void @rh_runtime_args(i32, ptr, ptr)\n"
         "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
         "declare void @rh_unhandled(ptr, i64, ptr, i64, ptr, i32, i32) cold noreturn\n"
+        "declare void @rh_print_char(i32)\n"
+        "declare i64 @rh_char_of_text(ptr, i64) readonly\n"
+        "declare i64 @rh_char_of_whole(i64) readnone\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
         "declare void @rh_print_bool(i64)\n"
@@ -1750,6 +1772,7 @@ void dump_ir(Program *p, const char *path) {
                          "dyn.cast",
                          "dyn.data",
                          "union.place",
+                         "char.check",
                          "error.site"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
@@ -1838,6 +1861,7 @@ static char *c_name(Type *t)
   case T_U16:
   case T_U32:
   case T_U64:
+  case T_CHAR:
     return fmt("uint%d_t", numeric_bits(t->kind));
   case T_I8:
   case T_I16:

@@ -322,6 +322,39 @@ void rh_print_string(const char *s, uint64_t n) {
   fwrite(s, 1, (size_t)n, stdout);
 }
 void rh_print_space(void) { fputc(' ', stdout); }
+/* Write a Unicode scalar value as UTF-8. */
+void rh_print_char(uint32_t c)
+{
+  char out[4];
+  int n = c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+  out[0] = (char)(n == 1 ? c : (0xF00u >> n & 0xF0u) | (c >> (6 * (n - 1))));
+  for (int j = 1; j < n; j++) {
+    out[j] = (char)(0x80u | ((c >> (6 * (n - 1 - j))) & 0x3Fu));
+  }
+  fwrite(out, 1, (size_t)n, stdout);
+}
+/* The scalar value c if it is one, else -1. */
+int64_t rh_char_of_whole(int64_t c)
+{
+  return c >= 0 && c <= 0x10FFFF && (c < 0xD800 || c > 0xDFFF) ? c : -1;
+}
+/* The scalar value of text if it is exactly one in UTF-8, else -1. */
+int64_t rh_char_of_text(const unsigned char *s, int64_t n)
+{
+  int width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
+  if (n != width || (s[0] >= 0x80 && (s[0] < 0xC2 || s[0] > 0xF4))) {
+    return -1;
+  }
+  int64_t c = width == 1 ? s[0] : s[0] & (0x7F >> width);
+  for (int j = 1; j < width; j++) {
+    if ((s[j] & 0xC0) != 0x80) {
+      return -1;
+    }
+    c = c << 6 | (s[j] & 0x3F);
+  }
+  int64_t least = width == 2 ? 0x80 : width == 3 ? 0x800 : width == 4 ? 0x10000 : 0;
+  return c < least ? -1 : rh_char_of_whole(c);
+}
 void rh_print_newline(void) { fputc('\n', stdout); }
 /* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and
  * narrow integers, and do not require a C compiler-specific 128-bit ABI. */

@@ -137,6 +137,14 @@ bool error_messages(Program *p, Expr *target, int arguments, Type *base)
   return target->kind == E_MEMBER && !strcmp(target->text, "message") && !arguments && base &&
          base->kind == T_UNION && only_errors(base);
 }
+Type *char_cast_type(Program *p, Loc loc)
+{
+  Def *invalid = lookup_def(p, "std.text.Error.Invalid");
+  if (!invalid) {
+    fail(loc, "internal: char^(...) needs std.text");
+  }
+  return type_union(p, type_builtin(p, T_CHAR), invalid->type, loc);
+}
 Type *error_view(Type *t, const char *name)
 {
   bool shared = !strcmp(name, "source") || !strcmp(name, "line") || !strcmp(name, "column");
@@ -549,6 +557,12 @@ static Type *infer_call(Infer *c, Expr *e)
   List actual = {0}, candidates = {0};
   if (target->kind == E_FUNCTION) {
     f = target->function;
+  }
+  else if (target->kind == E_NAME && !strcmp(target->text, "char^")) {
+    for (int j = 0; j < e->args.n; j++) {
+      infer_expr(c, e->args.v[j], NULL);
+    }
+    return c->terminated ? type_builtin(c->p, T_NEVER) : char_cast_type(c->p, e->loc);
   }
   else if (target->kind == E_NAME) {
     for (int k = T_U8; k <= T_F64; k++) {
@@ -1188,6 +1202,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     infer_expr(c, e->a, NULL);
     c->terminated = true;
     return type_builtin(c->p, T_NEVER);
+  case E_CHAR:
+    return type_builtin(c->p, T_CHAR);
   case E_RANGE:
     infer_expr(c, e->a, type_builtin(c->p, T_I64));
     infer_expr(c, e->b, type_builtin(c->p, T_I64));

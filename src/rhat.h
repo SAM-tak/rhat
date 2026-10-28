@@ -102,7 +102,8 @@ enum {
   E_PACK,     /* Compiler-only: trailing arguments of a variadic call, or the
                  single forwarded sequence in a. */
   E_PANIC,    /* panic^ a: end the process; it produces no value. */
-  E_RANGE     /* a :: b or a to^ b (text): a range^ value; a or b may be omitted. */
+  E_RANGE,    /* a :: b or a to^ b (text): a range^ value; a or b may be omitted. */
+  E_CHAR      /* char^"x": the Unicode scalar value in text, as decimal digits. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */
@@ -249,6 +250,7 @@ enum {
   T_F64,
   T_STRING,
   T_NIL,
+  T_CHAR, /* char^: a Unicode scalar value, laid out as u32^. */
   T_STRUCT,
   T_REF,
   T_ARRAY,
@@ -354,6 +356,8 @@ enum {
   I_DYNCAST,   /* Swap dyn^ a's table for the ref^ dyn^ type of the same value. */
   I_DYNDATA,   /* The data reference of dyn^ a, proven to be type. */
   I_CASE_AT,   /* Place dst at union a's payload for alternative label; b also sets the tag. */
+  I_CHAR,      /* dst (i64^) = the scalar a holds, or -1: a is the one character of a
+                  string^, or else an i64^ to check. */
   I_SITE       /* dst = the static record of where an error is built: its source, line,
                   column and message; text is the source (length bytes), a NUL, the message. */
 };

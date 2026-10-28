@@ -82,6 +82,7 @@ typedef struct {
   List tokens;
   int at, serial, scope_depth;
   bool header;
+  bool text_cast; /* A char^(...) cast needs std.text for its error. */
 } Parser;
 static Token *tok(Parser *p) { return p->tokens.v[p->at]; }
 static bool is(Parser *p, const char *s) {
@@ -882,6 +883,7 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p) {
   Token *t = next(p);
   Expr *e = NULL;
+  p->text_cast |= t->kind == TOK_WORD && !strcmp(t->text, "char^") && is(p, "(");
   if (t->kind == TOK_WORD &&
       (!strcmp(t->text, "externC^") || !strcmp(t->text, "externLLVM^"))) {
     fail(t->loc, "%s declarations are only allowed at the top level", t->text);
@@ -899,6 +901,24 @@ static Expr *primary(Parser *p) {
     else {
       add(&e->args, expr(p, 0));
     }
+  } else if (t->kind == TOK_WORD && !strcmp(t->text, "char^") && tok(p)->kind == TOK_STRING) {
+    /* char^"x": exactly one Unicode scalar value, checked here. */
+    Token *text = next(p);
+    const unsigned char *s = (const unsigned char *)text->text;
+    size_t n = text->length, width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
+    unsigned long code = width == 1 ? s[0] : width ? s[0] & (0x7F >> width) : 0;
+    bool valid = n && n == width && (s[0] < 0x80 || (s[0] >= 0xC2 && s[0] <= 0xF4));
+    for (size_t j = 1; valid && j < width; j++) {
+      valid = (s[j] & 0xC0) == 0x80;
+      code = code << 6 | (s[j] & 0x3F);
+    }
+    valid &= code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF) &&
+             code >= (width == 2 ? 0x80UL : width == 3 ? 0x800UL : width == 4 ? 0x10000UL : 0);
+    if (!valid) {
+      fail(text->loc, "char^\"...\" holds exactly one Unicode scalar value");
+    }
+    e = node(E_CHAR, t->loc);
+    e->text = fmt("%lu", code);
   } else if (t->kind == TOK_WORD && !strcmp(t->text, "panic^")) {
     e = node(E_PANIC, t->loc);
     e->a = expr(p, 0);
@@ -2428,5 +2448,17 @@ void parse_file(Program *p, const char *path, Module *module) {
     add(&module->functions, parsed_function);
     add(&p->functions, parsed_function);
     take(&q, ";");
+  }
+  /* A char^(...) cast fails with std.text's error, imported out of sight. */
+  bool text = q.text_cast && !(module->name && !strcmp(module->name, "std.text"));
+  for (int j = 0; text && j < module->imports.n; j++) {
+    text = strcmp(((Import *)module->imports.v[j])->name, "std.text");
+  }
+  if (text) {
+    Import *i = mem(sizeof(*i));
+    i->name = "std.text";
+    i->alias = "\001std.text";
+    i->loc = (Loc){path, 1, 1};
+    add(&module->imports, i);
   }
 }

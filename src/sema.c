@@ -33,6 +33,9 @@ Type *type_builtin(Program *p, int k) {
     t->align = 8;
     t->refs = true;
     break;
+  case T_CHAR:
+    t->size = t->align = 4;
+    break;
   default:
     if (kind_integer(k) || kind_float(k))
       t->size = t->align = (size_t)numeric_bits(k) / 8;
@@ -2655,6 +2658,60 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected,
   }
   return out;
 }
+/* char^(x): the one character of string^ x, or integer x as a scalar
+ * value, else std.text.Error.Invalid. */
+static Value char_cast(Context *c, Expr *e, int destination)
+{
+  Program *p = c->p;
+  Type *t = char_cast_type(p, e->loc);
+  if (e->args.n != 1) {
+    fail(e->loc, "char^(...) casts one string^ or integer");
+  }
+  Value v = expression(c, e->args.v[0], NULL);
+  if (dead(v)) {
+    return v;
+  }
+  bool text = v.type->kind == T_STRING;
+  if (!text && (!kind_integer(v.type->kind) || numeric_bits(v.type->kind) > 64)) {
+    fail(e->loc, "char^(...) casts a string^ or an integer of at most 64 bits");
+  }
+  if (!text && v.type->kind != T_I64) {
+    Value whole = value(c, type_builtin(p, T_I64));
+    Instr *i = emit(c, I_CONVERT, e->loc);
+    i->dst = whole.id;
+    i->a = v.id;
+    i->type = whole.type;
+    v = whole;
+  }
+  Value code = value(c, type_builtin(p, T_I64));
+  Instr *i = emit(c, I_CHAR, e->loc);
+  i->dst = code.id;
+  i->a = v.id;
+  i->type = v.type;
+  Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
+  int good = ++c->in->labels, bad = ++c->in->labels, done = ++c->in->labels;
+  nil_branch(c, operate(c, ">=", code, constant(c, T_I64, "0", e->loc), e->loc), good, bad, e->loc);
+  nil_label(c, good, e->loc);
+  Value scalar = value(c, type_builtin(p, T_CHAR));
+  i = emit(c, I_CONVERT, e->loc);
+  i->dst = scalar.id;
+  i->a = code.id;
+  i->type = scalar.type;
+  convert_value(c, scalar, t, out.id, e->loc);
+  nil_jump(c, done, e->loc);
+  nil_label(c, bad, e->loc);
+  Expr message = {.kind = E_STRING, .loc = e->loc,
+                  .text = text ? "not exactly one Unicode scalar value"
+                               : "not a Unicode scalar value"};
+  message.length = strlen(message.text);
+  Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
+  add(&invalid.names, "message");
+  add(&invalid.args, &message);
+  construct(c, &invalid, t, out.id);
+  nil_jump(c, done, e->loc);
+  nil_label(c, done, e->loc);
+  return out;
+}
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
@@ -2691,7 +2748,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       if (c->terminated) {
         return abrupt(c);
       }
-      if (!kind_integer(v.type->kind) && !kind_float(v.type->kind))
+      if (!kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
+          !(v.type->kind == T_CHAR && kind_integer(k)))
         fail(e->loc, "numeric conversion requires a number");
       if (expected && expected != t)
         fail(e->loc, "conversion result is '%s', expected '%s'", type_name(t),
@@ -2704,6 +2762,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
       i->type = t;
       return out;
     }
+  }
+  if (target->kind == E_NAME && !strcmp(target->text, "char^")) {
+    return char_cast(c, e, destination);
   }
   if (target->kind == E_NAME &&
       (!strcmp(target->text, "print^") || !strcmp(target->text, "assert^"))) {
@@ -2723,7 +2784,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
         return abrupt(c);
       }
       if (print && !kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
-          v.type->kind != T_STRING && v.type->kind != T_BOOL)
+          v.type->kind != T_STRING && v.type->kind != T_BOOL && v.type->kind != T_CHAR)
         fail(e->loc, "print^ does not support '%s'", type_name(v.type));
       if (!print && v.type->kind != T_BOOL)
         fail(e->loc, "assert^ requires bool");
@@ -3834,6 +3895,14 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   }
   if (e->kind == E_CALL)
     return call(c, e, expected, -1);
+  if (e->kind == E_CHAR) {
+    Value v = value(c, type_builtin(p, T_CHAR));
+    Instr *i = emit(c, I_CONST, e->loc);
+    i->dst = v.id;
+    i->type = v.type;
+    i->text = e->text;
+    return v;
+  }
   if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF ||
       e->kind == E_SCOPE || e->kind == E_RANGE)
     return construct(c, e, expected, -1);
@@ -4115,7 +4184,8 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       fail(e->loc, "binary operands have different types");
     bool cmp = strchr("=!<>", e->text[0]) != NULL;
     if (!kind_integer(a.type->kind) && !kind_float(a.type->kind) &&
-        !(cmp && a.type->kind == T_BOOL && strchr("=!", e->text[0])))
+        !(cmp && a.type->kind == T_BOOL && strchr("=!", e->text[0])) &&
+        !(cmp && a.type->kind == T_CHAR))
       fail(e->loc, "operator '%s' is not defined for '%s'", e->text,
            type_name(a.type));
     if (kind_float(a.type->kind) && !strcmp(e->text, "%"))
