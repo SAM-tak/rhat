@@ -45,7 +45,7 @@ def main():
     lib = '''module^ lib.example
 public^ def^ Item { self^{ value:i64^ } }
 public^ let^ twice=f^ x:i64^ -> i64^ { x*2 }
-public^ overload^ let^ twice=f^ x:i64^, y:i64^ -> i64^ { (x+y)*2 }
+public^ let^ twice=f^ x:i64^, y:i64^ -> i64^ { (x+y)*2 }
 let^ hidden=f^ ->i64^ { 99 }
 public^ let^ answer:i64^ = 40+2
 public^ let^ enabled:bool^ = true^
@@ -147,7 +147,7 @@ print^(box.run(42))
         ('import_collision', 'def^ lib {}\nimport^ lib.example', 'conflicts'),
         ('removed_error_prefix_struct', 'def^ A {}\nlet^ x=error^A{}', 'error^ construction has been removed'),
         ('removed_error_prefix_variant', 'errordef^ E { Bad }\nlet^ x=error^E.Bad{}', 'error^ construction has been removed'),
-        ('overload_duplicate_domain', 'let^ f=f^ x:i32^ { x }\noverload^ let^ f=f^ x:i32^ { x }', 'duplicate function'),
+        ('overload_duplicate_domain', 'let^ f=f^ x:i32^ { x }\nlet^ f=f^ x:i32^ { x }', 'duplicate function'),
         ('module_not_first', 'print^(1)\nmodule^ late.name', 'error:'),
     ]:
         negative(name, {'lib/example.rh': lib, 'main.rh': text}, diagnostic)

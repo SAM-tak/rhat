@@ -9,59 +9,59 @@ public^let^tau:f64^ = 6.283185307179586
 public^let^e:f64^ = 2.718281828459045
 
 public^let^sqrt = externLLVM^llvm.sqrt.f64:f^x:f64^ -> f64^;
-public^overload^let^sqrt = externLLVM^llvm.sqrt.f32:f^x:f32^ -> f32^;
+public^let^sqrt = externLLVM^llvm.sqrt.f32:f^x:f32^ -> f32^;
 public^let^sin = externLLVM^llvm.sin.f64:f^x:f64^ -> f64^;
-public^overload^let^sin = externLLVM^llvm.sin.f32:f^x:f32^ -> f32^;
+public^let^sin = externLLVM^llvm.sin.f32:f^x:f32^ -> f32^;
 public^let^cos = externLLVM^llvm.cos.f64:f^x:f64^ -> f64^;
-public^overload^let^cos = externLLVM^llvm.cos.f32:f^x:f32^ -> f32^;
+public^let^cos = externLLVM^llvm.cos.f32:f^x:f32^ -> f32^;
 public^let^tan = externLLVM^llvm.tan.f64:f^x:f64^ -> f64^;
-public^overload^let^tan = externLLVM^llvm.tan.f32:f^x:f32^ -> f32^;
+public^let^tan = externLLVM^llvm.tan.f32:f^x:f32^ -> f32^;
 public^let^asin = externLLVM^llvm.asin.f64:f^x:f64^ -> f64^;
-public^overload^let^asin = externLLVM^llvm.asin.f32:f^x:f32^ -> f32^;
+public^let^asin = externLLVM^llvm.asin.f32:f^x:f32^ -> f32^;
 public^let^acos = externLLVM^llvm.acos.f64:f^x:f64^ -> f64^;
-public^overload^let^acos = externLLVM^llvm.acos.f32:f^x:f32^ -> f32^;
+public^let^acos = externLLVM^llvm.acos.f32:f^x:f32^ -> f32^;
 public^let^atan = externLLVM^llvm.atan.f64:f^x:f64^ -> f64^;
-public^overload^let^atan = externLLVM^llvm.atan.f32:f^x:f32^ -> f32^;
+public^let^atan = externLLVM^llvm.atan.f32:f^x:f32^ -> f32^;
 public^let^atan2 = externLLVM^llvm.atan2.f64:f^y:f64^, x:f64^ -> f64^;
-public^overload^let^atan2 = externLLVM^llvm.atan2.f32:f^y:f32^, x:f32^ -> f32^;
+public^let^atan2 = externLLVM^llvm.atan2.f32:f^y:f32^, x:f32^ -> f32^;
 public^let^sinh = externLLVM^llvm.sinh.f64:f^x:f64^ -> f64^;
-public^overload^let^sinh = externLLVM^llvm.sinh.f32:f^x:f32^ -> f32^;
+public^let^sinh = externLLVM^llvm.sinh.f32:f^x:f32^ -> f32^;
 public^let^cosh = externLLVM^llvm.cosh.f64:f^x:f64^ -> f64^;
-public^overload^let^cosh = externLLVM^llvm.cosh.f32:f^x:f32^ -> f32^;
+public^let^cosh = externLLVM^llvm.cosh.f32:f^x:f32^ -> f32^;
 public^let^tanh = externLLVM^llvm.tanh.f64:f^x:f64^ -> f64^;
-public^overload^let^tanh = externLLVM^llvm.tanh.f32:f^x:f32^ -> f32^;
+public^let^tanh = externLLVM^llvm.tanh.f32:f^x:f32^ -> f32^;
 public^let^exp = externLLVM^llvm.exp.f64:f^x:f64^ -> f64^;
-public^overload^let^exp = externLLVM^llvm.exp.f32:f^x:f32^ -> f32^;
+public^let^exp = externLLVM^llvm.exp.f32:f^x:f32^ -> f32^;
 public^let^exp2 = externLLVM^llvm.exp2.f64:f^x:f64^ -> f64^;
-public^overload^let^exp2 = externLLVM^llvm.exp2.f32:f^x:f32^ -> f32^;
+public^let^exp2 = externLLVM^llvm.exp2.f32:f^x:f32^ -> f32^;
 public^let^log = externLLVM^llvm.log.f64:f^x:f64^ -> f64^;
-public^overload^let^log = externLLVM^llvm.log.f32:f^x:f32^ -> f32^;
+public^let^log = externLLVM^llvm.log.f32:f^x:f32^ -> f32^;
 public^let^log2 = externLLVM^llvm.log2.f64:f^x:f64^ -> f64^;
-public^overload^let^log2 = externLLVM^llvm.log2.f32:f^x:f32^ -> f32^;
+public^let^log2 = externLLVM^llvm.log2.f32:f^x:f32^ -> f32^;
 public^let^log10 = externLLVM^llvm.log10.f64:f^x:f64^ -> f64^;
-public^overload^let^log10 = externLLVM^llvm.log10.f32:f^x:f32^ -> f32^;
+public^let^log10 = externLLVM^llvm.log10.f32:f^x:f32^ -> f32^;
 public^let^pow = externLLVM^llvm.pow.f64:f^x:f64^, y:f64^ -> f64^;
-public^overload^let^pow = externLLVM^llvm.pow.f32:f^x:f32^, y:f32^ -> f32^;
+public^let^pow = externLLVM^llvm.pow.f32:f^x:f32^, y:f32^ -> f32^;
 public^let^floor = externLLVM^llvm.floor.f64:f^x:f64^ -> f64^;
-public^overload^let^floor = externLLVM^llvm.floor.f32:f^x:f32^ -> f32^;
+public^let^floor = externLLVM^llvm.floor.f32:f^x:f32^ -> f32^;
 public^let^ceil = externLLVM^llvm.ceil.f64:f^x:f64^ -> f64^;
-public^overload^let^ceil = externLLVM^llvm.ceil.f32:f^x:f32^ -> f32^;
+public^let^ceil = externLLVM^llvm.ceil.f32:f^x:f32^ -> f32^;
 public^let^trunc = externLLVM^llvm.trunc.f64:f^x:f64^ -> f64^;
-public^overload^let^trunc = externLLVM^llvm.trunc.f32:f^x:f32^ -> f32^;
+public^let^trunc = externLLVM^llvm.trunc.f32:f^x:f32^ -> f32^;
 # Halfway cases round away from zero, as C round() does.
 public^let^round = externLLVM^llvm.round.f64:f^x:f64^ -> f64^;
-public^overload^let^round = externLLVM^llvm.round.f32:f^x:f32^ -> f32^;
+public^let^round = externLLVM^llvm.round.f32:f^x:f32^ -> f32^;
 public^let^abs = externLLVM^llvm.fabs.f64:f^x:f64^ -> f64^;
-public^overload^let^abs = externLLVM^llvm.fabs.f32:f^x:f32^ -> f32^;
+public^let^abs = externLLVM^llvm.fabs.f32:f^x:f32^ -> f32^;
 public^let^copysign = externLLVM^llvm.copysign.f64:f^x:f64^, sign:f64^ -> f64^;
-public^overload^let^copysign = externLLVM^llvm.copysign.f32:f^x:f32^, sign:f32^ -> f32^;
+public^let^copysign = externLLVM^llvm.copysign.f32:f^x:f32^, sign:f32^ -> f32^;
 # x*y+z rounded once.
 public^let^fma = externLLVM^llvm.fma.f64:f^x:f64^, y:f64^, z:f64^ -> f64^;
-public^overload^let^fma = externLLVM^llvm.fma.f32:f^x:f32^, y:f32^, z:f32^ -> f32^;
+public^let^fma = externLLVM^llvm.fma.f32:f^x:f32^, y:f32^, z:f32^ -> f32^;
 
 public^let^isnan = f^x:f64^ -> bool^{ x != x }
-public^overload^let^isnan = f^x:f32^ -> bool^{ x != x }
+public^let^isnan = f^x:f32^ -> bool^{ x != x }
 public^let^isfinite = f^x:f64^ -> bool^{ x - x = 0.0 }
-public^overload^let^isfinite = f^x:f32^ -> bool^{ x - x = 0.0 }
+public^let^isfinite = f^x:f32^ -> bool^{ x - x = 0.0 }
 public^let^isinf = f^x:f64^ -> bool^{ x = x and^ x - x != 0.0 }
-public^overload^let^isinf = f^x:f32^ -> bool^{ x = x and^ x - x != 0.0 }
+public^let^isinf = f^x:f32^ -> bool^{ x = x and^ x - x != 0.0 }

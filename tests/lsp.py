@@ -298,7 +298,7 @@ print^(read(view))
     assert 'ref^' in {item['label'] for item in completions}, completions
     print('PASS reference keyword hover, signature and completion',flush=True)
     overloads='''let^ choose=f^ n:i32^ ->i32^ {n+1}
-overload^ let^ choose=f^ n:string^ ->i32^ {42}
+let^ choose=f^ n:string^ ->i32^ {42}
 let^ dispatch=choose
 print^(dispatch(1),choose("s"))
 def^ V {self^{n:i32^=1} op^+ =f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}}
@@ -321,7 +321,7 @@ print^(v+1)
 
     # A name right after a hat is the declaration even if it recurs later.
     hats = work/'hats.rh'
-    hat_text = 'let^count = f^count:i64^ -> i64^ { count }\noverload^let^count = f^ -> i64^ { 0 }\n'
+    hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^count = f^ -> i64^ { 0 }\n'
     client.open(hats, hat_text)
     assert client.diagnostics(hats, 1) == []
     hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'count = f^count')))

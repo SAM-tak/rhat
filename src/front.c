@@ -1999,21 +1999,10 @@ void parse_file(Program *p, const char *path, Module *module) {
     module->name = qualified_word(&q);
     take(&q, ";");
   }
-  /* overload^ marks a further signature of an existing top-level name. */
-  Loc overload_at = {0};
-  bool overload = false;
   while (tok(&q)->kind != TOK_EOF) {
-    if (overload) {
-      fail(overload_at, "overload^ applies only to a function declaration");
-    }
     if (take(&q, ";"))
       continue;
     bool public = take(&q, "public^");
-    overload_at = tok(&q)->loc;
-    overload = take(&q, "overload^");
-    if (overload && !is(&q, "let^") && !is(&q, "externC^")) {
-      fail(overload_at, "overload^ applies only to a function declaration");
-    }
     /* exportC^ and exportL^ mark a function entered from C or from L^;
      * exportL^ also marks a def^ L^ holds by value, or with ref^ by
      * reference. */
@@ -2108,8 +2097,6 @@ void parse_file(Program *p, const char *path, Module *module) {
         f->declaration = declaration;
         f->module = module;
         f->public = public;
-        f->overload = overload;
-        overload = false;
         add(&module->functions, f);
         add(&p->functions, f);
         continue;
@@ -2221,15 +2208,10 @@ void parse_file(Program *p, const char *path, Module *module) {
     parsed_function->declaration = declaration;
     parsed_function->module = module;
     parsed_function->public = public;
-    parsed_function->overload = overload;
     parsed_function->exported = exported;
     parsed_function->lhat_export = lhat_export;
-    overload = false;
     add(&module->functions, parsed_function);
     add(&p->functions, parsed_function);
     take(&q, ";");
-  }
-  if (overload) {
-    fail(overload_at, "overload^ applies only to a function declaration");
   }
 }

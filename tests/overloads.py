@@ -10,10 +10,10 @@ def main():
 
     positive('overload_types_and_effects', '''
 let^ choose=f^ x:i32^ ->i32^ {x+1}
-overload^ let^ choose=f^ x:i64^ ->string^ {"wide"}
-overload^ let^ choose=f^ x:string^ ->i32^ {42}
-overload^ let^ choose=p^ x:bool^ {print^(x)}
-overload^ let^ choose=f^ x:i32^,y:i32^ ->i32^ {x+y}
+let^ choose=f^ x:i64^ ->string^ {"wide"}
+let^ choose=f^ x:string^ ->i32^ {42}
+let^ choose=p^ x:bool^ {print^(x)}
+let^ choose=f^ x:i32^,y:i32^ ->i32^ {x+y}
 let^ forward=f^ x:string^ {choose(x)}
 var^ wide:i64^=1
 print^(choose(2),choose(wide),forward("s"),choose(3,4))
@@ -22,7 +22,7 @@ choose(true^)
 
     positive('callable_intersections_and_callbacks', '''
 let^ choose=f^ x:i32^ {x+1}
-overload^ let^ choose=f^ x:string^ {42}
+let^ choose=f^ x:string^ {42}
 let^ alias:f^i32^->i32^; & f^string^->i32^; =choose
 let^ reordered:f^string^->i32^; & f^i32^->i32^; =alias
 let^ apply=f^ cb:f^i32^->i32^;,n:i32^ ->i32^ {cb(n)}
@@ -157,7 +157,7 @@ print^(3+v)
     (work/'lib').mkdir(exist_ok=True)
     (work/'lib'/'calls.rh').write_text('''module^ lib.calls
 public^ let^ choose=f^ n:i32^ ->i32^ {n+1}
-public^ overload^ let^ choose=f^ n:string^ ->i32^ {40}
+public^ let^ choose=f^ n:string^ ->i32^ {40}
 public^ let^ inc=f^ n:i32^ ->i32^ {n+1}
 public^ let^ twice=f^ n:i32^ ->i32^ {n*2}
 public^ let^ apply=f^ cb:f^i32^->i32^;,n ->i32^ {cb(n)}
@@ -168,21 +168,16 @@ print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
 ''', '3 40\n3 4\n')
 
     for name, text, diagnostic in [
-        ('overload_required', 'let^ f=f^ x:i32^ {x} let^ f=f^ x:string^ {0}', "adding a signature to 'f' requires overload^"),
-        ('overload_required_extern', 'externC^ abs:f^ n:i32^ ->i32^;\nlet^ abs=f^ x:string^ ->i32^ {0}', "adding a signature to 'abs' requires overload^"),
-        ('overload_first', 'overload^ let^ f=f^ x:i32^ {x}', "overload^ has no existing function 'f'"),
-        ('overload_not_function', 'overload^ def^ D { self^{ n:i32^ = 0 } }', 'applies only to a function declaration'),
-        ('overload_trailing', 'let^ f=f^ x:i32^ {x}\noverload^', 'applies only to a function declaration'),
-        ('overlap_arguments', 'let^ f=f^ x:i32^ {x} overload^ let^ f=f^ x:i32^ {x+1}', 'overlapping overload'),
-        ('overlap_result_only', 'let^ f=f^ x:i32^ ->i32^ {x} overload^ let^ f=f^ x:i32^ ->string^ {"s"}', 'overlapping overload'),
-        ('overlap_effect_only', 'let^ f=f^ x:i32^ {x} overload^ let^ f=p^ x:i32^ {}', 'overlapping overload'),
-        ('overlap_union', 'let^ f=f^ x:i32^|nil^ {1} overload^ let^ f=f^ x:i32^ {2}', 'overlapping overload'),
-        ('overlap_base', 'def^ A {} def^ B:A {} let^ f=f^ x:A {1} overload^ let^ f=f^ x:B {2}', 'overlapping overload'),
-        ('overlap_common_derived', 'def^ A {} def^ B {} def^ C:A,B {} let^ f=f^ x:A {1} overload^ let^ f=f^ x:B {2}', 'overlapping overload'),
-        ('overlap_generic', 'let^ f=template^f^ x {x} overload^ let^ f=f^ x:i32^ {x}', 'overlapping overload'),
-        ('no_runtime_union_dispatch', 'let^ f=f^ x:i32^ {1} overload^ let^ f=f^ x:string^ {2} let^ x:i32^|string^=1 print^(f(x))', 'no matching overload'),
-        ('no_matching_arm', 'let^ f=f^ x:i32^ {1} overload^ let^ f=f^ x:string^ {2} print^(f(true^))', 'no matching overload'),
-        ('pure_calls_procedure_arm', 'let^ f=f^ x:i32^ {1} overload^ let^ f=p^ x:string^ {} let^ bad=f^ {f("s")} bad()', 'f^ cannot call p^'),
+        ('overlap_arguments', 'let^ f=f^ x:i32^ {x} let^ f=f^ x:i32^ {x+1}', 'overlapping overload'),
+        ('overlap_result_only', 'let^ f=f^ x:i32^ ->i32^ {x} let^ f=f^ x:i32^ ->string^ {"s"}', 'overlapping overload'),
+        ('overlap_effect_only', 'let^ f=f^ x:i32^ {x} let^ f=p^ x:i32^ {}', 'overlapping overload'),
+        ('overlap_union', 'let^ f=f^ x:i32^|nil^ {1} let^ f=f^ x:i32^ {2}', 'overlapping overload'),
+        ('overlap_base', 'def^ A {} def^ B:A {} let^ f=f^ x:A {1} let^ f=f^ x:B {2}', 'overlapping overload'),
+        ('overlap_common_derived', 'def^ A {} def^ B {} def^ C:A,B {} let^ f=f^ x:A {1} let^ f=f^ x:B {2}', 'overlapping overload'),
+        ('overlap_generic', 'let^ f=template^f^ x {x} let^ f=f^ x:i32^ {x}', 'overlapping overload'),
+        ('no_runtime_union_dispatch', 'let^ f=f^ x:i32^ {1} let^ f=f^ x:string^ {2} let^ x:i32^|string^=1 print^(f(x))', 'no matching overload'),
+        ('no_matching_arm', 'let^ f=f^ x:i32^ {1} let^ f=f^ x:string^ {2} print^(f(true^))', 'no matching overload'),
+        ('pure_calls_procedure_arm', 'let^ f=f^ x:i32^ {1} let^ f=p^ x:string^ {} let^ bad=f^ {f("s")} bad()', 'f^ cannot call p^'),
         ('missing_overload_marker', 'def^ V {m=f^ self^,x:i32^ {1} m=f^ self^,x:string^ {2}}', 'requires overload^'),
         ('overload_nothing', 'def^ V {overload^ m=f^ self^ {1}}', 'overload^ has no'),
         ('method_overlap', 'def^ V {m=f^ self^,x:i32^ {1} overload^ m=f^ self^,x:i32^ {2}}', 'overlapping overload'),

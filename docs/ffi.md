@@ -18,10 +18,10 @@ R^ 側の名前とシンボル名を分けるときは、関数リテラルの�
 
 ```rhat
 public^ let^ sqrt = externC^ sqrtf:f^ x:f32^ ->f32^;
-public^ overload^ let^ sqrt = externC^ sqrt:f^ x:f64^ ->f64^;
+public^ let^ sqrt = externC^ sqrt:f^ x:f64^ ->f64^;
 ```
 
-トップレベルの関数と同じく、同じ名前の二つ目以降の宣言には `overload^` を付けます（[オーバーロード](overloads.md)）。
+トップレベルの関数と同じく、同じ名前を並べればオーバーロードになり、`overload^` は要りません。
 
 署名は関数リテラルと同じく `f^` / `p^`、名前付きの引数、`->` の後の結果型で書き、末尾の `;` で終わります。
 すべての引数に型注釈が必要です。結果を省略すると C の `void` です。`template^` と本体は書けません。

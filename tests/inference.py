@@ -65,7 +65,7 @@ print^(f^ n {if^ n<2: 1 el^: n*this^(n-1);}(6))
     positive('inference_overloads_and_forward_call', '''
 print^(twice(21),twice(20,1))
 let^ twice=f^ x {x*2}
-overload^ let^ twice=f^ x,y {(x+y)*2}
+let^ twice=f^ x,y {(x+y)*2}
 ''', '42 42\n')
 
     positive('inference_methods', '''
