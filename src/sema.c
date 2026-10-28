@@ -1903,6 +1903,63 @@ static Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc)
 /* End the process with a message: a string^, or the name of the error
  * variant held by subject. panic^ and an error leaving the entry file differ
  * only in the reported prefix. */
+/* The source an error site names: under std/ for the standard library,
+ * else as the compiler was given it, with / between directories. */
+static char *site_source(Program *p, const char *file)
+{
+  char *out = str(file ? file : "");
+  size_t n = p->stdlib_dir ? strlen(p->stdlib_dir) : 0;
+  if (n && !strncmp(out, p->stdlib_dir, n) && (out[n] == '/' || out[n] == '\\')) {
+    out += n + 1;
+  }
+  for (char *s = out; *s; s++) {
+    *s = *s == '\\' ? '/' : *s;
+  }
+  return out;
+}
+static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin);
+/* The message() of error err, by the variant it holds when it is a union. */
+static Value error_message(Context *c, Value err, Loc loc)
+{
+  bool sum = err.type->kind == T_UNION;
+  int arms = sum ? err.type->def->alternatives.n : 1, end = ++c->in->labels;
+  Value out = value(c, type_builtin(c->p, T_STRING));
+  for (int j = 0; j < arms; j++) {
+    Type *arm = sum ? err.type->def->alternatives.v[j] : err.type;
+    int next = ++c->in->labels;
+    if (j + 1 < arms) {
+      Value test = value(c, type_builtin(c->p, T_BOOL));
+      Instr *is = emit(c, I_CASE_IS, loc);
+      is->dst = test.id;
+      is->a = err.id;
+      is->type = err.type;
+      is->label = j;
+      int here = ++c->in->labels;
+      nil_branch(c, test, here, next, loc);
+      nil_label(c, here, loc);
+    }
+    Value v = sum ? (Value){.id = case_at(c, err, arm, false, loc), .type = arm, .deps = err.deps,
+                            .storage = err.storage, .var = err.var, .addressable = err.addressable}
+                  : err;
+    Function *m = NULL;
+    for (int k = 0; k < arm->def->methods.n; k++) {
+      Function *candidate = arm->def->methods.v[k];
+      m = !strcmp(candidate->name, "message") && candidate->params.n == 1 ? candidate : m;
+    }
+    if (!m) {
+      fail(loc, "'%s' has no message() taking only self^", type_name(arm));
+    }
+    Value r = invoke_operator(c, m, v, v, &(Expr){.loc = loc});
+    out.deps |= r.deps;
+    copy_to(c, out, r, loc, true);
+    nil_jump(c, end, loc);
+    if (j + 1 < arms) {
+      nil_label(c, next, loc);
+    }
+  }
+  nil_label(c, end, loc);
+  return out;
+}
 static void terminate(Context *c, Value subject, bool panic, Loc loc)
 {
   bool sum = subject.type->kind == T_UNION;
@@ -1927,9 +1984,23 @@ static void terminate(Context *c, Value subject, bool panic, Loc loc)
       Expr literal = {.kind = E_STRING, .loc = loc, .text = name, .length = strlen(name)};
       message = expression(c, &literal, type_builtin(c->p, T_STRING)).id;
     }
+    Type *arm = sum ? subject.type->def->alternatives.v[j] : subject.type;
+    bool error = !text && arm->kind == T_STRUCT && arm->def->error_variant;
+    Value detail = {0}, site = {0};
+    if (error) {
+      /* An error also reports its message() and where it was built. */
+      Value v = sum ? (Value){.id = case_at(c, subject, arm, false, loc), .type = arm,
+                              .addressable = subject.addressable}
+                    : subject;
+      detail = error_message(c, v, loc);
+      site = field_value(c, v, arm->def->fields.v[0], loc);
+    }
     Instr *i = emit(c, I_TERMINATE, loc);
     i->a = message;
     i->label = panic;
+    i->other = error;
+    i->b = detail.id;
+    i->dst = site.id;
     if (j + 1 < arms) {
       nil_label(c, next, loc);
     }
@@ -2475,6 +2546,16 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected,
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
+  if (target->kind == E_MEMBER &&
+      error_messages(p, target, e->args.n, expression_type(c, target->a, NULL))) {
+    Value err = deref(c, expression(c, target->a, NULL), e->loc);
+    if (dead(err)) {
+      return err;
+    }
+    Value out = error_message(c, err, e->loc);
+    return destination >= 0 ? copy_to(c, (Value){.id = destination, .type = out.type}, out, e->loc, true)
+                            : out;
+  }
   if (target->kind == E_NAME) {
     for (int k = T_U8; k <= T_F64; k++) {
       if (strcmp(target->text, builtin_name(k)))
@@ -3049,6 +3130,9 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     for (int j = 0; j < e->names.n; j++) {
       char *name = e->names.v[j];
       Field *f = field(t->def, name);
+      if (!f && t->def->error_variant && !strcmp(name, "message")) {
+        continue;
+      }
       if (!f)
         fail(e->loc, "unknown field '%s' in '%s'", name, t->def->name);
       access_check(c, f->priv, f->owner, e->loc, name);
@@ -3084,7 +3168,26 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
       a->type = t;
       a->label = f->index;
       Value v = {0};
-      if (init)
+      if (t->def->error_variant && !f->index) {
+        /* The hidden site records where this error is built and its message. */
+        char *message = t->def->name;
+        for (int k = 0; k < e->names.n; k++) {
+          Expr *given = e->args.v[k];
+          if (!strcmp(e->names.v[k], "message") && given->kind != E_STRING) {
+            fail(given->loc, "an error's message is a string literal; pass details as fields");
+          }
+          message = strcmp(e->names.v[k], "message") ? message : given->text;
+        }
+        char *source = site_source(c->p, e->loc.file);
+        Instr *where = emit(c, I_SITE, e->loc);
+        where->dst = dest.id;
+        where->type = f->type;
+        where->length = strlen(source);
+        where->text = mem(where->length + strlen(message) + 2);
+        memcpy(where->text, source, where->length);
+        strcpy(where->text + where->length + 1, message);
+      }
+      else if (init)
         v = construct(c, init, f->type, dest.id);
       else if (f->type->kind == T_REF || f->type->kind == T_STRING ||
                f->type->kind == T_SLICE || f->type->kind == T_UNION ||
@@ -3577,6 +3680,18 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       i->a = base.id;
       i->type = base.type;
       return out;
+    }
+    Type *view = error_view(base.type, e->text);
+    if (view != base.type) {
+      /* Every error variant starts with the same fields, so the first one reads them. */
+      base = (Value){.id = case_at(c, base, view, false, e->loc), .type = view,
+                     .deps = base.deps, .storage = base.storage, .var = base.var,
+                     .addressable = base.addressable};
+    }
+    int site = error_site(base.type, e->text);
+    if (site >= 0) {
+      Value where = deref(c, field_value(c, base, base.type->def->fields.v[0], e->loc), e->loc);
+      return field_value(c, where, where.type->def->fields.v[site], e->loc);
     }
     if (base.type->kind != T_STRUCT)
       fail(e->loc, "field access requires a structure");

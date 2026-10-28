@@ -726,6 +726,94 @@ static Stmt *results(Parser *p, List *values, int n, Loc loc)
   }
   return source;
 }
+/* Fields after { up to }, as name:T or name:T = default. */
+static void fields(Parser *p, Def *d)
+{
+  while (!take(p, "}")) {
+    if (take(p, ",") || take(p, ";"))
+      continue;
+    Field *f = mem(sizeof(*f));
+    f->loc = tok(p)->loc;
+    f->owner = f->initializer_owner = d;
+    while (is(p, "private^") || is(p, "abstract^")) {
+      if (take(p, "private^"))
+        f->priv = true;
+      else {
+        next(p);
+        f->abstract = true;
+      }
+    }
+    f->name = decl_word(p);
+    need(p, ":");
+    f->spec = spec(p);
+    if (take(p, "=") || take(p, ":="))
+      f->init = expr(p, 0);
+    if (f->abstract && f->init)
+      fail(f->loc, "abstract field cannot have an initializer");
+    add(&d->own_fields, f);
+  }
+}
+static void def_body(Parser *p, Def *d);
+/* An error variant starts with its hidden site, the static record of where
+ * it is built: source, line, column and message. Its body, as a def^'s,
+ * adds fields and methods; message() gives the recorded message unless the
+ * variant says otherwise. */
+static void error_variant(Parser *p, Def *d)
+{
+  Field *site = mem(sizeof(*site));
+  Spec *text = mem(sizeof(*text)), *where = mem(sizeof(*where)), *line = mem(sizeof(*line));
+  text->kind = line->kind = SPEC_NAME;
+  text->name = "string^";
+  line->name = "u32^";
+  where->kind = SPEC_TUPLE;
+  add(&where->params, text);
+  add(&where->params, line);
+  add(&where->params, line);
+  add(&where->params, text);
+  site->loc = d->loc;
+  site->name = "\001site";
+  site->owner = site->initializer_owner = d;
+  site->spec = mem(sizeof(Spec));
+  site->spec->kind = SPEC_REF;
+  site->spec->elem = where;
+  add(&d->own_fields, site);
+  if (is(p, "{")) {
+    def_body(p, d);
+  }
+  for (int j = 1; j < d->own_fields.n; j++) {
+    Field *f = d->own_fields.v[j];
+    if (!strcmp(f->name, "source") || !strcmp(f->name, "line") || !strcmp(f->name, "column") ||
+        !strcmp(f->name, "message")) {
+      fail(f->loc, "'%s' is a member every error has; give the field another name", f->name);
+    }
+  }
+  for (int j = 0; j < d->own_methods.n; j++) {
+    if (!strcmp(((Function *)d->own_methods.v[j])->name, "message")) {
+      return;
+    }
+  }
+  Function *m = mem(sizeof(*m));
+  m->loc = m->declaration = d->loc;
+  m->lexical = p->scope_depth + 2;
+  m->name = "message";
+  m->owner = d;
+  m->result = text;
+  Param *self = mem(sizeof(*self));
+  self->loc = d->loc;
+  self->name = "self^";
+  self->self = true;
+  add(&m->params, self);
+  Stmt *answer = mem(sizeof(*answer));
+  answer->kind = S_RETURN;
+  answer->loc = d->loc;
+  answer->a = node(E_MEMBER, d->loc);
+  answer->a->name_loc = d->loc;
+  answer->a->text = "\001text";
+  answer->a->a = node(E_SELF, d->loc);
+  answer->a->a->text = "self^";
+  add(&m->body, answer);
+  add(&d->own_methods, m);
+}
 static void entries(Parser *p, Expr *e, const char *end, bool named) {
   bool header = p->header;
   p->header = false;
@@ -1949,6 +2037,11 @@ static void definition(Parser *p) {
       add(&d->base_names, qualified_word(p));
     } while (take(p, ","));
   }
+  def_body(p, d);
+}
+/* A def^ body from its {: fields in self^{ ... } and methods outside. */
+static void def_body(Parser *p, Def *d)
+{
   need(p, "{");
   while (!take(p, "}")) {
     if (tok(p)->kind == TOK_EOF)
@@ -1957,29 +2050,7 @@ static void definition(Parser *p) {
       continue;
     if (take(p, "self^")) {
       need(p, "{");
-      while (!take(p, "}")) {
-        if (take(p, ",") || take(p, ";"))
-          continue;
-        Field *f = mem(sizeof(*f));
-        f->loc = tok(p)->loc;
-        f->owner = f->initializer_owner = d;
-        while (is(p, "private^") || is(p, "abstract^")) {
-          if (take(p, "private^"))
-            f->priv = true;
-          else {
-            next(p);
-            f->abstract = true;
-          }
-        }
-        f->name = decl_word(p);
-        need(p, ":");
-        f->spec = spec(p);
-        if (take(p, "=") || take(p, ":="))
-          f->init = expr(p, 0);
-        if (f->abstract && f->init)
-          fail(f->loc, "abstract field cannot have an initializer");
-        add(&d->own_fields, f);
-      }
+      fields(p, d);
       continue;
     }
     bool priv = false, abstr = false, over = false, overload = false;
@@ -2164,6 +2235,7 @@ void parse_file(Program *p, const char *path, Module *module) {
         arm->module = module;
         arm->public = public;
         arm->error_variant = true;
+        error_variant(&q, arm);
         arm->id = p->defs.n;
         add(&p->defs, arm);
         add(&module->defs, arm);

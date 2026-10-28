@@ -128,6 +128,28 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   add(&call->args, pack);
   return call;
 }
+bool error_messages(Program *p, Expr *target, int arguments, Type *base)
+{
+  (void)p;
+  if (base && base->kind == T_REF) {
+    base = base->elem;
+  }
+  return target->kind == E_MEMBER && !strcmp(target->text, "message") && !arguments && base &&
+         base->kind == T_UNION && only_errors(base);
+}
+Type *error_view(Type *t, const char *name)
+{
+  bool shared = !strcmp(name, "source") || !strcmp(name, "line") || !strcmp(name, "column");
+  return t && t->kind == T_UNION && only_errors(t) && shared ? t->def->alternatives.v[0] : t;
+}
+int error_site(Type *t, const char *name)
+{
+  if (!t || t->kind != T_STRUCT || !t->def->error_variant) {
+    return -1;
+  }
+  return !strcmp(name, "source") ? 0 : !strcmp(name, "line") ? 1 : !strcmp(name, "column") ? 2
+         : !strcmp(name, "\001text") ? 3 : -1;
+}
 void results_check(Type *t, int names, Loc loc)
 {
   if (t->kind != T_STRUCT || !t->def->tuple) {
@@ -513,6 +535,10 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be,
 static Type *infer_call(Infer *c, Expr *e)
 {
   Expr *target = e->a;
+  if (target->kind == E_MEMBER && !strcmp(target->text, "message") && !e->args.n &&
+      error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {
+    return type_builtin(c->p, T_STRING);
+  }
   Function *f = NULL;
   Def *self = NULL;
   List actual = {0}, candidates = {0};
@@ -1111,6 +1137,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     if (base && base->kind == T_REF) {
       base = base->elem;
+    }
+    base = error_view(base, e->text);
+    if (error_site(base, e->text) >= 0) {
+      return type_builtin(c->p, error_site(base, e->text) % 3 ? T_U32 : T_STRING);
     }
     if (!base) {
       return NULL;
@@ -2045,7 +2075,11 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     if (base && base->kind == T_REF) {
       base = base->elem;
     }
-    if (base && base->kind == T_STRUCT) {
+    base = error_view(base, e->text);
+    if (error_site(base, e->text) >= 0) {
+      n->type = type_builtin(c->p, error_site(base, e->text) % 3 ? T_U32 : T_STRING);
+    }
+    else if (base && base->kind == T_STRUCT) {
       Field *f = field(base->def, e->text);
       n->type = f ? f->type : NULL;
     }

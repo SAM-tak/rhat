@@ -861,6 +861,9 @@ static void instruction(Output *o, Instr *i) {
     fprintf(f, "  store %s %%t%d, ptr %%t%d\n", llvm_type(arm), a, payload);
     break;
   }
+  case I_SITE:
+    fprintf(f, "  store ptr @%s_site_%d, ptr %%p%d\n", o->in->symbol, i->label, i->dst);
+    break;
   case I_CASE_AT:
     if (i->b) {
       a = ++o->tmp;
@@ -1410,6 +1413,21 @@ static void instruction(Output *o, Instr *i) {
     break;
   }
   case I_TERMINATE: {
+    if (i->other) {
+      /* An unhandled error with its message() and the site it was built at. */
+      int name = load(o, i->a), message = load(o, i->b), site = load(o, i->dst);
+      int n0 = ++o->tmp, n1 = ++o->tmp, m0 = ++o->tmp, m1 = ++o->tmp;
+      fprintf(f,
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n"
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 1\n"
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 0\n"
+              "  %%t%d = extractvalue { ptr, i64 } %%t%d, 1\n"
+              "  call void @rh_unhandled(ptr %%t%d, i64 %%t%d, ptr %%t%d, i64 %%t%d, ptr %%t%d, "
+              "i32 %d, i32 %d)\n  unreachable\n",
+              n0, name, n1, name, m0, message, m1, message, n0, n1, m0, m1, site, i->loc.line,
+              i->label);
+      break;
+    }
     a = load(o, i->a);
     b = ++o->tmp;
     r = ++o->tmp;
@@ -1512,6 +1530,24 @@ void emit_llvm(Program *p, const char *path) {
         bytes(f, i->text, i->length);
         fputc('\n', f);
       }
+      if (i->op == I_SITE) {
+        /* text holds the source, a NUL, then the message. */
+        const char *message = i->text + i->length + 1;
+        i->label = count;
+        count += 2;
+        fprintf(f, "@%s_str_%d = private unnamed_addr constant [%zu x i8] ", in->symbol,
+                i->label, i->length + 1);
+        bytes(f, i->text, i->length);
+        fprintf(f, "\n@%s_str_%d = private unnamed_addr constant [%zu x i8] ", in->symbol,
+                i->label + 1, strlen(message) + 1);
+        bytes(f, message, strlen(message));
+        fprintf(f,
+                "\n@%s_site_%d = private unnamed_addr constant { { ptr, i64 }, i32, i32, { ptr, i64 } } "
+                "{ { ptr, i64 } { ptr @%s_str_%d, i64 %zu }, i32 %d, i32 %d, "
+                "{ ptr, i64 } { ptr @%s_str_%d, i64 %zu } }\n",
+                in->symbol, i->label, in->symbol, i->label, i->length, i->loc.line, i->loc.col,
+                in->symbol, i->label + 1, strlen(message));
+      }
     }
   }
   fprintf(f,
@@ -1558,6 +1594,7 @@ void emit_llvm(Program *p, const char *path) {
   fputs("declare void @rh_runtime_init(ptr, i64)\n"
         "declare void @rh_runtime_args(i32, ptr, ptr)\n"
         "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
+        "declare void @rh_unhandled(ptr, i64, ptr, i64, ptr, i32, i32) cold noreturn\n"
         "declare void @rh_runtime_shutdown()\n"
         "declare void @rh_print_f64(double)\n"
         "declare void @rh_print_bool(i64)\n"
@@ -1705,7 +1742,8 @@ void dump_ir(Program *p, const char *path) {
                          "dyn.is",
                          "dyn.cast",
                          "dyn.data",
-                         "union.place"};
+                         "union.place",
+                         "error.site"};
   for (int j = 0; j < p->defs.n; j++) {
     Def *d = p->defs.v[j];
     fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size,

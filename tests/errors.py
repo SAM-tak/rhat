@@ -421,6 +421,40 @@ print^(unguarded(ref^ items) fits^ E.Bad)
     suite.runtime_failure('error_top_level_last', prefix+'let^ n=try^ read(-1) print^(n)', 'unhandled error E.Missing')
     suite.runtime_failure('error_top_level_variant', prefix+'do^{try^ E.Bad{}}', 'unhandled error E.Bad')
     suite.runtime_failure('panic_message', prefix+'print^(1)\npanic^ "not here"\nprint^(2)', 'line 8: panic: not here')
+    detailed = '''errordef^ ParseError {
+ Syntax {
+  self^{ at:i64^ = 0, near:string^ = "" }
+  message = f^ self^ ->string^ { self^.near }
+ },
+ Eof
+}
+let^ parse=f^ s:string^ ->i64^|ParseError.Syntax|ParseError.Eof {
+ if^ s.len=0 {return^ ParseError.Eof{message="no input"}}
+ if^ s.len>3 {return^ ParseError.Eof{}}
+ return^ ParseError.Syntax{at=3,near=s}
+}
+'''
+    positive('error_fields', detailed+'''let^ r=parse("x")
+if^ r fits^ ParseError.Syntax {print^(r.message(),r.at,r.near,r.line,r.column)}
+print^(parse("") catch^ i64^(it^.line))
+do^{ let^ x=try^ parse("y") print^(x) catch^: print^(it^.message(),it^.line,it^.column) }
+do^{ let^ x=try^ parse("") print^(x) catch^: print^(it^.message(),it^.source.len>0) }
+do^{ let^ x=try^ parse("long") print^(x) catch^: print^(it^.message()) }
+let^ e=ParseError.Eof{}
+print^(e.message(),e.line)
+''', 'x 3 x 11 10\n9\ny 11 10\nno input true\nParseError.Eof\nParseError.Eof 19\n')
+    suite.runtime_failure('error_unhandled_detail', detailed+'let^ n=try^ parse("z")',
+                          'unhandled error ParseError.Syntax: z (raised at ')
+    suite.runtime_failure('error_unhandled_site', detailed+'let^ n=try^ parse("")',
+                          'unhandled error ParseError.Eof: no input (raised at ')
+    suite.runtime_failure('error_unhandled_default', detailed+'let^ n=try^ parse("long")',
+                          'unhandled error ParseError.Eof (raised at ')
+    suite.runtime_failure('error_panic_detail', detailed+'let^ n=parse("z") catch^ panic^ it^',
+                          'panic: ParseError.Syntax: z')
+    positive('error_small', 'errordef^ E {Bad}\nlet^ f=f^ ->i64^|E.Bad {return^ 5}\nprint^(f() catch^ 0)', '5\n')
+    negative('error_field_reserved', 'errordef^ E { Bad { self^{ line:i64^=0 } } }', 'a member every error has')
+    negative('error_field_message', 'errordef^ E { Bad { self^{ message:string^="" } } }', 'a member every error has')
+    negative('error_message_literal', 'errordef^ E { Bad }\nlet^ s="x"\nlet^ e=E.Bad{message=s}', 'string literal')
     suite.runtime_failure('panic_catch_rhs', prefix+'let^ n=read(-1) catch^ panic^ it^\nprint^(n)', 'panic: E.Missing')
     positive('panic_catch_rhs_success', prefix+'let^ n=read(3) catch^ panic^ it^\nprint^(n)', '3\n')
     suite.runtime_failure('panic_catch_arm', prefix+'do^{\n let^ n=try^ read(0)\n print^(n)\ncatch^:\n panic^ it^\n}',

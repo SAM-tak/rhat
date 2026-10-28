@@ -286,6 +286,30 @@ _Noreturn void rh_terminate(const char *text, int64_t length, int32_t line,
           panic ? "panic: " : "unhandled error ", (int)length, text);
   exit(1);
 }
+/* Where an error was built: its source, line and column. */
+typedef struct {
+  const char *source;
+  int64_t length;
+  uint32_t line, column;
+} RhSite;
+_Noreturn void rh_unhandled(const char *name, int64_t length, const char *message,
+                            int64_t message_length, const RhSite *site, int32_t line,
+                            int32_t panic)
+{
+  fflush(stdout);
+  /* A message that only repeats the variant's name, its default, is shown once. */
+  if (message_length == length && !memcmp(message, name, (size_t)length)) {
+    message_length = 0;
+  }
+  fprintf(stderr, "R^ runtime error at line %" PRId32 ": %s%.*s%s%.*s", line,
+          panic ? "panic: " : "unhandled error ", (int)length, name, message_length ? ": " : "", (int)message_length, message);
+  if (site) {
+    fprintf(stderr, " (raised at %.*s:%" PRIu32 ":%" PRIu32 ")", (int)site->length,
+            site->source, site->line, site->column);
+  }
+  fputc('\n', stderr);
+  exit(1);
+}
 _Noreturn void rh_assert_fail(int32_t line) {
   rh_panic("assertion failed", line);
 }

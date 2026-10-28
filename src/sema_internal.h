@@ -292,6 +292,15 @@ Type *type_union(Program *p, Type *a, Type *b, Loc loc);
 Type *type_tuple(Program *p, List *elems, Loc loc);
 /* Reject destructuring t into a number of names other than its results. */
 void results_check(Type *t, int names, Loc loc);
+/* For member name of t: the first variant when t is a union of errors and
+ * name is a member all variants share at the same place, else t. */
+Type *error_view(Type *t, const char *name);
+/* Whether target(...) calls message() on base, a union of errors, which
+ * each variant answers. */
+bool error_messages(Program *p, Expr *target, int arguments, Type *base);
+/* Which of source, line, column and the recorded message name is on error
+ * variant t, or -1. */
+int error_site(Type *t, const char *name);
 
 /* Select an unambiguous contextual type for a literal. */
 Type *union_literal_hint(Type *t, Expr *e);
