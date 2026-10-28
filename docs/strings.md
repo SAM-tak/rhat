@@ -6,8 +6,9 @@ R^ の文字列と文字の扱いです。
 
 - 実装済み: `char^`、文字列リテラルの UTF-8 検査、`string^(bytes)` のキャスト、`s.bytes`、`s.slice(r)`、
   `s.decode(at)`、`s.count_chars()`、`s.chars()`、`s.find(t)`・`s.starts_with(t)`・`s.ends_with(t)`、比較。
-- 未実装: `split`・`trim`、確保しない反復（`each_char`・`char_indices`）、`std.text.Builder` と追記、
-  文字列補間、`std.text` の大文字・小文字変換と正規化。
+- 実装済み: `std.text.Builder`（`append`・`append_char`・`text`・`clear`）、値の `write_text(out)`・`tostring()`。
+- 未実装: `split`・`trim`、確保しない反復（`each_char`・`char_indices`）、文字列補間、
+  `std.text` の大文字・小文字変換と正規化。
 - `externC^` の結果として受け取る `string^` は、まだ検査していません（C 側が UTF-8 を渡す前提です）。
 
 ## 方針
@@ -146,12 +147,42 @@ print^(cs[2], cs.len)                 # 以後は O(1)
 `string^` は借用ビューなので、文字列を新しく作るには所有する保存場所が要ります。保存場所は `grow^ u8^[]` とし、
 `string^` はその上のビューとして得ます。
 
-- `buf.append_text(s:string^)`・`buf.append_char(c:char^)`: UTF-8 として追記します。
-  `grow^ u8^[]` の要素は UTF-8 のままなので、追記の後もビューへの変換は検査なしでできます。
-  この保証のため、文字列を組み立てる用途には `std.text.Builder`（中身は `grow^ u8^[]`）を用意し、
-  任意のバイトを追記できる素の `grow^ u8^[]` と区別します。
-- `builder.text() -> string^`: 組み立てた内容のビュー。寿命は builder の借用です。
-- 所有値を返せるようになったので、組み立てた文字列を返す関数は `-> std.text.Builder` と書けます。
+`std.text.Builder` は普通の値の型で、束縛ごとに自分の領域を持ちます。中身は非公開の `grow^ u8^[]` で、
+追記の手段を UTF-8 を保つものに限るため、任意のバイトを追記できる素の `grow^ u8^[]` と区別します。
+
+```rhat
+import^ std.text
+var^ out = std.text.Builder{}
+out.append("x = ")
+(42).write_text(ref^ out)
+out.append_char(char^"!")
+print^(out.text())           # x = 42!
+let^ s = (0.1).tostring()    # 新しい Builder
+print^(s.text())
+```
+
+- `append(s:string^)`・`append_char(c:char^)`: UTF-8 として追記します。`clear()` は空にします。
+- `text() -> string^`: 組み立てた内容のビュー。寿命は builder の借用です。今は `string^(bytes)` と同じ検査を通します。
+- 組み立てた文字列を返す関数は `-> std.text.Builder` と書けます。
+
+### 値を文字列にする
+
+数値・`bool^`・`char^`・`string^` は次の2つを持ちます（L^ の 14.17 の `tostring` にあたる）。
+
+- `x.write_text(out:ref^ std.text.Builder)`: `x` を `out` に追記します。基本の操作で、確保は `out` の中だけです。
+- `x.tostring() -> std.text.Builder`: 新しい Builder を構築先に作って `write_text` します。所有値なので束縛して使います。
+
+どちらかを使うモジュールには、`char^(...)` と同じく `std.text` を見えない名前で読み込みます。
+
+書式:
+
+- 整数は 10 進。128 ビットも含みます。
+- 浮動小数点は、読み戻して同じ値になる最短の表記です（`0.1` → `0.1`、`1.0 / 3.0` → `0.3333333333333333`）。
+  指数が -7 以下か 21 以上のときだけ指数表記にします（JavaScript と同じ）。
+  整数として読める綴りには `.0` を足し（`2.0`、`2500.0`）、NaN は常に `nan` です（L^ の 14.8 と同じ規則）。
+  `f8^`・`f16^` は `f64^` に広げてから書きます。
+- `bool^` は `true`・`false`、`char^` は UTF-8。
+- `print^` の浮動小数点も同じ書式です。
 
 ### 文字列補間（後続）
 

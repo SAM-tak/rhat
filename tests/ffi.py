@@ -26,7 +26,7 @@ var^ bytes:u8^[4]=[1,2,3,4]
 memset(bytes[1 :: 3], 7, 2)
 print^(hypot(3.0,4.0), mantissa, exponent, strlen("hello"), abs(-5), magnitude(-6))
 print^(bytes[0], bytes[1], bytes[2], bytes[3])
-''', '5 0.5 4 5 5 6\n1 7 7 4\n', inspect=declarations)
+''', '5.0 0.5 4 5 5 6\n1 7 7 4\n', inspect=declarations)
 
     positive('ffi_procedure_output_order', '''
 externC^ puts:p^ s:string^ ->i32^;
@@ -40,7 +40,7 @@ let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;
 let^ root = externC^ sqrt:f^ x:f64^ ->f64^;
 externC^ sqrt:f^ x:f64^ ->f64^;
 print^(root(f32^(2.25)), root(6.25), sqrt(16.0))
-''', '1.5 2.5 4\n')
+''', '1.5 2.5 4.0\n')
 
     if os.name == 'nt':
         linked = 'externC^ GetCurrentProcessId:p^ ->u32^;\nprint^(GetCurrentProcessId() > 0)\n'
@@ -91,7 +91,7 @@ let^ n = ffi_nest(Nest{})
 let^ q = lldiv(17, 5)
 print^(s.x, s.y, m.a, m.b, m.c, ffi_pair_sum(Pair{lo = 40, hi = 2}))
 print^(b.v[0], b.v[3], p.x, p.y, ffi_sum(ps[::], 2), n.p.lo, n.ok, n.w[2], q.quot, q.rem)
-''', '11 22 6 6 95 42\n10 40 4 6 7 1 true 3 3 2\n', extra=('--runtime', structs))
+''', '11.0 22.0 6 6 95 42\n10 40 4.0 6.0 7.0 1 true 3 3 2\n', extra=('--runtime', structs))
 
     # includeC^: a header's static inline functions, its struct and opaque types.
     (suite.work / 'ffi_lib.h').write_text('''#include <stdbool.h>
@@ -141,7 +141,7 @@ let^ missing = ffi_box_find(0)
 print^(ffi_box_get(b), found fits^ nil^, missing fits^ nil^, ffi_box_or(found, -1), ffi_box_or(missing, -1), ffi_box_or(nil^, -2))
 if^ found fits^ ref^ FfiBox { print^(ffi_box_get(found)) ffi_box_free(found) }
 ffi_box_free(b)
-''', '1 42 21 2.5\n7 false true 9 -1 -2\n9\n', extra=('--runtime', boxes))
+''', '1 42 21.0 2.5\n7 false true 9 -1 -2\n9\n', extra=('--runtime', boxes))
 
     def rejected_by_c(name, text, diagnostic):
         """The C compiler checks shims against the header's declarations."""
@@ -202,7 +202,7 @@ exportC^ let^ r_flag = f^ b:bool^ -> bool^ { !b }
 exportC^ let^ r_pick = f^ a:ref^ Box | nil^, b:ref^ Box | nil^ -> ref^ Box | nil^ { if^ a fits^ nil^ { return^ b } return^ nil^ }
 '''
     positive('ffi_export_callbacks', exports + 'print^(ffi_call_twice(20), ffi_call_mid(), ffi_recurse(1000), ffi_flag(), ffi_pick(), ffi_hold(5))\n',
-             '41 5 1000 2 3 15\n', extra=('--runtime', callbacks))
+             '41 5.0 1000 2 3 15\n', extra=('--runtime', callbacks))
     suite.runtime_failure('ffi_export_nesting_limit', exports + 'print^(ffi_hold(100))\n',
                           'C callbacks nest deeper than the data stacks allow', extra=('--runtime', callbacks))
     negative('ffi_export_slice', 'exportC^ let^ g = f^ xs:i32^[:] -> i32^ { 0 }', "exportC^ parameter 'xs' needs a C type annotation")

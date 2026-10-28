@@ -299,6 +299,8 @@ bool range_type(Type *t);
 Type *char_cast_type(Program *p, Loc loc);
 /* What string^(bytes) casts to: string^ | std.text.Error.Invalid. */
 Type *text_cast_type(Program *p, Loc loc);
+/* Whether t writes itself as text: a number, bool^, char^ or string^. */
+bool textual(Type *t);
 /* The type of string^ method name, or NULL when string^ has none. */
 Type *text_method_type(Program *p, const char *name, Loc loc);
 /* Reject destructuring t into a number of names other than its results. */

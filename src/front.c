@@ -1058,6 +1058,8 @@ static Expr *primary(Parser *p) {
       n->a = e;
       n->name_loc = tok(p)->loc;
       n->text = word(p);
+      /* tostring() and write_text(out) answer with std.text.Builder. */
+      p->text_cast |= !strcmp(n->text, "tostring") || !strcmp(n->text, "write_text");
       e = n;
     }
     else if (is(p, "(") &&

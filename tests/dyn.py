@@ -41,7 +41,7 @@ for^ var^ i:i64^ = 0 while^ i < 2 next^ i += 1 { all[i].describe() all[i].scale(
 print^ total(all[::])
 let^ one:ref^ dyn^ Shape = ref^ a
 one.describe()
-''', '7\narea 4\ncircle 3\n28\narea 16\n', inspect=tables)
+''', '7.0\narea 4.0\ncircle 3.0\n28.0\narea 16.0\n', inspect=tables)
 
     positive('dyn_recursion_without_owned_values', '''def^ W { abstract^ go:p^ self^, n:i64^; }
 def^ A : W {

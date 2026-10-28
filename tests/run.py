@@ -864,7 +864,7 @@ print^(inferred(-12.75), u8^(255.75), i8^(-128.0))
 let^ a:i128^=-170141183460469231731687303715884105728
 let^ b:u128^=340282366920938463463374607431768211455
 print^(f64^(a), f64^(b))
-''', "-12 255 -128\n-1.7014118346046923e+38 3.4028236692093846e+38\n")
+''', "-12 255 -128\n-1.7014118346046923e+38 3.402823669209385e+38\n")
 float_code = []
 for src in ("f8^", "f16^", "f32^", "f64^"):
     for dst in ("f8^", "f16^", "f32^", "f64^"):
@@ -875,11 +875,11 @@ for src, _, unsigned in integer_types:
     for dst in ("f8^", "f16^", "f32^", "f64^"):
         float_code.append(f"do^{{ let^ x:{src}={12 if unsigned else -12}; print^({dst}(x)) }}")
 positive("numeric_conversion_matrix", "\n".join("(p^ {" + s + "})();" for s in float_code),
-         ("1.5\n" * 4 + "12\n" * 10) * 4 + "-12\n" * 20 + "12\n" * 20)
+         ("1.5\n" * 4 + "12\n" * 10) * 4 + "-12.0\n" * 20 + "12.0\n" * 20)
 positive("f8_direct_conversion", '''
 print^(f8^(1.0625000000000002), f8^(1.0624999999999998))
 print^(f8^(0.0009765625000000002), f8^(0.0009765624999999998))
-''', "1.125 1\n0.001953125 0\n")
+''', "1.125 1.0\n0.001953125 0.0\n")
 positive("bitwise_precedence", "print^(2 + 3 bitand^ 1, bitnot^ 0 bitand^ 3, 8 bitshift^ -1 bitxor^ 3)", "3 3 7\n")
 positive("numeric_side_effects_and_inference", '''
 let^ bump=p^ x:ref^ i32^ -> i32^ { *x := *x+1; return^ *x }
@@ -1034,7 +1034,7 @@ let^ zero:{kind}=0.0
 let^ nan=zero/zero
 assert^(nan!=nan)
 assert^(!(nan=nan))
-""", "2 1 0.75 3 -0.5 2\n")
+""", "2.0 1.0 0.75 3.0 -0.5 2.0\n")
 
 positive("f8_rounding", """
 let^ even:f8^=1.0625
@@ -1046,7 +1046,7 @@ let^ maximum:f8^=448
 let^ doubled=maximum+maximum
 assert^(doubled!=doubled)
 print^(even,above,odd,tiny,tiny_above)
-""", "1 1.125 1.25 0 0.001953125\n")
+""", "1.0 1.125 1.25 0.0 0.001953125\n")
 positive("f16_rounding", """
 let^ even:f16^=1.00048828125
 let^ above:f16^=1.000488281250000000000000000000000001
@@ -1054,18 +1054,18 @@ let^ odd:f16^=1.00146484375
 let^ tiny:f16^=0.0000000298023223876953125
 let^ tiny_above:f16^=0.0000000298023223876953125000000000001
 print^(even,above,odd,tiny,tiny_above)
-""", "1 1.0009765625 1.001953125 0 5.9604644775390625e-08\n")
+""", "1.0 1.0009765625 1.001953125 0.0 5.9604644775390625e-08\n")
 positive("f32_rounding", """
 let^ n:f32^=16777217
 let^ x:f32^=1.000000059604644775390625
 let^ y:f32^=1.000000059604644775390625000000001
 print^(n,x,y)
-""", "16777216 1 1.0000001192092896\n")
+""", "16777216.0 1.0 1.0000001192092896\n")
 positive("float_literal_conditional", """
 let^ choose=f^ x:f16^ { if^ x>0: 0.5 el^: x; }
 let^ n:f16^=-2.0
 print^(choose(n))
-""", "-2\n")
+""", "-2.0\n")
 negative("f8_literal_overflow", "let^ n:f8^=465.0", "does not fit 'f8^'")
 negative("f16_literal_overflow", "let^ n:f16^=65520.0", "does not fit 'f16^'")
 negative("f32_literal_overflow", "let^ n:f32^=4e38", "does not fit 'f32^'")
@@ -1631,7 +1631,7 @@ print^(big,byte,1.5 * 2.0,true^)
 let^ low:i32^=-2147483648
 assert^(low - 1 = 2147483647)
 print^(7 / 2,7 % 2)
-""", "9223372036854775807 255 3 true\n3 1\n")
+""", "9223372036854775807 255 3.0 true\n3 1\n")
 positive("paths with spaces", 'print^(42)', "42\n")
 positive("reference_mutation", """
 let^ set=p^ p:ref^ i32^ { *p := 8 }

@@ -209,7 +209,7 @@ print^(m.floor(-1.5), m.ceil(-1.5), m.trunc(-1.5), m.round(2.5), m.abs(-3.0), m.
 print^(m.log(m.e), m.log2(8.0), m.log10(1000.0), m.exp2(f32^(3.0)), m.tanh(0.0), m.cosh(0.0), m.tau = 2.0*m.pi)
 let^ inf = 1.0/0.0
 print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(1.0), m.isfinite(1.0), m.isfinite(inf), m.isnan(f32^(1.0)))
-'''}, '1.4142135623730951 2.5 1 true 1024\n-2 -1 -1 3 3 -2 7\n1 3 3 8 0 1 true\n'
+'''}, '1.4142135623730951 2.5 1.0 true 1024.0\n-2.0 -1.0 -1.0 3.0 3.0 -2.0 7.0\n1.0 3.0 3.0 8.0 0.0 1.0 true\n'
           'true true true false true false false\n')
     positive('std_text_parse', {'main.rh': '''let^ t = import^ std.text
 let^ show = p^ r:i64^ | t.Error.Invalid | t.Error.OutOfRange {
@@ -224,7 +224,7 @@ print^(x fits^ f64^, y fits^ t.Error.OutOfRange, z fits^ t.Error.Invalid, w fits
 if^ x fits^ f64^ { print^(x) }
 if^ w fits^ f32^ { print^(w = f32^(0.1)) }
 '''}, '42\n-9223372036854775808\nrange\n7\ninvalid\ninvalid\ninvalid\ninvalid\ntrue true\n'
-          'true true true true true\n2500\ntrue\n')
+          'true true true true true\n2500.0\ntrue\n')
     negative('user_llvm_intrinsic', {'main.rh': 'let^ s = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;'}, 'standard library only')
     negative('private_standard_extern',{'main.rh': 'import^ std.random\nprint^(std.random.sqrt(4.0))'}, 'sqrt')
     positive('module_dyn_tables_and_downcasts', {
@@ -244,7 +244,7 @@ if^ x fits^ lib.kinds.D1 { print^("main sees D1", x.a) }
 '''}, 'lib sees D1 7\nlib other mine\nmain sees D1 7\n')
     positive('module_public_extern', {
         'lib/cmath.rh': 'module^ lib.cmath\npublic^ externC^ hypot:f^ x:f64^, y:f64^ ->f64^;\npublic^ let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;\n',
-        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint^(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5 10 1.5\n')
+        'main.rh': 'import^ lib.cmath\nexternC^ hypot:f^ x:f64^, y:f64^ ->f64^;\nprint^(lib.cmath.hypot(3.0,4.0), hypot(6.0,8.0), lib.cmath.root(f32^(2.25)))'}, '5.0 10.0 1.5\n')
     positive('module_recursive_external_borrow', {
         'lib/borrow.rh': '''module^ lib.borrow
 public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {

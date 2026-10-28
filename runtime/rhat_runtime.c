@@ -316,22 +316,63 @@ _Noreturn void rh_assert_fail(int32_t line) {
 _Noreturn void rh_float_cast_fail(int32_t line) {
   rh_panic("floating value out of integer range", line);
 }
-void rh_print_f64(double n) { printf("%.17g", n); }
+/* A real in its shortest spelling that reads back the same: positional
+ * unless its exponent is below -6 or at least 21, as JavaScript writes
+ * numbers, with .0 when it would read as an integer, and nan for every NaN. */
+static int rh_real_text(char *out, size_t cap, double n)
+{
+  if (n != n) {
+    return snprintf(out, cap, "nan");
+  }
+  int digits = 1;
+  while (digits < 17 && (snprintf(out, cap, "%.*e", digits - 1, n), strtod(out, NULL) != n)) {
+    digits++;
+  }
+  snprintf(out, cap, "%.*e", digits - 1, n);
+  const char *e = strchr(out, 'e');
+  int exponent = e ? atoi(e + 1) : 0, length;
+  if (!e || exponent < -6 || exponent >= 21) {
+    length = snprintf(out, cap, "%.*g", digits, n);
+  }
+  else if (exponent >= digits - 1) {
+    /* Past its digits, a whole number goes on in zeros, not the binary value's. */
+    char mantissa[24];
+    int count = 0;
+    for (const char *c = out; c < e; c++) {
+      if (*c >= '0' && *c <= '9') {
+        mantissa[count++] = *c;
+      }
+    }
+    length = snprintf(out, cap, "%s%.*s%0*d", out[0] == '-' ? "-" : "", count, mantissa,
+                      exponent - (digits - 1), 0);
+    length -= exponent == digits - 1;
+  }
+  else {
+    length = snprintf(out, cap, "%.*f", digits - 1 - exponent, n);
+  }
+  bool whole = true;
+  for (int j = 0; j < length; j++) {
+    whole &= (out[j] >= '0' && out[j] <= '9') || out[j] == '-';
+  }
+  return whole ? length + snprintf(out + length, cap - (size_t)length, ".0") : length;
+}
+void rh_print_f64(double n)
+{
+  char text[40];
+  fwrite(text, 1, (size_t)rh_real_text(text, sizeof text, n), stdout);
+}
 void rh_print_bool(int64_t b) { fputs(b ? "true" : "false", stdout); }
 void rh_print_string(const char *s, uint64_t n) {
   fwrite(s, 1, (size_t)n, stdout);
 }
 void rh_print_space(void) { fputc(' ', stdout); }
+int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
+                       int32_t line);
 /* Write a Unicode scalar value as UTF-8. */
 void rh_print_char(uint32_t c)
 {
-  char out[4];
-  int n = c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
-  out[0] = (char)(n == 1 ? c : (0xF00u >> n & 0xF0u) | (c >> (6 * (n - 1))));
-  for (int j = 1; j < n; j++) {
-    out[j] = (char)(0x80u | ((c >> (6 * (n - 1 - j))) & 0x3Fu));
-  }
-  fwrite(out, 1, (size_t)n, stdout);
+  unsigned char out[48];
+  fwrite(out, 1, (size_t)rh_text_format(out, sizeof out, &c, 32 | 4 << 8, 0), stdout);
 }
 /* The width of the UTF-8 scalar value at s within n bytes, with its value
  * in *code, or 0 when the bytes there encode none. */
@@ -451,12 +492,14 @@ int64_t rh_char_of_text(const unsigned char *s, int64_t n)
 void rh_print_newline(void) { fputc('\n', stdout); }
 /* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and
  * narrow integers, and do not require a C compiler-specific 128-bit ABI. */
-void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
+/* An integer of bits bits in decimal, in at most 41 bytes. */
+static int rh_integer_text(char *out, const void *value, int32_t bits, int32_t uns)
+{
   unsigned char bytes[16] = {0};
-  int n = bits / 8;
+  int n = bits / 8, length = 0;
   memcpy(bytes, value, (size_t)n);
   if (!uns && (bytes[n - 1] & 128)) {
-    fputc('-', stdout);
+    out[length++] = '-';
     unsigned carry = 1;
     for (int j = 0; j < n; j++) {
       unsigned v = (unsigned)(bytes[j] ^ 255u) + carry;
@@ -479,5 +522,38 @@ void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
     digits[count++] = (char)('0' + remainder);
   } while (nonzero);
   while (count)
-    fputc(digits[--count], stdout);
+    out[length++] = digits[--count];
+  return length;
+}
+void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
+  char text[41];
+  fwrite(text, 1, (size_t)rh_integer_text(text, value, bits, uns), stdout);
+}
+/* Write the value at value into out, at least 48 bytes, and answer its
+ * length. kind is its width in bits, plus 256 for unsigned, 512 for a real,
+ * 768 for bool^ and 1024 for char^. */
+int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
+                       int32_t line)
+{
+  (void)cap;
+  (void)line;
+  int bits = (int)(kind & 255), form = (int)(kind >> 8);
+  if (form == 2) {
+    return rh_real_text((char *)out, 48, bits == 32 ? *(const float *)value : *(const double *)value);
+  }
+  if (form == 3) {
+    bool truth = *(const unsigned char *)value & 1;
+    memcpy(out, truth ? "true" : "false", truth ? 4 : 5);
+    return truth ? 4 : 5;
+  }
+  if (form == 4) {
+    uint32_t c = *(const uint32_t *)value;
+    int n = c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+    out[0] = (unsigned char)(n == 1 ? c : (0xF00u >> n & 0xF0u) | (c >> (6 * (n - 1))));
+    for (int j = 1; j < n; j++) {
+      out[j] = (unsigned char)(0x80u | ((c >> (6 * (n - 1 - j))) & 0x3Fu));
+    }
+    return n;
+  }
+  return rh_integer_text((char *)out, value, bits, form == 1);
 }

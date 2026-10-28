@@ -171,6 +171,11 @@ Type *text_method_type(Program *p, const char *name, Loc loc)
   }
   return NULL;
 }
+bool textual(Type *t)
+{
+  return t && (kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL ||
+               t->kind == T_CHAR || t->kind == T_STRING);
+}
 /* Reject reading a string^ as bytes without .bytes. */
 static void text_bytes_only(Type *t, const char *what, Loc loc)
 {
@@ -588,6 +593,17 @@ static Type *infer_call(Infer *c, Expr *e)
   if (target->kind == E_MEMBER && !strcmp(target->text, "message") && !e->args.n &&
       error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {
     return type_builtin(c->p, T_STRING);
+  }
+  if (target->kind == E_MEMBER &&
+      (!strcmp(target->text, "tostring") || !strcmp(target->text, "write_text"))) {
+    Type *base = infer_expr(c, target->a, NULL);
+    Def *builder = lookup_def(c->p, "std.text.Builder");
+    if (textual(base) && builder) {
+      for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], NULL);
+      }
+      return target->text[0] == 't' ? builder->type : type_builtin(c->p, T_VOID);
+    }
   }
   if (target->kind == E_MEMBER && text_method_type(c->p, target->text, e->loc)) {
     Type *base = infer_expr(c, target->a, NULL);

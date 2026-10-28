@@ -2765,6 +2765,92 @@ static Value text_cast(Context *c, Expr *e, int destination)
   nil_label(c, done, e->loc);
   return out;
 }
+/* x.write_text(out) appends x to Builder out; x.tostring() builds a new
+ * Builder at the destination with it. x is a number, bool^, char^ or
+ * string^; the others are written into a local buffer first. */
+static Value value_text(Context *c, Expr *e, int destination)
+{
+  Program *p = c->p;
+  Expr *target = e->a;
+  bool build = !strcmp(target->text, "tostring");
+  Def *builder = lookup_def(p, "std.text.Builder");
+  if (!builder) {
+    fail(e->loc, "internal: %s needs std.text", target->text);
+  }
+  if (e->args.n != !build) {
+    fail(e->loc, build ? "x.tostring() takes no arguments" : "x.write_text(out) takes a ref^ std.text.Builder");
+  }
+  Value x = expression(c, target->a, NULL);
+  if (dead(x)) {
+    return x;
+  }
+  Value out = {.id = -1, .type = type_builtin(p, T_VOID)}, into;
+  if (build) {
+    if (destination < 0) {
+      fail(e->loc, "x.tostring() builds a std.text.Builder; bind it, as in let^ s = x.tostring()");
+    }
+    Expr empty = {.kind = E_RECORD, .loc = e->loc, .text = builder->name};
+    out = into = construct(c, &empty, builder->type, destination);
+  }
+  else {
+    into = deref(c, expression(c, e->args.v[0], type_wrap(p, T_REF, builder->type, 0)), e->loc);
+    if (into.type != builder->type) {
+      fail(e->loc, "x.write_text(out) takes a ref^ std.text.Builder, found '%s'", type_name(into.type));
+    }
+  }
+  Value text = x;
+  if (x.type->kind != T_STRING) {
+    if (x.type->kind == T_F8 || x.type->kind == T_F16) {
+      Value wide = value(c, type_builtin(p, T_F64));
+      Instr *i = emit(c, I_CONVERT, e->loc);
+      i->dst = wide.id;
+      i->a = x.id;
+      i->type = wide.type;
+      x = wide;
+    }
+    Type *buffer = type_wrap(p, T_ARRAY, type_builtin(p, T_U8), 48);
+    Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
+    int bytes = slot(c, buffer, false);
+    Value args[3] = {{.id = slot(c, view, false), .type = view},
+                     {.id = slot(c, type_wrap(p, T_REF, x.type, 0), false)},
+                     constant(c, T_I64,
+                              fmt("%d", numeric_bits(x.type->kind) |
+                                            (kind_unsigned(x.type->kind) ? 1 : kind_float(x.type->kind) ? 2
+                                             : x.type->kind == T_BOOL ? 3 : x.type->kind == T_CHAR ? 4 : 0)
+                                                << 8),
+                              e->loc)};
+    Instr *i = emit(c, I_SLICE, e->loc);
+    i->dst = args[0].id;
+    i->a = bytes;
+    i->b = i->other = -1;
+    i->type = buffer;
+    i = emit(c, I_ADDR, e->loc);
+    i->dst = args[1].id;
+    i->a = x.id;
+    i->type = ((Slot *)c->in->slots.v[args[1].id])->type;
+    Value length = helper(c, "rh_text_format", args, 3, T_I64, e->loc);
+    text = (Value){.id = slot(c, type_builtin(p, T_STRING), false), .type = type_builtin(p, T_STRING)};
+    Value start = constant(c, T_I64, "0", e->loc);
+    i = emit(c, I_SLICE, e->loc);
+    i->dst = text.id;
+    i->a = bytes;
+    i->b = start.id;
+    i->other = length.id;
+    i->type = buffer;
+  }
+  Field *bytes = field(builder, "bytes");
+  int place = slot(c, bytes->type, true);
+  Instr *i = emit(c, I_FIELD, e->loc);
+  i->dst = place;
+  i->a = into.id;
+  i->type = builder->type;
+  i->label = bytes->index;
+  i = emit(c, I_APPEND, e->loc);
+  i->a = place;
+  i->b = text.id;
+  i->type = bytes->type;
+  return out;
+}
 /* The built-in methods of string^, which address it by byte offsets. */
 static Value text_method(Context *c, Expr *e, int destination)
 {
@@ -2930,6 +3016,11 @@ static Value call(Context *c, Expr *e, Type *expected, int destination) {
   }
   if (target->kind == E_NAME && !strcmp(target->text, "string^")) {
     return text_cast(c, e, destination);
+  }
+  if (target->kind == E_MEMBER &&
+      (!strcmp(target->text, "tostring") || !strcmp(target->text, "write_text")) &&
+      textual(expression_type(c, target->a, NULL))) {
+    return value_text(c, e, destination);
   }
   if (target->kind == E_MEMBER && text_method_type(p, target->text, e->loc)) {
     Type *base = expression_type(c, target->a, NULL);

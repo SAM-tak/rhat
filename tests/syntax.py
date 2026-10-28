@@ -372,6 +372,34 @@ let^ u=string^(bad[::]) catch^ "invalid"
 print^(t,u,s.slice(1 :: 4),s.slice((4 ::)))
 ''', '9 4 97\na a\nあ あ\n😀 😀\nb b\n4 あ 😀\n4 -1 true true false\ntrue true true -1 true\nhi! invalid あ 😀b\n')
 
+    positive('tostring', '''
+import^ std.text
+let^ a=(42).tostring()
+let^ n:u64^=18446744073709551615
+let^ c=n.tostring()
+let^ d=(0.1).tostring()
+let^ e=(2.0).tostring()
+let^ g=false^.tostring()
+let^ h=char^"あ".tostring()
+let^ i="text".tostring()
+print^(a.text(),c.text(),d.text(),e.text(),g.text(),h.text(),i.text())
+var^ out=std.text.Builder{}
+let^ x:i128^=-170141183460469231731687303715884105728
+x.write_text(ref^ out)
+out.append(" / ")
+out.append_char(char^"😀")
+out.append_char(char^"é")
+(3.25).write_text(ref^ out)
+let^ small:f16^=1.5
+small.write_text(ref^ out)
+print^(out.text())
+out.clear()
+print^(out.text().bytes.len)
+print^(2500.0,1.0/3.0,1.5e-7,1e21,123456789012345680000.0,-0.0,100.5)
+let^ z=0.0
+print^(1.0/z,-1.0/z,z/z)
+''', '42 18446744073709551615 0.1 2.0 false あ text\n-170141183460469231731687303715884105728 / 😀é3.251.5\n0\n2500.0 0.3333333333333333 1.5e-07 1e+21 123456789012345680000.0 -0.0 100.5\ninf -inf nan\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -610,6 +638,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 :: 1]', 'slice it with s.slice'),

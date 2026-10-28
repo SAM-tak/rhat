@@ -55,3 +55,28 @@ public^let^parse_f32 = f^s:string^ -> f32^ | Error.Invalid | Error.OutOfRange {
     if^status = 2 { return^Error.OutOfRange{} }
     return^out
 }
+
+# Owned UTF-8 text built by appending. Every way in keeps its bytes UTF-8,
+# so text() views them as a string^. tostring() builds one.
+public^def^Builder {
+    self^{ private^bytes:grow^ u8^[] = [] }
+    append = p^ self^, s:string^ { self^.bytes.append(s) }
+    append_char = p^ self^, c:char^ {
+        let^n = u32^(c)
+        if^n < 128 {
+            self^.bytes.push(u8^(n))
+            return^
+        }
+        var^lead:u32^ = 192
+        var^unit:u32^ = 64
+        if^n >= 2048 { lead := 224 unit := 4096 }
+        if^n >= 65536 { lead := 240 unit := 262144 }
+        self^.bytes.push(u8^(lead + n / unit))
+        repeat^ while^ unit > 1 {
+            unit := unit / 64
+            self^.bytes.push(u8^(n / unit % 64 + 128))
+        }
+    }
+    text = f^ self^ -> string^ { string^(self^.bytes[::]) catch^ "" }
+    clear = p^ self^ { self^.bytes.clear() }
+}
