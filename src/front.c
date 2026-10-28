@@ -686,6 +686,7 @@ static Spec *result_spec(Parser *p)
   return spec(p);
 }
 static Expr *expr(Parser *p, int min);
+static Expr *operation(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
 static Expr *node(int k, Loc l) {
@@ -1031,14 +1032,16 @@ static Expr *primary(Parser *p) {
       Expr *n = node(E_INDEX, e->loc);
       n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?[");
       n->a = e;
-      n->b = is(p, "::") ? NULL : expr(p, 0);
-      if (is(p, "::") || is(p, "to^")) {
+      bool header = p->header;
+      p->header = false;
+      n->b = expr(p, 0);
+      p->header = header;
+      if (n->b->kind == E_RANGE) {
+        /* A range written in place slices with its bounds. */
         n->kind = E_SLICE;
-        n->text = next(p)->text;
-        n->c = is(p, "]") ? NULL : expr(p, 0);
-        if (!strcmp(n->text, "to^") && (!n->b || !n->c)) {
-          fail(n->loc, "an inclusive to^ slice needs both bounds");
-        }
+        n->text = n->b->text;
+        n->c = n->b->b;
+        n->b = n->b->a;
       }
       need(p, "]");
       e = n;
@@ -1093,7 +1096,7 @@ static int prec(const char *s) {
     return 7;
   return -1;
 }
-static Expr *expr(Parser *p, int min) {
+static Expr *operation(Parser *p, int min) {
   Expr *e = primary(p);
   for (;;) {
     Token *t = tok(p);
@@ -1148,6 +1151,45 @@ static Expr *expr(Parser *p, int min) {
     }
   }
   return e;
+}
+/* Whether the token at offset k from the current one is ( [ ?[ , or ) ] ,. */
+static bool range_delimiter(Parser *p, int k, bool opening)
+{
+  if (p->at + k < 0 || p->at + k >= p->tokens.n) {
+    return false;
+  }
+  const char *s = ((Token *)p->tokens.v[p->at + k])->text;
+  return opening ? !strcmp(s, "(") || !strcmp(s, "[") || !strcmp(s, "?[") || !strcmp(s, ",")
+                 : !strcmp(s, ")") || !strcmp(s, "]") || !strcmp(s, ",");
+}
+/* An expression, at the top level also a range a :: b or a to^ b. A
+ * header's to^ belongs to its loop or arm instead. An omitted end must
+ * stand next to a delimiter, so that a range never runs on to the next
+ * line's expression. */
+static Expr *expr(Parser *p, int min)
+{
+  bool open_start = !min && !p->header && is(p, "::");
+  if (open_start && !range_delimiter(p, -1, true)) {
+    fail(tok(p)->loc, "a range without its start goes right after (, [ or ,; write (:: n)");
+  }
+  Expr *e = open_start ? NULL : operation(p, min);
+  if (min || p->header || !(is(p, "::") || is(p, "to^"))) {
+    return e;
+  }
+  Token *t = next(p);
+  Expr *r = node(E_RANGE, e ? e->loc : t->loc);
+  r->text = t->text;
+  r->a = e;
+  if (!range_delimiter(p, 0, false)) {
+    if (tok(p)->loc.line != t->loc.line) {
+      fail(t->loc, "a range without its end goes right before ), ] or ,; write (n ::)");
+    }
+    r->b = operation(p, 0);
+  }
+  if (!strcmp(r->text, "to^") && (!r->a || !r->b)) {
+    fail(r->loc, "an inclusive to^ range needs both bounds");
+  }
+  return r;
 }
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
@@ -1337,9 +1379,10 @@ static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no) {
       condition = condition ? binary("or^", condition, test) : test;
       continue;
     }
-    Expr *low = expr(p, 0), *test = NULL;
+    /* An arm's low to^ high is its own form, not a range^. */
+    Expr *low = operation(p, 0), *test = NULL;
     if (take(p, "to^")) {
-      Expr *high = expr(p, 0);
+      Expr *high = operation(p, 0);
       test = binary("and^", binary(">=", named(subject, low->loc), low),
                     binary("<=", named(subject, high->loc), high));
     } else {

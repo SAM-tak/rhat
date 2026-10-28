@@ -214,9 +214,46 @@ Type *type_tuple(Program *p, List *elems, Loc loc)
   layout(t, loc);
   return t;
 }
+Type *type_range(Program *p)
+{
+  for (int j = 0; j < p->types.n; j++) {
+    if (range_type(p->types.v[j])) {
+      return p->types.v[j];
+    }
+  }
+  Type *t = mem(sizeof(*t));
+  Def *d = mem(sizeof(*d));
+  t->kind = T_STRUCT;
+  t->id = p->types.n;
+  t->def = d;
+  t->symbol = "%rh_range";
+  d->type = t;
+  d->name = "range^";
+  d->state = 2;
+  d->public = true;
+  for (int j = 0; j < 2; j++) {
+    Field *f = mem(sizeof(*f));
+    f->name = j ? "\001end" : "start";
+    f->type = type_builtin(p, T_I64);
+    f->owner = d;
+    f->index = j;
+    add(&d->own_fields, f);
+    add(&d->fields, f);
+  }
+  add(&p->types, t);
+  layout(t, (Loc){0});
+  return t;
+}
+bool range_type(Type *t)
+{
+  return t && t->kind == T_STRUCT && !strcmp(t->def->name, "range^");
+}
 Type *type_spec(Program *p, Spec *s) {
   if (!s)
     return type_builtin(p, T_VOID);
+  if (s->kind == SPEC_NAME && !strcmp(s->name, "range^")) {
+    return type_range(p);
+  }
   if (s->kind == SPEC_TUPLE) {
     List elems = {0};
     for (int j = 0; j < s->params.n; j++) {
@@ -1315,6 +1352,30 @@ static Value snapshot(Context *c, Value src, Loc l) {
   Value dst = value(c, src.type);
   return copy_to(c, dst, src, l, true);
 }
+/* A constant of builtin kind k. */
+static Value constant(Context *c, int k, const char *text, Loc loc)
+{
+  Value v = value(c, type_builtin(c->p, k));
+  Instr *i = emit(c, I_CONST, loc);
+  i->dst = v.id;
+  i->type = v.type;
+  i->text = (char *)text;
+  return v;
+}
+/* a op b over a's type; a comparison answers bool^. */
+static Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
+{
+  bool compare = strchr("<=>", op[0]) != NULL;
+  Value v = value(c, compare ? type_builtin(c->p, T_BOOL) : a.type);
+  Instr *i = emit(c, I_BIN, loc);
+  i->dst = v.id;
+  i->a = a.id;
+  i->b = b.id;
+  i->type = a.type;
+  i->text = (char *)op;
+  return v;
+}
+#define RANGE_OPEN "-9223372036854775808"
 /* The place of union u's alternative arm, setting the tag when it writes. */
 static int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
 {
@@ -1916,6 +1977,57 @@ static char *site_source(Program *p, const char *file)
     *s = *s == '\\' ? '/' : *s;
   }
   return out;
+}
+static void terminate(Context *c, Value subject, bool panic, Loc loc);
+/* r.end (i64^ | nil^, nil^ when open) or r.len. */
+static Value range_member(Context *c, Value r, const char *name, Loc loc)
+{
+  Type *range = r.type, *whole = type_builtin(c->p, T_I64);
+  Value start = field_value(c, r, range->def->fields.v[0], loc);
+  Value end = field_value(c, r, range->def->fields.v[1], loc);
+  Value open = operate(c, "=", end, constant(c, T_I64, RANGE_OPEN, loc), loc);
+  int yes = ++c->in->labels, no = ++c->in->labels, done = ++c->in->labels;
+  if (!strcmp(name, "end")) {
+    Type *t = type_union(c->p, whole, type_builtin(c->p, T_NIL), loc);
+    Value out = value(c, t);
+    nil_branch(c, open, yes, no, loc);
+    nil_label(c, yes, loc);
+    convert_value(c, nil_literal(c, loc), t, out.id, loc);
+    nil_jump(c, done, loc);
+    nil_label(c, no, loc);
+    convert_value(c, end, t, out.id, loc);
+    nil_jump(c, done, loc);
+    nil_label(c, done, loc);
+    return out;
+  }
+  if (strcmp(name, "len")) {
+    fail(loc, "range^ has start, end, len and contains(i)");
+  }
+  const char *message = "an open range has no length";
+  nil_branch(c, open, yes, no, loc);
+  nil_label(c, yes, loc);
+  Expr text = {.kind = E_STRING, .loc = loc, .text = (char *)message, .length = strlen(message)};
+  terminate(c, expression(c, &text, type_builtin(c->p, T_STRING)), true, loc);
+  c->terminated = false;
+  nil_label(c, no, loc);
+  Value out = value(c, whole), length = operate(c, "-", end, start, loc);
+  copy_to(c, out, length, loc, true);
+  int negative = ++c->in->labels;
+  nil_branch(c, operate(c, "<", length, constant(c, T_I64, "0", loc), loc), negative, done, loc);
+  nil_label(c, negative, loc);
+  copy_to(c, out, constant(c, T_I64, "0", loc), loc, true);
+  nil_jump(c, done, loc);
+  nil_label(c, done, loc);
+  return out;
+}
+/* r.contains(i): start <= i and, unless r is open, i < end. */
+static Value range_contains(Context *c, Value r, Value i, Loc loc)
+{
+  Value start = field_value(c, r, r.type->def->fields.v[0], loc);
+  Value end = field_value(c, r, r.type->def->fields.v[1], loc);
+  Value open = operate(c, "=", end, constant(c, T_I64, RANGE_OPEN, loc), loc);
+  Value below = operate(c, "bitor^", open, operate(c, "<", i, end, loc), loc);
+  return operate(c, "bitand^", operate(c, "<=", start, i, loc), below, loc);
 }
 static Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin);
 /* The message() of error err, by the variant it holds when it is a union. */
@@ -2546,6 +2658,18 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected,
 static Value call(Context *c, Expr *e, Type *expected, int destination) {
   Program *p = c->p;
   Expr *target = e->a;
+  if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
+      range_type(expression_type(c, target->a, NULL))) {
+    Value r = deref(c, expression(c, target->a, NULL), e->loc);
+    Value i = dead(r) ? r : expression(c, e->args.v[0], type_builtin(p, T_I64));
+    if (dead(i)) {
+      return i;
+    }
+    if (i.type->kind != T_I64) {
+      fail(e->loc, "range^ contains an i64^");
+    }
+    return range_contains(c, r, i, e->loc);
+  }
   if (target->kind == E_MEMBER &&
       error_messages(p, target, e->args.n, expression_type(c, target->a, NULL))) {
     Value err = deref(c, expression(c, target->a, NULL), e->loc);
@@ -2959,6 +3083,41 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     return copy_to(c, out, src, e->loc, true);
+  }
+  if (e->kind == E_RANGE) {
+    Type *range = type_range(c->p);
+    if (t && t != range) {
+      fail(e->loc, "a range is 'range^', expected '%s'", type_name(t));
+    }
+    Value out = {.id = dst >= 0 ? dst : slot(c, range, false), .type = range};
+    Value ends[2];
+    for (int j = 0; j < 2; j++) {
+      Expr *end = j ? e->b : e->a;
+      ends[j] = end ? expression(c, end, type_builtin(c->p, T_I64))
+                    : constant(c, T_I64, j ? RANGE_OPEN : "0", e->loc);
+      if (c->terminated) {
+        return abrupt(c);
+      }
+      if (ends[j].type->kind != T_I64) {
+        fail(end->loc, "range bounds must be i64^");
+      }
+    }
+    if (!strcmp(e->text, "to^")) {
+      int bad = ++c->in->labels, good = ++c->in->labels;
+      nil_branch(c, operate(c, "=", ends[1], constant(c, T_I64, "9223372036854775807", e->loc), e->loc),
+                 bad, good, e->loc);
+      nil_label(c, bad, e->loc);
+      Expr text = {.kind = E_STRING, .loc = e->loc, .text = "the end of a to^ range overflows",
+                   .length = strlen("the end of a to^ range overflows")};
+      terminate(c, expression(c, &text, type_builtin(c->p, T_STRING)), true, e->loc);
+      c->terminated = false;
+      nil_label(c, good, e->loc);
+      ends[1] = operate(c, "+", ends[1], constant(c, T_I64, "1", e->loc), e->loc);
+    }
+    for (int j = 0; j < 2; j++) {
+      copy_to(c, field_value(c, out, range->def->fields.v[j], e->loc), ends[j], e->loc, true);
+    }
+    return out;
   }
   if (e->kind == E_SCOPE) {
     int begin = c->vars.n, depth = c->depth++;
@@ -3399,6 +3558,17 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
   }
   int bounds[2] = {-1, -1};
   Expr *ends[2] = {e->b, e->c};
+  bool ranged = e->kind == E_INDEX;
+  if (ranged) {
+    Value r = expression(c, e->b, type_range(p));
+    if (c->terminated) {
+      return abrupt(c);
+    }
+    for (int j = 0; j < 2; j++) {
+      bounds[j] = field_value(c, r, r.type->def->fields.v[j], e->loc).id;
+      ends[j] = NULL;
+    }
+  }
   for (int j = 0; j < 2; j++) {
     if (!ends[j]) {
       continue;
@@ -3429,7 +3599,8 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
   i->a = base.id;
   i->b = bounds[0];
   i->other = bounds[1];
-  i->label = !strcmp(e->text, "to^");
+  i->label = !ranged && !strcmp(e->text, "to^");
+  i->text = ranged ? "open" : NULL;
   i->type = base.type;
   return out;
 }
@@ -3664,7 +3835,7 @@ static Value expression(Context *c, Expr *e, Type *expected) {
   if (e->kind == E_CALL)
     return call(c, e, expected, -1);
   if (e->kind == E_RECORD || e->kind == E_ARRAY || e->kind == E_IF ||
-      e->kind == E_SCOPE)
+      e->kind == E_SCOPE || e->kind == E_RANGE)
     return construct(c, e, expected, -1);
   if (e->kind == E_MEMBER) {
     Value base = deref(c, expression(c, e->a, NULL), e->loc);
@@ -3680,6 +3851,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
       i->a = base.id;
       i->type = base.type;
       return out;
+    }
+    if (range_type(base.type) && strcmp(e->text, "start")) {
+      return range_member(c, base, e->text, e->loc);
     }
     Type *view = error_view(base.type, e->text);
     if (view != base.type) {
@@ -3724,6 +3898,9 @@ static Value expression(Context *c, Expr *e, Type *expected) {
     return result;
   }
   if (e->kind == E_SLICE) {
+    return slice_view(c, e, expected);
+  }
+  if (e->kind == E_INDEX && range_type(expression_type(c, e->b, NULL))) {
     return slice_view(c, e, expected);
   }
   if (e->kind == E_INDEX) {

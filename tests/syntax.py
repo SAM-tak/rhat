@@ -315,6 +315,27 @@ let^ one,eight=literal()
 print^(one,eight[1])
 ''', '10 3 100\n2\n2\n2\n1 8\n')
 
+    positive('range_values', '''
+let^ xs=[10,20,30,40,50]
+let^ head=0 :: 3
+let^ tail=(3 ::)
+let^ both=1 to^ 3
+let^ all=(::)
+let^ a=xs[head]
+let^ b=xs[tail]
+let^ c=xs[both]
+let^ d=xs[all]
+print^(a.len,a[2],b.len,b[0],c.len,c[2],d.len)
+print^(head.start,head.len,both.len,tail.end ?? -1,head.end ?? -1)
+print^(head.contains(2),head.contains(3),tail.contains(1000),tail.contains(2))
+let^ pick=f^ v:i32^[:],r:range^ ->i32^[:] { v[r] }
+let^ ys=xs[::]
+print^(pick(ys,2 :: 4)[1],pick(ys,:: 2).len)
+let^ e=3 to^ 2
+print^(e.len,xs[e].len)
+for^ 2 { when^ 1 to^ 3: print^(it^) other^: print^(0) }
+''', '3 30 2 40 3 40 5\n0 3 3 -1 3\ntrue false true false\n40 2\n0 0\n2\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -553,6 +574,11 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('range_open_end', 'let^ r=0 ::\nprint^(r)', 'goes right before ), ] or ,'),
+        ('range_open_start', 'let^ r=:: 3', 'goes right after (, [ or ,'),
+        ('range_inclusive_open', 'let^ r=(1 to^)', 'needs both bounds'),
+        ('range_bounds', 'let^ r=1.5 :: 2.0', 'must be i64^'),
+        ('range_member', 'let^ r=0 :: 2\nprint^(r.size)', 'range^ has start, end, len'),
         ('results_not_multiple', 'var^ x,y=1', "'i32^' is not multiple results"),
         ('results_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a,b,c=f()', '3 names for the 2 results'),
         ('results_assign_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nvar^ a,b,c=1,2,3\na,b,c:=f()', '3 names for the 2 results'),
@@ -588,6 +614,9 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     for name, text, diagnostic in cases:
         negative(name, text, diagnostic)
 
+    suite.runtime_failure('range_open_len', 'let^ r=(5 ::)\nprint^(r.len)', 'an open range has no length')
+    suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
+    suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 :: 5\nprint^(xs[r].len)', 'slice range out of bounds')
     suite.runtime_failure('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}', 'assert')
     suite.finish()
 

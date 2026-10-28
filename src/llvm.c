@@ -964,6 +964,13 @@ static void instruction(Output *o, Instr *i) {
        wrapped end fails the ordering check. */
     char *lo = i->b >= 0 ? fmt("%%t%d", load(o, i->b)) : "0";
     char *hi = i->other >= 0 ? fmt("%%t%d", load(o, i->other)) : length;
+    if (i->text && !strcmp(i->text, "open")) {
+      /* A range^ value's open end, the minimum i64, closes at the length. */
+      int open = ++o->tmp;
+      fprintf(f, "  %%t%d = icmp eq i64 %s, -9223372036854775808\n", open, hi);
+      fprintf(f, "  %%t%d = select i1 %%t%d, i64 %s, i64 %s\n", ++o->tmp, open, length, hi);
+      hi = fmt("%%t%d", o->tmp);
+    }
     if (i->label) {
       fprintf(f, "  %%t%d = add i64 %s, 1\n", ++o->tmp, hi);
       hi = fmt("%%t%d", o->tmp);

@@ -101,7 +101,8 @@ enum {
   E_SLICE,    /* A range index: text is "::" or "to^"; b/c are optional bounds. */
   E_PACK,     /* Compiler-only: trailing arguments of a variadic call, or the
                  single forwarded sequence in a. */
-  E_PANIC     /* panic^ a: end the process; it produces no value. */
+  E_PANIC,    /* panic^ a: end the process; it produces no value. */
+  E_RANGE     /* a :: b or a to^ b (text): a range^ value; a or b may be omitted. */
 };
 struct Expr {
   Loc name_loc; /* Exact member spelling, distinct from receiver diagnostics. */

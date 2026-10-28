@@ -290,6 +290,11 @@ Function *this_function(Program *p, Instance *in, Expr *target);
 Type *type_union(Program *p, Type *a, Type *b, Loc loc);
 /* The multiple result type of elems, one per distinct element list. */
 Type *type_tuple(Program *p, List *elems, Loc loc);
+/* The built-in range^: [start, end) over i64^, an open end held as the
+ * minimum i64^. */
+Type *type_range(Program *p);
+/* Whether t is range^. */
+bool range_type(Type *t);
 /* Reject destructuring t into a number of names other than its results. */
 void results_check(Type *t, int names, Loc loc);
 /* For member name of t: the first variant when t is a union of errors and

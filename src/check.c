@@ -539,6 +539,11 @@ static Type *infer_call(Infer *c, Expr *e)
       error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {
     return type_builtin(c->p, T_STRING);
   }
+  if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
+      range_type(infer_expr(c, target->a, NULL))) {
+    infer_expr(c, e->args.v[0], type_builtin(c->p, T_I64));
+    return type_builtin(c->p, T_BOOL);
+  }
   Function *f = NULL;
   Def *self = NULL;
   List actual = {0}, candidates = {0};
@@ -1142,6 +1147,14 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (error_site(base, e->text) >= 0) {
       return type_builtin(c->p, error_site(base, e->text) % 3 ? T_U32 : T_STRING);
     }
+    if (range_type(base) && strcmp(e->text, "start")) {
+      Type *whole = type_builtin(c->p, T_I64);
+      if (strcmp(e->text, "end") && strcmp(e->text, "len")) {
+        fail(e->loc, "range^ has start, end, len and contains(i)");
+      }
+      return !strcmp(e->text, "len") ? whole
+                                     : type_union(c->p, whole, type_builtin(c->p, T_NIL), e->loc);
+    }
     if (!base) {
       return NULL;
     }
@@ -1175,6 +1188,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     infer_expr(c, e->a, NULL);
     c->terminated = true;
     return type_builtin(c->p, T_NEVER);
+  case E_RANGE:
+    infer_expr(c, e->a, type_builtin(c->p, T_I64));
+    infer_expr(c, e->b, type_builtin(c->p, T_I64));
+    return c->terminated ? type_builtin(c->p, T_NEVER) : type_range(c->p);
   case E_PACK:
     if (e->a) {
       infer_expr(c, e->a, NULL);
@@ -1211,9 +1228,16 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (base && base->kind == T_REF) {
       base = base->elem;
     }
-    infer_expr(c, e->b, type_builtin(c->p, T_I64));
+    Type *index = infer_expr(c, e->b, type_builtin(c->p, T_I64));
     if (c->terminated) {
       return type_builtin(c->p, T_NEVER);
+    }
+    if (range_type(index)) {
+      return base && base->kind == T_STRING
+                 ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
+             : base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)
+                 ? type_wrap(c->p, T_SLICE, base->elem, 0)
+                 : NULL;
     }
     return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
            : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
@@ -2215,6 +2239,11 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
   }
   case E_PANIC:
     body_expr(c, e->a, NULL);
+    break;
+  case E_RANGE:
+    body_expr(c, e->a, type_builtin(c->p, T_I64));
+    body_expr(c, e->b, type_builtin(c->p, T_I64));
+    n->type = type_range(c->p);
     break;
   case E_PACK:
     if (e->a) {
