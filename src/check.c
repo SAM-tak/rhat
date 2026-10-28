@@ -131,7 +131,8 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
 void results_check(Type *t, int names, Loc loc)
 {
   if (t->kind != T_STRUCT || !t->def->tuple) {
-    fail(loc, "'%s' is not multiple results", type_name(t));
+    fail(loc, "'%s' is not multiple results%s", type_name(t),
+         t->kind == T_UNION ? "; take them out with try^, catch^, ?? or fits^" : "");
   }
   if (t->def->fields.n != names) {
     fail(loc, "%d names for the %d results of '%s'", names, t->def->fields.n,

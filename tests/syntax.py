@@ -215,6 +215,33 @@ let^ a,b=p.both()
 print^(a,b)
 ''', '3 2 4 4.5 b a 1 3 1 4 1\n1 2\n')
 
+    positive('multiple_results_union', '''
+errordef^ Error { Zero, Bad }
+let^ dm=f^ a:i64^,b:i64^ ->(i64^,i64^) | Error.Zero {
+ if^ b=0 { return^ Error.Zero{} }
+ return^ a/b,a%b
+}
+let^ q,r=dm(7,0) catch^ (0,0)
+let^ s,u=dm(7,2) catch^ (0,0)
+let^ use=f^ a:i64^,b:i64^ ->i64^ | Error.Zero {
+ let^ x,y=try^ dm(a,b)
+ return^ x+y
+}
+let^ g=f^ b:i64^ { if^ b=0 { return^ Error.Bad{} } return^ b,b+1 }
+let^ x,y=g(3) catch^ (9,9)
+let^ z,w=g(0) catch^ (9,9)
+let^ find=f^ n:i64^ ->(i64^,string^) | nil^ {
+ if^ n<0 { return^ nil^ }
+ return^ n*2,"ok"
+}
+let^ a,b=find(4) ?? (0,"none")
+let^ c,d=find(-1) ?? (0,"none")
+print^(q,r,s,u,use(7,2) catch^ -1,use(7,0) catch^ -1,x,y,z,w,a,b,c,d)
+let^ v=dm(7,2)
+if^ !(v fits^ Error.Zero) { let^ m,n=v print^(m,n) }
+do^{ let^ m,n=try^ dm(7,0) print^(m,n) catch^: print^("caught") }
+''', '0 0 3 1 4 -1 3 4 9 9 8 ok 0 none\n3 1\ncaught\n')
+
     positive('multiple_owned_results', '''
 let^ count=f^ n:i64^ ->(i64^,grow^ i64^[]) {
  var^ xs:grow^ i64^[]=[]
@@ -473,7 +500,10 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('results_assign_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nvar^ a,b,c=1,2,3\na,b,c:=f()', '3 names for the 2 results'),
         ('results_one_name', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ t=f()', 'need a name each'),
         ('results_argument', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ g=f^ x {0}\nprint^(g(f()))', 'cannot be passed'),
-        ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values are only returned'),
+        ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values go only where'),
+        ('results_tuple_value', 'let^ t=(1,2)', 'need a name each'),
+        ('results_union_bare', 'errordef^ E { Bad }\nlet^ f=f^ ->(i32^,i32^) | E.Bad {return^ 1,2}\nlet^ a,b=f()', 'take them out with try^'),
+        ('results_union_owned', 'let^ f=f^ ->(i32^,grow^ i32^[]) | nil^ {return^ nil^}', 'non-owning'),
         ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
         ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
         ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),

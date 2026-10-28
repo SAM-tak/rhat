@@ -2765,7 +2765,8 @@ Type *union_literal_hint(Type *t, Expr *e)
     Type *a = t->def->alternatives.v[j];
     if ((literal->kind == E_INT && kind_integer(a->kind)) ||
         (literal->kind == E_FLOAT && kind_float(a->kind)) ||
-        (literal->kind == E_RECORD && a->kind == T_STRUCT) ||
+        (literal->kind == E_RECORD && a->kind == T_STRUCT && a->def->tuple == literal->tuple &&
+         (!literal->tuple || a->def->fields.n == literal->args.n)) ||
         (literal->kind == E_ARRAY &&
          (a->kind == T_ARRAY || a->kind == T_GROW))) {
       /* A mixed result must not implicitly choose an error constructor. */
@@ -2917,7 +2918,8 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
     }
     bool results = t && t->kind == T_STRUCT && t->def->tuple;
     if (e->tuple && !results) {
-      fail(e->loc, "multiple values are only returned, as return^ a, b from a -> (A, B) function");
+      fail(e->loc, "multiple values go only where multiple results (A, B) are expected, "
+                   "as in return^ a, b or catch^ (a, b)");
     }
     if (e->tuple && e->args.n != t->def->fields.n) {
       fail(e->loc, "%d values returned for '%s'", e->args.n, type_name(t));

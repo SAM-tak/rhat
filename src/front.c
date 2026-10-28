@@ -644,9 +644,9 @@ static Spec *spec_intersection(Parser *p)
   }
   return s;
 }
-static Spec *spec(Parser *p)
+/* s and the alternatives after it. */
+static Spec *union_tail(Parser *p, Spec *s)
 {
-  Spec *s = spec_intersection(p);
   while (take(p, "|")) {
     Spec *sum = mem(sizeof(*sum));
     sum->kind = SPEC_UNION;
@@ -657,8 +657,13 @@ static Spec *spec(Parser *p)
   }
   return s;
 }
+static Spec *spec(Parser *p)
+{
+  return union_tail(p, spec_intersection(p));
+}
 /* The result after ->, where (A, B) with a comma at its top is multiple
- * results and any other parenthesis groups a type. */
+ * results, which | E joins as a whole, and any other parenthesis groups a
+ * type. */
 static Spec *result_spec(Parser *p)
 {
   int at = p->at;
@@ -674,7 +679,7 @@ static Spec *result_spec(Parser *p)
         add(&s->params, spec(p));
       } while (take(p, ","));
       need(p, ")");
-      return s;
+      return union_tail(p, s);
     }
     p->at = at;
   }
@@ -831,6 +836,14 @@ static Expr *primary(Parser *p) {
     bool header = p->header;
     p->header = false;
     e = expr(p, 0);
+    if (is(p, ",")) {
+      /* (a, b): multiple results in place of others, as after catch^ or ??. */
+      List values = {0};
+      add(&values, e);
+      while (take(p, ","))
+        add(&values, expr(p, 0));
+      e = tuple(&values, t->loc);
+    }
     p->header = header;
     need(p, ")");
   } else if (!strcmp(t->text, "[") || !strcmp(t->text, "grow^") ||
