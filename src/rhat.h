@@ -69,7 +69,8 @@ enum {
   SPEC_UNION, /* An inline set of alternative types. */
   SPEC_FUNCTION, /* A callable signature ending in a semicolon. */
   SPEC_INTERSECTION, /* A value satisfying every callable signature. */
-  SPEC_DYN /* dyn^ D, valid only as ref^ dyn^ D. */
+  SPEC_DYN, /* dyn^ D, valid only as ref^ dyn^ D. */
+  SPEC_TUPLE /* -> (A, B): multiple results, params holding each. */
 };
 enum {
   E_INT,
@@ -108,6 +109,7 @@ struct Expr {
                       grow^ T[] value; never evaluated as a value. */
   Spec *constant_spec;
   bool optional;        /* This postfix link starts a nil-propagating guard. */
+  bool tuple; /* return^ a, b: a record of the multiple result type. */
   bool spread;          /* A trailing ... forwards this sequence to a variadic
                            parameter. */
   void *compiler_value; /* Internal full Value, retaining borrow provenance. */
@@ -225,6 +227,7 @@ struct Def {
   bool opaque;  /* externC^ def^ Name; with no body, usable only as ref^. */
   bool lhat_value; /* exportL^ def^: an L^ host value type, its methods members. */
   bool lhat_data;  /* exportL^ ref^ def^: an L^ host data type over ref^ to it. */
+  bool tuple; /* The anonymous struct of multiple results, fields 0, 1, ... */
 };
 enum {
   T_VOID,

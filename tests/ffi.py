@@ -256,6 +256,7 @@ void *lhat_hostdata_pointer(LhatValue value, const LhatHostDataTag *tag);
 LhatProgram *mock_program(void);
 void mock_run(int32_t mode);
 void mock_values(int32_t mode);
+void mock_multi(void);
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
@@ -382,6 +383,18 @@ void mock_values(int32_t mode)
     const float *f = lhat_hostvalue_data(v, ((MockValue *)v.as.object)->tag);
     printf("%g %g %g %g\\n", f[0], f[1], f[2], call("length", mode ? xyz : &v, 1).as.real);
 }}
+void mock_multi(void)
+{{
+    LhatValue arguments[2] = {{lhat_integer(17), lhat_integer(5)}}, answers[3];
+    int count = 0;
+    for (int j = 0; j < program.n; j++) {{
+        if (!strcmp(program.names[j], "divmod")) {{
+            program.fns[j](NULL, NULL, arguments, 2, answers, &count);
+        }}
+    }}
+    printf("%d %lld %lld %s\\n", count, (long long)answers[0].as.integer, (long long)answers[1].as.integer,
+           ((LhatString *)lhat_as_object(answers[2]))->text);
+}}
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *))
 {{
     LhatValue bump[2] = {{v, lhat_integer(41)}}, both[2] = {{v, v}}, none[2] = {{v, lhat_nil()}}, again;
@@ -418,6 +431,16 @@ print^(rhat_lhat_register(mock_program(), "rhat"))
              'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'true\n42 2.5 from L^ 0\nR^ says: hi\n', extra=lhat_extra)
+    multi = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_multi:p^;') + \
+        'exportL^ let^ divmod = f^ a:i64^, b:i64^ -> (i64^, i64^, string^) { return^ a / b, a % b, "ok" }\n'
+    positive('ffi_export_lhat_multiple', multi + 'mock_multi()\n',
+             'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.divmod f^number^, number^ -> number^, number^, string^;\ntrue\n3 3 2 ok\n', extra=lhat_extra)
+    negative('ffi_export_lhat_multiple_nil', header + 'exportL^ let^ m = f^ -> (i64^, string^ | nil^) { return^ 1, nil^ }',
+             'a part of several not | nil^')
+    negative('ffi_extern_multiple', 'externC^ div:f^ a:i32^, b:i32^ -> (i32^, i32^);\nlet^ q, r = div(7, 2)',
+             'externC^ result must be')
     suite.runtime_failure('ffi_export_lhat_whole', lhat + 'mock_run(1)\n', 'exportL^ add needs a whole number', extra=lhat_extra)
     values = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_values:p^ mode:i32^;') + '''exportL^ def^ Vec3 {
   self^{ x:f32^ = 0.0, y:f32^ = 0.0, z:f32^ = 0.0, on:bool^ = false^ }

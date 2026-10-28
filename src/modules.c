@@ -397,6 +397,11 @@ static void resolve_body(Program *p, Module *m, List *names, List *body) {
       continue;
     }
     if (s->kind == S_BIND_MANY) {
+      for (int k = 0; k < s->prolog.n; k++) {
+        Stmt *b = s->prolog.v[k];
+        resolve_expr(p, m, names, b->a);
+        add(names, b->name);
+      }
       for (int k = 0; k < s->body.n; k++) {
         Stmt *b = s->body.v[k];
         resolve_spec(m, b->spec);

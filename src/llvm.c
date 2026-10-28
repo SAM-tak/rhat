@@ -1834,7 +1834,9 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
       for (; base->kind == T_ARRAY; base = base->elem) {
         dims = fmt("%s[%d]", dims, base->count);
       }
-      fprintf(f, " %s %s%s;", c_name(base), (char *)names.v[j], dims);
+      fprintf(f, " %s %s%s;",
+              base->kind == T_STRING ? "struct { const char *text; int64_t length; }" : c_name(base),
+              (char *)names.v[j], dims);
     }
     fprintf(f, " } %s;\n", name);
   }
@@ -1859,6 +1861,13 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
 static const char *l_name(Type *t)
 {
   Def *data = lhat_data_def(t);
+  if (t->kind == T_STRUCT && t->def->tuple) {
+    char *names = "";
+    for (int j = 0; j < t->def->fields.n; j++) {
+      names = fmt("%s%s%s", names, j ? ", " : "", l_name(((Field *)t->def->fields.v[j])->type));
+    }
+    return names;
+  }
   return data                  ? fmt("%%s.%s%s", data->name, t->kind == T_UNION ? "|nil^" : "")
          : t->kind == T_STRUCT ? fmt("%%s.%s", t->def->name)
          : t->kind == T_STRING ? "string^"
@@ -1912,6 +1921,27 @@ static bool l_held(Def *d)
 static const char *l_make(Def *d)
 {
   return l_held(d) ? "rh_lhat_hold" : "lhat_machine_make_hostdata";
+}
+/* The C statement answering the R^ value v of type t as answers[k], nil if
+ * L^ cannot hold it; a string's length is v.length. */
+static char *l_answer(Type *t, const char *v, int k)
+{
+  Def *data = lhat_data_def(t);
+  char *nil = fmt(")) {\n    answers[%d] = lhat_nil();\n  }\n", k);
+  if (t->kind == T_STRING) {
+    return fmt("  if (!lhat_machine_make_string(machine, %s.text, (size_t)%s.length, &answers[%d]%s",
+               v, v, k, nil);
+  }
+  if (data) {
+    return fmt("  if (!%s || !%s(machine, rh_lhat_data_%d, %s, &answers[%d]%s", v,
+               l_make(data), data->type->id, v, k, nil);
+  }
+  if (t->kind == T_STRUCT) {
+    return fmt("  if (!lhat_make_hostvalue(machine, rh_lhat_tag_%d, &%s, &answers[%d]%s", t->id,
+               v, k, nil);
+  }
+  return fmt("  answers[%d] = %s(%s);\n", k,
+             t->kind == T_BOOL ? "lhat_bool" : kind_float(t->kind) ? "lhat_real" : "lhat_integer", v);
 }
 /* LhatHostFn wrappers for exportL^ functions and methods, and the function
  * that registers them, with the exportL^ def^ host value types and their
@@ -2045,7 +2075,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
     bool text = t->kind == T_STRING, none = t->kind == T_VOID, value = t->kind == T_STRUCT;
     Def *data = lhat_data_def(t), *owner = in->fn->owner;
     char *entry = text ? "const char **, int64_t *" : value ? fmt("%s *", c_name(t)) : "";
-    char *call = text ? "&rt, &rl" : value ? "&r" : "";
+    char *call = text ? "&r.text, &r.length" : value ? "&r" : "";
     char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
     for (int k = 0; k < in->params.n; k++) {
       Type *param = in->params.v[k];
@@ -2110,25 +2140,22 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
       fprintf(f, "  rh_entry_%s(%s);\n  if (answer_count) {\n    *answer_count = 0;\n  }\n}\n",
               symbol, call);
     }
-    else if (text || value) {
-      fprintf(f,
-              "  %s;\n  rh_entry_%s(%s);\n  if (!%s) {\n"
-              "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
-              text ? "const char *rt; int64_t rl" : fmt("%s r", c_name(t)), symbol, call,
-              text ? "lhat_machine_make_string(machine, rt, (size_t)rl, &answers[0])"
-                   : fmt("lhat_make_hostvalue(machine, rh_lhat_tag_%d, &r, &answers[0])", t->id));
-    }
-    else if (data) {
-      fprintf(f,
-              "  void *r = rh_entry_%s(%s);\n"
-              "  if (!r || !%s(machine, rh_lhat_data_%d, r, &answers[0])) {\n"
-              "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
-              symbol, call, l_make(data), data->type->id);
-    }
     else {
-      fprintf(f, "  answers[0] = %s(rh_entry_%s(%s));\n  *answer_count = 1;\n}\n",
-              t->kind == T_BOOL ? "lhat_bool" : kind_float(t->kind) ? "lhat_real" : "lhat_integer",
-              symbol, call);
+      /* Multiple results answer each part in order. */
+      bool tuple = value && t->def->tuple;
+      char *answers = tuple ? "" : l_answer(t, "r", 0);
+      for (int k = 0; tuple && k < t->def->fields.n; k++) {
+        answers = fmt("%s%s", answers,
+                      l_answer(((Field *)t->def->fields.v[k])->type, fmt("r.f%d", k), k));
+      }
+      if (text || value) {
+        fprintf(f, "  %s r;\n  rh_entry_%s(%s);\n",
+                text ? "struct { const char *text; int64_t length; }" : c_name(t), symbol, call);
+      }
+      else {
+        fprintf(f, "  %s r = rh_entry_%s(%s);\n", data ? "void *" : c_name(t), symbol, call);
+      }
+      fprintf(f, "%s  *answer_count = %d;\n}\n", answers, tuple ? t->def->fields.n : 1);
     }
     registrations = fmt("%s%s", registrations,
                         l_register(owner ? fmt("lhat_register_%smember(program, module, "
@@ -2244,6 +2271,9 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
       if (d->lhat_value) {
         c_struct(f, d->type, &done, headers);
       }
+    }
+    for (int j = 0; j < hosts.n; j++) {
+      c_struct(f, ((Instance *)hosts.v[j])->result, &done, headers);
     }
     lhat_glue(p, f, &hosts);
   }

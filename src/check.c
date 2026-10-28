@@ -47,7 +47,7 @@ static bool c_flat(Type *t)
   if (t->kind == T_ARRAY) {
     return c_flat(t->elem);
   }
-  if (t->kind != T_STRUCT || t->def->abstract || !t->def->fields.n) {
+  if (t->kind != T_STRUCT || t->def->abstract || t->def->tuple || !t->def->fields.n) {
     return false;
   }
   for (int j = 0; j < t->def->fields.n; j++) {
@@ -128,6 +128,16 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
   add(&call->args, pack);
   return call;
 }
+void results_check(Type *t, int names, Loc loc)
+{
+  if (t->kind != T_STRUCT || !t->def->tuple) {
+    fail(loc, "'%s' is not multiple results", type_name(t));
+  }
+  if (t->def->fields.n != names) {
+    fail(loc, "%d names for the %d results of '%s'", names, t->def->fields.n,
+         type_name(t));
+  }
+}
 Def *lhat_data_def(Type *t)
 {
   if (t->kind == T_UNION && t->def->alternatives.n == 2) {
@@ -205,9 +215,16 @@ void export_validate(Program *p, Function *f)
   if (result && f->exported && !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
     fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
   }
-  if (result && f->lhat_export && !l_value(result)) {
-    fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
-                         "or ref^ to an exportL^ ref^ def^");
+  /* Multiple results answer each part; a nullable part does not lay out
+   * as a C pointer. */
+  bool tuple = result && result->kind == T_STRUCT && result->def->tuple;
+  for (int j = 0; result && f->lhat_export && j < (tuple ? result->def->fields.n : 1); j++) {
+    Type *part = tuple ? ((Field *)result->def->fields.v[j])->type : result;
+    if (!l_value(part) || (tuple && part->kind == T_UNION)) {
+      fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
+                           "or ref^ to an exportL^ ref^ def^%s",
+           tuple ? ", and a part of several not | nil^" : "");
+    }
   }
 }
 void lhat_def_validate(Program *p, Def *d)
@@ -999,6 +1016,18 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     return infer_call(c, e);
   case E_RECORD: {
     Type *type = expected;
+    if (e->tuple && !(type && type->kind == T_STRUCT && type->def->tuple)) {
+      /* An unannotated result takes the types of the values returned. */
+      List elems = {0};
+      for (int j = 0; j < e->args.n; j++) {
+        Type *elem = infer_expr(c, e->args.v[j], NULL);
+        if (!elem || c->terminated) {
+          return c->terminated ? type_builtin(c->p, T_NEVER) : NULL;
+        }
+        add(&elems, elem);
+      }
+      return type_tuple(c->p, &elems, e->loc);
+    }
     if (e->text) {
       Def *d = lookup_def(c->p, e->text);
       type = d ? d->type : NULL;
@@ -1338,6 +1367,9 @@ static void infer_statements(Infer *c, List *body, bool scoped)
       if (c->terminated && !t) {
         break;
       }
+      if (s->depth && actual) {
+        results_check(actual, s->depth, s->loc);
+      }
       Var *v = mem(sizeof(*v));
       v->name = s->name;
       v->lexical = c->lexical;
@@ -1350,6 +1382,7 @@ static void infer_statements(Infer *c, List *body, bool scoped)
       add(&c->vars, v);
     }
     else if (s->kind == S_BIND_MANY) {
+      infer_statements(c, &s->prolog, false);
       List pending = {0};
       for (int k = 0; k < s->body.n; k++) {
         Stmt *b = s->body.v[k];
@@ -2219,6 +2252,7 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
       body_bind(c, s->name, n);
     }
     else if (s->kind == S_BIND_MANY) {
+      body_statements(c, &s->prolog, false);
       List pending = {0};
       for (int k = 0; k < s->body.n; k++) {
         Stmt *b = s->body.v[k];

@@ -540,6 +540,7 @@ static int reference_depth(const char *text)
   return text[end] ? 0 : end - 3;
 }
 static Spec *spec(Parser *p);
+static Spec *result_spec(Parser *p);
 static Spec *spec_part(Parser *p)
 {
   Spec *s = mem(sizeof(*s));
@@ -567,7 +568,7 @@ static Spec *spec_part(Parser *p)
       } while (take(p, ","));
     }
     if (take(p, "->")) {
-      s->elem = spec(p);
+      s->elem = result_spec(p);
     }
     need(p, ";");
     return s;
@@ -598,6 +599,9 @@ static Spec *spec_part(Parser *p)
   }
   if (take(p, "(")) {
     s = spec(p);
+    if (is(p, ",")) {
+      fail(tok(p)->loc, "multiple results (A, B) are written only after ->");
+    }
     need(p, ")");
   } else {
     s->kind = SPEC_NAME;
@@ -653,6 +657,29 @@ static Spec *spec(Parser *p)
   }
   return s;
 }
+/* The result after ->, where (A, B) with a comma at its top is multiple
+ * results and any other parenthesis groups a type. */
+static Spec *result_spec(Parser *p)
+{
+  int at = p->at;
+  Loc loc = tok(p)->loc;
+  if (take(p, "(")) {
+    Spec *first = spec(p);
+    if (take(p, ",")) {
+      Spec *s = mem(sizeof(*s));
+      s->kind = SPEC_TUPLE;
+      s->loc = loc;
+      add(&s->params, first);
+      do {
+        add(&s->params, spec(p));
+      } while (take(p, ","));
+      need(p, ")");
+      return s;
+    }
+    p->at = at;
+  }
+  return spec(p);
+}
 static Expr *expr(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
@@ -661,6 +688,38 @@ static Expr *node(int k, Loc l) {
   e->kind = k;
   e->loc = l;
   return e;
+}
+/* return^ a, b: a record of the multiple result type, fields 0, 1, ... */
+static Expr *tuple(List *values, Loc loc)
+{
+  Expr *e = node(E_RECORD, loc);
+  e->tuple = true;
+  for (int j = 0; j < values->n; j++) {
+    add(&e->names, fmt("%d", j));
+    add(&e->args, values->v[j]);
+  }
+  return e;
+}
+/* Bind the multiple results in the only value once, under a hidden name,
+ * and replace the value by its n parts. */
+static Stmt *results(Parser *p, List *values, int n, Loc loc)
+{
+  Stmt *source = mem(sizeof(*source));
+  source->kind = S_BIND;
+  source->loc = loc;
+  source->name = fmt("\001results%d", ++p->serial);
+  source->a = values->v[0];
+  source->depth = n; /* The number of names its results split into. */
+  values->n = 0;
+  for (int j = 0; j < n; j++) {
+    Expr *part = node(E_MEMBER, loc);
+    part->a = node(E_NAME, loc);
+    part->a->text = source->name;
+    part->name_loc = loc;
+    part->text = fmt("%d", j);
+    add(values, part);
+  }
+  return source;
 }
 static void entries(Parser *p, Expr *e, const char *end, bool named) {
   bool header = p->header;
@@ -1612,9 +1671,13 @@ static Stmt *stmt(Parser *p) {
     do {
       add(&values, expr(p, 0));
     } while (!p->header && take(p, ","));
+    if (values.n == 1 && bindings.n > 1) {
+      /* let^ a, b = f(): the source binds first, then each name its part. */
+      add(&s->prolog, results(p, &values, bindings.n, s->loc));
+      ((Stmt *)s->prolog.v[0])->mut = s->mut;
+    }
     if (bindings.n != values.n)
-      fail(s->loc, "the number of bindings and values does not match; tuple "
-                   "returns are not implemented");
+      fail(s->loc, "the number of bindings and values does not match");
     for (int j = 0; j < bindings.n; j++)
       ((Stmt *)bindings.v[j])->a = values.v[j];
     if (bindings.n == 1)
@@ -1655,6 +1718,13 @@ static Stmt *stmt(Parser *p) {
         !branch_word(p) && !match_clause(p) && !catch_head(p) &&
         loop_section(p) < 0 && tok(p)->loc.line == t->loc.line) {
       s->a = expr(p, 0);
+      if (is(p, ",")) {
+        List values = {0};
+        add(&values, s->a);
+        while (take(p, ","))
+          add(&values, expr(p, 0));
+        s->a = tuple(&values, s->a->loc);
+      }
     }
   } else if (take(p, "while^")) {
     fail(t->loc,
@@ -1712,12 +1782,29 @@ static Stmt *stmt(Parser *p) {
       do {
         add(&s->values, expr(p, 0));
       } while ((!p->header || s->values.n < s->targets.n) && take(p, ","));
+      Stmt *source = NULL;
+      if (s->targets.n > 1 && s->values.n == 1 && !s->op && !s->optional) {
+        source = results(p, &s->values, s->targets.n, s->loc);
+      }
       if (s->targets.n != s->values.n)
         fail(s->loc, "the number of targets and values does not match");
       s->b = s->values.v[0];
+      if (source) {
+        /* a, b := f(): a block binds the results and assigns their parts. */
+        Stmt *assign = mem(sizeof(*assign));
+        *assign = *s;
+        s->kind = S_BLOCK;
+        s->a = s->b = NULL;
+        s->targets = s->values = (List){0};
+        add(&s->body, source);
+        add(&s->body, assign);
+      }
+    } else if (s->targets.n > 1) {
+      /* f^{ a, b }: multiple results of a single expression body. */
+      s->kind = S_EXPR;
+      s->a = tuple(&s->targets, s->a->loc);
+      s->targets = (List){0};
     } else {
-      if (s->targets.n != 1)
-        fail(s->loc, "multiple expressions require an assignment");
       s->kind = S_EXPR;
     }
   }
@@ -1795,7 +1882,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr) {
                           !((Param *)f->params.v[0])->self || f->procedure))
     fail(f->loc, "mutable^self^ requires an f^ method receiver");
   if (take(p, "->"))
-    f->result = spec(p);
+    f->result = result_spec(p);
   if (abstr)
     need(p, ";");
   else {

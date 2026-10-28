@@ -164,9 +164,66 @@ Type *type_union(Program *p, Type *a, Type *b, Loc loc)
   add(&p->types, t);
   return t;
 }
+Type *type_tuple(Program *p, List *elems, Loc loc)
+{
+  for (int j = 0; j < p->types.n; j++) {
+    Type *t = p->types.v[j];
+    if (t->kind != T_STRUCT || !t->def->tuple || t->def->fields.n != elems->n) {
+      continue;
+    }
+    bool same = true;
+    for (int k = 0; k < elems->n; k++) {
+      same &= ((Field *)t->def->fields.v[k])->type == elems->v[k];
+    }
+    if (same) {
+      return t;
+    }
+  }
+  Type *t = mem(sizeof(*t));
+  Def *d = mem(sizeof(*d));
+  t->kind = T_STRUCT;
+  t->id = p->types.n;
+  t->def = d;
+  d->type = t;
+  d->loc = loc;
+  d->state = 2;
+  d->public = true;
+  d->tuple = true;
+  char *identity = str("tuple");
+  d->name = str("(");
+  for (int j = 0; j < elems->n; j++) {
+    Type *elem = elems->v[j];
+    if (elem->kind == T_VOID || elem->kind == T_NEVER) {
+      fail(loc, "a result cannot have void type");
+    }
+    char *name = type_name(elem);
+    identity = fmt("%s:%d:%zu:%s", identity, elem->kind, strlen(name), name);
+    d->name = fmt("%s%s%s", d->name, j ? ", " : "", name);
+    Field *f = mem(sizeof(*f));
+    f->loc = loc;
+    f->name = fmt("%d", j);
+    f->type = elem;
+    f->owner = d;
+    f->index = j;
+    add(&d->own_fields, f);
+    add(&d->fields, f);
+  }
+  d->name = fmt("%s)", d->name);
+  t->symbol = fmt("%%rh_tuple_%s", link_identity(identity));
+  add(&p->types, t);
+  layout(t, loc);
+  return t;
+}
 Type *type_spec(Program *p, Spec *s) {
   if (!s)
     return type_builtin(p, T_VOID);
+  if (s->kind == SPEC_TUPLE) {
+    List elems = {0};
+    for (int j = 0; j < s->params.n; j++) {
+      add(&elems, type_spec(p, s->params.v[j]));
+    }
+    return type_tuple(p, &elems, s->loc);
+  }
   if (s->kind == SPEC_UNION) {
     return type_union(p, type_spec(p, s->elem), type_spec(p, s->other), s->loc);
   }
@@ -1636,10 +1693,16 @@ static void release(Context *c, Type *t, int id, Loc l) {
   i->a = id;
   i->type = t;
 }
+/* Whether v owns its storage, rather than being a result's part in place. */
+static bool owner_var(Context *c, Var *v)
+{
+  return v->type->owned && v->slot != c->in->result_slot &&
+         !((Slot *)c->in->slots.v[v->slot])->alias;
+}
 static void cleanup(Context *c, int from, Loc l) {
   for (int j = c->vars.n - 1; j >= from; j--) {
     Var *v = c->vars.v[j];
-    if (v->type->owned && v->slot != c->in->result_slot)
+    if (owner_var(c, v))
       release(c, v->type, v->slot, l);
   }
 }
@@ -1648,7 +1711,7 @@ static void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
   List ids = {0};
   for (int j = bindings; j < c->vars.n; j++) {
     Var *v = c->vars.v[j];
-    if (v->type->owned && v->slot != c->in->result_slot) {
+    if (owner_var(c, v)) {
       add(&ids, (void *)(intptr_t)(v->slot + 1));
     }
   }
@@ -2851,6 +2914,13 @@ static Value construct(Context *c, Expr *e, Type *t, int dst) {
         fail(e->loc, "constructor has nominal type '%s', expected '%s'",
              d->name, type_name(t));
       t = d->type;
+    }
+    bool results = t && t->kind == T_STRUCT && t->def->tuple;
+    if (e->tuple && !results) {
+      fail(e->loc, "multiple values are only returned, as return^ a, b from a -> (A, B) function");
+    }
+    if (e->tuple && e->args.n != t->def->fields.n) {
+      fail(e->loc, "%d values returned for '%s'", e->args.n, type_name(t));
     }
     if (!t || t->kind != T_STRUCT)
       fail(e->loc, "contextual construction requires a nominal struct type; "
@@ -4445,9 +4515,20 @@ static void statements(Context *c, List *body, bool scope) {
       bool alias_result = c->in->result_local &&
                           !strcmp(c->in->result_local, s->name) &&
                           c->depth == 1;
-      int dest = alias_result ? c->in->result_slot : -1;
-      if (!t && alias_result)
-        t = c->in->result;
+      int dest = -1;
+      if (alias_result) {
+        /* Multiple results build their owned last part in place. */
+        Type *r = c->in->result;
+        dest = c->in->result_slot;
+        if (r->kind == T_STRUCT && r->def->tuple) {
+          dest = field_value(c, (Value){.id = dest, .type = r},
+                             r->def->fields.v[r->def->fields.n - 1], s->loc).id;
+          c->result_part = dest + 1;
+        }
+        if (!t) {
+          t = ((Slot *)c->in->slots.v[dest])->type;
+        }
+      }
       if (callable_type(t)) {
         Type *actual = expression_type(c, s->a, t);
         if (!actual || !callable_accepts(t, actual)) {
@@ -4467,6 +4548,13 @@ static void statements(Context *c, List *body, bool scope) {
         layout(t, s->loc);
         if (t->kind == T_VOID)
           fail(s->loc, "binding cannot have void type");
+        if (s->depth) {
+          results_check(t, s->depth, s->loc);
+        }
+        else if (t->kind == T_STRUCT && t->def->tuple) {
+          fail(s->loc, "multiple results '%s' need a name each, as in let^ a, b = ...",
+               type_name(t));
+        }
         if (dest < 0)
           dest = slot(c, t, false);
         if (t->owned && !alias_result) {
@@ -4522,6 +4610,46 @@ static void statements(Context *c, List *body, bool scope) {
       store_check(c, dst, v, s->loc);
       tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, 13, true);
       add(&c->vars, var);
+    }
+    else if (s->kind == S_BIND_MANY && s->prolog.n) {
+      /* let^ a, b = f(): each name views its part of the results in place,
+       * so an owned part is neither copied nor moved. */
+      statements(c, &s->prolog, false);
+      if (c->terminated) {
+        break;
+      }
+      Var *source = c->vars.v[c->vars.n - 1];
+      Type *t = source->type;
+      for (int j = 0; j < s->body.n; j++) {
+        Stmt *binding = s->body.v[j];
+        Field *f = t->def->fields.v[j];
+        for (int k = 0; k < j; k++) {
+          if (strcmp(binding->name, "_^") &&
+              !strcmp(binding->name, ((Stmt *)s->body.v[k])->name)) {
+            fail(binding->loc, "duplicate binding '%s'", binding->name);
+          }
+        }
+        if (binding->spec && type_spec(c->p, binding->spec) != f->type) {
+          fail(binding->loc, "result %d is '%s'", j, type_name(f->type));
+        }
+        if (!strcmp(binding->name, "_^")) {
+          continue;
+        }
+        binding_name(c, binding);
+        Var *v = mem(sizeof(*v));
+        v->declaration = binding->loc;
+        v->name = binding->name;
+        v->slot = field_value(c, variable(source), f, binding->loc).id;
+        v->type = f->type;
+        v->depth = c->depth;
+        v->lexical = c->lexical;
+        v->mut = s->mut;
+        v->root = source->root;
+        v->deps = source->deps;
+        tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL,
+                    NULL, 13, true);
+        add(&c->vars, v);
+      }
     }
     else if (s->kind == S_BIND_MANY) {
       int begin = c->vars.n;
@@ -4691,7 +4819,7 @@ static void statements(Context *c, List *body, bool scope) {
           }
           fail(s->loc, "procedure or void function cannot return a value");
         }
-        if (t->owned && c->in->result_local) {
+        if (t->owned && c->in->result_local && !s->a->tuple) {
           if (s->a->kind != E_NAME || strcmp(s->a->text, c->in->result_local))
             fail(
                 s->loc,
@@ -4700,6 +4828,29 @@ static void statements(Context *c, List *body, bool scope) {
           if (!r || r->slot != c->in->result_slot)
             fail(s->loc, "owned result binding was shadowed");
           v = variable(r);
+        }
+        else if (t->owned && s->a->tuple && c->in->result_local &&
+                 t->def->fields.n == s->a->args.n) {
+          /* The owned last part is already in place; build the others. */
+          Expr *last = s->a->args.v[s->a->args.n - 1];
+          Var *r = c->in->result_local && last->kind == E_NAME &&
+                           !strcmp(last->text, c->in->result_local)
+                       ? lookup(c, last->text)
+                       : NULL;
+          if (!r || r->slot + 1 != c->result_part) {
+            fail(s->loc, "the owned last result must be the binding every return^ gives");
+          }
+          v = (Value){.id = c->in->result_slot, .type = t};
+          for (int j = 0; j + 1 < s->a->args.n; j++) {
+            Field *f = t->def->fields.v[j];
+            Value part = construct(c, s->a->args.v[j], f->type,
+                                   field_value(c, v, f, s->loc).id);
+            if (dead(part)) {
+              v = part;
+              break;
+            }
+            v.deps |= part.deps;
+          }
         }
         else {
           bool building = c->building_result;
@@ -4818,14 +4969,15 @@ static void return_names(List *body, char **name, bool *valid) {
   for (int j = 0; j < body->n; j++) {
     Stmt *s = body->v[j];
     if (s->kind == S_RETURN) {
-      if (!s->a || s->a->kind != E_NAME) {
+      Expr *a = s->a && s->a->tuple ? s->a->args.v[s->a->args.n - 1] : s->a;
+      if (!a || a->kind != E_NAME) {
         *valid = false;
         continue;
       }
-      if (*name && strcmp(*name, s->a->text))
+      if (*name && strcmp(*name, a->text))
         *valid = false;
       else
-        *name = s->a->text;
+        *name = a->text;
     }
     return_names(&s->body, name, valid);
     return_names(&s->other, name, valid);
@@ -4885,6 +5037,9 @@ static Instance *instantiate(Program *p, Function *f, Def *self, List *actual,
     layout(t, a->loc);
     if (t->kind == T_VOID)
       fail(a->loc, "parameter cannot have void type");
+    if (t->kind == T_STRUCT && t->def->tuple)
+      fail(a->loc, "multiple results '%s' cannot be passed; bind them with let^ a, b = ...",
+           type_name(t));
     if (t->owned)
       fail(a->loc, "owned by-value parameters are not supported; use 'ref^'");
     Var *v = mem(sizeof(*v));

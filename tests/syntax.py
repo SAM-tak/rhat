@@ -193,6 +193,43 @@ let^ _^,answer=make(),42
 print^(values.len,values[2],answer)
 ''', '3 7 42\n')
 
+    positive('multiple_results', '''
+let^ divmod=f^ a:i64^,b:i64^ ->(i64^,i64^) { return^ a/b,a%b }
+let^ pair=f^ { 3,4.5 }
+let^ swap=f^ a:string^,b:string^ { b,a }
+let^ q,r=divmod(17,5)
+var^ x,y=pair()
+x,y:=pair()
+x+=1
+let^ s,t=swap("a","b")
+let^ _^,last=divmod(9,4)
+let^ again=f^ ->(i64^,i64^) { return^ divmod(7,2) }
+let^ m,n=again()
+let^ k:f^ i64^,i64^ ->(i64^,i64^); = divmod
+let^ u,v=k(9,2)
+print^(q,r,x,y,s,t,last,m,n,u,v)
+def^ P { self^{ x:i64^=1, y:i64^=2 }
+ both=f^ self^ ->(i64^,i64^) { self^.x,self^.y } }
+let^ p=P{}
+let^ a,b=p.both()
+print^(a,b)
+''', '3 2 4 4.5 b a 1 3 1 4 1\n1 2\n')
+
+    positive('multiple_owned_results', '''
+let^ count=f^ n:i64^ ->(i64^,grow^ i64^[]) {
+ var^ xs:grow^ i64^[]=[]
+ xs.push(n) xs.push(n+1)
+ return^ n*2,xs
+}
+let^ literal=f^ ->(i64^,grow^ i64^[]) { return^ 1,grow^[7,8] }
+var^ k,ys=count(5)
+ys.push(100)
+print^(k,ys.len,ys[2])
+repeat^ 3 { let^ _^,zs=count(1) print^(zs[1]) }
+let^ one,eight=literal()
+print^(one,eight[1])
+''', '10 3 100\n2\n2\n2\n1 8\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -430,7 +467,18 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('duplicate_parallel', 'let^ x,x=1,2', 'duplicate binding'),
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
-        ('parallel_count', 'var^ x,y=1', 'does not match'),
+        ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('results_not_multiple', 'var^ x,y=1', "'i32^' is not multiple results"),
+        ('results_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a,b,c=f()', '3 names for the 2 results'),
+        ('results_assign_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nvar^ a,b,c=1,2,3\na,b,c:=f()', '3 names for the 2 results'),
+        ('results_one_name', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ t=f()', 'need a name each'),
+        ('results_argument', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ g=f^ x {0}\nprint^(g(f()))', 'cannot be passed'),
+        ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values are only returned'),
+        ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
+        ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
+        ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),
+        ('results_growable_twice', 'let^ f=f^ ->(grow^ i32^[],grow^ i32^[]) {return^ grow^[1],grow^[2]}', 'final field'),
+        ('results_owned_moved', 'let^ f=f^ ->(i32^,grow^ i32^[]) {\nvar^ a:grow^ i32^[]=[]\nvar^ b:grow^ i32^[]=[]\nif^ true^ {return^ 1,a}\nreturn^ 2,b\n}\nlet^ n,x=f()', 'cannot be copied'),
         ('duplicate_first', 'repeat^ 1 {first^: let^ x=1 let^ x=2 main^:}', 'duplicate binding'),
         ('prolog_self_jump', 'repeat^ 1 {prolog^: break^ main^:}', 'own loop'),
         ('epilog_self_jump', 'repeat^ 1 {main^: epilog^: next^}', 'own loop'),

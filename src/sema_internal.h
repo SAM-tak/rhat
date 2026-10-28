@@ -86,6 +86,7 @@ typedef struct {
   int operator_destination; /* Valid only when operator_target is non-NULL. */
   List inflight; /* Values a statement still uses while evaluating later ones. */
   uint64_t param_deps[64]; /* The external root of each reference parameter. */
+  int result_part; /* One past the slot of the owned result part built in place. */
 } Context;
 
 /* Type inference and concrete-instance registry, implemented in check.c. */
@@ -286,6 +287,10 @@ Function *this_function(Program *p, Instance *in, Expr *target);
 
 /* Intern an anonymous union while preserving named alternatives. */
 Type *type_union(Program *p, Type *a, Type *b, Loc loc);
+/* The multiple result type of elems, one per distinct element list. */
+Type *type_tuple(Program *p, List *elems, Loc loc);
+/* Reject destructuring t into a number of names other than its results. */
+void results_check(Type *t, int names, Loc loc);
 
 /* Select an unambiguous contextual type for a literal. */
 Type *union_literal_hint(Type *t, Expr *e);

@@ -177,6 +177,13 @@ static char *spec_text(Spec *s)
   if (s->kind == SPEC_DYN) {
     return fmt("dyn^ %s", spec_text(s->elem));
   }
+  if (s->kind == SPEC_TUPLE) {
+    char *out = str("(");
+    for (int j = 0; j < s->params.n; j++) {
+      out = fmt("%s%s%s", out, j ? ", " : "", spec_text(s->params.v[j]));
+    }
+    return fmt("%s)", out);
+  }
   if (s->kind == SPEC_REF) {
     return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION) ? "ref^ (%s)" : "ref^ %s",
                spec_text(s->elem));
