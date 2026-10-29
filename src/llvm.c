@@ -2389,11 +2389,19 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             signature = fmt("%s -> %s", signature,
                             failing && value && t->def->tuple ? fmt("(%s)", l_name(t)) : l_name(t));
         }
-        // L^ is told each error the result may fail with.
+        // L^ is told each error the result may fail with, and a nil^ it may
+        // answer instead.
         char *failures = "";
         for (int k = 0; failing && k < in->result->def->alternatives.n; k++) {
             Type *arm = in->result->def->alternatives.v[k];
             if (arm == t) {
+                continue;
+            }
+            if (arm->kind == T_NIL) {
+                signature = fmt("%s|nil^", signature);
+                failures = fmt("%s  if (tag == %d) {\n    answers[0] = lhat_nil();\n"
+                               "    *answer_count = 1;\n    return;\n  }\n",
+                               failures, k);
                 continue;
             }
             // A whole errordef^ comes as a union of its variants.

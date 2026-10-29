@@ -477,7 +477,8 @@ Def *lhat_data_def(Type *t);
 // The errordef^ t is, or is a variant of, else NULL.
 Def *error_group(Type *t);
 // What an exportL^ result t answers when it does not fail: t itself unless
-// it has error alternatives, then its one other alternative, or NULL.
+// it has error alternatives, then its one other alternative besides nil^,
+// or NULL.
 Type *lhat_success(Type *t);
 char *llvm_type(Type *t);
 #endif

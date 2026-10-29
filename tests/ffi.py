@@ -463,6 +463,14 @@ void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *))
     }}
     printf("%d %d %lld %d %d\\n", counts[0], answers[0][0].as.object == v.as.object,
            (long long)answers[0][1].as.integer, counts[1], answers[1][0].tag == LHAT_VALUE_NIL);
+    LhatValue finds[3][2] = {{{{v, lhat_integer(1)}}, {{v, lhat_integer(0)}}, {{v, lhat_integer(-1)}}}}, found[3];
+    for (int j = 0; j < program.n; j++) {{
+        for (int k = 0; k < 3 && !strcmp(program.names[j], "find"); k++) {{
+            program.fns[j](NULL, NULL, finds[k], 2, &found[k], &counts[0]);
+        }}
+    }}
+    printf("%d %d %s\\n", found[0].as.object == v.as.object, found[1].tag == LHAT_VALUE_NIL,
+           ((MockError *)found[2].as.object)->kind->name);
     fflush(stdout);
     for (int j = 0; j < program.n; j++) {{
         if (!strcmp(program.names[j], "dispose")) {{
@@ -533,6 +541,12 @@ exportL^ let^ pick = f^ a:ref^ Counter, k:i64^ -> (ref^ Counter | nil^, i64^) {
   if^ k > 0 { return^ a, k }
   return^ nil^, k
 }
+exportL^ errordef^ Miss { Gone }
+exportL^ let^ find = f^ a:ref^ Counter, k:i64^ -> ref^ Counter | nil^ | Miss.Gone {
+  if^ k < 0 { return^ Miss.Gone{} }
+  if^ k = 0 { return^ nil^ }
+  return^ a
+}
 var^ c = Counter{n = 1}
 var^ v = LhatValue{}
 print^(rhat_lhat_wrap_Counter(nil^, ref^ c, ref^ v))
@@ -540,12 +554,13 @@ mock_data(v, rhat_lhat_wrap_Counter)
 print^(c.n)
 '''
     positive('ffi_export_lhat_data', data,
-             'rhat.Counter data\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.Counter data\nrhat.Miss errors Gone\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.same f^rhat.Counter, rhat.Counter|nil^ -> rhat.Counter|nil^;\n'
              'rhat.pick f^rhat.Counter, number^ -> rhat.Counter|nil^, number^;\n'
+             'rhat.find f^rhat.Counter, number^ -> rhat.Counter|rhat.Miss.Gone|nil^;\n'
              'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
-             'true\ntrue\n42 1 1 1\n2 1 3 2 1\ndispose 42\n1\n42\n', extra=lhat_extra)
+             'true\ntrue\n42 1 1 1\n2 1 3 2 1\n1 1 Gone\ndispose 42\n1\n42\n', extra=lhat_extra)
     errors = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_fail:p^;') + '''exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
 exportL^ let^ check = f^ k:i64^ -> i64^ | Error {
   if^ k = 0 { let^ e:Error = Error.Zero{}
@@ -569,6 +584,8 @@ mock_fail()
              'split 2 0\nsplit Bad: Error.Bad\nsplit 2 2\n', extra=lhat_extra)
     negative('ffi_export_lhat_error_unexported', header + 'errordef^ E { Bad }\nexportL^ let^ g = f^ -> i32^ | E { E.Bad{} }',
              "errordef^ 'E' needs exportL^ to fail an exportL^ result")
+    negative('ffi_export_lhat_error_nil', header + 'exportL^ errordef^ E { Bad }\nexportL^ let^ g = f^ k:i64^ -> i64^ | nil^ | E.Bad { k }',
+             'exportL^ result must be')
     negative('ffi_export_lhat_error_ref', header + 'exportL^ ref^ errordef^ E { Bad }', 'or exportL^ to a def^ or errordef^')
     negative('ffi_export_lhat_data_value', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }\nexportL^ let^ g = f^ w:W -> i32^ { 0 }',
              "exportL^ parameter 'w' needs")

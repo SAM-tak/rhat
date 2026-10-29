@@ -272,10 +272,10 @@ Type *lhat_success(Type *t)
     int errors = 0, others = 0;
     for (int j = 0; t->kind == T_UNION && j < t->def->alternatives.n; j++) {
         Type *arm = t->def->alternatives.v[j];
-        bool error = error_group(arm);
+        bool error = error_group(arm), other = !error && arm->kind != T_NIL;
         errors += error;
-        others += !error;
-        success = error ? success : arm;
+        others += other;
+        success = other ? arm : success;
     }
     return !errors ? t : others == 1 ? success : NULL;
 }
@@ -363,7 +363,12 @@ void export_validate(Program *p, Function *f)
                  group->name);
         }
     }
+    // Of what may fail, only a ref^ to host data may also be nil^.
     Type *success = result && f->lhat_export ? lhat_success(result) : NULL;
+    for (int j = 0; success && success != result && j < result->def->alternatives.n; j++) {
+        Type *arm = result->def->alternatives.v[j];
+        success = arm->kind == T_NIL && !lhat_data_def(success) ? NULL : success;
+    }
     bool tuple = success && success->kind == T_STRUCT && success->def->tuple;
     for (int j = 0; result && f->lhat_export && j < (tuple ? success->def->fields.n : 1); j++) {
         Type *part = !success ? NULL : tuple ? ((Field *)success->def->fields.v[j])->type : success;

@@ -243,7 +243,8 @@ exportL^ let^ split = f^ k:i64^ -> (i64^, string^) | Error.Bad { ... }
   付随フィールドと生成位置（source / line / column）は渡しません。
 - 結果に含めるエラーはすべて `exportL^ errordef^` のものに限り、ほかの `errordef^` を含むと
   「errordef^ 'E' needs exportL^ to fail an exportL^ result」でコンパイルエラーになります。
-- `ref^ T | nil^` にエラーを加えた結果（成功の型が二つ以上の合併）はまだ使えません。
+- `exportL^ ref^ def^` への `ref^ T | nil^` にもエラーを加えられます（L^ の署名は `-> rhat.T|rhat.Error|nil^`）。
+  `nil^` を含めてよいのはこの形だけで、`i64^ | nil^ | Error` などはコンパイルエラーです。
 
 ## 効果と安全性
 
