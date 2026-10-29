@@ -2038,9 +2038,11 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
             for (; base->kind == T_ARRAY; base = base->elem) {
                 dims = fmt("%s[%d]", dims, base->count);
             }
+            // A ref^ to host data or nil^ lies as a tag and a pointer.
             fprintf(f, " %s %s%s;",
-                    base->kind == T_STRING ? "struct { const char *text; int64_t length; }"
-                                           : c_name(base),
+                    base->kind == T_STRING  ? "struct { const char *text; int64_t length; }"
+                    : base->kind == T_UNION ? "struct { int32_t tag; void *pointer; }"
+                                            : c_name(base),
                     (char *)names.v[j], dims);
         }
         fprintf(f, " } %s;\n", name);
@@ -2375,8 +2377,11 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             bool tuple = value && t->def->tuple;
             char *answers = tuple ? "" : l_answer(t, "r", 0);
             for (int k = 0; tuple && k < t->def->fields.n; k++) {
-                answers = fmt("%s%s", answers,
-                              l_answer(((Field *)t->def->fields.v[k])->type, fmt("r.f%d", k), k));
+                Type *part = ((Field *)t->def->fields.v[k])->type;
+                char *v = part->kind == T_UNION ? fmt("(r.f%d.tag == %d ? r.f%d.pointer : NULL)", k,
+                                                      pointer_tag(part), k)
+                                                : fmt("r.f%d", k);
+                answers = fmt("%s%s", answers, l_answer(part, v, k));
             }
             if (text || value) {
                 fprintf(f, "  %s r;\n  rh_entry_%s(%s);\n",

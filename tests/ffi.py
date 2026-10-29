@@ -262,7 +262,7 @@ void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
 #include "lhat.h"
-struct LhatProgram {{ int n; const char *names[8]; LhatHostFn fns[8]; }};
+struct LhatProgram {{ int n; const char *names[16]; LhatHostFn fns[16]; }};
 static LhatProgram program;
 LhatProgram *mock_program(void) {{ return &program; }}
 bool lhat_register_func(LhatProgram *p, const char *module, const char *name, const char *signature, LhatHostFn call, void *context)
@@ -404,6 +404,15 @@ void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *))
     wrap(NULL, pointer, &again);
     printf("%lld %d %d %d\\n", bumped, same.as.object == v.as.object, missing.tag == LHAT_VALUE_NIL,
            again.as.object == v.as.object);
+    LhatValue picks[2][2] = {{{{v, lhat_integer(3)}}, {{v, lhat_integer(0)}}}}, answers[2][2];
+    int counts[2] = {{0, 0}};
+    for (int j = 0; j < program.n; j++) {{
+        for (int k = 0; k < 2 && !strcmp(program.names[j], "pick"); k++) {{
+            program.fns[j](NULL, NULL, picks[k], 2, answers[k], &counts[k]);
+        }}
+    }}
+    printf("%d %d %lld %d %d\\n", counts[0], answers[0][0].as.object == v.as.object,
+           (long long)answers[0][1].as.integer, counts[1], answers[1][0].tag == LHAT_VALUE_NIL);
     fflush(stdout);
     for (int j = 0; j < program.n; j++) {{
         if (!strcmp(program.names[j], "dispose")) {{
@@ -437,8 +446,8 @@ print^(rhat_lhat_register(mock_program(), "rhat"))
              'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.divmod f^number^, number^ -> number^, number^, string^;\ntrue\n3 3 2 ok\n', extra=lhat_extra)
-    negative('ffi_export_lhat_multiple_nil', header + 'exportL^ let^ m = f^ -> (i64^, string^ | nil^) { return^ 1, nil^ }',
-             'a part of several not | nil^')
+    negative('ffi_export_lhat_multiple_text_nil', header + 'exportL^ let^ m = f^ -> (i64^, string^ | nil^) { return^ 1, nil^ }',
+             'exportL^ result must be')
     negative('ffi_extern_multiple', 'externC^ div:f^ a:i32^, b:i32^ -> (i32^, i32^);\nlet^ q, r = div(7, 2)',
              'externC^ result must be')
     suite.runtime_failure('ffi_export_lhat_whole', lhat + 'mock_run(1)\n', 'exportL^ add needs a whole number', extra=lhat_extra)
@@ -470,6 +479,10 @@ externC^ mock_data:p^ v:LhatValue,
   dispose = p^ self^ { print^("dispose", self^.n) }
 }
 exportL^ let^ same = f^ a:ref^ Counter, b:ref^ Counter | nil^ -> ref^ Counter | nil^ { b }
+exportL^ let^ pick = f^ a:ref^ Counter, k:i64^ -> (ref^ Counter | nil^, i64^) {
+  if^ k > 0 { return^ a, k }
+  return^ nil^, k
+}
 var^ c = Counter{n = 1}
 var^ v = LhatValue{}
 print^(rhat_lhat_wrap_Counter(nil^, ref^ c, ref^ v))
@@ -480,8 +493,9 @@ print^(c.n)
              'rhat.Counter data\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.same f^rhat.Counter, rhat.Counter|nil^ -> rhat.Counter|nil^;\n'
+             'rhat.pick f^rhat.Counter, number^ -> rhat.Counter|nil^, number^;\n'
              'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
-             'true\ntrue\n42 1 1 1\ndispose 42\n1\n42\n', extra=lhat_extra)
+             'true\ntrue\n42 1 1 1\n2 1 3 2 1\ndispose 42\n1\n42\n', extra=lhat_extra)
     negative('ffi_export_lhat_data_value', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }\nexportL^ let^ g = f^ w:W -> i32^ { 0 }',
              "exportL^ parameter 'w' needs")
     negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^')

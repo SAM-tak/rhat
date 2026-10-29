@@ -329,16 +329,13 @@ void export_validate(Program *p, Function *f)
         !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
         fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
     }
-    // Multiple results answer each part; a nullable part does not lay out
-    // as a C pointer.
+    // Multiple results answer each part.
     bool tuple = result && result->kind == T_STRUCT && result->def->tuple;
     for (int j = 0; result && f->lhat_export && j < (tuple ? result->def->fields.n : 1); j++) {
         Type *part = tuple ? ((Field *)result->def->fields.v[j])->type : result;
-        if (!l_value(part) || (tuple && part->kind == T_UNION)) {
-            fail(f->result->loc,
-                 "exportL^ result must be a number, bool^, string^, exportL^ def^ "
-                 "or ref^ to an exportL^ ref^ def^%s",
-                 tuple ? ", and a part of several not | nil^" : "");
+        if (!l_value(part)) {
+            fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
+                                 "or ref^ to an exportL^ ref^ def^");
         }
     }
 }

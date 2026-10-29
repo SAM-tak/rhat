@@ -75,7 +75,8 @@ let^ a, b = find(n) ?? (0, "none")      # -> (i64^, string^) | nil^ の場合
 
 - `exportL^` 関数は複数の値を返せます。L^ の署名は `-> number^, number^, string^` になり、
   それぞれを L^ の値として返します。各値には単一の返り値と同じ型（数値・`bool^`・`string^`・`exportL^ def^`・
-  `ref^` で渡す `exportL^ ref^ def^`）を使えます。ただし `| nil^` を含む値は C のポインタの配置にならないため、まだ使えません。
+  `ref^` で渡す `exportL^ ref^ def^`、その `| nil^`）を使えます。`ref^ T | nil^` の値は、グルーの C 側では
+  タグとポインタの組として受け取り、`nil^` なら L^ の `nil^` を返します。
 - `externC^` と `exportC^` は複数の返り値を使えません。C に対応する形がないためです。
 
 ## 未対応
