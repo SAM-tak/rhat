@@ -64,9 +64,9 @@ bool integer_fits(const char *text, int kind)
     return n < m || (n == m && strcmp(text, limit) <= 0);
 }
 
-/* Exact comparison of nonnegative decimal literals. Narrow-float rounding
- * boundaries are dyadic rationals with at most 150 decimal fraction digits.
- * Comparing digits avoids double rounding for literals just beside a tie. */
+// Exact comparison of nonnegative decimal literals. Narrow-float rounding
+// boundaries are dyadic rationals with at most 150 decimal fraction digits.
+// Comparing digits avoids double rounding for literals just beside a tie.
 typedef struct {
     char *digits;
     long exponent;
@@ -165,7 +165,7 @@ char *float_constant(const char *text, int kind, Loc loc)
         Decimal d = decimal(text);
         unsigned low = 0, high = kind == T_F8 ? 126 : kind == T_F16 ? 31743 : 2139095039;
         unsigned maximum = high;
-        /* First find the greatest representable value <= the exact literal. */
+        // First find the greatest representable value <= the exact literal.
         while (low < high) {
             unsigned mid = (low + high + 1) / 2;
             if (decimal_compare(d, narrow_value(mid, kind)) >= 0) {

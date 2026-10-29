@@ -1,8 +1,8 @@
 #include "rhat.h"
 #include <limits.h>
 
-/* CFG states are lexical owner stacks, not reference roots. An initializer
- * acquires its destination before evaluating any field or callee. */
+// CFG states are lexical owner stacks, not reference roots. An initializer
+// acquires its destination before evaluating any field or callee.
 typedef struct {
     int n;
     int *owners;
@@ -42,7 +42,7 @@ static void local_plan(Instance *in)
             ((Slot *)in->slots.v[i->dst])->owner = ((Slot *)in->slots.v[i->a])->owner;
         }
     }
-    /* A value built on another owner's data stack names that owner. */
+    // A value built on another owner's data stack names that owner.
     for (int k = 0; k < in->slots.n; k++) {
         Slot *s = in->slots.v[k];
         while (((Slot *)in->slots.v[s->owner])->owner != s->owner) {
@@ -106,7 +106,7 @@ static void local_plan(Instance *in)
             continue;
         }
         if (i->op == I_TERMINATE) {
-            continue; /* The process exits; owners are not released. */
+            continue; // The process exits; owners are not released.
         }
         if (i->op == I_BR || i->op == I_CBR) {
             join(states, labels[i->label], &state, &queue, i->loc);
@@ -120,7 +120,7 @@ static void local_plan(Instance *in)
     }
 }
 
-/* The instances a call may enter: its callee, or every dyn^ table entry. */
+// The instances a call may enter: its callee, or every dyn^ table entry.
 static List callees(Instr *i)
 {
     List out = {0};
@@ -133,7 +133,7 @@ static List callees(Instr *i)
     return out;
 }
 
-/* Raise each instance's stack need to cover its calls, to a fixed point. */
+// Raise each instance's stack need to cover its calls, to a fixed point.
 static void propagate(Program *p)
 {
     int n = p->instances.n;
@@ -164,8 +164,8 @@ static void propagate(Program *p)
 void plan_stacks(Program *p)
 {
     int n = p->instances.n;
-    /* Reachability identifies recursive SCC membership. Specializations have
-   * already been materialized, including methods and template instances. */
+    // Reachability identifies recursive SCC membership. Specializations have
+    // already been materialized, including methods and template instances.
     unsigned char *reach = mem((size_t)n * (size_t)n);
     for (int a = 0; a < n; a++) {
         Instance *in = p->instances.v[a];
@@ -208,9 +208,9 @@ void plan_stacks(Program *p)
         }
     }
     propagate(p);
-    /* An exportC^ entered from C starts above the stacks the interrupted R^
-   * call keeps, so every C call is planned to admit one level of callback;
-   * deeper nesting is checked when an entry starts. */
+    // An exportC^ entered from C starts above the stacks the interrupted R^
+    // call keeps, so every C call is planned to admit one level of callback;
+    // deeper nesting is checked when an entry starts.
     int callback = 0;
     for (int a = 0; a < n; a++) {
         Instance *in = p->instances.v[a];
@@ -230,8 +230,8 @@ void plan_stacks(Program *p)
         propagate(p);
     }
     p->stack_count = ((Instance *)p->instances.v[0])->stack_need;
-    /* Stacks are reserved address space, so admit at least eight levels of
-   * callbacks that each hold owned values across their C call. */
+    // Stacks are reserved address space, so admit at least eight levels of
+    // callbacks that each hold owned values across their C call.
     if (callback > (INT_MAX - p->stack_count) / 7) {
         fail(((Instance *)p->instances.v[0])->fn->loc, "data stack count overflows");
     }

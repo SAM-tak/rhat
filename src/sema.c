@@ -10,7 +10,7 @@ bool guarded_chain(Expr *e)
            (e->optional || guarded_chain(e->a));
 }
 
-/* A method name is not a first-class value; keep it with its call. */
+// A method name is not a first-class value; keep it with its call.
 Expr *chain_parts(Expr *e, List *steps)
 {
     if (e->kind == E_MEMBER || e->kind == E_INDEX || e->kind == E_SLICE ||
@@ -204,7 +204,7 @@ void restore_facts(List *vars, List facts)
     }
 }
 
-/* Compile alternate branches from the same input, then merge mutations. */
+// Compile alternate branches from the same input, then merge mutations.
 void rewind_facts(List *vars, List facts)
 {
     for (int j = 0; j < facts.n; j++) {
@@ -328,7 +328,7 @@ int condition_truth(NilFlow *flow, Expr *e)
         }
         return a > 0 || b > 0 ? 1 : a < 0 && b < 0 ? -1 : 0;
     }
-    /* Keep existing non-fits condition checking unchanged. */
+    // Keep existing non-fits condition checking unchanged.
     if (e->kind == E_FITS) {
         for (int j = flow->guards.n - 1; j >= 0; j--) {
             NilGuard *g = flow->guards.v[j];
@@ -511,7 +511,7 @@ Value snapshot(Context *c, Value src, Loc l)
     return copy_to(c, dst, src, l, true);
 }
 
-/* A constant of builtin kind k. */
+// A constant of builtin kind k.
 Value constant(Context *c, int k, const char *text, Loc loc)
 {
     Value v = value(c, type_builtin(c->p, k));
@@ -522,7 +522,7 @@ Value constant(Context *c, int k, const char *text, Loc loc)
     return v;
 }
 
-/* a op b over a's type; a comparison answers bool^. */
+// a op b over a's type; a comparison answers bool^.
 Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
 {
     bool compare = strchr("<=>!", op[0]) != NULL;
@@ -536,7 +536,7 @@ Value operate(Context *c, const char *op, Value a, Value b, Loc loc)
     return v;
 }
 
-/* The place of union u's alternative arm, setting the tag when it writes. */
+// The place of union u's alternative arm, setting the tag when it writes.
 int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
 {
     int id = slot(c, arm, true);
@@ -549,8 +549,8 @@ int case_at(Context *c, Value u, Type *arm, bool write, Loc loc)
     return id;
 }
 
-/* An owned operand of try^, catch^ or ?? is built on the data stack of dst,
- * which then takes the value it holds without a copy. */
+// An owned operand of try^, catch^ or ?? is built on the data stack of dst,
+// which then takes the value it holds without a copy.
 Value held_operand(Context *c, Expr *e, int dst)
 {
     Type *t = expression_type(c, e, NULL);
@@ -574,7 +574,7 @@ Value case_value(Context *c, Value src, Type *arm, Loc loc)
 {
     layout(arm, loc);
     if (arm->owned) {
-        /* An owned alternative is used where it lies. */
+        // An owned alternative is used where it lies.
         return (Value){.id = case_at(c, src, arm, false, loc),
                        .type = arm,
                        .deps = arm->refs ? src.deps : 0,
@@ -597,8 +597,8 @@ Value case_value(Context *c, Value src, Type *arm, Loc loc)
     return out;
 }
 
-/* This also projects a proven subset for nil narrowing. Callers validate all
-   ordinary implicit conversions with sum_accepts before entering here. */
+// This also projects a proven subset for nil narrowing. Callers validate all
+// ordinary implicit conversions with sum_accepts before entering here.
 Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
 {
     layout(to, loc);
@@ -612,7 +612,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     }
     Type *pointer = c_function_arm(to, src.type);
     if (pointer) {
-        /* A C-ABI declaration named as a value is the address of its symbol. */
+        // A C-ABI declaration named as a value is the address of its symbol.
         Value address = pointer == to ? out : value(c, pointer);
         Instr *i = emit(c, I_CONST, loc);
         i->dst = address.id;
@@ -621,7 +621,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         return pointer == to ? out : convert_value(c, address, to, out.id, loc);
     }
     if (src.type->kind == T_DYN) {
-        /* A fits^ test on the dyn^ value proved its concrete type or composer. */
+        // A fits^ test on the dyn^ value proved its concrete type or composer.
         Instr *i = emit(c, to->kind == T_DYN ? I_DYNCAST : I_DYNDATA, loc);
         i->dst = out.id;
         i->a = src.id;
@@ -645,7 +645,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         fail(loc, "expected '%s', found '%s'", type_name(to), type_name(src.type));
     }
     if (dst < 0 && to->owned && union_alternative(src.type, to) >= 0) {
-        /* A narrowed owned alternative is used where it lies. */
+        // A narrowed owned alternative is used where it lies.
         return case_value(c, src, to, loc);
     }
     List selected = {0};
@@ -794,7 +794,7 @@ Value fits_value(Context *c, Expr *e)
         return src;
     }
     if (src.type->kind == T_DYN) {
-        /* Only the yes branch narrows; the remaining types are not expressible. */
+        // Only the yes branch narrows; the remaining types are not expressible.
         Type *yes = dyn_fits_target(c->p, e->test_spec, e->loc);
         remember_test(&c->flow, c, e, e->a, yes, src.type);
         Value out = value(c, type_builtin(c->p, T_BOOL));
@@ -838,8 +838,7 @@ Value fits_value(Context *c, Expr *e)
             copy_to(c, out, test, e->loc, true);
         }
         else {
-            /* Both operands are pure tag predicates, so a boolean OR is sufficient.
-       */
+            // Both operands are pure tag predicates, so a boolean OR is sufficient.
             i = emit(c, I_BIN, e->loc);
             i->dst = out.id;
             i->a = out.id;
@@ -970,8 +969,8 @@ Value field_value(Context *c, Value base, Field *f, Loc l)
     return r;
 }
 
-/* Where a binding of type want builds the owned result: the result, its
- * owned alternative, or that one's owned last part; -1 if it cannot. */
+// Where a binding of type want builds the owned result: the result, its
+// owned alternative, or that one's owned last part; -1 if it cannot.
 int result_place(Context *c, Type *want, Loc loc)
 {
     Value v = {.id = c->in->result_slot, .type = c->in->result};
@@ -1007,7 +1006,7 @@ static void release(Context *c, Type *t, int id, Loc l)
     i->type = t;
 }
 
-/* Whether v owns its storage, rather than being a result's part in place. */
+// Whether v owns its storage, rather than being a result's part in place.
 static bool owner_var(Context *c, Var *v)
 {
     return v->type->owned && v->slot != c->in->result_slot &&
@@ -1079,7 +1078,7 @@ static Value literal_int(Context *c, Expr *e, Type *expected)
     return v;
 }
 
-/* this^ selects a declaration, independently of its runtime activation. */
+// this^ selects a declaration, independently of its runtime activation.
 Function *this_function(Program *p, Instance *in, Expr *target)
 {
     if (target->kind != E_NAME || strncmp(target->text, "this^", 5)) {
@@ -1170,7 +1169,7 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
     return overload_select(c->p, candidates, &actual, e->loc, true);
 }
 
-/* Whether a value of type part could be stored inside a value of type whole. */
+// Whether a value of type part could be stored inside a value of type whole.
 static bool contains(Type *whole, Type *part)
 {
     if (whole == part) {
@@ -1196,8 +1195,8 @@ static bool contains(Type *whole, Type *part)
     return false;
 }
 
-/* Whether a value of type t may refer to a location inside an element of
- * type elem. */
+// Whether a value of type t may refer to a location inside an element of
+// type elem.
 static bool may_reference(Type *t, Type *elem)
 {
     if (!t->refs) {
@@ -1207,10 +1206,10 @@ static bool may_reference(Type *t, Type *elem)
         return contains(elem, t->elem);
     }
     if (t->kind == T_STRING) {
-        return false; /* Strings view literals or other strings, never arrays. */
+        return false; // Strings view literals or other strings, never arrays.
     }
     if (t->kind == T_DYN) {
-        return elem->kind == T_STRUCT; /* Any composer of the dyn^ def. */
+        return elem->kind == T_STRUCT; // Any composer of the dyn^ def.
     }
     if (t->kind == T_ARRAY || t->kind == T_GROW) {
         return may_reference(t->elem, elem);
@@ -1233,8 +1232,8 @@ static bool may_reference(Type *t, Type *elem)
     return false;
 }
 
-/* The element type of the flex^ storage an argument of type t leads a
- * callee to (the array itself or a struct's flex^ tail), or NULL. */
+// The element type of the flex^ storage an argument of type t leads a
+// callee to (the array itself or a struct's flex^ tail), or NULL.
 static Type *flex_elements(Type *t)
 {
     if (t->kind == T_REF) {
@@ -1254,9 +1253,9 @@ static Type *flex_elements(Type *t)
     return NULL;
 }
 
-/* Shrinking flex^ storage returns its tail to the data stack and the OS, so
- * no variable in scope or value still in use may refer into it. skip is the
- * shrinking argument itself. */
+// Shrinking flex^ storage returns its tail to the data stack and the OS, so
+// no variable in scope or value still in use may refer into it. skip is the
+// shrinking argument itself.
 static void shrink_check(Context *c, uint64_t storage, Type *elem, Value *skip, Loc loc)
 {
     for (int j = 0; j < c->vars.n; j++) {
@@ -1280,8 +1279,8 @@ static void shrink_check(Context *c, uint64_t storage, Type *elem, Value *skip, 
     }
 }
 
-/* Why method f of iface cannot occupy a dyn^ table entry, or NULL. Entries
- * share one signature across every concrete type. */
+// Why method f of iface cannot occupy a dyn^ table entry, or NULL. Entries
+// share one signature across every concrete type.
 static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
 {
     if (f->templ || f->operator_member || f->right_receiver || !f->params.n ||
@@ -1311,13 +1310,13 @@ static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
     return NULL;
 }
 
-/* An omitted result means the method returns nothing through dyn^. */
+// An omitted result means the method returns nothing through dyn^.
 static Type *dyn_result(Program *p, Function *f)
 {
     return f->result ? type_spec(p, f->result) : type_builtin(p, T_VOID);
 }
 
-/* The table of concrete's implementations of iface's methods. */
+// The table of concrete's implementations of iface's methods.
 DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
 {
     for (int j = 0; j < p->dyn_tables.n; j++) {
@@ -1326,7 +1325,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
             return t;
         }
     }
-    /* A dyn^ call has no shrink summary, so it must not reach flex^ storage. */
+    // A dyn^ call has no shrink summary, so it must not reach flex^ storage.
     if (flex_elements(concrete->type)) {
         fail(loc, "'%s' has a flex^ field and cannot be used through dyn^", concrete->name);
     }
@@ -1355,7 +1354,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
     return table;
 }
 
-/* Pair a reference to a concrete composing type with its method table. */
+// Pair a reference to a concrete composing type with its method table.
 static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
 {
     if (dead(v) || v.type == dyn) {
@@ -1376,7 +1375,7 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
     return out;
 }
 
-/* Call a method through the table carried by a ref^ dyn^ receiver. */
+// Call a method through the table carried by a ref^ dyn^ receiver.
 static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int destination)
 {
     Program *p = c->p;
@@ -1403,7 +1402,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - 1);
     }
     if (f->procedure || f->mutable_self) {
-        /* The same mutation rules as a static call to a receiver in that storage. */
+        // The same mutation rules as a static call to a receiver in that storage.
         store_check(c, (Value){.storage = receiver.deps}, (Value){0}, e->loc);
     }
     Instr *i = mem(sizeof(*i));
@@ -1417,7 +1416,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         if (c->terminated) {
             return abrupt(c);
         }
-        /* Every table entry was specialized for exactly the declared types. */
+        // Every table entry was specialized for exactly the declared types.
         if (v.type != want) {
             fail(e->loc, "argument to '%s' through dyn^ must be '%s', found '%s'", f->name,
                  type_name(want), type_name(v.type));
@@ -1797,7 +1796,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (f->procedure && !c->in->fn->procedure) {
         fail(e->loc, "f^ cannot call p^ '%s'", f->name);
     }
-    /* Arguments evaluated so far stay in use while later ones may shrink. */
+    // Arguments evaluated so far stay in use while later ones may shrink.
     int inflight = c->inflight.n;
     for (int j = 0; j < values.n; j++) {
         add(&c->inflight, values.v[j]);
@@ -1847,7 +1846,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         add(&actual, right_self->type);
     }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
-    /* A callee still being lowered has no summary yet; assume it shrinks. */
+    // A callee still being lowered has no summary yet; assume it shrinks.
     for (int j = 0; j < values.n && j < 64; j++) {
         Value *v = values.v[j];
         Type *elem = flex_elements(v->type);
@@ -1882,7 +1881,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         Value *v = values.v[j];
         add(&i->args, (void *)(intptr_t)(v->id + 1));
     }
-    /* C may write through every pointer it receives. */
+    // C may write through every pointer it receives.
     if (f->procedure || f->mutable_self || f->external) {
         forget_roots(&c->vars, deps, false);
     }
@@ -1910,7 +1909,7 @@ Type *union_literal_hint(Type *t, Expr *e)
             (literal->kind == E_RECORD && a->kind == T_STRUCT && a->def->tuple == literal->tuple &&
              (!literal->tuple || a->def->fields.n == literal->args.n)) ||
             (literal->kind == E_ARRAY && (a->kind == T_ARRAY || a->kind == T_GROW))) {
-            /* A mixed result must not implicitly choose an error constructor. */
+            // A mixed result must not implicitly choose an error constructor.
             if (literal->kind == E_RECORD && a->def->error_variant) {
                 return NULL;
             }
@@ -2168,7 +2167,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         Value out = {0};
         out.type = t;
         out.id = dst >= 0 ? dst : slot(c, t, false);
-        /* Fields built so far stay in use while later ones are evaluated. */
+        // Fields built so far stay in use while later ones are evaluated.
         int inflight = c->inflight.n;
         add(&c->inflight, &out);
         if (!t->def->fields.n) {
@@ -2200,8 +2199,8 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                     init = e->args.v[k];
                 }
             }
-            Def *old = c->access; /* Default initializers retain their declaration's
-                                     access context. */
+            Def *old = c->access; // Default initializers retain their declaration's
+                                  // access context.
             bool old_default = c->in_default;
             bool default_value = init && init == f->init;
             if (default_value) {
@@ -2226,7 +2225,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->label = f->index;
             Value v = {0};
             if (t->def->error_variant && !f->index) {
-                /* The hidden site records where this error is built and its message. */
+                // The hidden site records where this error is built and its message.
                 char *message = t->def->name;
                 for (int k = 0; k < e->names.n; k++) {
                     Expr *given = e->args.v[k];
@@ -2281,7 +2280,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return out;
     }
     if (e->kind == E_ARRAY) {
-        bool grow = e->text != NULL; /* grow^/flex^ [...] or grow^/flex^ T[] */
+        bool grow = e->text != NULL; // grow^/flex^ [...] or grow^/flex^ T[]
         int flex = grow && !strcmp(e->text, "flex^");
         if (e->test_spec) {
             Type *named = type_spec(c->p, e->test_spec);
@@ -2305,8 +2304,8 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         }
         if (!t) {
             t = type_wrap(c->p, T_ARRAY, first.type, e->args.n);
-            layout(t, e->loc); /* Re-evaluation of inference expressions is avoided
-                            below. */
+            layout(t, e->loc); // Re-evaluation of inference expressions is avoided
+                               // below.
             Value out = value(c, t);
             for (int j = 0; j < e->args.n; j++) {
                 Value v = j ? expression(c, e->args.v[j], t->elem) : first;
@@ -2452,8 +2451,8 @@ Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
     return result;
 }
 
-/* A range index borrows a view: [lo :: hi] excludes hi, [lo to^ hi] includes
- * it, and an omitted bound is the start or the length. */
+// A range index borrows a view: [lo :: hi] excludes hi, [lo to^ hi] includes
+// it, and an omitted bound is the start or the length.
 static Value slice_view(Context *c, Expr *e, Type *expected)
 {
     Program *p = c->p;
@@ -2521,8 +2520,8 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     return out;
 }
 
-/* Collect trailing arguments into a temporary array borrowed for one call,
- * or view a forwarded sequence. */
+// Collect trailing arguments into a temporary array borrowed for one call,
+// or view a forwarded sequence.
 static Value pack_value(Context *c, Expr *e, Type *expected)
 {
     Program *p = c->p;
@@ -2545,7 +2544,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
         }
     }
     else {
-        /* No arguments: an empty view of one zeroed element. */
+        // No arguments: an empty view of one zeroed element.
         items = value(c, array);
         Instr *z = emit(c, I_ZERO, e->loc);
         z->dst = items.id;
@@ -2784,7 +2783,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             return range_member(c, base, e->text, e->loc);
         }
         if (base.type->kind == T_STRING) {
-            /* s.bytes views the same bytes; string^ itself has no len. */
+            // s.bytes views the same bytes; string^ itself has no len.
             if (strcmp(e->text, "bytes")) {
                 fail(e->loc,
                      "string^ has no %s; use s.bytes for bytes, or s.decode(at), s.slice(r) and "
@@ -2802,7 +2801,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         Type *view = error_view(base.type, e->text);
         if (view != base.type) {
-            /* Every error variant starts with the same fields, so the first one reads them. */
+            // Every error variant starts with the same fields, so the first one reads them.
             base = (Value){.id = case_at(c, base, view, false, e->loc),
                            .type = view,
                            .deps = base.deps,
@@ -2877,8 +2876,8 @@ Value expression(Context *c, Expr *e, Type *expected)
         out.type = base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
         out.id = slot(c, out.type, true);
         out.storage = view ? base.deps : base.storage;
-        /* The container must outlive references loaded from it. This conservative
-           bound also covers aliases and loop-carried updates to element roots. */
+        // The container must outlive references loaded from it. This conservative
+        // bound also covers aliases and loop-carried updates to element roots.
         out.deps = out.type->refs ? base.deps | (view ? 0 : base.storage) : 0;
         out.var = base.var;
         out.addressable = base.addressable;
@@ -3077,7 +3076,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         bool cmp = strchr("=!<>", e->text[0]) != NULL;
         if (cmp && a.type->kind == T_STRING) {
-            /* Byte order, which UTF-8 makes the order of scalar values. */
+            // Byte order, which UTF-8 makes the order of scalar values.
             Value both[2] = {a, b};
             Value order = helper(c, "rh_text_compare", both, 2, T_I64, e->loc);
             if (strcmp(e->text, "<=>")) {

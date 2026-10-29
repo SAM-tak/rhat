@@ -62,8 +62,8 @@ static Type *slot_type(Output *o, int n)
     return ((Slot *)o->in->slots.v[n])->type;
 }
 
-/* Non-owning values up to two machine words are LLVM values. Large and
- * owned results retain destination passing; no host C ABI is changed. */
+// Non-owning values up to two machine words are LLVM values. Large and
+// owned results retain destination passing; no host C ABI is changed.
 static bool direct(Type *t)
 {
     return t->kind != T_VOID && !t->owned && t->size > 0 && t->size <= 16;
@@ -78,10 +78,10 @@ static char *stack_for(Output *o, int id)
     return fmt("%%s%d", owner);
 }
 
-/* A non-owning value cannot contain an owning array descriptor. Array
- * elements are non-owning; references cannot expose descriptor fields or
- * reinterpret storage. Keep aggregates containing owned fields unclassified
- * so their whole-value copies may alias either category. */
+// A non-owning value cannot contain an owning array descriptor. Array
+// elements are non-owning; references cannot expose descriptor fields or
+// reinterpret storage. Keep aggregates containing owned fields unclassified
+// so their whole-value copies may alias either category.
 static const char *memory_tag(Type *t)
 {
     return t->kind == T_GROW ? ", !tbaa !5" : !t->owned ? ", !tbaa !4" : "";
@@ -92,8 +92,8 @@ static int load(Output *o, int n)
     int t = ++o->tmp;
     Type *type = slot_type(o, n);
     if (type->kind == T_GROW) {
-        /* SROA drops TBAA on aggregate loads. Scalar descriptor accesses retain
-     * the distinction from element stores through optimizer decomposition. */
+        // SROA drops TBAA on aggregate loads. Scalar descriptor accesses retain
+        // the distinction from element stores through optimizer decomposition.
         int data = ++o->tmp, lenaddr = ++o->tmp, len = ++o->tmp;
         int stackaddr = ++o->tmp, stack = ++o->tmp;
         int first = ++o->tmp, second = ++o->tmp;
@@ -229,8 +229,8 @@ static Interval range_expression(RangeOutput *r, RangeExpr *e)
             v.hi = range_select(o, v.hi, values[j], true);
         }
     }
-    /* i128 arithmetic deliberately has no overflow flags. If a child did not
-   * fit i64, its false validity bit survives all following computations. */
+    // i128 arithmetic deliberately has no overflow flags. If a child did not
+    // fit i64, its false validity bit survives all following computations.
     range_fit(r, v);
     return v;
 }
@@ -257,9 +257,9 @@ static void range_guard(Output *o, Instr *i)
     }
     fprintf(o->f, "  ; range.guard result=%%p%d\n", i->dst);
     save(o, i->dst, i->type, r.valid);
-    /* The proof excludes container/reference mutation. Snapshot the data
-   * pointers explicitly: byte stores otherwise obscure their invariance to
-   * LLVM's alias analysis. Distinct arguments are still allowed to alias. */
+    // The proof excludes container/reference mutation. Snapshot the data
+    // pointers explicitly: byte stores otherwise obscure their invariance to
+    // LLVM's alias analysis. Distinct arguments are still allowed to alias.
     for (int j = 0; j < plan->arrays.n; j++) {
         RangeExpr *arr = plan->arrays.v[j];
         int slot = (int)(intptr_t)plan->data.v[j] - 1;
@@ -276,22 +276,22 @@ static void range_guard(Output *o, Instr *i)
     }
 }
 
-/* A method table has one address in the whole program so that fits^ can
- * compare it; every IR module using it emits the same linkonce_odr copy. */
+// A method table has one address in the whole program so that fits^ can
+// compare it; every IR module using it emits the same linkonce_odr copy.
 static char *table_symbol(DynTable *t)
 {
     return fmt("rh_dyn_%s", link_identity(fmt("%s:%s", t->concrete->name, t->iface->name)));
 }
 
-/* Whether table t holds a type that the dyn^ test or cast toward type accepts
- * on a value whose dyn^ def is from. */
+// Whether table t holds a type that the dyn^ test or cast toward type accepts
+// on a value whose dyn^ def is from.
 static bool table_matches(DynTable *t, Def *from, Type *type)
 {
     return t->iface == from && (type->kind == T_DYN ? derives(t->concrete, type->elem->def)
                                                     : t->concrete == type->elem->def);
 }
 
-/* Whether instruction i of in names table t. */
+// Whether instruction i of in names table t.
 static bool table_used(Program *p, Instance *in, Instr *i, DynTable *t)
 {
     if (i->op == I_DYN) {
@@ -325,11 +325,11 @@ static DynTable *table_for(Program *p, Def *concrete, Def *iface)
     return NULL;
 }
 
-/* The C ABI spelling of an externC^ parameter or result type. A slice or
- * string passes its data pointer only; small integers carry their extension. */
+// The C ABI spelling of an externC^ parameter or result type. A slice or
+// string passes its data pointer only; small integers carry their extension.
 static char *c_abi(Type *t, bool attributes)
 {
-    /* A union here is ref^ T | nil^, a pointer that may be NULL. */
+    // A union here is ref^ T | nil^, a pointer that may be NULL.
     if (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_STRING || t->kind == T_UNION) {
         return "ptr";
     }
@@ -343,7 +343,7 @@ static char *c_abi(Type *t, bool attributes)
     return fmt("%s%s", extension, llvm_type(t));
 }
 
-/* A parameter's attributes follow its type, unlike a result's. */
+// A parameter's attributes follow its type, unlike a result's.
 static char *c_param(Type *t)
 {
     bool zero = t->kind == T_BOOL || t->kind == T_U8 || t->kind == T_U16;
@@ -351,12 +351,12 @@ static char *c_param(Type *t)
     return fmt("%s%s", c_abi(t, false), zero ? " zeroext" : sign ? " signext" : "");
 }
 
-/* LLVM IR does not lower C's struct passing for the target, so a C function
- * taking or returning a def^ by value is reached through a generated C shim
- * that takes those values by pointer. */
+// LLVM IR does not lower C's struct passing for the target, so a C function
+// taking or returning a def^ by value is reached through a generated C shim
+// that takes those values by pointer.
 static bool needs_shim(Instance *in)
 {
-    /* With includeC^, every call goes through the header's own prototype. */
+    // With includeC^, every call goes through the header's own prototype.
     bool any = in->result->kind == T_STRUCT || in->fn->module->c_headers.n;
     for (int j = 0; j < in->params.n; j++) {
         any |= ((Type *)in->params.v[j])->kind == T_STRUCT;
@@ -364,13 +364,13 @@ static bool needs_shim(Instance *in)
     return !in->fn->intrinsic && any;
 }
 
-/* The tag of the ref^ alternative of a nullable C pointer type. */
+// The tag of the ref^ alternative of a nullable C pointer type.
 static int pointer_tag(Type *t)
 {
     return ((Type *)t->def->alternatives.v[0])->kind == T_NIL;
 }
 
-/* A direct C call without the stack position or result destination. */
+// A direct C call without the stack position or result destination.
 static void external_invoke(Output *o, Instr *i)
 {
     bool shim = needs_shim(i->callee);
@@ -417,7 +417,7 @@ static void external_invoke(Output *o, Instr *i)
     int r = ++o->tmp;
     fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, c_abi(i->type, false), symbol, operands);
     if (i->type->kind == T_UNION) {
-        /* A NULL result becomes nil^. */
+        // A NULL result becomes nil^.
         int present = ++o->tmp, tag = ++o->tmp, tagp = ++o->tmp, payload = ++o->tmp;
         fprintf(o->f,
                 "  %%t%d = icmp ne ptr %%t%d, null\n"
@@ -434,8 +434,8 @@ static void external_invoke(Output *o, Instr *i)
     save(o, i->dst, i->type, fmt("%%t%d", r));
 }
 
-/* A C call may enter exportC^ functions, which use the data stacks above
- * those this frame keeps live at the call. */
+// A C call may enter exportC^ functions, which use the data stacks above
+// those this frame keeps live at the call.
 static void external_call(Output *o, Instr *i)
 {
     int saved = 0;
@@ -454,14 +454,14 @@ static void external_call(Output *o, Instr *i)
     }
 }
 
-/* An exportC^ function's entry from its C wrapper: by-value def^ values come
- * by pointer, a nullable pointer as a plain one, and the data stacks start
- * where the interrupted R^ call left them. */
+// An exportC^ function's entry from its C wrapper: by-value def^ values come
+// by pointer, a nullable pointer as a plain one, and the data stacks start
+// where the interrupted R^ call left them.
 static void export_entry(Instance *in, FILE *f)
 {
     Type *t = in->result;
-    /* A string (exportL^ only) comes as data and length, and goes back
-     * through two out pointers. */
+    // A string (exportL^ only) comes as data and length, and goes back
+    // through two out pointers.
     bool out = t->kind == T_STRUCT, text = t->kind == T_STRING;
     fprintf(f, "\ndefine %s @rh_entry_%s(%s",
             out || text || t->kind == T_VOID ? "void" : c_abi(t, true), in->symbol,
@@ -539,8 +539,8 @@ static void export_entry(Instance *in, FILE *f)
     }
 }
 
-/* Declare a C function once per IR module. An f^ declaration over scalars
- * promises a result that depends only on its arguments. */
+// Declare a C function once per IR module. An f^ declaration over scalars
+// promises a result that depends only on its arguments.
 static void external_declaration(Program *p, int index, FILE *f)
 {
     Instance *in = p->instances.v[index];
@@ -551,7 +551,7 @@ static void external_declaration(Program *p, int index, FILE *f)
         }
     }
     if (in->fn->intrinsic) {
-        /* LLVM supplies the attributes of its own intrinsics. */
+        // LLVM supplies the attributes of its own intrinsics.
         fprintf(f, "\ndeclare %s @%s(", in->result->kind == T_VOID ? "void" : llvm_type(in->result),
                 in->symbol);
         for (int j = 0; j < in->params.n; j++) {
@@ -584,8 +584,8 @@ static void external_declaration(Program *p, int index, FILE *f)
     fprintf(f, ") nounwind%s\n", pure ? " memory(none)" : "");
 }
 
-/* Declare the C functions whose addresses the emitted code takes, once and
- * unless a direct call already declared them. */
+// Declare the C functions whose addresses the emitted code takes, once and
+// unless a direct call already declared them.
 static void address_declarations(Program *p, FILE *f)
 {
     List done = {0};
@@ -611,7 +611,7 @@ static void address_declarations(Program *p, FILE *f)
     }
 }
 
-/* Lower the stack top of a shrunk flex^ array to its new length. */
+// Lower the stack top of a shrunk flex^ array to its new length.
 static void flex_release(Output *o, Instr *i, const char *length)
 {
     if (!i->type->count) {
@@ -692,8 +692,8 @@ static void instruction(Output *o, Instr *i)
                     length = fmt("%%t%d", b);
                 }
                 int ok = ++o->tmp;
-                /* Unsigned compare rejects a signed negative at its full width too.
-                 * Wide indices are truncated only after proving index < length. */
+                // Unsigned compare rejects a signed negative at its full width too.
+                // Wide indices are truncated only after proving index < length.
                 fprintf(f, "  %%t%d = icmp ult %s %%t%d, %s\n", ok, compare_type, a, length);
                 fprintf(f,
                         "  br i1 %%t%d, label %%index_ok_%d, label %%index_bad_%d, !prof "
@@ -790,8 +790,8 @@ static void instruction(Output *o, Instr *i)
         fprintf(f, "  %%t%d = ptrtoint ptr %%t%d to i64\n", di, data);
         int bytes = ++o->tmp, off = ++o->tmp, remaining = ++o->tmp, ok = ++o->tmp;
         fprintf(f, "  %%t%d = sub i64 %%t%d, %%t%d\n", bytes, li, di);
-        /* Every constructor/mutator maintains len * size <= available. Test
-         * remaining bytes before adding a new element; no capacity division. */
+        // Every constructor/mutator maintains len * size <= available. Test
+        // remaining bytes before adding a new element; no capacity division.
         fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", off, len, t->elem->size);
         fprintf(f, "  %%t%d = sub i64 %%t%d, %%t%d\n", remaining, bytes, off);
         fprintf(f, "  %%t%d = icmp uge i64 %%t%d, %zu\n", ok, remaining, t->elem->size);
@@ -851,9 +851,9 @@ static void instruction(Output *o, Instr *i)
         save(o, i->dst, t->elem, fmt("%%t%d", value));
         fprintf(f, "  %%t%d = getelementptr {ptr,i64,ptr}, ptr %%p%d, i32 0, i32 1\n", lenaddr,
                 i->a);
-        /* A grow^ shrink changes only logical length. References keep the
-         * physical storage alive, and a later push must retain its high-water
-         * mark. A flex^ shrink also returns the tail (sema proved it unused). */
+        // A grow^ shrink changes only logical length. References keep the
+        // physical storage alive, and a later push must retain its high-water
+        // mark. A flex^ shrink also returns the tail (sema proved it unused).
         fprintf(f, "  store i64 %%t%d, ptr %%t%d\n", last, lenaddr);
         flex_release(o, i, fmt("%%t%d", last));
         break;
@@ -980,8 +980,8 @@ static void instruction(Output *o, Instr *i)
                 continue;
             }
             Instr *literal = o->in->code.v[k - 1];
-            /* The immediately preceding instruction fixes the source value;
-             * arbitrary views retain overlap-safe runtime memmove semantics. */
+            // The immediately preceding instruction fixes the source value;
+            // arbitrary views retain overlap-safe runtime memmove semantics.
             if (literal->op == I_STRING && literal->dst == i->b && t->elem->kind == T_U8) {
                 fprintf(f,
                         "  call void @rh_append_literal(ptr %%p%d, ptr @%s_str_%d, i64 "
@@ -1015,12 +1015,12 @@ static void instruction(Output *o, Instr *i)
             data = fmt("%%t%d", ptr);
             length = fmt("%%t%d", len);
         }
-        /* Omitted bounds are 0 and the length; an inclusive end adds one, and a
-           wrapped end fails the ordering check. */
+        // Omitted bounds are 0 and the length; an inclusive end adds one, and a
+        // wrapped end fails the ordering check.
         char *lo = i->b >= 0 ? fmt("%%t%d", load(o, i->b)) : "0";
         char *hi = i->other >= 0 ? fmt("%%t%d", load(o, i->other)) : length;
         if (i->text && (!strcmp(i->text, "open") || !strcmp(i->text, "text"))) {
-            /* A range^ value's open end, the minimum i64, closes at the length. */
+            // A range^ value's open end, the minimum i64, closes at the length.
             int open = ++o->tmp;
             fprintf(f, "  %%t%d = icmp eq i64 %s, -9223372036854775808\n", open, hi);
             fprintf(f, "  %%t%d = select i1 %%t%d, i64 %s, i64 %s\n", ++o->tmp, open, length, hi);
@@ -1046,7 +1046,7 @@ static void instruction(Output *o, Instr *i)
         fprintf(f, "  call void @rh_slice_fail(i32 %d)\n  unreachable\nslice_ok_%d:\n", i->loc.line,
                 valid);
         if (i->text && !strcmp(i->text, "text")) {
-            /* A string^ is cut only between characters. */
+            // A string^ is cut only between characters.
             fprintf(f, "  call void @rh_text_boundary(ptr %s, i64 %s, i64 %s, i64 %s, i32 %d)\n",
                     data, length, lo, hi, i->loc.line);
         }
@@ -1096,8 +1096,8 @@ static void instruction(Output *o, Instr *i)
                 fprintf(f, "  %%t%d = select i1 %%t%d, i128 %%t%d, i128 %%t%d\n", magnitude, neg,
                         inverse, wide);
             }
-            /* Mask before shifting, even on the unselected path: LLVM shifts must
-               never receive a count >= the operand width. */
+            // Mask before shifting, even on the unselected path: LLVM shifts must
+            // never receive a count >= the operand width.
             fprintf(f, "  %%t%d = and i128 %%t%d, %d\n", masked, magnitude,
                     numeric_bits(t->kind) - 1);
             if (numeric_bits(t->kind) != 128) {
@@ -1368,7 +1368,7 @@ static void instruction(Output *o, Instr *i)
     }
     case I_DYNIS:
     case I_DYNCAST: {
-        /* Compare the table against every table of an accepted concrete type. */
+        // Compare the table against every table of an accepted concrete type.
         a = load(o, i->a);
         int data = ++o->tmp, table = ++o->tmp;
         fprintf(
@@ -1413,7 +1413,7 @@ static void instruction(Output *o, Instr *i)
         save(o, i->dst, t, fmt("%%t%d", r));
         break;
     case I_DYNCALL: {
-        /* Every table entry shares the declared signature; self is the data. */
+        // Every table entry shares the declared signature; self is the data.
         int receiver = load(o, (int)(intptr_t)i->args.v[0] - 1);
         int data = ++o->tmp, table = ++o->tmp, entry = ++o->tmp, target = ++o->tmp;
         fprintf(f,
@@ -1517,7 +1517,7 @@ static void instruction(Output *o, Instr *i)
     }
     case I_TERMINATE: {
         if (i->other) {
-            /* An unhandled error with its message() and the site it was built at. */
+            // An unhandled error with its message() and the site it was built at.
             int name = load(o, i->a), message = load(o, i->b), site = load(o, i->dst);
             int n0 = ++o->tmp, n1 = ++o->tmp, m0 = ++o->tmp, m1 = ++o->tmp;
             fprintf(
@@ -1643,7 +1643,7 @@ void emit_llvm(Program *p, const char *path)
                 fputc('\n', f);
             }
             if (i->op == I_SITE) {
-                /* text holds the source, a NUL, then the message. */
+                // text holds the source, a NUL, then the message.
                 const char *message = i->text + i->length + 1;
                 i->label = count;
                 count += 2;
@@ -1808,7 +1808,7 @@ void emit_llvm(Program *p, const char *path)
         }
     }
     if (!p->emitting || p->emitting->root) {
-        /* The entry receives the command arguments as its ... string slice. */
+        // The entry receives the command arguments as its ... string slice.
         fprintf(f,
                 "\ndefine i32 @main(i32 %%argc, ptr %%argv) {\nentry:\n"
                 "  %%args = alloca { ptr, i64 }\n"
@@ -1973,8 +1973,8 @@ void dump_ir(Program *p, const char *path)
     }
 }
 
-/* The C spelling of a shim value. Pointers are untyped: C converts void *
- * to the pointer types a prototype names, so only the convention matters. */
+// The C spelling of a shim value. Pointers are untyped: C converts void *
+// to the pointer types a prototype names, so only the convention matters.
 static char *c_name(Type *t)
 {
     switch (t->kind) {
@@ -2002,9 +2002,9 @@ static char *c_name(Type *t)
     }
 }
 
-/* Define t's C struct after those of its fields, unless a header defines
- * it, and let the C compiler prove that it lays the struct out as R^ does.
- * An externC^ def^ checks its own field names against the C type. */
+// Define t's C struct after those of its fields, unless a header defines
+// it, and let the C compiler prove that it lays the struct out as R^ does.
+// An externC^ def^ checks its own field names against the C type.
 static void c_struct(FILE *f, Type *t, List *done, bool headers)
 {
     while (t->kind == T_ARRAY) {
@@ -2028,7 +2028,7 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
         Field *field = t->def->fields.v[j];
         add(&names, t->def->c_name ? field->name : fmt("f%d", j));
     }
-    /* A header defines only the C-named types. */
+    // A header defines only the C-named types.
     if (!headers || !t->def->c_name) {
         fputs("typedef struct {", f);
         for (int j = 0; j < t->def->fields.n; j++) {
@@ -2061,8 +2061,8 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
     }
 }
 
-/* The L^ spelling of a value an exportL^ function takes or answers; a host
- * type is qualified by the module, which the registration receives. */
+// The L^ spelling of a value an exportL^ function takes or answers; a host
+// type is qualified by the module, which the registration receives.
 static const char *l_name(Type *t)
 {
     Def *data = lhat_data_def(t);
@@ -2081,7 +2081,7 @@ static const char *l_name(Type *t)
                                  : "number^";
 }
 
-/* The LhatHostValueFieldKind L^ reads a scalar field with, or NULL. */
+// The LhatHostValueFieldKind L^ reads a scalar field with, or NULL.
 static const char *l_field(Type *t)
 {
     switch (t->kind) {
@@ -2102,8 +2102,8 @@ static const char *l_field(Type *t)
     }
 }
 
-/* A registration whose signature names host value types: the module goes
- * in once for each. */
+// A registration whose signature names host value types: the module goes
+// in once for each.
 static char *l_register(const char *call, const char *signature)
 {
     char *modules = "";
@@ -2114,8 +2114,8 @@ static char *l_register(const char *call, const char *signature)
                signature, modules, call);
 }
 
-/* Whether L^ releases d's host data through a dispose method, so that the
- * glue keeps one L^ value per pointer while L^ holds it. */
+// Whether L^ releases d's host data through a dispose method, so that the
+// glue keeps one L^ value per pointer while L^ holds it.
 static bool l_held(Def *d)
 {
     for (int j = 0; d && j < d->own_methods.n; j++) {
@@ -2127,14 +2127,14 @@ static bool l_held(Def *d)
     return false;
 }
 
-/* What makes the L^ value of d's host data. */
+// What makes the L^ value of d's host data.
 static const char *l_make(Def *d)
 {
     return l_held(d) ? "rh_lhat_hold" : "lhat_machine_make_hostdata";
 }
 
-/* The C statement answering the R^ value v of type t as answers[k], nil if
- * L^ cannot hold it; a string's length is v.length. */
+// The C statement answering the R^ value v of type t as answers[k], nil if
+// L^ cannot hold it; a string's length is v.length.
 static char *l_answer(Type *t, const char *v, int k)
 {
     Def *data = lhat_data_def(t);
@@ -2159,14 +2159,14 @@ static char *l_answer(Type *t, const char *v, int k)
                v);
 }
 
-/* LhatHostFn wrappers for exportL^ functions and methods, and the function
- * that registers them, with the exportL^ def^ host value types and their
- * scalar fields and the exportL^ ref^ def^ host data types, under an L^
- * module path with signatures R^'s types imply. Each wrapper converts the
- * L^ arguments, calls the R^ entry, and answers its result; a string
- * argument is borrowed for the call, a string result copied, a host value
- * copied either way, and host data passed as its pointer. For each host
- * data type, rhat_lhat_wrap_<Name> makes the L^ value of an R^ reference. */
+// LhatHostFn wrappers for exportL^ functions and methods, and the function
+// that registers them, with the exportL^ def^ host value types and their
+// scalar fields and the exportL^ ref^ def^ host data types, under an L^
+// module path with signatures R^'s types imply. Each wrapper converts the
+// L^ arguments, calls the R^ entry, and answers its result; a string
+// argument is borrowed for the call, a string result copied, a host value
+// copied either way, and host data passed as its pointer. For each host
+// data type, rhat_lhat_wrap_<Name> makes the L^ value of an R^ reference.
 static void lhat_glue(Program *p, FILE *f, List *hosts)
 {
     fputs(
@@ -2303,7 +2303,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
         for (int k = 0; k < in->params.n; k++) {
             Type *param = in->params.v[k];
             char *sep = *entry ? ", " : "", *comma = *call ? ", " : "";
-            /* A method's receiver comes as ref^ to the host value or data. */
+            // A method's receiver comes as ref^ to the host value or data.
             bool self = owner && !k;
             Def *pointed = lhat_data_def(param);
             Type *held = self && !pointed ? param->elem : param;
@@ -2364,13 +2364,13 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 "  (void)machine; (void)context; (void)count;\n%s",
                 symbol, body);
         if (none) {
-            /* L^ releases host data through dispose with no room for answers. */
+            // L^ releases host data through dispose with no room for answers.
             fprintf(f,
                     "  rh_entry_%s(%s);\n  if (answer_count) {\n    *answer_count = 0;\n  }\n}\n",
                     symbol, call);
         }
         else {
-            /* Multiple results answer each part in order. */
+            // Multiple results answer each part in order.
             bool tuple = value && t->def->tuple;
             char *answers = tuple ? "" : l_answer(t, "r", 0);
             for (int k = 0; tuple && k < t->def->fields.n; k++) {
@@ -2418,7 +2418,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
             add(&shims, in);
         }
     }
-    /* exportC^ wrappers name only R^'s own types, so they need no header. */
+    // exportC^ wrappers name only R^'s own types, so they need no header.
     List exports = {0};
     for (int j = 0; !headers && j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
@@ -2426,7 +2426,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
             add(&exports, in);
         }
     }
-    /* exportL^ glue names L^'s types, so it goes with the headers. */
+    // exportL^ glue names L^'s types, so it goes with the headers.
     List hosts = {0};
     for (int j = 0; headers && j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
@@ -2448,7 +2448,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
     fputs("/* Generated by rhat: C shims for externC^ functions. */\n"
           "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n",
           f);
-    /* Every includeC^ header of the program, once, in declaration order. */
+    // Every includeC^ header of the program, once, in declaration order.
     List included = {0};
     for (int j = 0; headers && j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
@@ -2523,12 +2523,12 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
                        value ? fmt("%s *", c_name(param)) : c_name(param), k);
             call = fmt("%s%s%sa%d", call, k ? ", " : "", value ? "*" : "", k);
         }
-        /* A header declares its own functions; otherwise R^'s signature does. */
+        // A header declares its own functions; otherwise R^'s signature does.
         if (!headers) {
             fprintf(f, "%s %s(%s);\n", none ? "void" : c_name(in->result), in->symbol,
                     *declared ? declared : "void");
         }
-        /* A header's pointer result may be const; R^ keeps it as void *. */
+        // A header's pointer result may be const; R^ keeps it as void *.
         bool pointer = !out && !none && !strcmp(c_name(in->result), "void *");
         fprintf(f, "%s rh_shim_%s(%s) { %s%s%s(%s); }\n", out || none ? "void" : c_name(in->result),
                 in->symbol, *shim ? shim : "void",

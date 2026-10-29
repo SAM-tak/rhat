@@ -1,10 +1,10 @@
 #include "rhat.h"
 
-/* A true bit proves logical end == retained stack top for this owner.
- * Only construction establishes it. Shrinking through any alias invalidates
- * every bit; joins intersect and loop back-edges must reach a fixed point.
- * Borrowed pushes keep the maximum-update path unless the whole closed
- * program is proven never to shrink any array. */
+// A true bit proves logical end == retained stack top for this owner.
+// Only construction establishes it. Shrinking through any alias invalidates
+// every bit; joins intersect and loop back-edges must reach a fixed point.
+// Borrowed pushes keep the maximum-update path unless the whole closed
+// program is proven never to shrink any array.
 typedef struct {
     bool seen;
     unsigned char *top;
@@ -40,8 +40,8 @@ static bool dyn_shrinks(Instr *i)
     return any;
 }
 
-/* A flex^ shrink lowers the stack top with the length, so its end and top
- * stay equal; only grow^ shrinks retain a high-water mark above the end. */
+// A flex^ shrink lowers the stack top with the length, so its end and top
+// stay equal; only grow^ shrinks retain a high-water mark above the end.
 static bool shrinks(Instr *i)
 {
     return ((i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE) && !i->type->count) ||
@@ -51,8 +51,8 @@ static bool shrinks(Instr *i)
 void analyze_array_growth(Program *p)
 {
     bool changed;
-    /* A conservative effect summary, also for mutual recursion. Local shrinks
-     * count too: precision can improve later without changing correctness. */
+    // A conservative effect summary, also for mutual recursion. Local shrinks
+    // count too: precision can improve later without changing correctness.
     do {
         changed = false;
         for (int j = 0; j < p->instances.n; j++) {
@@ -65,11 +65,11 @@ void analyze_array_growth(Program *p)
             }
         }
     } while (changed);
-    /* Every owner starts at its stack top. Without any shrink operation in
-     * this closed program, construction/push/append and scope reuse preserve
-     * logical end == top for borrowed owners as well. No external entry or
-     * user-forged array descriptors exist. A single possible shrink disables
-     * this global proof; the local CFG proof below still applies. */
+    // Every owner starts at its stack top. Without any shrink operation in
+    // this closed program, construction/push/append and scope reuse preserve
+    // logical end == top for borrowed owners as well. No external entry or
+    // user-forged array descriptors exist. A single possible shrink disables
+    // this global proof; the local CFG proof below still applies.
     bool never_shrinks = true;
     for (int j = 0; j < p->instances.n; j++) {
         if (((Instance *)p->instances.v[j])->may_shrink) {
@@ -122,8 +122,8 @@ void analyze_array_growth(Program *p)
                 merge(states, k + 1, top, count, &queue);
             }
         }
-        /* Mark only after convergence: an initially clean loop can shrink an
-         * owner on its back-edge, invalidating an earlier optimistic state. */
+        // Mark only after convergence: an initially clean loop can shrink an
+        // owner on its back-edge, invalidating an earlier optimistic state.
         for (int k = 0; k < n; k++) {
             Instr *i = in->code.v[k];
             if (i->op == I_PUSH && states[k].seen) {

@@ -1,7 +1,7 @@
 #include "rhat.h"
 
-/* These are LLVM definitions, never C runtime entry points. Always-inline
- * helpers keep the emitter small while exposing their work to the optimizer. */
+// These are LLVM definitions, never C runtime entry points. Always-inline
+// helpers keep the emitter small while exposing their work to the optimizer.
 static void append_helper(FILE *f, bool literal)
 {
     fprintf(f,
@@ -94,9 +94,9 @@ static void fp8_decode(FILE *f)
           f);
 }
 
-/* Round binary32 or binary64 directly to E4M3FN, ties to even. All shifts
- * execute only for -10 <= exponent <= 8; no oversized LLVM shift/poison.
- * The binary64 path never goes through binary32 (no double rounding). */
+// Round binary32 or binary64 directly to E4M3FN, ties to even. All shifts
+// execute only for -10 <= exponent <= 8; no oversized LLVM shift/poison.
+// The binary64 path never goes through binary32 (no double rounding).
 static void fp8_encode(FILE *f, bool wide)
 {
     int precision = wide ? 52 : 23;
@@ -169,9 +169,9 @@ static void fp8_encode(FILE *f, bool wide)
           f);
 }
 
-/* After a flex^ shrink, lower the stack top to the new end. The committed
- * field keeps the highest end seen; once more than 4 MiB lies above the end,
- * the runtime returns those pages to the OS. */
+// After a flex^ shrink, lower the stack top to the new end. The committed
+// field keeps the highest end seen; once more than 4 MiB lies above the end,
+// the runtime returns those pages to the OS.
 static void flex_release(FILE *f)
 {
     fputs("define internal void @rh_flex_release(ptr %stack, ptr %data, i64 %bytes) "

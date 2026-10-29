@@ -476,7 +476,7 @@ bool fits_type(Type *from, Type *to)
            to->elem->kind == T_STRUCT && derives(from->elem->def, to->elem->def);
 }
 
-/* Preserve concrete alternatives: a base-type test does not slice a value. */
+// Preserve concrete alternatives: a base-type test does not slice a value.
 Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
 {
     if (fits_type(from, to)) {

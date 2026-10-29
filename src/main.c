@@ -20,7 +20,7 @@
 #endif
 
 #if defined(_WIN32)
-/* The CRT spawn API joins arguments into a command line without quoting. */
+// The CRT spawn API joins arguments into a command line without quoting.
 static char *windows_argument(const char *arg)
 {
     char *out = mem(strlen(arg) * 2 + 3), *p = out;
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
     for (int j = 3; j < argc; j++) {
         char *s = argv[j];
         if (!strcmp(s, "--") && !strcmp(command, "run")) {
-            program_args = j + 1; /* Everything after -- goes to the program. */
+            program_args = j + 1; // Everything after -- goes to the program.
             break;
         }
         if (!strcmp(s, "--no-cache")) {

@@ -96,8 +96,8 @@ static void load_dependencies(Program *p, Module *m)
     m->state = 2;
 }
 
-/* Resolve lexical names before semantic analysis. Canonical declaration names
- * carry nominal identity; namespace paths themselves never become values. */
+// Resolve lexical names before semantic analysis. Canonical declaration names
+// carry nominal identity; namespace paths themselves never become values.
 static char *canonical(Module *m, const char *name)
 {
     return m->name ? fmt("%s.%s", m->name, name) : str(name);
@@ -255,7 +255,7 @@ static char *path_of(Expr *e)
         return NULL;
     }
     if (e->kind == E_NAME) {
-        /* The variadic arguments ... never name a module member. */
+        // The variadic arguments ... never name a module member.
         return strcmp(e->text, "...") ? e->text : NULL;
     }
     if (e->kind == E_MEMBER && !e->optional) {
@@ -598,7 +598,7 @@ static void check_names(Module *m)
 
 void resolve_modules(Program *p)
 {
-    /* Names remain local until every module's references have been resolved. */
+    // Names remain local until every module's references have been resolved.
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
         List names = {0};

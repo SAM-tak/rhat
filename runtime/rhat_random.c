@@ -10,8 +10,7 @@
 #include <unistd.h>
 #endif
 
-/* The only native part of std.random. No allocation and no shared PRNG state.
- */
+// The only native part of std.random. No allocation and no shared PRNG state.
 uint64_t rh_random_seed(uint64_t *state)
 {
 #if defined(RH_TEST_SEED_FAILURE)

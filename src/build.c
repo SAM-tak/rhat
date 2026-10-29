@@ -99,8 +99,8 @@ static char *executable(const char *name)
 
 static void publish(const char *tmp, const char *path)
 {
-    /* Content-addressed inputs are immutable. Leave an identical published file
-   * in place, including while Windows tools have a read handle open on it. */
+    // Content-addressed inputs are immutable. Leave an identical published file
+    // in place, including while Windows tools have a read handle open on it.
     char *old_hash = digest_file(path);
     if (old_hash) {
         char *new_hash = digest_file(tmp);
@@ -120,8 +120,8 @@ static void publish(const char *tmp, const char *path)
             error != ERROR_LOCK_VIOLATION) {
             break;
         }
-        /* A parallel build may have published the same content meanwhile, and a
-     * linker or virus scanner may still hold it open. */
+        // A parallel build may have published the same content meanwhile, and a
+        // linker or virus scanner may still hold it open.
         char *current = digest_file(path), *mine = digest_file(tmp);
         if (current && mine && !strcmp(current, mine)) {
             remove(tmp);
@@ -144,17 +144,17 @@ const char *tool_resource(const char *compiler, const char *fallback, const char
     return !stat(candidate, &info) ? candidate : fallback;
 }
 
-/* --crt-dll for the build in progress: C units and the link use the DLL C
- * runtime, as libraries built with MSVC's /MD expect. */
+// --crt-dll for the build in progress: C units and the link use the DLL C
+// runtime, as libraries built with MSVC's /MD expect.
 static bool crt_dll;
 
 static char *compile(const char *input, const char *identity, const char *name, const char *clang,
                      const char *opt, const char *cache, bool reuse, bool verbose, List *includes)
 {
-    /* Hash the complete native translation unit, including headers and expanded
-     * macros. This also makes custom --runtime wrappers safe to cache. The .i
-     * input is what Clang subsequently compiles, so the cache key and object
-     * always describe the same preprocessed source. */
+    // Hash the complete native translation unit, including headers and expanded
+    // macros. This also makes custom --runtime wrappers safe to cache. The .i
+    // input is what Clang subsequently compiles, so the cache key and object
+    // always describe the same preprocessed source.
     size_t input_length = strlen(input);
     if (input_length < 3 || strcmp(input + input_length - 3, ".ll")) {
         static int sequence;
@@ -209,8 +209,8 @@ static char *compile(const char *input, const char *identity, const char *name, 
         fprintf(stderr, "compile: %s\n", name);
     }
     char *temporary = fmt("%s/%s.%d.tmp.obj", cache, key, (int)pid());
-    /* COFF objects embed a timestamp unless told otherwise. Deterministic
-     * objects let parallel builds publish identical cache entries. */
+    // COFF objects embed a timestamp unless told otherwise. Deterministic
+    // objects let parallel builds publish identical cache entries.
     List args = {0};
     add(&args, (char *)clang);
     add(&args, "-Wno-override-module");
@@ -249,8 +249,8 @@ static char *compile(const char *input, const char *identity, const char *name, 
     return object;
 }
 
-/* Identify a large tool by size and modification time, as ccache's mtime check
- * does; hashing a 100 MB clang dominated the time of every build. */
+// Identify a large tool by size and modification time, as ccache's mtime check
+// does; hashing a 100 MB clang dominated the time of every build.
 static char *file_stamp(const char *path)
 {
     struct stat st;
@@ -284,7 +284,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         const char *value = getenv(environment[j]);
         identity = fmt("%s:%s=%s", identity, environment[j], value ? value : "");
     }
-    /* Every definition referenced by an imported inline body needs linkage too. */
+    // Every definition referenced by an imported inline body needs linkage too.
     for (int j = 0; j < p->modules.n; j++) {
         p->emitting = p->modules.v[j];
         char *probe = fmt("%s/probe-%d-%d.ll", cache, (int)pid(), j);
@@ -321,7 +321,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
                            reuse, verbose, NULL));
     }
     p->emitting = NULL;
-    /* includeC^ headers resolve beside their module, then on --c-include. */
+    // includeC^ headers resolve beside their module, then on --c-include.
     List includes = {0};
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
@@ -341,7 +341,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
                                opt, cache, reuse, verbose, headers ? &includes : NULL));
         }
     }
-    /* A --runtime wrapper may include the same headers. */
+    // A --runtime wrapper may include the same headers.
     add(&args,
         compile(runtime, identity, "runtime", clang_path, opt, cache, reuse, verbose, &includes));
     if (random) {
@@ -352,7 +352,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
 #endif
     }
     for (int j = 0; j < libraries->n; j++) {
-        /* A path to an archive or object goes to the linker as written. */
+        // A path to an archive or object goes to the linker as written.
         char *library = libraries->v[j];
         bool path = strchr(library, '/') || strchr(library, '\\') || strchr(library, '.');
         add(&args, path ? library : fmt("-l%s", library));

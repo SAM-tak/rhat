@@ -1,10 +1,10 @@
 #include "rhat.h"
 
-/* Version straight-line i64 loops with a unit positive step. A runtime guard
- * proves every index expression over the whole induction interval, including
- * absence of signed wrap. Failure falls back to the unmodified checked loop.
- * Calls, address escapes, container mutations and irregular control flow are
- * deliberately excluded. Stack/borrow analysis has already finished. */
+// Version straight-line i64 loops with a unit positive step. A runtime guard
+// proves every index expression over the whole induction interval, including
+// absence of signed wrap. Failure falls back to the unmodified checked loop.
+// Calls, address escapes, container mutations and irregular control flow are
+// deliberately excluded. Stack/borrow analysis has already finished.
 typedef struct {
     Instance *in;
     int first, last, induction, budget;
@@ -78,8 +78,8 @@ static RangeExpr *array(Proof *p, int slot, int before)
     if (!alias(p, slot)) {
         return p->written[slot] ? NULL : e;
     }
-    /* Container dereferences often appear in the body. Read their stable
-     * reference binding in the guard, before the place itself is defined. */
+    // Container dereferences often appear in the body. Read their stable
+    // reference binding in the guard, before the place itself is defined.
     for (int j = before - 1; j >= 0; j--) {
         Instr *i = p->in->code.v[j];
         if (i->dst != slot || !defines(i)) {
@@ -288,7 +288,7 @@ static bool version(Program *program, Instance *in, int first, int branch, int l
     }
     for (int k = first + 1; k < branch; k++) {
         Instr *i = in->code.v[k];
-        /* Header evaluation is duplicated. Admit only pure index arithmetic. */
+        // Header evaluation is duplicated. Admit only pure index arithmetic.
         if (i->op != I_COPY && i->op != I_CONST && i->op != I_BIN && i->op != I_LENGTH &&
             !(i->op == I_DEREF && container(type(&p, i->dst)))) {
             return false;
@@ -355,7 +355,7 @@ static bool version(Program *program, Instance *in, int first, int branch, int l
     i->label = fast;
     i->other = slow;
     add(&out, i);
-    /* Remap the old header label to each clone's new entry label. */
+    // Remap the old header label to each clone's new entry label.
     int original_entry = ((Instr *)in->code.v[first])->label;
     Instr *header = in->code.v[first];
     Instr *back = in->code.v[last];
@@ -367,7 +367,7 @@ static bool version(Program *program, Instance *in, int first, int branch, int l
     clone_loop(in, &out, first, last, br->other, fast, true, in->labels, plan);
     header->label = original_entry;
     back->label = original_entry;
-    /* The entry header was copied by pointer above; preserve its old label. */
+    // The entry header was copied by pointer above; preserve its old label.
     for (int k = last + 1; k < in->code.n; k++) {
         add(&out, in->code.v[k]);
     }
@@ -379,8 +379,8 @@ void version_range_loops(Program *p)
 {
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
-        /* Work backwards, so inner canonical loops are considered first. A
-     * versioned region is no longer straight-line and cannot be reversioned. */
+        // Work backwards, so inner canonical loops are considered first. A
+        // versioned region is no longer straight-line and cannot be reversioned.
         for (int last = in->code.n - 1; last >= 0; last--) {
             Instr *back = in->code.v[last];
             if (back->op != I_BR) {

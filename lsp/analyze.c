@@ -133,13 +133,13 @@ static size_t identifier_at(const char *text, Loc loc, const char *name)
 {
     size_t at = loc_offset(text, loc);
     size_t length = strlen(name);
-    /* Bindings have statement locations, while declarations and members carry
-     exact name tokens. Qualified type paths select their terminal component. */
+    // Bindings have statement locations, while declarations and members carry
+    // exact name tokens. Qualified type paths select their terminal component.
     for (size_t n = at; text[n] && n < at + 512; n++) {
         if (n > at && (text[n] == '\n' || text[n] == '{' || text[n] == '}')) {
             break;
         }
-        /* A name token may follow a hat directly, as in let^name. */
+        // A name token may follow a hat directly, as in let^name.
         if (!strncmp(text + n, name, length) &&
             (n == 0 || n == at || !word_byte((unsigned char)text[n - 1])) &&
             !word_byte((unsigned char)text[n + length])) {
@@ -282,8 +282,8 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON *decl = location(p, r->declaration, r->name);
     char *key = fmt("%s:%d:%d:%s", r->declaration.file, r->declaration.line, r->declaration.col,
                     short_name(r->name));
-    /* Keep one checked view per source occurrence and declaration. Distinct
-     nominal declarations retain separate records at a shared occurrence. */
+    // Keep one checked view per source occurrence and declaration. Distinct
+    // nominal declarations retain separate records at a shared occurrence.
     cJSON *prior;
     cJSON_ArrayForEach(prior, array) {
         if (!strcmp(string(prior, "id"), key) &&

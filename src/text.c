@@ -1,6 +1,6 @@
 #include "sema.h"
 
-/* r.end (i64^ | nil^, nil^ when open) or r.len. */
+// r.end (i64^ | nil^, nil^ when open) or r.len.
 Value range_member(Context *c, Value r, const char *name, Loc loc)
 {
     Type *range = r.type, *whole = type_builtin(c->p, T_I64);
@@ -42,7 +42,7 @@ Value range_member(Context *c, Value r, const char *name, Loc loc)
     return out;
 }
 
-/* r.contains(i): start <= i and, unless r is open, i < end. */
+// r.contains(i): start <= i and, unless r is open, i < end.
 Value range_contains(Context *c, Value r, Value i, Loc loc)
 {
     Value start = field_value(c, r, r.type->def->fields.v[0], loc);
@@ -52,8 +52,8 @@ Value range_contains(Context *c, Value r, Value i, Loc loc)
     return operate(c, "bitand^", operate(c, "<=", start, i, loc), below, loc);
 }
 
-/* char^(x): the one character of string^ x, or integer x as a scalar
- * value, else std.text.Error.Invalid. */
+// char^(x): the one character of string^ x, or integer x as a scalar
+// value, else std.text.Error.Invalid.
 Value char_cast(Context *c, Expr *e, int destination)
 {
     Program *p = c->p;
@@ -111,7 +111,7 @@ Value char_cast(Context *c, Expr *e, int destination)
     return out;
 }
 
-/* dst = helper(args..., line), or no result when t is void. */
+// dst = helper(args..., line), or no result when t is void.
 Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc)
 {
     Value out = k == T_VOID ? (Value){.id = -1, .type = type_builtin(c->p, T_VOID)}
@@ -125,8 +125,8 @@ Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc)
     return out;
 }
 
-/* string^(bytes): the bytes as a string^ when they are UTF-8, else
- * std.text.Error.Invalid. */
+// string^(bytes): the bytes as a string^ when they are UTF-8, else
+// std.text.Error.Invalid.
 Value text_cast(Context *c, Expr *e, int destination)
 {
     Program *p = c->p;
@@ -167,9 +167,9 @@ Value text_cast(Context *c, Expr *e, int destination)
     return out;
 }
 
-/* x.write_text(out) appends x to Builder out; x.tostring() builds a new
- * Builder at the destination with it. x is a number, bool^, char^ or
- * string^; the others are written into a local buffer first. */
+// x.write_text(out) appends x to Builder out; x.tostring() builds a new
+// Builder at the destination with it. x is a number, bool^, char^ or
+// string^; the others are written into a local buffer first.
 static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc);
 Value value_text(Context *c, Expr *e, int destination)
 {
@@ -209,8 +209,8 @@ Value value_text(Context *c, Expr *e, int destination)
     return out;
 }
 
-/* Append x, written with the C format format when there is one, to the
- * Builder into. */
+// Append x, written with the C format format when there is one, to the
+// Builder into.
 static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc)
 {
     Program *p = c->p;
@@ -283,14 +283,14 @@ static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc)
     i->type = bytes->type;
 }
 
-/* Append the text and holes of $"..." e to the Builder into. */
+// Append the text and holes of $"..." e to the Builder into.
 void interp_into(Context *c, Expr *e, Value into)
 {
     for (int j = 0; j < e->args.n && !c->terminated; j++) {
         Expr *part = e->args.v[j];
         char *format = e->names.v[j];
         if (part->kind == E_INTERP && !*format) {
-            /* A nested $"..." goes on in the same Builder. */
+            // A nested $"..." goes on in the same Builder.
             interp_into(c, part, into);
             continue;
         }
@@ -299,7 +299,7 @@ void interp_into(Context *c, Expr *e, Value into)
             return;
         }
         if (x.type == into.type && !*format) {
-            /* A Builder in a hole gives its text. */
+            // A Builder in a hole gives its text.
             Function *text = NULL;
             for (int k = 0; k < into.type->def->methods.n; k++) {
                 Function *m = into.type->def->methods.v[k];
@@ -322,8 +322,8 @@ void interp_into(Context *c, Expr *e, Value into)
     }
 }
 
-/* $"..." for print^: built in a Builder living until the print, which
- * shows its text. */
+// $"..." for print^: built in a Builder living until the print, which
+// shows its text.
 Value interp_print(Context *c, Expr *e, List *temps)
 {
     Def *builder = lookup_def(c->p, "std.text.Builder");
@@ -343,7 +343,7 @@ Value interp_print(Context *c, Expr *e, List *temps)
     return dead(out) ? out : invoke_operator(c, text, out, out, e);
 }
 
-/* The built-in methods of string^, which address it by byte offsets. */
+// The built-in methods of string^, which address it by byte offsets.
 Value text_method(Context *c, Expr *e, int destination)
 {
     Program *p = c->p;
@@ -393,7 +393,7 @@ Value text_method(Context *c, Expr *e, int destination)
         return out;
     }
     if (!strcmp(name, "slice")) {
-        /* A byte range of s whose ends fall between characters. */
+        // A byte range of s whose ends fall between characters.
         Value out = {
             .id = destination >= 0 ? destination : slot(c, t, false),
             .type = t,
@@ -426,7 +426,7 @@ Value text_method(Context *c, Expr *e, int destination)
                 helper(c, "rh_text_next", both, 2, T_I64, e->loc), e->loc, true);
         return out;
     }
-    /* chars(): decode every character, pushed onto an array built at the destination. */
+    // chars(): decode every character, pushed onto an array built at the destination.
     if (destination < 0) {
         fail(e->loc, "s.chars() builds an owned array; bind it, as in let^ cs = s.chars()");
     }

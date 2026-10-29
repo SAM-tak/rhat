@@ -85,7 +85,7 @@ static cJSON *symbol_at(cJSON *index, const char *uri, size_t offset)
             if (offset < end) {
                 return s;
             }
-            /* Prefer an adjacent operator over the end of its receiver token. */
+            // Prefer an adjacent operator over the end of its receiver token.
             if (offset == end && !at_end) {
                 at_end = s;
             }
@@ -241,8 +241,8 @@ static void completion_item(cJSON *out, const char *label, const char *detail, i
     cJSON_AddItemToArray(out, item);
 }
 
-/* Local visibility is bounded by the enclosing brace pair. The scanner skips
-   comments and strings, so text containing braces cannot open a fake scope. */
+// Local visibility is bounded by the enclosing brace pair. The scanner skips
+// comments and strings, so text containing braces cannot open a fake scope.
 static size_t skip_quoted(const char *s, size_t n)
 {
     char quote = s[n++];
@@ -564,7 +564,7 @@ static bool namespace_name(cJSON *index, const char *uri, const char *buffer, si
         }
         root = at;
     }
-    /* A checked local or receiver takes precedence over an import spelling. */
+    // A checked local or receiver takes precedence over an import spelling.
     if (symbol_at(index, uri, root)) {
         return false;
     }
@@ -639,7 +639,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             while (buffer[at] != '^' && identifier((unsigned char)buffer[at])) {
                 at++;
             }
-            /* A hat terminates the word; the next name may start immediately. */
+            // A hat terminates the word; the next name may start immediately.
             while (buffer[at] == '^') {
                 at++;
             }
@@ -661,12 +661,12 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         else {
             at++;
         }
-        /* Let TextMate style lexical tokens, including the separately dimmed hat.
-           Semantic tokens describe resolved names only, as in the L^ client. */
+        // Let TextMate style lexical tokens, including the separately dimmed hat.
+        // Semantic tokens describe resolved names only, as in the L^ client.
         if (kind < 0) {
             continue;
         }
-        /* LSP tokens are split at physical line boundaries, even inside strings. */
+        // LSP tokens are split at physical line boundaries, even inside strings.
         while (start < at) {
             size_t end = start;
             while (end < at && buffer[end] != '\n' && buffer[end] != '\r') {

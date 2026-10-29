@@ -205,8 +205,8 @@ Type *callable_group(Program *p, Def *owner, const char *name)
     return type;
 }
 
-/* A variadic function is never overloaded, so it stays a candidate at any
- * arity and the call reports missing fixed arguments. */
+// A variadic function is never overloaded, so it stays a candidate at any
+// arity and the call reports missing fixed arguments.
 static bool accepts_arity(Function *f, int arity)
 {
     return f->params.n == arity || f->variadic;

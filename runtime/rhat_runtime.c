@@ -1,4 +1,4 @@
-/* R^ runtime: OS-backed stable-address regions; no malloc/free or GC. */
+// R^ runtime: OS-backed stable-address regions; no malloc/free or GC.
 #if !defined(_WIN32)
 #define _DEFAULT_SOURCE
 #endif
@@ -18,7 +18,7 @@
 #include <sys/mman.h>
 #endif
 
-/* Shared stack ABI. Array/view operations and descriptors live in LLVM IR. */
+// Shared stack ABI. Array/view operations and descriptors live in LLVM IR.
 typedef struct {
     unsigned char *base, *top, *limit, *committed;
 } RhStack;
@@ -151,8 +151,8 @@ typedef struct {
     int64_t count;
 } RhStrings;
 
-/* The command arguments after the program name, as UTF-8 R^ strings that live
- * until the process exits. */
+// The command arguments after the program name, as UTF-8 R^ strings that live
+// until the process exits.
 void rh_runtime_args(int argc, char **argv, RhStrings *out)
 {
 #if defined(_WIN32)
@@ -185,8 +185,8 @@ void rh_runtime_args(int argc, char **argv, RhStrings *out)
     *out = (RhStrings){items, count};
 }
 
-/* Parse all of text with strtod or strtof. Answers 0, 1 for text that is
- * empty, starts with space or has trailing characters, or 2 on overflow. */
+// Parse all of text with strtod or strtof. Answers 0, 1 for text that is
+// empty, starts with space or has trailing characters, or 2 on overflow.
 static int32_t rh_parse_float(const char *text, int64_t length, bool single, double *wide,
                               float *narrow)
 {
@@ -282,12 +282,12 @@ _Noreturn void rh_slice_fail(int32_t line)
     rh_panic("slice range out of bounds", line);
 }
 
-/* The first data stack an exportC^ function entered from C may use: the
- * stack index after those the R^ caller of the current externC^ call keeps. */
+// The first data stack an exportC^ function entered from C may use: the
+// stack index after those the R^ caller of the current externC^ call keeps.
 uint64_t rh_callback_sp;
 
-/* Enter an exportC^ function needing need stacks. One level of callback is
- * planned at every C call; deeper nesting must still fit the stacks. */
+// Enter an exportC^ function needing need stacks. One level of callback is
+// planned at every C call; deeper nesting must still fit the stacks.
 uint64_t rh_callback_enter(uint64_t need)
 {
     if (need > rh_stack_count || rh_callback_sp > rh_stack_count - need) {
@@ -296,8 +296,8 @@ uint64_t rh_callback_enter(uint64_t need)
     return rh_callback_sp;
 }
 
-/* Return the pages of shrunk flex^ storage to the OS. One commit chunk above
- * the new end stays committed so that small regrowth does not fault again. */
+// Return the pages of shrunk flex^ storage to the OS. One commit chunk above
+// the new end stays committed so that small regrowth does not fault again.
 void rh_flex_trim(RhStack *s, unsigned char *end)
 {
     uint64_t used = (uint64_t)(end - s->base);
@@ -319,8 +319,8 @@ void rh_flex_trim(RhStack *s, unsigned char *end)
     s->committed = from;
 }
 
-/* panic^, or an error that try^ passed out of the entry file, ends the
- * process with its message or error variant name. */
+// panic^, or an error that try^ passed out of the entry file, ends the
+// process with its message or error variant name.
 _Noreturn void rh_terminate(const char *text, int64_t length, int32_t line, int32_t panic)
 {
     fflush(stdout);
@@ -329,7 +329,7 @@ _Noreturn void rh_terminate(const char *text, int64_t length, int32_t line, int3
     exit(1);
 }
 
-/* Where an error was built: its source, line and column. */
+// Where an error was built: its source, line and column.
 typedef struct {
     const char *source;
     int64_t length;
@@ -340,7 +340,7 @@ _Noreturn void rh_unhandled(const char *name, int64_t length, const char *messag
                             int64_t message_length, const RhSite *site, int32_t line, int32_t panic)
 {
     fflush(stdout);
-    /* A message that only repeats the variant's name, its default, is shown once. */
+    // A message that only repeats the variant's name, its default, is shown once.
     if (message_length == length && !memcmp(message, name, (size_t)length)) {
         message_length = 0;
     }
@@ -365,9 +365,9 @@ _Noreturn void rh_float_cast_fail(int32_t line)
     rh_panic("floating value out of integer range", line);
 }
 
-/* A real in its shortest spelling that reads back the same: positional
- * unless its exponent is below -6 or at least 21, as JavaScript writes
- * numbers, with .0 when it would read as an integer, and nan for every NaN. */
+// A real in its shortest spelling that reads back the same: positional
+// unless its exponent is below -6 or at least 21, as JavaScript writes
+// numbers, with .0 when it would read as an integer, and nan for every NaN.
 static int rh_real_text(char *out, size_t cap, double n)
 {
     if (n != n) {
@@ -384,7 +384,7 @@ static int rh_real_text(char *out, size_t cap, double n)
         length = snprintf(out, cap, "%.*g", digits, n);
     }
     else if (exponent >= digits - 1) {
-        /* Past its digits, a whole number goes on in zeros, not the binary value's. */
+        // Past its digits, a whole number goes on in zeros, not the binary value's.
         char mantissa[24];
         int count = 0;
         for (const char *c = out; c < e; c++) {
@@ -430,15 +430,15 @@ void rh_print_space(void)
 int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
                        const char *format, int64_t length, int32_t line);
 
-/* Write a Unicode scalar value as UTF-8. */
+// Write a Unicode scalar value as UTF-8.
 void rh_print_char(uint32_t c)
 {
     unsigned char out[48];
     fwrite(out, 1, (size_t)rh_text_format(out, sizeof out, &c, 32 | 4 << 8, "", 0, 0), stdout);
 }
 
-/* The width of the UTF-8 scalar value at s within n bytes, with its value
- * in *code, or 0 when the bytes there encode none. */
+// The width of the UTF-8 scalar value at s within n bytes, with its value
+// in *code, or 0 when the bytes there encode none.
 static int64_t rh_utf8(const unsigned char *s, int64_t n, int64_t *code)
 {
     int64_t width = n <= 0 ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
@@ -457,7 +457,7 @@ static int64_t rh_utf8(const unsigned char *s, int64_t n, int64_t *code)
     return c < least || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF) ? 0 : width;
 }
 
-/* Whether the bytes are UTF-8. */
+// Whether the bytes are UTF-8.
 int64_t rh_text_valid(const unsigned char *s, int64_t n, int32_t line)
 {
     (void)line;
@@ -470,7 +470,7 @@ int64_t rh_text_valid(const unsigned char *s, int64_t n, int32_t line)
     return 1;
 }
 
-/* The number of scalar values in UTF-8 text: its bytes that start one. */
+// The number of scalar values in UTF-8 text: its bytes that start one.
 int64_t rh_text_count(const unsigned char *s, int64_t n, int32_t line)
 {
     (void)line;
@@ -481,7 +481,7 @@ int64_t rh_text_count(const unsigned char *s, int64_t n, int32_t line)
     return count;
 }
 
-/* The first offset where t occurs in s, or -1. */
+// The first offset where t occurs in s, or -1.
 int64_t rh_text_find(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
                      int32_t line)
 {
@@ -508,7 +508,7 @@ int64_t rh_text_ends(const unsigned char *s, int64_t n, const unsigned char *t, 
     return m <= n && !memcmp(s + n - m, t, (size_t)m);
 }
 
-/* -1, 0 or 1 as s orders before, with or after t byte by byte. */
+// -1, 0 or 1 as s orders before, with or after t byte by byte.
 int64_t rh_text_compare(const unsigned char *s, int64_t n, const unsigned char *t, int64_t m,
                         int32_t line)
 {
@@ -524,7 +524,7 @@ _Noreturn static void rh_text_fail(const char *what, int32_t line)
     exit(1);
 }
 
-/* The scalar value at byte offset at, which must start one. */
+// The scalar value at byte offset at, which must start one.
 int64_t rh_text_decode(const unsigned char *s, int64_t n, int64_t at, int32_t line)
 {
     int64_t code;
@@ -534,7 +534,7 @@ int64_t rh_text_decode(const unsigned char *s, int64_t n, int64_t at, int32_t li
     return code;
 }
 
-/* The offset after the scalar value at byte offset at. */
+// The offset after the scalar value at byte offset at.
 int64_t rh_text_next(const unsigned char *s, int64_t n, int64_t at, int32_t line)
 {
     int64_t code, width = at < 0 || at >= n ? 0 : rh_utf8(s + at, n - at, &code);
@@ -544,7 +544,7 @@ int64_t rh_text_next(const unsigned char *s, int64_t n, int64_t at, int32_t line
     return at + width;
 }
 
-/* Fail unless lo and hi both fall between characters. */
+// Fail unless lo and hi both fall between characters.
 void rh_text_boundary(const unsigned char *s, int64_t n, int64_t lo, int64_t hi, int32_t line)
 {
     if ((lo < n && (s[lo] & 0xC0) == 0x80) || (hi < n && (s[hi] & 0xC0) == 0x80)) {
@@ -552,13 +552,13 @@ void rh_text_boundary(const unsigned char *s, int64_t n, int64_t lo, int64_t hi,
     }
 }
 
-/* The scalar value c if it is one, else -1. */
+// The scalar value c if it is one, else -1.
 int64_t rh_char_of_whole(int64_t c)
 {
     return c >= 0 && c <= 0x10FFFF && (c < 0xD800 || c > 0xDFFF) ? c : -1;
 }
 
-/* The scalar value of text if it is exactly one in UTF-8, else -1. */
+// The scalar value of text if it is exactly one in UTF-8, else -1.
 int64_t rh_char_of_text(const unsigned char *s, int64_t n)
 {
     int64_t code;
@@ -570,9 +570,9 @@ void rh_print_newline(void)
     fputc('\n', stdout);
 }
 
-/* Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and
- * narrow integers, and do not require a C compiler-specific 128-bit ABI. */
-/* An integer of bits bits in decimal, in at most 41 bytes. */
+// Byte-oriented integer helpers keep the C/LLVM ABI identical for i128 and
+// narrow integers, and do not require a C compiler-specific 128-bit ABI.
+// An integer of bits bits in decimal, in at most 41 bytes.
 static int rh_integer_text(char *out, const void *value, int32_t bits, int32_t uns)
 {
     unsigned char bytes[16] = {0};
@@ -613,10 +613,10 @@ void rh_print_integer(const void *value, int32_t bits, int32_t uns)
     fwrite(text, 1, (size_t)rh_integer_text(text, value, bits, uns), stdout);
 }
 
-/* A number in C format f of length n, which holds exactly one numeric
- * conversion with flags, width and precision, no * and no length modifier;
- * the conversion decides whether the number reads as integer or real.
- * Anything else ends the program, as does text longer than cap. */
+// A number in C format f of length n, which holds exactly one numeric
+// conversion with flags, width and precision, no * and no length modifier;
+// the conversion decides whether the number reads as integer or real.
+// Anything else ends the program, as does text longer than cap.
 static int64_t rh_formatted(char *out, int64_t cap, const char *f, int64_t n, int bits, int form,
                             const void *value, int32_t line)
 {
@@ -680,9 +680,9 @@ static int64_t rh_formatted(char *out, int64_t cap, const char *f, int64_t n, in
     return written;
 }
 
-/* Write the value at value into out, at least 256 bytes, and answer its
- * length: in format f of length n when n > 0. kind is its width in bits,
- * plus 256 for unsigned, 512 for a real, 768 for bool^ and 1024 for char^. */
+// Write the value at value into out, at least 256 bytes, and answer its
+// length: in format f of length n when n > 0. kind is its width in bits,
+// plus 256 for unsigned, 512 for a real, 768 for bool^ and 1024 for char^.
 int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64_t kind,
                        const char *format, int64_t length, int32_t line)
 {

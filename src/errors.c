@@ -90,11 +90,11 @@ Value pack_error(Context *c, Value src, Type *to, int dst, Loc loc)
     fail(loc, "error '%s' is not included in '%s'", type_name(src.type), type_name(to));
 }
 
-/* End the process with a message: a string^, or the name of the error
- * variant held by subject. panic^ and an error leaving the entry file differ
- * only in the reported prefix.
- * The source an error site names: under std/ for the standard library,
- * else as the compiler was given it, with / between directories. */
+// End the process with a message: a string^, or the name of the error
+// variant held by subject. panic^ and an error leaving the entry file differ
+// only in the reported prefix.
+// The source an error site names: under std/ for the standard library,
+// else as the compiler was given it, with / between directories.
 char *site_source(Program *p, const char *file)
 {
     char *out = str(file ? file : "");
@@ -108,7 +108,7 @@ char *site_source(Program *p, const char *file)
     return out;
 }
 
-/* The message() of error err, by the variant it holds when it is a union. */
+// The message() of error err, by the variant it holds when it is a union.
 Value error_message(Context *c, Value err, Loc loc)
 {
     bool sum = err.type->kind == T_UNION;
@@ -183,7 +183,7 @@ void terminate(Context *c, Value subject, bool panic, Loc loc)
         bool error = !text && arm->kind == T_STRUCT && arm->def->error_variant;
         Value detail = {0}, site = {0};
         if (error) {
-            /* An error also reports its message() and where it was built. */
+            // An error also reports its message() and where it was built.
             Value v = sum ? (Value){.id = case_at(c, subject, arm, false, loc),
                                     .type = arm,
                                     .addressable = subject.addressable}
@@ -243,7 +243,7 @@ void route_error(Context *c, Value error, Loc loc)
     }
     else {
         if (c->in->fn == c->p->entry) {
-            /* The entry file has no caller: report the variant and exit. */
+            // The entry file has no caller: report the variant and exit.
             terminate(c, error, false, loc);
             c->terminated = true;
             return;

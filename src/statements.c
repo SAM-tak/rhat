@@ -88,7 +88,7 @@ static void plain_loop(Context *c, Stmt *s)
                 targeted |= (edge->op == I_BR && edge->label == update) ||
                             (edge->op == I_CBR && (edge->label == update || edge->other == update));
             }
-            /* Keep an ordinary header update in the canonical straight-line loop. */
+            // Keep an ordinary header update in the canonical straight-line loop.
             if (targeted || c->terminated) {
                 if (!c->terminated) {
                     branch_to(c, update, s->loc);
@@ -225,8 +225,8 @@ static void loop_code(Context *c, Stmt *s)
             cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
         }
         if (c->terminated) {
-            /* Pre/test may transfer directly to this loop's update or epilog.
-             * Such paths never construct first^ values or execute last^. */
+            // Pre/test may transfer directly to this loop's update or epilog.
+            // Such paths never construct first^ values or execute last^.
             bool exits = false, updates = false;
             for (int j = code; j < c->in->code.n; j++) {
                 Instr *edge = c->in->code.v[j];
@@ -297,7 +297,7 @@ static void loop_code(Context *c, Stmt *s)
             }
             add(&init, copy);
         }
-        /* First-section declarations outlive the per-turn pre/main storage. */
+        // First-section declarations outlive the per-turn pre/main storage.
         int depth = c->depth;
         c->depth--;
         if (live) {
@@ -341,10 +341,10 @@ static void loop_code(Context *c, Stmt *s)
         }
         c->terminated = false;
         label_at(c, no, s->loc);
-        /* The failed test also owns the final pre-section activation. */
+        // The failed test also owns the final pre-section activation.
         c->depth++;
         int saved = c->vars.n;
-        /* Reuse the exact pre variables/slots from the emitted test. */
+        // Reuse the exact pre variables/slots from the emitted test.
         for (int j = 0; j < pre_vars.n; j++) {
             add(&c->vars, pre_vars.v[j]);
         }
@@ -885,8 +885,8 @@ void statements(Context *c, List *body, bool scope)
             add(&c->vars, var);
         }
         else if (s->kind == S_BIND_MANY && s->prolog.n) {
-            /* let^ a, b = f(): each name views its part of the results in place,
-             * so an owned part is neither copied nor moved. */
+            // let^ a, b = f(): each name views its part of the results in place,
+            // so an owned part is neither copied nor moved.
             statements(c, &s->prolog, false);
             if (c->terminated) {
                 break;
@@ -1115,7 +1115,7 @@ void statements(Context *c, List *body, bool scope)
                         fail(s->loc, "owned result binding was shadowed");
                     }
                     v = variable(r);
-                    /* The owned last part is already in place; build the others. */
+                    // The owned last part is already in place; build the others.
                     Value base = {.id = c->in->result_slot, .type = t};
                     for (int j = 0; s->a->tuple && t->kind == T_UNION && j < t->def->alternatives.n;
                          j++) {
@@ -1261,8 +1261,8 @@ void statements(Context *c, List *body, bool scope)
     }
 }
 
-/* The local every return^ gives as the owned result; returns of another
- * alternative of a union result do not take part. */
+// The local every return^ gives as the owned result; returns of another
+// alternative of a union result do not take part.
 static void return_names(List *body, char **name, bool *valid, bool others)
 {
     for (int j = 0; j < body->n; j++) {
@@ -1464,7 +1464,7 @@ void analyze(Program *p)
     }
     p->entry->required_result = type_builtin(p, T_VOID);
     instantiate(p, p->entry, NULL, &arguments, p->entry->loc);
-    /* Abstract nominal parameters require a concrete call-site specialization. */
+    // Abstract nominal parameters require a concrete call-site specialization.
     for (int j = 0; j < p->functions.n; j++) {
         Function *f = p->functions.v[j];
         if (!f->templ && !inferred_parameter(f) && declaration_instance_needed(p, f)) {
@@ -1522,8 +1522,8 @@ void analyze(Program *p)
             layout(t, t->def->loc);
         }
     }
-    /* fits^ dyn^ D needs D's table for each concrete type it may find; building
-     * tables lowers methods, which may convert or cast again. */
+    // fits^ dyn^ D needs D's table for each concrete type it may find; building
+    // tables lowers methods, which may convert or cast again.
     for (int built = -1; built != p->dyn_tables.n;) {
         built = p->dyn_tables.n;
         for (int j = 0; j < p->instances.n; j++) {
@@ -1543,7 +1543,7 @@ void analyze(Program *p)
             }
         }
     }
-    /* Inference may inspect a specialization whose arguments never return. */
+    // Inference may inspect a specialization whose arguments never return.
     List materialized = {0};
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
@@ -1553,7 +1553,7 @@ void analyze(Program *p)
         }
     }
     p->instances = materialized;
-    /* A dyn^ call may reach the entry of every table built for its def. */
+    // A dyn^ call may reach the entry of every table built for its def.
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
         for (int k = 0; k < in->code.n; k++) {

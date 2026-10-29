@@ -1,6 +1,6 @@
 #include "sema.h"
 
-/* Body requirements resolve signatures first; local call shapes fill gaps. */
+// Body requirements resolve signatures first; local call shapes fill gaps.
 Param *inferred_parameter(Function *f)
 {
     for (int j = 0; j < f->params.n; j++) {
@@ -39,8 +39,8 @@ static bool c_scalar(Type *t)
            (t->kind >= T_I8 && t->kind <= T_I64) || t->kind == T_F32 || t->kind == T_F64;
 }
 
-/* A value C can lay out the same way: a scalar, or a non-empty def^ or
- * fixed array built only of such values (no references, strings or unions). */
+// A value C can lay out the same way: a scalar, or a non-empty def^ or
+// fixed array built only of such values (no references, strings or unions).
 static bool c_flat(Type *t)
 {
     if (c_scalar(t)) {
@@ -60,9 +60,9 @@ static bool c_flat(Type *t)
     return true;
 }
 
-/* The reference a C pointer stands for: ref^ to a flat or opaque def^ (or
- * a scalar), a C function pointer, or either | nil^ for one that may be
- * NULL. */
+// The reference a C pointer stands for: ref^ to a flat or opaque def^ (or
+// a scalar), a C function pointer, or either | nil^ for one that may be
+// NULL.
 static Type *c_pointer(Type *t)
 {
     if (t->kind == T_UNION && t->def->alternatives.n == 2) {
@@ -79,8 +79,8 @@ static Type *c_pointer(Type *t)
     return opaque || c_flat(t->elem) ? t : NULL;
 }
 
-/* A header's prototype names its own struct types, so a def^ passed by
- * value to a function from includeC^ headers must name its C type. */
+// A header's prototype names its own struct types, so a def^ passed by
+// value to a function from includeC^ headers must name its C type.
 static void c_named(Function *f, Type *t, Loc loc)
 {
     if (t->kind == T_STRUCT && f->module->c_headers.n && !t->def->c_name) {
@@ -120,7 +120,7 @@ Expr *pack_arguments(Function *f, Expr *e, int offset)
     }
     for (int j = 0; j < pack->args.n; j++) {
         Expr *arg = pack->args.v[j];
-        /* A lone ... forwards the caller's collected arguments. */
+        // A lone ... forwards the caller's collected arguments.
         if (arg->spread ||
             (pack->args.n == 1 && arg->kind == E_NAME && !strcmp(arg->text, "..."))) {
             if (pack->args.n != 1) {
@@ -187,7 +187,7 @@ bool textual(Type *t)
                  t->kind == T_CHAR || t->kind == T_STRING);
 }
 
-/* Reject reading a string^ as bytes without .bytes. */
+// Reject reading a string^ as bytes without .bytes.
 static void text_bytes_only(Type *t, const char *what, Loc loc)
 {
     if (t && t->kind == T_STRING) {
@@ -245,16 +245,16 @@ Def *lhat_data_def(Type *t)
                                                                                     : NULL;
 }
 
-/* A value L^ hands a host function: number^ (integers to 64 bits and
- * floats), bool^, string^, an exportL^ def^ host value or a reference to
- * an exportL^ ref^ def^ host data. */
+// A value L^ hands a host function: number^ (integers to 64 bits and
+// floats), bool^, string^, an exportL^ def^ host value or a reference to
+// an exportL^ ref^ def^ host data.
 static bool l_value(Type *t)
 {
     return t->kind == T_STRING || c_scalar(t) || (t->kind == T_STRUCT && t->def->lhat_value) ||
            lhat_data_def(t);
 }
 
-/* An ASCII C identifier other than main, which the entry file defines. */
+// An ASCII C identifier other than main, which the entry file defines.
 static bool c_identifier(const char *s)
 {
     bool identifier = *s && !(*s >= '0' && *s <= '9');
@@ -297,8 +297,8 @@ void export_validate(Program *p, Function *f)
     if (f->lhat_export && !header) {
         fail(f->declaration, "exportL^ needs a module with includeC^ \"lhat.h\"");
     }
-    /* C passes no lengths, so slices and strings cannot come in from C. L^
-     * passes numbers, booleans and strings. */
+    // C passes no lengths, so slices and strings cannot come in from C. L^
+    // passes numbers, booleans and strings.
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
         Type *t = param->spec ? type_spec(p, param->spec) : NULL;
@@ -317,8 +317,8 @@ void export_validate(Program *p, Function *f)
         !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
         fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
     }
-    /* Multiple results answer each part; a nullable part does not lay out
-     * as a C pointer. */
+    // Multiple results answer each part; a nullable part does not lay out
+    // as a C pointer.
     bool tuple = result && result->kind == T_STRUCT && result->def->tuple;
     for (int j = 0; result && f->lhat_export && j < (tuple ? result->def->fields.n : 1); j++) {
         Type *part = tuple ? ((Field *)result->def->fields.v[j])->type : result;
@@ -373,8 +373,8 @@ void external_validate(Program *p, Function *f)
     if (f->templ || f->variadic) {
         fail(f->loc, "externC^ declaration cannot be template^ or variadic");
     }
-    /* Scalars and flat def^ values cross as their C types, the latter through
-     * a generated C shim; ref^, slices and strings as a data pointer. */
+    // Scalars and flat def^ values cross as their C types, the latter through
+    // a generated C shim; ref^, slices and strings as a data pointer.
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
         Type *t = parameter_type(p, param);
@@ -427,9 +427,9 @@ void inferred_unused(Program *p, Function *f)
          param->name, f->name);
 }
 
-/* Return inference is a fixed point over concrete call instances. Unknown
-   results stay unknown across back edges until a return or operation seeds
-   them. */
+// Return inference is a fixed point over concrete call instances. Unknown
+// results stay unknown across back edges until a return or operation seeds
+// them.
 typedef struct {
     Program *p;
     Instance *in;
@@ -539,7 +539,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
                 continue;
             }
         }
-        /* Unknown references may alias a local whose address was passed earlier. */
+        // Unknown references may alias a local whose address was passed earlier.
         Var *v = infer_variable(c, arg);
         if (target || !v || v->type->refs) {
             forget_roots(&c->vars, 0, true);
@@ -752,7 +752,7 @@ static Type *infer_call(Infer *c, Expr *e)
             return type_wrap(c->p, T_REF, base->elem, 0);
         }
         if (base && base->kind == T_DYN) {
-            /* Lowering checks the call; inference needs only the declared result. */
+            // Lowering checks the call; inference needs only the declared result.
             Function *m = method(base->elem->def, target->text);
             for (int j = 0; j < e->args.n; j++) {
                 Param *param = m && j + 1 < m->params.n ? m->params.v[j + 1] : NULL;
@@ -960,8 +960,7 @@ static void infer_handle(Infer *c, Stmt *s)
         Type *no = fits_subset(c->p, remaining, asked, false, arm->loc);
         if (yes) {
             rewind_facts(&c->vars, before);
-            /* A failed try may follow a mutation on any path through the main body.
-       */
+            // A failed try may follow a mutation on any path through the main body.
             forget_roots(&c->vars, 0, true);
             for (int j = visible; j < base; j++) {
                 ((Var *)c->vars.v[j])->hidden = true;
@@ -1167,7 +1166,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     case E_RECORD: {
         Type *type = expected;
         if (e->tuple && !(type && type->kind == T_STRUCT && type->def->tuple)) {
-            /* An unannotated result takes the types of the values returned. */
+            // An unannotated result takes the types of the values returned.
             List elems = {0};
             for (int j = 0; j < e->args.n; j++) {
                 Type *elem = infer_expr(c, e->args.v[j], NULL);
@@ -1988,8 +1987,8 @@ bool declaration_instance_needed(Program *p, Function *f)
     return true;
 }
 
-/* Body requirements never inspect concrete call instances. Unknown nominal
-   receivers remain unknown; a member name does not identify a struct. */
+// Body requirements never inspect concrete call instances. Unknown nominal
+// receivers remain unknown; a member name does not identify a struct.
 typedef struct BodyNode BodyNode;
 typedef struct {
     Param *param;
@@ -2136,7 +2135,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         break;
     case E_INT:
     case E_FLOAT:
-        /* Unbound numeric literals are contextual, not evidence of a width. */
+        // Unbound numeric literals are contextual, not evidence of a width.
         n->type = want;
         break;
     case E_UNARY:
@@ -2412,13 +2411,12 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_CATCH:
     case E_COALESCE:
         n->a = body_expr(c, e->a, NULL);
-        /* Type-dependent transfers may make every following statement unreachable
-       in some valid specializations. Keep only unconditional prefix demands. */
+        // Type-dependent transfers may make every following statement unreachable
+        // in some valid specializations. Keep only unconditional prefix demands.
         c->blocked = true;
         break;
     case E_EXPECT:
-        /* Counted-loop literals take their width from the bound at instantiation.
-     */
+        // Counted-loop literals take their width from the bound at instantiation.
         body_expr(c, e->a, NULL);
         body_expr(c, e->b, NULL);
         break;

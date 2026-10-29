@@ -77,8 +77,8 @@ typedef struct {
     size_t length;
 } Token;
 
-/* The width of the UTF-8 encoded scalar value at s within n bytes, with
- * its value in *code, or 0 when the bytes there encode none. */
+// The width of the UTF-8 encoded scalar value at s within n bytes, with
+// its value in *code, or 0 when the bytes there encode none.
 static size_t utf8_scalar(const unsigned char *s, size_t n, unsigned long *code)
 {
     size_t width = !n ? 0 : s[0] < 0x80 ? 1 : s[0] >= 0xF0 ? 4 : s[0] >= 0xE0 ? 3 : 2;
@@ -104,11 +104,11 @@ enum {
     TOK_STRING,
     TOK_QUOTED,
     TOK_SCOPE,
-    TOK_INTERP,     /* $" opening an interpolated string. */
-    TOK_HOLE,       /* { opening one of its holes. */
-    TOK_FORMAT,     /* The raw format after a hole's first top-level :. */
-    TOK_HOLE_END,   /* } closing a hole. */
-    TOK_INTERP_END, /* " closing the string. */
+    TOK_INTERP,     // $" opening an interpolated string.
+    TOK_HOLE,       // { opening one of its holes.
+    TOK_FORMAT,     // The raw format after a hole's first top-level :.
+    TOK_HOLE_END,   // } closing a hole.
+    TOK_INTERP_END, // " closing the string.
     TOK_EOF
 };
 
@@ -119,7 +119,7 @@ typedef struct {
     List tokens;
     int at, serial, scope_depth;
     bool header;
-    bool text_cast; /* A char^(...) or string^(...) cast needs std.text for its error. */
+    bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
 } Parser;
 
 static Token *tok(Parser *p)
@@ -325,8 +325,8 @@ static void unicode_escape(char *out, size_t *n, unsigned value, Loc loc)
         out[(*n)++] = (char)(0x80 | (value & 63));
     }
 }
-/* Decode the escape after a backslash at s into out, answering where the
- * string goes on. */
+// Decode the escape after a backslash at s into out, answering where the
+// string goes on.
 static const char *string_escape(const char *s, char *out, size_t *n, Loc loc)
 {
     char c = *s++;
@@ -395,7 +395,7 @@ static const char *string_escape(const char *s, char *out, size_t *n, Loc loc)
     }
     return s;
 }
-/* Fail unless the n bytes at out are UTF-8. */
+// Fail unless the n bytes at out are UTF-8.
 static void utf8_text(const char *out, size_t n, Loc loc)
 {
     unsigned long code;
@@ -405,8 +405,8 @@ static void utf8_text(const char *out, size_t n, Loc loc)
         }
     }
 }
-/* The text of an interpolated string up to its next hole or its end, with
- * {{ and }} for braces. */
+// The text of an interpolated string up to its next hole or its end, with
+// {{ and }} for braces.
 static const char *interp_text(const char *s, Token *t)
 {
     char *out = mem(strlen(s) + 1);
@@ -440,8 +440,8 @@ static void lex(Parser *p)
 {
     const char *s = p->p->source;
     int line = 1, col = 1;
-    /* Open interpolated strings, the bracket depth inside each one's hole,
-   * and whether the innermost is in its text rather than a hole. */
+    // Open interpolated strings, the bracket depth inside each one's hole,
+    // and whether the innermost is in its text rather than a hole.
     int level = 0, nest[33] = {0};
     bool text = false;
     while (*s) {
@@ -467,7 +467,7 @@ static void lex(Parser *p)
                 text = true;
             }
             else {
-                /* A format is raw text up to the hole's }. */
+                // A format is raw text up to the hole's }.
                 const char *format = ++s;
                 while (*s && *s != '}' && *s != '\n') {
                     s++;
@@ -723,7 +723,7 @@ static void lex(Parser *p)
             }
         }
         if (s - start == 2 && !strncmp(start, "..", 2) && *s == '.') {
-            s++; /* The variadic marker ... is matched before concatenation. */
+            s++; // The variadic marker ... is matched before concatenation.
         }
         if (s - start == 2 && *s == '=' &&
             (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "..", 2))) {
@@ -750,7 +750,7 @@ static void lex(Parser *p)
             }
         }
         if (level && t->kind != TOK_STRING && t->kind != TOK_QUOTED && s - start <= 2) {
-            /* Brackets inside a hole keep its } and : from closing it. */
+            // Brackets inside a hole keep its } and : from closing it.
             nest[level] += strchr("([{", s[-1])                     ? 1
                            : strchr(")]}", s[-1]) && s - start == 1 ? -1
                                                                     : 0;
@@ -766,7 +766,7 @@ static void lex(Parser *p)
     end->loc = (Loc){p->p->path, line, col};
     add(&p->tokens, end);
 }
-/* Count the reference prefixes represented by a single hatted word. */
+// Count the reference prefixes represented by a single hatted word.
 static int reference_depth(const char *text)
 {
     if (strncmp(text, "ref^", 4)) {
@@ -826,7 +826,7 @@ static Spec *spec_part(Parser *p)
         return s;
     }
     if (is(p, "grow^") || is(p, "flex^")) {
-        /* A flex^ array also returns storage when it shrinks; count marks it. */
+        // A flex^ array also returns storage when it shrinks; count marks it.
         const char *kind = next(p)->text;
         s = spec_part(p);
         if (s->kind != SPEC_ARRAY || s->count) {
@@ -852,7 +852,7 @@ static Spec *spec_part(Parser *p)
         w->loc = s->loc;
         w->elem = s;
         if (is(p, "]")) {
-            w->kind = SPEC_ARRAY; /* Unsized until grow^ claims it. */
+            w->kind = SPEC_ARRAY; // Unsized until grow^ claims it.
         }
         else if (take(p, ":")) {
             w->kind = SPEC_SLICE;
@@ -888,7 +888,7 @@ static Spec *spec_intersection(Parser *p)
     }
     return s;
 }
-/* s and the alternatives after it. */
+// s and the alternatives after it.
 static Spec *union_tail(Parser *p, Spec *s)
 {
     while (take(p, "|")) {
@@ -905,9 +905,9 @@ static Spec *spec(Parser *p)
 {
     return union_tail(p, spec_intersection(p));
 }
-/* The result after ->, where (A, B) with a comma at its top is multiple
- * results, which | E joins as a whole, and any other parenthesis groups a
- * type. */
+// The result after ->, where (A, B) with a comma at its top is multiple
+// results, which | E joins as a whole, and any other parenthesis groups a
+// type.
 static Spec *result_spec(Parser *p)
 {
     int at = p->at;
@@ -940,7 +940,7 @@ static Expr *node(int k, Loc l)
     e->loc = l;
     return e;
 }
-/* return^ a, b: a record of the multiple result type, fields 0, 1, ... */
+// return^ a, b: a record of the multiple result type, fields 0, 1, ...
 static Expr *tuple(List *values, Loc loc)
 {
     Expr *e = node(E_RECORD, loc);
@@ -951,8 +951,8 @@ static Expr *tuple(List *values, Loc loc)
     }
     return e;
 }
-/* Bind the multiple results in the only value once, under a hidden name,
- * and replace the value by its n parts. */
+// Bind the multiple results in the only value once, under a hidden name,
+// and replace the value by its n parts.
 static Stmt *results(Parser *p, List *values, int n, Loc loc)
 {
     Stmt *source = mem(sizeof(*source));
@@ -960,7 +960,7 @@ static Stmt *results(Parser *p, List *values, int n, Loc loc)
     source->loc = loc;
     source->name = fmt("\001results%d", ++p->serial);
     source->a = values->v[0];
-    source->depth = n; /* The number of names its results split into. */
+    source->depth = n; // The number of names its results split into.
     values->n = 0;
     for (int j = 0; j < n; j++) {
         Expr *part = node(E_MEMBER, loc);
@@ -972,7 +972,7 @@ static Stmt *results(Parser *p, List *values, int n, Loc loc)
     }
     return source;
 }
-/* Fields after { up to }, as name:T or name:T = default. */
+// Fields after { up to }, as name:T or name:T = default.
 static void fields(Parser *p, Def *d)
 {
     while (!take(p, "}")) {
@@ -1004,10 +1004,10 @@ static void fields(Parser *p, Def *d)
     }
 }
 static void def_body(Parser *p, Def *d);
-/* An error variant starts with its hidden site, the static record of where
- * it is built: source, line, column and message. Its body, as a def^'s,
- * adds fields and methods; message() gives the recorded message unless the
- * variant says otherwise. */
+// An error variant starts with its hidden site, the static record of where
+// it is built: source, line, column and message. Its body, as a def^'s,
+// adds fields and methods; message() gives the recorded message unless the
+// variant says otherwise.
 static void error_variant(Parser *p, Def *d)
 {
     Field *site = mem(sizeof(*site));
@@ -1150,11 +1150,11 @@ static Expr *primary(Parser *p)
         fail(t->loc, "%s declarations are only allowed at the top level", t->text);
     }
     if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "...")) {
-        e = node(E_NAME, t->loc); /* The collected variadic arguments. */
+        e = node(E_NAME, t->loc); // The collected variadic arguments.
         e->text = "...";
     }
     else if (t->kind == TOK_WORD && !strcmp(t->text, "print^")) {
-        /* print^ value, or print^(a, b) for several values. */
+        // print^ value, or print^(a, b) for several values.
         e = node(E_CALL, t->loc);
         e->a = named("print^", t->loc);
         if (take(p, "(")) {
@@ -1165,7 +1165,7 @@ static Expr *primary(Parser *p)
         }
     }
     else if (t->kind == TOK_WORD && !strcmp(t->text, "char^") && tok(p)->kind == TOK_STRING) {
-        /* char^"x": exactly one Unicode scalar value, checked here. */
+        // char^"x": exactly one Unicode scalar value, checked here.
         Token *text = next(p);
         unsigned long code = 0;
         if (!text->length ||
@@ -1176,8 +1176,8 @@ static Expr *primary(Parser *p)
         e->text = fmt("%lu", code);
     }
     else if (t->kind == TOK_INTERP) {
-        /* $"...{x}...{y:format}...": text and holes in order, each with its
-     * format, "" for none. */
+        // $"...{x}...{y:format}...": text and holes in order, each with its
+        // format, "" for none.
         e = node(E_INTERP, t->loc);
         p->text_cast = true;
         bool header = p->header;
@@ -1231,7 +1231,7 @@ static Expr *primary(Parser *p)
         p->header = false;
         e = expr(p, 0);
         if (is(p, ",")) {
-            /* (a, b): multiple results in place of others, as after catch^ or ??. */
+            // (a, b): multiple results in place of others, as after catch^ or ??.
             List values = {0};
             add(&values, e);
             while (take(p, ",")) {
@@ -1248,7 +1248,7 @@ static Expr *primary(Parser *p)
             e->text = t->text;
         }
         if (strcmp(t->text, "[") && !take(p, "[")) {
-            p->at--; /* grow^ T[] or flex^ T[] names an empty array of that type. */
+            p->at--; // grow^ T[] or flex^ T[] names an empty array of that type.
             e->test_spec = spec_part(p);
         }
         else {
@@ -1321,7 +1321,7 @@ static Expr *primary(Parser *p)
             n->a = e;
             n->name_loc = tok(p)->loc;
             n->text = word(p);
-            /* tostring() and write_text(out) answer with std.text.Builder. */
+            // tostring() and write_text(out) answer with std.text.Builder.
             p->text_cast |= !strcmp(n->text, "tostring") || !strcmp(n->text, "write_text");
             e = n;
         }
@@ -1341,7 +1341,7 @@ static Expr *primary(Parser *p)
             n->b = expr(p, 0);
             p->header = header;
             if (n->b->kind == E_RANGE) {
-                /* A range written in place slices with its bounds. */
+                // A range written in place slices with its bounds.
                 n->kind = E_SLICE;
                 n->text = n->b->text;
                 n->c = n->b->b;
@@ -1465,7 +1465,7 @@ static Expr *operation(Parser *p, int min)
     }
     return e;
 }
-/* Whether the token at offset k from the current one is ( [ ?[ , or ) ] ,. */
+// Whether the token at offset k from the current one is ( [ ?[ , or ) ] ,.
 static bool range_delimiter(Parser *p, int k, bool opening)
 {
     if (p->at + k < 0 || p->at + k >= p->tokens.n) {
@@ -1475,10 +1475,10 @@ static bool range_delimiter(Parser *p, int k, bool opening)
     return opening ? !strcmp(s, "(") || !strcmp(s, "[") || !strcmp(s, "?[") || !strcmp(s, ",")
                    : !strcmp(s, ")") || !strcmp(s, "]") || !strcmp(s, ",");
 }
-/* An expression, at the top level also a range a :: b or a to^ b. A
- * header's to^ belongs to its loop or arm instead. An omitted end must
- * stand next to a delimiter, so that a range never runs on to the next
- * line's expression. */
+// An expression, at the top level also a range a :: b or a to^ b. A
+// header's to^ belongs to its loop or arm instead. An omitted end must
+// stand next to a delimiter, so that a range never runs on to the next
+// line's expression.
 static Expr *expr(Parser *p, int min)
 {
     bool open_start = !min && !p->header && is(p, "::");
@@ -1507,8 +1507,7 @@ static Expr *expr(Parser *p, int min)
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
 static int loop_section(Parser *p);
-/* A clause head is syntactically a nominal type (possibly a union), then ':'.
- */
+// A clause head is syntactically a nominal type (possibly a union), then ':'.
 static bool catch_type(Parser *p)
 {
     if (reference_depth(tok(p)->text)) {
@@ -1708,7 +1707,7 @@ static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no)
             condition = condition ? binary("or^", condition, test) : test;
             continue;
         }
-        /* An arm's low to^ high is its own form, not a range^. */
+        // An arm's low to^ high is its own form, not a range^.
         Expr *low = operation(p, 0), *test = NULL;
         if (take(p, "to^")) {
             Expr *high = operation(p, 0);
@@ -2182,7 +2181,7 @@ static Stmt *stmt(Parser *p)
             add(&values, expr(p, 0));
         } while (!p->header && take(p, ","));
         if (values.n == 1 && bindings.n > 1) {
-            /* let^ a, b = f(): the source binds first, then each name its part. */
+            // let^ a, b = f(): the source binds first, then each name its part.
             add(&s->prolog, results(p, &values, bindings.n, s->loc));
             ((Stmt *)s->prolog.v[0])->mut = s->mut;
         }
@@ -2313,7 +2312,7 @@ static Stmt *stmt(Parser *p)
             }
             s->b = s->values.v[0];
             if (source) {
-                /* a, b := f(): a block binds the results and assigns their parts. */
+                // a, b := f(): a block binds the results and assigns their parts.
                 Stmt *assign = mem(sizeof(*assign));
                 *assign = *s;
                 s->kind = S_BLOCK;
@@ -2324,7 +2323,7 @@ static Stmt *stmt(Parser *p)
             }
         }
         else if (s->targets.n > 1) {
-            /* f^{ a, b }: multiple results of a single expression body. */
+            // f^{ a, b }: multiple results of a single expression body.
             s->kind = S_EXPR;
             s->a = tuple(&s->targets, s->a->loc);
             s->targets = (List){0};
@@ -2447,7 +2446,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
     }
     return f;
 }
-/* Parse the signature after externC^ SYMBOL, bound to name. */
+// Parse the signature after externC^ SYMBOL, bound to name.
 static Function *external_function(Parser *p, char *name, char *symbol)
 {
     need(p, ":");
@@ -2477,7 +2476,7 @@ static void definition(Parser *p)
     }
     def_body(p, d);
 }
-/* A def^ body from its {: fields in self^{ ... } and methods outside. */
+// A def^ body from its {: fields in self^{ ... } and methods outside.
 static void def_body(Parser *p, Def *d)
 {
     need(p, "{");
@@ -2601,7 +2600,7 @@ void parse_file(Program *p, const char *path, Module *module)
     p->entry->procedure = true;
     module->entry = p->entry;
     if (module->root) {
-        /* The entry file is the body of p^ ...:string^ over the command arguments. */
+        // The entry file is the body of p^ ...:string^ over the command arguments.
         Spec *text = mem(sizeof(*text)), *slice = mem(sizeof(*slice));
         *text = (Spec){.kind = SPEC_NAME, .loc = p->entry->loc, .name = "string^"};
         *slice = (Spec){.kind = SPEC_SLICE, .loc = p->entry->loc, .elem = text};
@@ -2619,9 +2618,9 @@ void parse_file(Program *p, const char *path, Module *module)
             continue;
         }
         bool public = take(&q, "public^");
-        /* exportC^ and exportL^ mark a function entered from C or from L^;
-     * exportL^ also marks a def^ L^ holds by value, or with ref^ by
-     * reference. */
+        // exportC^ and exportL^ mark a function entered from C or from L^;
+        // exportL^ also marks a def^ L^ holds by value, or with ref^ by
+        // reference.
         Loc export_at = tok(&q)->loc;
         bool exported = false, lhat_export = false;
         for (;;) {
@@ -2720,7 +2719,7 @@ void parse_file(Program *p, const char *path, Module *module)
                 add(&p->functions, f);
                 continue;
             }
-            /* A def^ laid out as the C type of the same name, or opaque. */
+            // A def^ laid out as the C type of the same name, or opaque.
             Loc loc = tok(&q)->loc;
             int start = q.at;
             char *name = decl_word(&q);
@@ -2735,7 +2734,7 @@ void parse_file(Program *p, const char *path, Module *module)
                 definition(&q);
                 d = p->defs.v[p->defs.n - 1];
             }
-            /* With methods only, it is still opaque. */
+            // With methods only, it is still opaque.
             d->opaque |= !d->own_fields.n;
             d->c_name = name;
             d->module = module;
@@ -2818,8 +2817,8 @@ void parse_file(Program *p, const char *path, Module *module)
         }
         else {
             parsed_function = function(&q, name, NULL, false);
-            /* A called literal initializes a value; it does not declare a named
-       * function. */
+            // A called literal initializes a value; it does not declare a named
+            // function.
             if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
                 (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
                 q.at = binding_start;
@@ -2836,7 +2835,7 @@ void parse_file(Program *p, const char *path, Module *module)
         add(&p->functions, parsed_function);
         take(&q, ";");
     }
-    /* A char^(...) or string^(...) cast fails with std.text's error, imported out of sight. */
+    // A char^(...) or string^(...) cast fails with std.text's error, imported out of sight.
     bool text = q.text_cast && !(module->name && !strcmp(module->name, "std.text"));
     for (int j = 0; text && j < module->imports.n; j++) {
         text = strcmp(((Import *)module->imports.v[j])->name, "std.text");
