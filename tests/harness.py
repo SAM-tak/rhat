@@ -83,7 +83,7 @@ class Suite:
         exe = self.work / (name + opt + '.exe')
         rir = exe.with_suffix('.rir')
         self.run([self.compiler, 'build', path, '-o', exe, '--clang', self.clang, opt,
-                  '--dump-ir', rir, *extra])
+                  '--dump-ir', rir, '--emit-llvm', str(exe) + '.ll', *extra])
         return exe, rir
 
     def positive(self, name, text, expected, inspect=None, failure=False, extra=()):

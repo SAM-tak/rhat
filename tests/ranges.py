@@ -65,7 +65,7 @@ def exercise(suite):
         for opt in suite.opts:
             exe = work / f'{name}_{opt[1:]}.exe'
             rir = exe.with_suffix('.rir')
-            run([compiler, 'build', str(path), '-o', str(exe), '--clang', clang, '--dump-ir', str(rir), opt])
+            run([compiler, 'build', str(path), '-o', str(exe), '--clang', clang, '--dump-ir', str(rir), '--emit-llvm', str(exe) + '.ll', opt])
             llvm = pathlib.Path(str(exe) + '.ll').read_text()
             assert ('range.guard' in rir.read_text()) == versioned, name
             actual = run([str(exe)], not error)

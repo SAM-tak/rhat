@@ -9,7 +9,7 @@ import time
 
 class Client:
     def __init__(self, executable):
-        self.process = subprocess.Popen([str(executable), '--stdio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.process = subprocess.Popen([str(executable), 'lsp', '--stdio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.messages = queue.Queue()
         self.pending = []
         self.serial = 0
@@ -104,7 +104,7 @@ def main():
     client.send('textDocument/hover', {}, -1)
     assert client.wait(lambda x: x.get('id') == -1)['error']['code'] == -32002
     capabilities = client.request('initialize', dict(rootUri=work.as_uri(), capabilities={}))
-    assert capabilities['serverInfo']['name'] == 'rhatls'
+    assert capabilities['serverInfo']['name'] == 'rhat'
     assert capabilities['capabilities']['positionEncoding'] == 'utf-16'
     assert capabilities['capabilities']['textDocumentSync']['change'] == 2
     client.send('initialized', {})
@@ -332,8 +332,7 @@ print^(v+1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=path.as_uri())))
     client.send('textDocument/didClose',dict(textDocument=dict(uri=module.as_uri())))
     client.close()
-    assert subprocess.run([str(server),'--version'],capture_output=True,text=True).stdout.strip() == 'rhatls 0.1.0'
-    exit_only=subprocess.run([str(server)],input=b'Content-Length: 33\r\n\r\n{"jsonrpc":"2.0","method":"exit"}',capture_output=True,timeout=10)
+    exit_only=subprocess.run([str(server),'lsp'],input=b'Content-Length: 33\r\n\r\n{"jsonrpc":"2.0","method":"exit"}',capture_output=True,timeout=10)
     assert exit_only.returncode == 1
     print('PASS lifecycle, unsupported requests, shutdown and exit',flush=True)
 

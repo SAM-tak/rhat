@@ -1,18 +1,18 @@
-# rhatls — R^ 言語サーバー
+# 言語サーバー（rhat lsp）
 
-`rhatls` は C11 で実装した stdio 接続の Language Server Protocol サーバーです。
+`rhat lsp` は C11 で実装した stdio 接続の Language Server Protocol サーバーです。
 L^ の通信、JSON-RPC、URI、UTF-16 座標変換、スレッドの実装を移植し、
 解析部分は R^ の構文解析・名前解決・型検査・寿命検査・データスタック検査へ接続しています。
 L^ の VM、ホスト設定、LTON、可視化専用 RPC と DAP は組み込みません。
 
 ## 起動とインストール
 
-通常のビルドで `rhat` と一緒に生成します。
+言語サーバーは独立した実行ファイルではなく、`rhat` のサブコマンドです。
 
 ```powershell
 cmake -S . -B build
 cmake --build build --config Debug
-.\build\Debug\rhatls.exe --stdio
+.\build\Debug\rhat.exe lsp --stdio
 ```
 
 エディターの LSP クライアントから、この実行ファイルを子プロセスとして起動してください。
@@ -22,13 +22,15 @@ LSP クライアントそのものは、このリポジトリには含めませ�
 
 ```powershell
 cmake --install build --config Release --prefix C:/tools/rhat
-C:/tools/rhat/bin/rhatls.exe --stdio
+C:/tools/rhat/bin/rhat.exe lsp --stdio
 ```
+
+ビルドのたびに、`rhat` は `.rhat-ls/`（`RHAT_SERVER_DIR` で変更できます）にもコピーされます。
+エディターにはこのコピーを起動させると、サーバーの実行中でもビルドできます。
+コピーが使用中で更新できないときは、ビルドが警告を出すだけで失敗しません。サーバーを止めると次のビルドで更新されます。
 
 インストール先の `share/rhat/stdlib` を優先し、開発時には同梱ソースの `stdlib` を使います。
 `--stdlib DIR` で探索先を指定できます。`DIR/std/random.rh` が存在する配置を指定します。
-`--version`、`--help` にも対応します。
-`-DRHAT_BUILD_LSP=OFF` を指定すると、コンパイラのみをビルドします。
 外部の L^ チェックアウトや、ビルド時のネットワーク取得は不要です。
 
 ## 対応機能
@@ -105,7 +107,7 @@ LSP の位置・型情報を追加しただけでは、実行ファイルにそ�
 
 ## 検証
 
-`tests/lsp.py` は実際の `rhatls` と Content-Length 付き stdio メッセージを交換します。
+`tests/lsp.py` は実際の `rhat lsp` と Content-Length 付き stdio メッセージを交換します。
 未保存バッファ、依存変更、構文・意味エラーからの復帰、UTF-16、名前解決、補完、
 公開制御、連続編集、初期化・終了を検証します。CTest の `lsp` として登録しています。
 

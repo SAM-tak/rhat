@@ -82,9 +82,8 @@ rhat build examples/layout.rh -o build/layout.exe -O2
 rhat run examples/regions.rh
 ```
 
-`build` / `run` は既定で `<実行ファイル名>.ll` を保持します。
-同じ出力先への再ビルドでは上書きするため、実行ファイルや `.ll` を手動で消す必要はありません。
-`--emit-llvm PATH` で保存先を変更できます。`--dump-ir PATH` は R^ 中間表現と配置を出力します。
+`build` / `run` は既定で `.ll` を残しません。`--emit-llvm PATH` を付けると、依存全体を含む単一の LLVM IR を `PATH` に書きます。
+`--dump-ir PATH` は R^ 中間表現と配置を出力します。
 `--clang PATH` / `RHAT_CLANG` は Clang、`--runtime PATH` / `RHAT_RUNTIME` はランタイムの指定です。
 通常の開発ビルドはソースツリーのランタイムを使用します。配布時はランタイムも同梱してください。
 
@@ -204,12 +203,11 @@ C 標準ライブラリの入出力内部まで動的確保を禁止する frees
 
 ## 言語サーバー
 
-`rhatls` を同時にビルドします。エディターの LSP クライアントから
-`build/Debug/rhatls.exe --stdio` を起動すると、診断・ホバー・定義移動・参照検索・補完・
+言語サーバーは `rhat lsp` です。エディターの LSP クライアントから
+`build/Debug/rhat.exe lsp --stdio` を起動すると、診断・ホバー・定義移動・参照検索・補完・
 シグネチャヘルプ・文書シンボル・semantic tokens を利用できます。
 未保存の編集と import 依存も検査します。[設定・実装範囲](docs/lsp.md)。
 
-`-DRHAT_BUILD_LSP=OFF` でコンパイラのみをビルドできます。
 
 関数・手続きの型によるオーバーロード、交差型 `&`、`op^` による演算子定義に対応します。
 仕様は [関数・手続きの交差型と演算子定義](docs/overloads.md)、例は [examples/overloads.rh](examples/overloads.rh) を参照してください。

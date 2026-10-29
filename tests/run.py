@@ -1812,10 +1812,15 @@ suite.mark("default_clang_and_rebuild")
 bad_env = dict(clean_env)
 missing_clang = str(work / "does-not-exist-clang.exe")
 bad_env["RHAT_CLANG"] = missing_clang
+pathlib.Path(str(exe) + ".ll").unlink(missing_ok=True)
 result = run([compiler, "build", str(path), "-o", str(exe)], 1, env=bad_env)
 assert "does-not-exist-clang.exe" in result.stderr, result.stderr
-assert "LLVM IR retained at" in result.stderr, result.stderr
-assert pathlib.Path(str(exe) + ".ll").exists()
+assert "LLVM IR retained at" not in result.stderr, result.stderr
+assert not pathlib.Path(str(exe) + ".ll").exists()
+kept = work / "driver_default.kept.ll"
+result = run([compiler, "build", str(path), "-o", str(exe), "--emit-llvm", str(kept)], 1, env=bad_env)
+assert f"LLVM IR retained at {kept}" in result.stderr, result.stderr
+assert kept.exists()
 run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang], env=bad_env)
 assert run([str(exe)]).stdout == "42\n"
 suite.mark("clang_override_precedence_and_diagnostic")

@@ -3,11 +3,16 @@ project(rhat VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
-set(RHAT_FRONTEND_SOURCES
-  src/front.c src/modules.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
-  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c)
+find_package(Threads REQUIRED)
+add_library(rhat_json STATIC vendor/cjson/cJSON.c)
+target_include_directories(rhat_json PUBLIC vendor/cjson)
+target_compile_definitions(rhat_json PUBLIC CJSON_HIDE_SYMBOLS)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
-  ${RHAT_FRONTEND_SOURCES})
+  src/front.c src/modules.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
+  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c
+  lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c lsp/uri.c lsp/position.c lsp/port/thread.c)
+target_include_directories(rhat PRIVATE src lsp)
+target_link_libraries(rhat PRIVATE rhat_json Threads::Threads)
 if(NOT WIN32)
   target_link_libraries(rhat PRIVATE m)
 endif()
@@ -29,32 +34,15 @@ if(MSVC)
   target_link_options(rhat PRIVATE /STACK:67108864)
 else()
   target_compile_options(rhat PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_definitions(rhat PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
 endif()
-option(RHAT_BUILD_LSP "Build the R^ language server" ON)
-if(RHAT_BUILD_LSP)
-  find_package(Threads REQUIRED)
-  add_library(rhat_json STATIC vendor/cjson/cJSON.c)
-  target_include_directories(rhat_json PUBLIC vendor/cjson)
-  target_compile_definitions(rhat_json PUBLIC CJSON_HIDE_SYMBOLS)
-  add_executable(rhatls
-    lsp/main.c lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c
-    lsp/uri.c lsp/position.c lsp/port/thread.c
-    ${RHAT_FRONTEND_SOURCES})
-  target_include_directories(rhatls PRIVATE src lsp)
-  target_link_libraries(rhatls PRIVATE rhat_json Threads::Threads)
-  target_compile_definitions(rhatls PRIVATE RH_STDLIB_PATH="${CMAKE_CURRENT_SOURCE_DIR}/stdlib")
-  if(MSVC)
-    target_compile_options(rhatls PRIVATE /W4 /utf-8)
-    target_compile_definitions(rhatls PRIVATE _CRT_SECURE_NO_WARNINGS)
-    # Analysis threads take the executable's default stack size.
-    target_link_options(rhatls PRIVATE /STACK:67108864)
-  else()
-    target_compile_options(rhatls PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_definitions(rhatls PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
-    target_link_libraries(rhatls PRIVATE m)
-  endif()
-  install(TARGETS rhatls RUNTIME DESTINATION bin)
-endif()
+# The editor runs a copy of rhat (rhat lsp) so that building does not fight a
+# running language server for the executable; a locked copy only warns.
+set(RHAT_SERVER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.rhat-ls" CACHE PATH "Where rhat is copied for the editor's language server")
+add_custom_command(TARGET rhat POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -DSOURCE=$<TARGET_FILE:rhat> -DDIRECTORY=${RHAT_SERVER_DIR}
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy-server.cmake"
+  VERBATIM)
 include(CTest)
 if(BUILD_TESTING)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -80,10 +68,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
   add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
-  if(RHAT_BUILD_LSP)
-    add_test(NAME lsp COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.py"
-      --server $<TARGET_FILE:rhatls> --work "${CMAKE_CURRENT_BINARY_DIR}/lsp-tests")
-  endif()
+  add_test(NAME lsp COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.py"
+    --server $<TARGET_FILE:rhat> --work "${CMAKE_CURRENT_BINARY_DIR}/lsp-tests")
   add_test(NAME inference COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inference.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/inference-tests")
   add_test(NAME errors COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/errors.py"

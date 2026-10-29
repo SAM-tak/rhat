@@ -1,3 +1,4 @@
 {
+    "rhat.serverPath": "${workspaceFolder}/.rhat-ls/rhat.exe",
     "rhat.serverAutoRestart": false
 }

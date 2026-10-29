@@ -748,7 +748,7 @@ static void publish(Server *s, Job *job, cJSON *indexes, cJSON **published)
             cJSON *d = cJSON_CreateObject();
             cJSON_AddItemToObject(d, "range", copy(cJSON_GetObjectItem(error, "range")));
             cJSON_AddStringToObject(d, "message", text(error, "message"));
-            cJSON_AddStringToObject(d, "source", "rhatls");
+            cJSON_AddStringToObject(d, "source", "rhat");
             cJSON_AddNumberToObject(d, "severity", 1);
             cJSON_AddItemToArray(list, d);
         }
@@ -1033,7 +1033,7 @@ static cJSON *initialize(Server *s, cJSON *params)
     cJSON_AddItemToArray(mods, cJSON_CreateString("readonly"));
     cJSON_AddBoolToObject(tokens, "full", true);
     cJSON *info = cJSON_AddObjectToObject(out, "serverInfo");
-    cJSON_AddStringToObject(info, "name", "rhatls");
+    cJSON_AddStringToObject(info, "name", "rhat");
     cJSON_AddStringToObject(info, "version", "0.1.0");
     return out;
 }
@@ -1094,9 +1094,8 @@ static void sync_document(Server *s, const char *method, cJSON *params)
     recheck(s);
 }
 
-int rhat_lsp_run(const char *executable, const char *stdlib)
+int rhat_lsp_run(const char *stdlib)
 {
-    (void)executable;
     Server s = {0};
     s.stdlib = stdlib;
     s.documents = cJSON_CreateArray();

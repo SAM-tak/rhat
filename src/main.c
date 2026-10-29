@@ -2,6 +2,7 @@
 #define _XOPEN_SOURCE 700
 #endif
 #include "rhat.h"
+#include "server.h"
 #include <errno.h>
 #if defined(_WIN32)
 #include <process.h>
@@ -106,7 +107,7 @@ static void usage(void)
     puts(
         "R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat emit SOURCE -o "
         "OUTPUT.ll [--dump-ir OUTPUT.rir]\n       rhat build SOURCE -o OUTPUT "
-        "[--clang PATH] [--runtime PATH] [-O0|-O2]\n       rhat run SOURCE "
+        "[--clang PATH] [--runtime PATH] [-O0|-O2] [--emit-llvm OUTPUT.ll]\n       rhat lsp [--stdio] [--stdlib DIR]\n       rhat run SOURCE "
         "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
         "--dump-ir "
         "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --crt-dll, --cache-dir DIR, --no-cache, "
@@ -125,6 +126,19 @@ int main(int argc, char **argv)
         return 0;
     }
     const char *command = argv[1];
+    if (!strcmp(command, "lsp")) {
+        const char *stdlib = NULL;
+        for (int j = 2; j < argc; j++) {
+            if (!strcmp(argv[j], "--stdlib") && j + 1 < argc) {
+                stdlib = argv[++j];
+            }
+            else if (strcmp(argv[j], "--stdio")) {
+                fprintf(stderr, "unknown lsp option: %s\n", argv[j]);
+                return 2;
+            }
+        }
+        return rhat_lsp_run(stdlib ? stdlib : tool_resource(argv[0], RH_STDLIB_PATH, "stdlib"));
+    }
     if (strcmp(command, "check") && strcmp(command, "emit") && strcmp(command, "build") &&
         strcmp(command, "run")) {
         usage();
@@ -225,9 +239,6 @@ int main(int argc, char **argv)
         out = fmt("%s.out", source);
 #endif
     }
-    if (native && !ll) {
-        ll = fmt("%s.ll", out);
-    }
     const char *outputs[] = {out, ll, rir};
     for (int j = 0; j < 3; j++) {
         if (same_path(outputs[j], source) || same_path(outputs[j], runtime)) {
@@ -272,20 +283,22 @@ int main(int argc, char **argv)
         emit_llvm(&p, ll ? ll : out);
         return 0;
     }
-    emit_llvm(&p, ll);
+    if (ll) {
+        emit_llvm(&p, ll);
+    }
+    char *retained = ll ? fmt("LLVM IR retained at %s\n", ll) : "";
     int status = build_objects(&p, argv[0], clang, runtime, opt, out, cache, reuse, verbose,
                                &libraries, &c_includes);
     if (status < 0) {
         int error = errno;
         fprintf(stderr,
                 "could not start Clang '%s': %s\n"
-                "Use --clang PATH or set RHAT_CLANG to the Clang executable.\n"
-                "LLVM IR retained at %s\n",
-                clang, strerror(error), ll);
+                "Use --clang PATH or set RHAT_CLANG to the Clang executable.\n%s",
+                clang, strerror(error), retained);
         return 1;
     }
     if (status) {
-        fprintf(stderr, "Clang failed (%d); LLVM IR retained at %s\n", status, ll);
+        fprintf(stderr, "Clang failed (%d)\n%s", status, retained);
         return 1;
     }
     if (!strcmp(command, "run")) {
