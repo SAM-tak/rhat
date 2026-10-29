@@ -24,6 +24,9 @@ endif()
 if(MSVC)
   target_compile_options(rhat PRIVATE /W4 /utf-8)
   target_compile_definitions(rhat PRIVATE _CRT_SECURE_NO_WARNINGS)
+  # Inference recurses once per call in a chain of untyped functions, and
+  # unoptimized frames are large; Windows reserves only 1MB by default.
+  target_link_options(rhat PRIVATE /STACK:67108864)
 else()
   target_compile_options(rhat PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -43,6 +46,8 @@ if(RHAT_BUILD_LSP)
   if(MSVC)
     target_compile_options(rhatls PRIVATE /W4 /utf-8)
     target_compile_definitions(rhatls PRIVATE _CRT_SECURE_NO_WARNINGS)
+    # Analysis threads take the executable's default stack size.
+    target_link_options(rhatls PRIVATE /STACK:67108864)
   else()
     target_compile_options(rhatls PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_definitions(rhatls PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
