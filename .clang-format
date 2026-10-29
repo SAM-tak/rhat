@@ -30,6 +30,9 @@ SortIncludes: Never
 BreakStringLiterals: false
 ReflowComments: false
 MaxEmptyLinesToKeep: 1
+# A blank line before each definition, and between a comment and the
+# definition above it.
+SeparateDefinitionBlocks: Always
 # An if, else, for or while body always has its braces.
 InsertBraces: true
 # Macros that loop are formatted as a for, but are called like a function.

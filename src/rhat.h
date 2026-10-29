@@ -210,10 +210,10 @@ struct Function {
     bool intrinsic; // externLLVM^ binds an LLVM intrinsic instead of a C symbol.
     bool procedure, templ, abstract, priv, override, mutable_self;
     bool overload, operator_member, right_receiver; // Explicit member roles.
-    bool exported;    // exportC^: callable from C under its own name.
-    bool lhat_export; // exportL^: registered as an L^ host function.
-    bool variadic;    // The last parameter "..." collects trailing arguments as a
-                      // slice.
+    bool exported;                                  // exportC^: callable from C under its own name.
+    bool lhat_export;                               // exportL^: registered as an L^ host function.
+    bool variadic; // The last parameter "..." collects trailing arguments as a
+                   // slice.
 };
 
 struct Field {
@@ -381,15 +381,7 @@ enum {
                  // column and message; text is the source (length bytes), a NUL, the message.
 };
 
-enum {
-    RANGE_SLOT,
-    RANGE_CONST,
-    RANGE_IV,
-    RANGE_LENGTH,
-    RANGE_ADD,
-    RANGE_SUB,
-    RANGE_MUL
-};
+enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };
 
 typedef struct RangeExpr RangeExpr;
 

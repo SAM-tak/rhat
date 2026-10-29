@@ -1,6 +1,7 @@
 #ifndef RHAT_TOOLING_H
 #define RHAT_TOOLING_H
 #include "rhat.h"
+
 // Optional per-thread allocation and diagnostic boundary for compiler clients.
 typedef struct {
     void *(*allocate)(size_t);
@@ -22,9 +23,7 @@ typedef struct {
 } ToolSource;
 
 // Parameters have an internal kind; other kinds follow LSP SymbolKind.
-enum {
-    TOOL_PARAMETER = 100
-};
+enum { TOOL_PARAMETER = 100 };
 
 // One compiler-recorded identifier resolution.
 typedef struct {

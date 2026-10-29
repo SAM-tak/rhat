@@ -314,7 +314,7 @@ Type *type_spec(Program *p, Spec *s)
     }
     if (s->kind != SPEC_NAME) {
         return type_wrap(p,
-                           s->kind == SPEC_REF   ? T_REF
+                         s->kind == SPEC_REF     ? T_REF
                          : s->kind == SPEC_GROW  ? T_GROW
                          : s->kind == SPEC_SLICE ? T_SLICE
                                                  : T_ARRAY,

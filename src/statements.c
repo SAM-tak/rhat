@@ -183,8 +183,7 @@ static void loop_code(Context *c, Stmt *s)
     int main = ++c->in->labels, update = ++c->in->labels, finish = ++c->in->labels;
     int last = ++c->in->labels, epilog = ++c->in->labels;
     Loop target = {
-        .end = finish, .update = update, .bindings = c->vars.n, .outside = scope, .first = first
-    };
+        .end = finish, .update = update, .bindings = c->vars.n, .outside = scope, .first = first};
     for (int j = 0; j < s->focuses.n; j++) {
         Expr name = {.kind = E_NAME, .loc = s->loc, .text = s->focuses.v[j]};
         Var *v = selected(c, &name);
@@ -594,14 +593,12 @@ void handle_statements(Context *c, Stmt *s)
         visible = ((Loop *)c->loops.v[c->loops.n - 1])->outside;
     }
     List before = save_facts(&c->vars);
-    ErrorTarget target = {
-        .errors = errors,
-        .slot = slot(c, errors, false),
-        .label = ++c->in->labels,
-        .bindings = base,
-        .pending = c->pending_owners.n,
-        .checkpoint = -1
-    };
+    ErrorTarget target = {.errors = errors,
+                          .slot = slot(c, errors, false),
+                          .label = ++c->in->labels,
+                          .bindings = base,
+                          .pending = c->pending_owners.n,
+                          .checkpoint = -1};
     if (c->in->result->owned) {
         target.checkpoint = slot(c, type_builtin(c->p, T_U64), false);
         Instr *i = emit(c, I_STACK_SAVE, s->loc);

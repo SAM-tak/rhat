@@ -156,6 +156,7 @@ static void need(Parser *p, const char *s)
         fail(tok(p)->loc, "expected '%s', found '%s'", s, tok(p)->text);
     }
 }
+
 static char *word(Parser *p)
 {
     Token *t = next(p);
@@ -164,6 +165,7 @@ static char *word(Parser *p)
     }
     return t->text;
 }
+
 static char *qualified_word(Parser *p)
 {
     char *name = word(p);
@@ -172,6 +174,7 @@ static char *qualified_word(Parser *p)
     }
     return name;
 }
+
 static char *expression_path(Expr *e)
 {
     if (e->kind == E_NAME) {
@@ -185,6 +188,7 @@ static char *expression_path(Expr *e)
     }
     return NULL;
 }
+
 static bool type_constructor(Parser *p, Expr *e)
 {
     char *name = expression_path(e);
@@ -211,6 +215,7 @@ static bool type_constructor(Parser *p, Expr *e)
     }
     return false;
 }
+
 static char *decl_word(Parser *p)
 {
     Loc loc = tok(p)->loc;
@@ -225,12 +230,14 @@ static char *decl_word(Parser *p)
     }
     return name;
 }
+
 static char *slice(const char *s, size_t n)
 {
     char *r = mem(n + 1);
     memcpy(r, s, n);
     return r;
 }
+
 static int digit_value(unsigned char c)
 {
     if (c >= '0' && c <= '9') {
@@ -244,6 +251,7 @@ static int digit_value(unsigned char c)
     }
     return -1;
 }
+
 static const char *digits(const char *s, int base, Loc loc)
 {
     bool previous = false, any = false;
@@ -270,6 +278,7 @@ static const char *digits(const char *s, int base, Loc loc)
     }
     return s;
 }
+
 static char *decimal_base(const char *start, const char *end, int base)
 {
     size_t n = (size_t)(end - start);
@@ -301,6 +310,7 @@ static char *decimal_base(const char *start, const char *end, int base)
     }
     return out;
 }
+
 static void unicode_escape(char *out, size_t *n, unsigned value, Loc loc)
 {
     if (value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
@@ -325,6 +335,7 @@ static void unicode_escape(char *out, size_t *n, unsigned value, Loc loc)
         out[(*n)++] = (char)(0x80 | (value & 63));
     }
 }
+
 // Decode the escape after a backslash at s into out, answering where the
 // string goes on.
 static const char *string_escape(const char *s, char *out, size_t *n, Loc loc)
@@ -395,6 +406,7 @@ static const char *string_escape(const char *s, char *out, size_t *n, Loc loc)
     }
     return s;
 }
+
 // Fail unless the n bytes at out are UTF-8.
 static void utf8_text(const char *out, size_t n, Loc loc)
 {
@@ -405,6 +417,7 @@ static void utf8_text(const char *out, size_t n, Loc loc)
         }
     }
 }
+
 // The text of an interpolated string up to its next hole or its end, with
 // {{ and }} for braces.
 static const char *interp_text(const char *s, Token *t)
@@ -436,6 +449,7 @@ static const char *interp_text(const char *s, Token *t)
     t->length = n;
     return s;
 }
+
 static void lex(Parser *p)
 {
     const char *s = p->p->source;
@@ -766,6 +780,7 @@ static void lex(Parser *p)
     end->loc = (Loc){p->p->path, line, col};
     add(&p->tokens, end);
 }
+
 // Count the reference prefixes represented by a single hatted word.
 static int reference_depth(const char *text)
 {
@@ -778,8 +793,10 @@ static int reference_depth(const char *text)
     }
     return text[end] ? 0 : end - 3;
 }
+
 static Spec *spec(Parser *p);
 static Spec *result_spec(Parser *p);
+
 static Spec *spec_part(Parser *p)
 {
     Spec *s = mem(sizeof(*s));
@@ -875,6 +892,7 @@ static Spec *spec_part(Parser *p)
     }
     return s;
 }
+
 static Spec *spec_intersection(Parser *p)
 {
     Spec *s = spec_part(p);
@@ -888,6 +906,7 @@ static Spec *spec_intersection(Parser *p)
     }
     return s;
 }
+
 // s and the alternatives after it.
 static Spec *union_tail(Parser *p, Spec *s)
 {
@@ -901,10 +920,12 @@ static Spec *union_tail(Parser *p, Spec *s)
     }
     return s;
 }
+
 static Spec *spec(Parser *p)
 {
     return union_tail(p, spec_intersection(p));
 }
+
 // The result after ->, where (A, B) with a comma at its top is multiple
 // results, which | E joins as a whole, and any other parenthesis groups a
 // type.
@@ -929,10 +950,12 @@ static Spec *result_spec(Parser *p)
     }
     return spec(p);
 }
+
 static Expr *expr(Parser *p, int min);
 static Expr *operation(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
+
 static Expr *node(int k, Loc l)
 {
     Expr *e = mem(sizeof(*e));
@@ -940,6 +963,7 @@ static Expr *node(int k, Loc l)
     e->loc = l;
     return e;
 }
+
 // return^ a, b: a record of the multiple result type, fields 0, 1, ...
 static Expr *tuple(List *values, Loc loc)
 {
@@ -951,6 +975,7 @@ static Expr *tuple(List *values, Loc loc)
     }
     return e;
 }
+
 // Bind the multiple results in the only value once, under a hidden name,
 // and replace the value by its n parts.
 static Stmt *results(Parser *p, List *values, int n, Loc loc)
@@ -972,6 +997,7 @@ static Stmt *results(Parser *p, List *values, int n, Loc loc)
     }
     return source;
 }
+
 // Fields after { up to }, as name:T or name:T = default.
 static void fields(Parser *p, Def *d)
 {
@@ -1003,7 +1029,9 @@ static void fields(Parser *p, Def *d)
         add(&d->own_fields, f);
     }
 }
+
 static void def_body(Parser *p, Def *d);
+
 // An error variant starts with its hidden site, the static record of where
 // it is built: source, line, column and message. Its body, as a def^'s,
 // adds fields and methods; message() gives the recorded message unless the
@@ -1064,6 +1092,7 @@ static void error_variant(Parser *p, Def *d)
     add(&m->body, answer);
     add(&d->own_methods, m);
 }
+
 static void entries(Parser *p, Expr *e, const char *end, bool named)
 {
     bool header = p->header;
@@ -1088,6 +1117,7 @@ static void entries(Parser *p, Expr *e, const char *end, bool named)
     need(p, end);
     p->header = header;
 }
+
 static bool branch_word(Parser *p)
 {
     const char *words[] = {"elseif^", "elsif^", "elif^", "ei^", "else^", "el^"};
@@ -1098,6 +1128,7 @@ static bool branch_word(Parser *p)
     }
     return false;
 }
+
 static bool branch(Parser *p)
 {
     if (!branch_word(p)) {
@@ -1116,6 +1147,7 @@ static bool branch(Parser *p)
     }
     return true;
 }
+
 static Expr *if_tail(Parser *p, Expr *condition, Loc loc)
 {
     Expr *e = node(E_IF, loc);
@@ -1138,8 +1170,10 @@ static Expr *if_tail(Parser *p, Expr *condition, Loc loc)
     }
     return e;
 }
+
 static Expr *for_expression(Parser *p, Loc loc);
 static Expr *named(char *name, Loc loc);
+
 static Expr *primary(Parser *p)
 {
     Token *t = next(p);
@@ -1371,6 +1405,7 @@ static Expr *primary(Parser *p)
     }
     return e;
 }
+
 static int prec(const char *s)
 {
     if (!strcmp(s, "??") || !strcmp(s, "catch^")) {
@@ -1405,6 +1440,7 @@ static int prec(const char *s)
     }
     return -1;
 }
+
 static Expr *operation(Parser *p, int min)
 {
     Expr *e = primary(p);
@@ -1465,6 +1501,7 @@ static Expr *operation(Parser *p, int min)
     }
     return e;
 }
+
 // Whether the token at offset k from the current one is ( [ ?[ , or ) ] ,.
 static bool range_delimiter(Parser *p, int k, bool opening)
 {
@@ -1475,6 +1512,7 @@ static bool range_delimiter(Parser *p, int k, bool opening)
     return opening ? !strcmp(s, "(") || !strcmp(s, "[") || !strcmp(s, "?[") || !strcmp(s, ",")
                    : !strcmp(s, ")") || !strcmp(s, "]") || !strcmp(s, ",");
 }
+
 // An expression, at the top level also a range a :: b or a to^ b. A
 // header's to^ belongs to its loop or arm instead. An omitted end must
 // stand next to a delimiter, so that a range never runs on to the next
@@ -1504,9 +1542,11 @@ static Expr *expr(Parser *p, int min)
     }
     return r;
 }
+
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
 static int loop_section(Parser *p);
+
 // A clause head is syntactically a nominal type (possibly a union), then ':'.
 static bool catch_type(Parser *p)
 {
@@ -1537,6 +1577,7 @@ static bool catch_type(Parser *p)
     }
     return true;
 }
+
 static bool catch_head(Parser *p)
 {
     if (!is(p, "catch^")) {
@@ -1557,6 +1598,7 @@ static bool catch_head(Parser *p)
     }
     return is(&q, ":");
 }
+
 static void catches(Parser *p, List *body, bool loop)
 {
     if (!catch_head(p)) {
@@ -1592,6 +1634,7 @@ static void catches(Parser *p, List *body, bool loop)
     *body = (List){0};
     add(body, s);
 }
+
 static void clause_body(Parser *p, List *out)
 {
     while (!is(p, "}") && !branch_word(p) && !catch_head(p)) {
@@ -1604,6 +1647,7 @@ static void clause_body(Parser *p, List *out)
         add(out, stmt(p));
     }
 }
+
 static Stmt *if_statement(Parser *p, Expr *condition, Loc loc)
 {
     Stmt *s = mem(sizeof(*s));
@@ -1628,6 +1672,7 @@ static Stmt *if_statement(Parser *p, Expr *condition, Loc loc)
     }
     return s;
 }
+
 static const char *assignment_operator(Parser *p)
 {
     const char *ops[] = {":=",  "+=",  "-=",  "*=",  "/=",  "%=",  "//=", "**=",
@@ -1639,18 +1684,21 @@ static const char *assignment_operator(Parser *p)
     }
     return NULL;
 }
+
 static Expr *named(char *name, Loc loc)
 {
     Expr *e = node(E_NAME, loc);
     e->text = name;
     return e;
 }
+
 static Expr *number(char *text, Loc loc)
 {
     Expr *e = node(E_INT, loc);
     e->text = text;
     return e;
 }
+
 static Expr *binary(char *op, Expr *a, Expr *b)
 {
     Expr *e = node(E_BIN, a->loc);
@@ -1659,6 +1707,7 @@ static Expr *binary(char *op, Expr *a, Expr *b)
     e->b = b;
     return e;
 }
+
 static Expr *contextual(Expr *value, Expr *hint)
 {
     Expr *e = node(E_EXPECT, value->loc);
@@ -1666,6 +1715,7 @@ static Expr *contextual(Expr *value, Expr *hint)
     e->b = hint;
     return e;
 }
+
 static Stmt *binding(char *name, Expr *value, bool mut)
 {
     Stmt *s = mem(sizeof(*s));
@@ -1676,6 +1726,7 @@ static Stmt *binding(char *name, Expr *value, bool mut)
     s->mut = mut;
     return s;
 }
+
 static Stmt *assignment(Expr *target, Expr *value, char *op)
 {
     Stmt *s = mem(sizeof(*s));
@@ -1686,16 +1737,19 @@ static Stmt *assignment(Expr *target, Expr *value, char *op)
     s->op = op;
     return s;
 }
+
 static Stmt *match_binding(char *name, Expr *value)
 {
     Stmt *s = binding(name, value, false);
     s->flow_alias = true;
     return s;
 }
+
 static bool match_clause(Parser *p)
 {
     return is(p, "when^") || is(p, "other^") || is(p, "el^") || is(p, "else^");
 }
+
 static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no)
 {
     Expr *condition = NULL;
@@ -1730,6 +1784,7 @@ static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no)
     need(p, ":");
     return condition;
 }
+
 static void match_body(Parser *p, List *out)
 {
     while (!is(p, "}") && !match_clause(p)) {
@@ -1741,6 +1796,7 @@ static void match_body(Parser *p, List *out)
         }
     }
 }
+
 static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
 {
     char *name = fmt("\001match%d", ++p->serial);
@@ -1771,6 +1827,7 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
     p->scope_depth--;
     return scope;
 }
+
 static Expr *match_expression(Parser *p, Expr *scope, Expr *subject)
 {
     char *name = fmt("\001match%d", ++p->serial);
@@ -1800,6 +1857,7 @@ static Expr *match_expression(Parser *p, Expr *scope, Expr *subject)
     need(p, ";");
     return scope;
 }
+
 static Expr *for_expression(Parser *p, Loc loc)
 {
     Expr *scope = node(E_SCOPE, loc);
@@ -1836,6 +1894,7 @@ static Expr *for_expression(Parser *p, Loc loc)
     p->header = header;
     return match_expression(p, scope, subject);
 }
+
 static int loop_section(Parser *p)
 {
     const char *names[] = {"prolog^", "pre^", "first^", "main^", "last^", "epilog^"};
@@ -1855,6 +1914,7 @@ static int loop_section(Parser *p)
     }
     return -1;
 }
+
 static void loop_body(Parser *p, Stmt *loop)
 {
     need(p, "{");
@@ -1919,6 +1979,7 @@ static void loop_body(Parser *p, Stmt *loop)
         fail(loop->loc, "loop requires pre^, first^, main^, or last^");
     }
 }
+
 static Stmt *scoped_statement(Stmt *scope, Expr *value)
 {
     Expr *e = node(E_SCOPE, scope->loc);
@@ -1930,6 +1991,7 @@ static Stmt *scoped_statement(Stmt *scope, Expr *value)
     s->a = e;
     return s;
 }
+
 static Stmt *matched_statement(Parser *p, Stmt *scope, Expr *subject)
 {
     Expr *e = node(E_SCOPE, scope->loc);
@@ -1941,6 +2003,7 @@ static Stmt *matched_statement(Parser *p, Stmt *scope, Expr *subject)
     s->a = e;
     return s;
 }
+
 static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
 {
     Stmt *scope = mem(sizeof(*scope));
@@ -2148,6 +2211,7 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
     add(&scope->body, loop);
     return scope;
 }
+
 static Stmt *stmt(Parser *p)
 {
     Token *t = tok(p);
@@ -2335,6 +2399,7 @@ static Stmt *stmt(Parser *p)
     take(p, ";");
     return s;
 }
+
 static void block(Parser *p, List *out)
 {
     need(p, "{");
@@ -2352,6 +2417,7 @@ static void block(Parser *p, List *out)
     need(p, "}");
     p->scope_depth--;
 }
+
 static Function *function(Parser *p, char *name, Def *owner, bool abstr)
 {
     Function *f = mem(sizeof(*f));
@@ -2446,6 +2512,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
     }
     return f;
 }
+
 // Parse the signature after externC^ SYMBOL, bound to name.
 static Function *external_function(Parser *p, char *name, char *symbol)
 {
@@ -2455,6 +2522,7 @@ static Function *external_function(Parser *p, char *name, char *symbol)
     f->external = symbol;
     return f;
 }
+
 static void definition(Parser *p)
 {
     Def *d = mem(sizeof(*d));
@@ -2476,6 +2544,7 @@ static void definition(Parser *p)
     }
     def_body(p, d);
 }
+
 // A def^ body from its {: fields in self^{ ... } and methods outside.
 static void def_body(Parser *p, Def *d)
 {
@@ -2556,6 +2625,7 @@ static void def_body(Parser *p, Def *d)
         add(&d->own_methods, f);
     }
 }
+
 void parse_file(Program *p, const char *path, Module *module)
 {
     p->path = path;

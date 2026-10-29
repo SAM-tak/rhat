@@ -162,6 +162,7 @@ static Type *returned(Type *t)
 {
     return t && t->kind != T_VOID ? t : NULL;
 }
+
 Type *c_function_arm(Type *want, Type *actual)
 {
     if (want->kind == T_UNION) {
@@ -186,11 +187,13 @@ Type *c_function_arm(Type *want, Type *actual)
     }
     return same ? want : NULL;
 }
+
 const char *c_function_symbol(Function *f)
 {
     const char *dot = strrchr(f->name, '.');
     return f->external ? f->external : dot ? dot + 1 : f->name;
 }
+
 Type *callable_group(Program *p, Def *owner, const char *name)
 {
     List *functions = owner ? &owner->methods : &p->functions;
@@ -211,6 +214,7 @@ static bool accepts_arity(Function *f, int arity)
 {
     return f->params.n == arity || f->variadic;
 }
+
 List callable_candidates(Type *type, int arity)
 {
     List found = {0};

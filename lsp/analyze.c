@@ -11,6 +11,7 @@ typedef union Allocation Allocation;
 
 union Allocation {
     long double align;
+
     struct {
         Allocation *next, *previous;
     } link;

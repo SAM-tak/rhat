@@ -2563,6 +2563,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
     i->type = array;
     return out;
 }
+
 Value expression(Context *c, Expr *e, Type *expected)
 {
     if (c->terminated) {
@@ -2690,7 +2691,7 @@ Value expression(Context *c, Expr *e, Type *expected)
     if (e->kind == E_BOOL || e->kind == E_FLOAT || e->kind == E_STRING) {
         Type *t =
             type_builtin(p, e->kind == E_BOOL ? T_BOOL
-                          : e->kind == E_FLOAT
+                            : e->kind == E_FLOAT
                                 ? (expected && kind_float(expected->kind) ? expected->kind : T_F64)
                                 : T_STRING);
         out = value(c, t);
@@ -2698,9 +2699,9 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->dst = out.id;
         i->type = t;
         i->length = e->length;
-        i->text = e->kind == E_BOOL  ? (!strcmp(e->text, "true^") ? "1" : "0")
-                : e->kind == E_FLOAT ? float_constant(e->text, t->kind, e->loc)
-                                     : e->text;
+        i->text = e->kind == E_BOOL    ? (!strcmp(e->text, "true^") ? "1" : "0")
+                  : e->kind == E_FLOAT ? float_constant(e->text, t->kind, e->loc)
+                                       : e->text;
         return out;
     }
     if (e->kind == E_NAME && !strcmp(e->text, "nil^")) {

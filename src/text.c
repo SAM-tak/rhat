@@ -95,12 +95,10 @@ Value char_cast(Context *c, Expr *e, int destination)
     convert_value(c, scalar, t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, bad, e->loc);
-    Expr message = {
-        .kind = E_STRING,
-        .loc = e->loc,
-        .text = text ? "not exactly one Unicode scalar value"
-                     : "not a Unicode scalar value"
-    };
+    Expr message = {.kind = E_STRING,
+                    .loc = e->loc,
+                    .text = text ? "not exactly one Unicode scalar value"
+                                 : "not a Unicode scalar value"};
     message.length = strlen(message.text);
     Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
     add(&invalid.names, "message");
@@ -171,6 +169,7 @@ Value text_cast(Context *c, Expr *e, int destination)
 // Builder at the destination with it. x is a number, bool^, char^ or
 // string^; the others are written into a local buffer first.
 static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc);
+
 Value value_text(Context *c, Expr *e, int destination)
 {
     Program *p = c->p;
@@ -258,10 +257,8 @@ static void write_value(Context *c, Value x, Value into, Expr *format, Loc loc)
         i->a = x.id;
         i->type = ((Slot *)c->in->slots.v[args[1].id])->type;
         Value length = helper(c, "rh_text_format", args, 4, T_I64, loc);
-        text = (Value){
-            .id = slot(c, type_builtin(p, T_STRING), false),
-            .type = type_builtin(p, T_STRING)
-        };
+        text = (Value){.id = slot(c, type_builtin(p, T_STRING), false),
+                       .type = type_builtin(p, T_STRING)};
         Value start = constant(c, T_I64, "0", loc);
         i = emit(c, I_SLICE, loc);
         i->dst = text.id;
@@ -312,12 +309,7 @@ void interp_into(Context *c, Expr *e, Value into)
                  "an interpolation hole takes a number, bool^, char^ or string^, found '%s'",
                  type_name(x.type));
         }
-        Expr spec = {
-            .kind = E_STRING,
-            .loc = part->loc,
-            .text = format,
-            .length = strlen(format)
-        };
+        Expr spec = {.kind = E_STRING, .loc = part->loc, .text = format, .length = strlen(format)};
         write_value(c, x, into, *format ? &spec : NULL, part->loc);
     }
 }
@@ -358,9 +350,9 @@ Value text_method(Context *c, Expr *e, int destination)
     if (e->args.n != !unary) {
         fail(e->loc, "s.%s takes %s", name, unary ? "no arguments" : "one argument");
     }
-    Type *want = !strcmp(name, "slice")  ? type_range(p)
-               : !strcmp(name, "decode") ? whole
-                                         : type_builtin(p, T_STRING);
+    Type *want = !strcmp(name, "slice")    ? type_range(p)
+                 : !strcmp(name, "decode") ? whole
+                                           : type_builtin(p, T_STRING);
     Value arg = unary ? s : expression(c, e->args.v[0], want);
     if (dead(arg)) {
         return arg;
@@ -395,10 +387,7 @@ Value text_method(Context *c, Expr *e, int destination)
     if (!strcmp(name, "slice")) {
         // A byte range of s whose ends fall between characters.
         Value out = {
-            .id = destination >= 0 ? destination : slot(c, t, false),
-            .type = t,
-            .deps = s.deps
-        };
+            .id = destination >= 0 ? destination : slot(c, t, false), .type = t, .deps = s.deps};
         int lo = field_value(c, arg, arg.type->def->fields.v[0], e->loc).id;
         int hi = field_value(c, arg, arg.type->def->fields.v[1], e->loc).id;
         Instr *i = emit(c, I_SLICE, e->loc);
@@ -411,10 +400,7 @@ Value text_method(Context *c, Expr *e, int destination)
         return out;
     }
     if (!strcmp(name, "decode")) {
-        Value out = {
-            .id = destination >= 0 ? destination : slot(c, t, false),
-            .type = t
-        };
+        Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
         Value code = helper(c, "rh_text_decode", both, 2, T_I64, e->loc);
         Value scalar = value(c, type_builtin(p, T_CHAR));
         Instr *i = emit(c, I_CONVERT, e->loc);

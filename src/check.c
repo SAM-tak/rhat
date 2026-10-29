@@ -191,7 +191,8 @@ bool textual(Type *t)
 static void text_bytes_only(Type *t, const char *what, Loc loc)
 {
     if (t && t->kind == T_STRING) {
-        fail(loc,
+        fail(
+            loc,
             "string^ has no %s; use s.bytes for bytes, or s.decode(at), s.slice(r) and s.count_chars()",
             what);
     }
@@ -1990,6 +1991,7 @@ bool declaration_instance_needed(Program *p, Function *f)
 // Body requirements never inspect concrete call instances. Unknown nominal
 // receivers remain unknown; a member name does not identify a struct.
 typedef struct BodyNode BodyNode;
+
 typedef struct {
     Param *param;
     List required;
@@ -2616,6 +2618,7 @@ static bool body_function(Program *p, Function *f)
 }
 
 static void body_collect_statements(List *functions, List *statements);
+
 static void body_collect_expr(List *functions, Expr *e)
 {
     if (!e) {
