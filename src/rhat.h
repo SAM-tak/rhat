@@ -134,6 +134,7 @@ struct Expr {
     int scope_kind, scope_count; // Explicit lexical scope or enclosing it^ selection.
     size_t length;               // Byte length of a string literal, including embedded NULs.
     List bindings;               // Lexical declarations preceding a scoped expression.
+    Expr *match; // The first arm of a match with no other^: its subject, which the arms must cover.
 };
 
 // Statements include parallel declarations, loop jumps, and reserved first^
@@ -181,7 +182,8 @@ struct Stmt {
     bool optional;   // Nil-guarded assignment evaluates only present pairs.
     bool flow_alias; // A compiler-generated match snapshot shares type facts.
     bool internal;   // A compiler-generated write to a read-only focus.
-    int depth;       // A jump counts enclosing loops, starting at one.
+    Expr *match; // The first arm of a match with no other^: its subject, which the arms must cover.
+    int depth;   // A jump counts enclosing loops, starting at one.
 };
 
 typedef struct {
@@ -227,6 +229,11 @@ struct Field {
     int index;
 };
 
+// One member of an enum^: its name and its value, in decimal.
+typedef struct {
+    char *name, *value;
+} EnumMember;
+
 struct Def {
     Module *module;
     bool public;
@@ -245,6 +252,8 @@ struct Def {
     bool lhat_data;  // exportL^ ref^ def^: an L^ host data type over ref^ to it.
     bool lhat_error; // exportL^ errordef^: an L^ error kind; L^ sees no fields.
     bool tuple;      // The anonymous struct of multiple results, fields 0, 1, ...
+    Spec *backing;   // enum^: the integer type its values lay out as; NULL for other defs.
+    List members;    // enum^: EnumMember, in declaration order.
 };
 
 enum {
@@ -278,7 +287,8 @@ enum {
     T_INTERSECTION, // A canonical set of callable signatures.
     T_DYN,          // ref^ dyn^ D: data reference and method table of a type composing
                     // elem's def.
-    T_CFUNC         // externC^ f^ ...;: a C function pointer with elem's signature.
+    T_CFUNC,        // externC^ f^ ...;: a C function pointer with elem's signature.
+    T_ENUM          // enum^: a closed set of named integer constants laid out as elem.
 };
 
 struct Type {

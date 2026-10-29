@@ -205,6 +205,11 @@ exportC^ let^ r_pick = f^ a:ref^ Box | nil^, b:ref^ Box | nil^ -> ref^ Box | nil
              '41 5.0 1000 2 3 15\n', extra=('--runtime', callbacks))
     suite.runtime_failure('ffi_export_nesting_limit', exports + 'print^(ffi_hold(100))\n',
                           'C callbacks nest deeper than the data stacks allow', extra=('--runtime', callbacks))
+    positive('ffi_enum', '''enum^ Sign { Minus = -1, Zero, Plus }
+externC^ abs:f^ s:Sign -> Sign;
+print^(abs(Sign.Minus), abs(Sign.Plus), abs(Sign.Zero))
+''', 'Plus Plus Zero\n')
+    negative('ffi_enum_lhat', header + 'enum^ M { A }\nexportL^ let^ g = f^ m:M -> i32^ { 0 }', "exportL^ parameter 'm' needs")
     negative('ffi_export_slice', 'exportC^ let^ g = f^ xs:i32^[:] -> i32^ { 0 }', "exportC^ parameter 'xs' needs a C type annotation")
     negative('ffi_export_unannotated', 'exportC^ let^ g = f^ x -> i32^ { 0 }', "exportC^ parameter 'x' needs a C type annotation")
     negative('ffi_export_result', 'exportC^ let^ g = f^ x:i32^ { x }', 'needs a result type annotation')

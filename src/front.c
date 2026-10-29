@@ -1754,7 +1754,7 @@ static bool match_clause(Parser *p)
     return is(p, "when^") || is(p, "other^") || is(p, "el^") || is(p, "else^");
 }
 
-static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no)
+static Expr *match_condition(Parser *p, char *subject)
 {
     Expr *condition = NULL;
     do {
@@ -1773,14 +1773,6 @@ static Expr *match_condition(Parser *p, char *subject, bool *yes, bool *no)
                           binary("<=", named(subject, high->loc), high));
         }
         else {
-            if (low->kind == E_BOOL) {
-                if (!strcmp(low->text, "true^")) {
-                    *yes = true;
-                }
-                else {
-                    *no = true;
-                }
-            }
             test = binary("=", named(subject, low->loc), low);
         }
         condition = condition ? binary("or^", condition, test) : test;
@@ -1812,20 +1804,24 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
     }
     p->scope_depth++;
     List *arm = &scope->body;
-    bool yes = false, no = false;
+    Stmt *first = NULL;
     while (take(p, "when^")) {
         Stmt *s = mem(sizeof(*s));
         s->kind = S_IF;
         s->loc = tok(p)->loc;
         s->internal = true;
-        s->a = match_condition(p, name, &yes, &no);
+        s->a = match_condition(p, name);
         match_body(p, &s->body);
         add(arm, s);
         arm = &s->other;
+        first = first ? first : s;
     }
     if (take(p, "other^") || take(p, "el^") || take(p, "else^")) {
         need(p, ":");
         match_body(p, arm);
+    }
+    else if (first) {
+        first->match = named(name, subject->loc);
     }
     need(p, "}");
     p->scope_depth--;
@@ -1838,25 +1834,30 @@ static Expr *match_expression(Parser *p, Expr *scope, Expr *subject)
     add(&scope->bindings, match_binding(name, subject));
     add(&scope->bindings, match_binding("it^", named(name, subject->loc)));
     need(p, ":");
-    Expr **arm = &scope->a, *last = NULL;
-    bool yes = false, no = false;
+    Expr **arm = &scope->a, *first = NULL;
     while (take(p, "when^")) {
         Expr *e = node(E_IF, tok(p)->loc);
-        e->a = match_condition(p, name, &yes, &no);
+        e->a = match_condition(p, name);
         e->b = expr(p, 0);
         *arm = e;
         arm = &e->c;
-        last = e;
+        first = first ? first : e;
     }
     if (take(p, "other^") || take(p, "el^") || take(p, "else^")) {
         need(p, ":");
         *arm = expr(p, 0);
     }
-    else if (yes && no && last) {
-        *last = *last->b;
+    else if (first) {
+        // The checker proves that the arms cover the subject, so this is never reached.
+        Expr *miss = node(E_PANIC, tok(p)->loc);
+        miss->a = node(E_STRING, miss->loc);
+        miss->a->text = "match fell through";
+        miss->a->length = strlen(miss->a->text);
+        *arm = miss;
+        first->match = named(name, subject->loc);
     }
     else {
-        fail(tok(p)->loc, "value match expression requires other^: or exhaustive bool patterns");
+        fail(tok(p)->loc, "value match expression requires other^: or arms covering the subject");
     }
     need(p, ";");
     return scope;
@@ -2630,6 +2631,100 @@ static void def_body(Parser *p, Def *d)
     }
 }
 
+// An integer literal's value: decimal, 0x, 0o or 0b, with _ separators.
+static bool literal_value(const char *text, long long *out)
+{
+    int base = 10;
+    if (text[0] == '0' && (text[1] == 'x' || text[1] == 'o' || text[1] == 'b')) {
+        base = text[1] == 'x' ? 16 : text[1] == 'o' ? 8 : 2;
+        text += 2;
+    }
+    char digits[72];
+    size_t n = 0;
+    for (; *text; text++) {
+        if (*text != '_') {
+            if (n + 1 >= sizeof(digits)) {
+                return false;
+            }
+            digits[n++] = *text;
+        }
+    }
+    digits[n] = 0;
+    char *end;
+    errno = 0;
+    *out = strtoll(digits, &end, base);
+    return n && !*end && !errno;
+}
+
+// enum^ Name : u8^ { A, B = 10 }: a def^ of integer constants. Each member is a
+// module constant named Name.Member that carries the enum as its type.
+static void enum_declaration(Parser *q, Program *p, Module *module, bool public)
+{
+    Def *d = mem(sizeof(*d));
+    d->loc = tok(q)->loc;
+    d->name = decl_word(q);
+    d->module = module;
+    d->public = public;
+    d->id = p->defs.n;
+    if (take(q, ":")) {
+        d->backing = spec(q);
+    }
+    else {
+        d->backing = mem(sizeof(Spec));
+        *d->backing = (Spec){.kind = SPEC_NAME, .loc = d->loc, .name = "i32^"};
+    }
+    add(&p->defs, d);
+    add(&module->defs, d);
+    Spec *type = mem(sizeof(*type));
+    *type = (Spec){.kind = SPEC_NAME, .loc = d->loc, .name = d->name};
+    need(q, "{");
+    long long following = 0;
+    do {
+        if (is(q, "}")) {
+            break;
+        }
+        Loc at = tok(q)->loc;
+        char *name = decl_word(q);
+        if (take(q, "=")) {
+            bool negative = take(q, "-");
+            Token *literal = next(q);
+            long long value = 0;
+            if (literal->kind != TOK_INT || !literal_value(literal->text, &value)) {
+                fail(literal->loc, "an enum^ value is an integer literal");
+            }
+            following = negative ? -value : value;
+        }
+        EnumMember *member = mem(sizeof(*member));
+        member->name = name;
+        member->value = fmt("%lld", following++);
+        for (int j = 0; j < d->members.n; j++) {
+            EnumMember *other = d->members.v[j];
+            if (!strcmp(other->name, name) || !strcmp(other->value, member->value)) {
+                fail(at, "enum^ '%s' repeats the %s '%s'", d->name,
+                     strcmp(other->name, name) ? "value" : "member",
+                     strcmp(other->name, name) ? member->value : name);
+            }
+        }
+        add(&d->members, member);
+        Stmt *binding = mem(sizeof(*binding));
+        binding->kind = S_BIND;
+        binding->loc = at;
+        binding->name = fmt("%s.%s", d->name, name);
+        binding->spec = type;
+        binding->a = number(member->value, at);
+        binding->a->constant_spec = type;
+        Constant *constant = mem(sizeof(*constant));
+        constant->name = binding->name;
+        constant->binding = binding;
+        constant->public = public;
+        add(&module->constants, constant);
+    } while (take(q, ","));
+    need(q, "}");
+    if (!d->members.n) {
+        fail(d->loc, "enum^ requires a member");
+    }
+}
+
 void parse_file(Program *p, const char *path, Module *module)
 {
     p->path = path;
@@ -2733,6 +2828,10 @@ void parse_file(Program *p, const char *path, Module *module)
             i->name = qualified_word(&q);
             add(&module->imports, i);
             take(&q, ";");
+            continue;
+        }
+        if (take(&q, "enum^")) {
+            enum_declaration(&q, p, module, public);
             continue;
         }
         if (take(&q, "errordef^")) {

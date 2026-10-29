@@ -35,7 +35,7 @@ void inferred_call(Function *caller, Function *callee, Loc loc)
 
 static bool c_scalar(Type *t)
 {
-    return t->kind == T_BOOL || (t->kind >= T_U8 && t->kind <= T_U64) ||
+    return t->kind == T_ENUM || t->kind == T_BOOL || (t->kind >= T_U8 && t->kind <= T_U64) ||
            (t->kind >= T_I8 && t->kind <= T_I64) || t->kind == T_F32 || t->kind == T_F64;
 }
 
@@ -285,8 +285,8 @@ Type *lhat_success(Type *t)
 // an exportL^ ref^ def^ host data.
 static bool l_value(Type *t)
 {
-    return t->kind == T_STRING || c_scalar(t) || (t->kind == T_STRUCT && t->def->lhat_value) ||
-           lhat_data_def(t);
+    return t->kind == T_STRING || (c_scalar(t) && t->kind != T_ENUM) ||
+           (t->kind == T_STRUCT && t->def->lhat_value) || lhat_data_def(t);
 }
 
 // An ASCII C identifier other than main, which the entry file defines.
@@ -1051,6 +1051,81 @@ static void infer_handle(Infer *c, Stmt *s)
     }
 }
 
+// What the arms of a match name: the alternatives that no arm fits yet (NULL
+// once none remain) and the constants they equal.
+typedef struct {
+    Type *rest;
+    List values;
+} Cover;
+
+// A bool^ literal or a constant of an enum, as the text that tells them apart.
+static char *cover_key(Expr *e)
+{
+    return e->kind == E_BOOL || (e->kind == E_INT && e->constant_spec) ? e->text : NULL;
+}
+
+static void cover_arm(Infer *c, Expr *e, Cover *cover)
+{
+    if (e->kind == E_BIN && !strcmp(e->text, "or^")) {
+        cover_arm(c, e->a, cover);
+        cover_arm(c, e->b, cover);
+    }
+    else if (e->kind == E_FITS && cover->rest) {
+        cover->rest = fits_subset(c->p, cover->rest, type_spec(c->p, e->test_spec), false, e->loc);
+    }
+    else if (e->kind == E_BIN && !strcmp(e->text, "=") && cover_key(e->b)) {
+        add(&cover->values, cover_key(e->b));
+    }
+}
+
+static bool covered(Cover *cover, const char *key)
+{
+    for (int j = 0; j < cover->values.n; j++) {
+        if (!strcmp(cover->values.v[j], key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Fails unless the arms of a match without other^ cover its subject: every
+// bool^ value, enum member or alternative of a union. A statement match over
+// any other type may leave values unmatched.
+static void match_cover(Infer *c, Expr *subject, List *arms, bool statement, Loc loc)
+{
+    Type *t = infer_expr(c, subject, NULL);
+    if (c->terminated || !t) {
+        return;
+    }
+    Cover cover = {.rest = t};
+    for (int j = 0; j < arms->n; j++) {
+        cover_arm(c, arms->v[j], &cover);
+    }
+    char *missing = NULL;
+    if (t->kind == T_BOOL) {
+        missing = !covered(&cover, "true^")    ? "true^"
+                  : !covered(&cover, "false^") ? "false^"
+                                               : NULL;
+    }
+    else if (t->kind == T_UNION) {
+        missing = cover.rest ? type_name(cover.rest) : NULL;
+    }
+    else if (t->kind == T_ENUM) {
+        for (int j = 0; j < t->def->members.n && !missing; j++) {
+            EnumMember *member = t->def->members.v[j];
+            missing =
+                covered(&cover, member->value) ? NULL : fmt("%s.%s", t->def->name, member->name);
+        }
+    }
+    else if (!statement) {
+        missing = "every value";
+    }
+    if (missing) {
+        fail(loc, "%s requires other^: or arms covering %s of '%s'",
+             statement ? "match" : "value match expression", missing, type_name(t));
+    }
+}
+
 static Type *infer_expr(Infer *c, Expr *e, Type *expected)
 {
     if (c->terminated) {
@@ -1505,6 +1580,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return type_builtin(c->p, T_BOOL);
     }
     case E_IF: {
+        if (e->match) {
+            List arms = {0};
+            for (Expr *arm = e; arm && arm->kind == E_IF; arm = arm->c) {
+                add(&arms, arm->a);
+            }
+            match_cover(c, e->match, &arms, false, e->loc);
+        }
         infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
         if (c->terminated) {
             return type_builtin(c->p, T_NEVER);
@@ -1758,6 +1840,13 @@ static void infer_statements(Infer *c, List *body, bool scoped)
             c->loops.n--;
         }
         else if (s->kind == S_IF) {
+            if (s->match) {
+                List arms = {0};
+                for (Stmt *arm = s; arm; arm = arm->other.n == 1 ? arm->other.v[0] : NULL) {
+                    add(&arms, arm->a);
+                }
+                match_cover(c, s->match, &arms, true, s->loc);
+            }
             infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
             if (c->terminated) {
                 break;

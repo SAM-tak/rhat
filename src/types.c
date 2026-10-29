@@ -362,7 +362,7 @@ char *type_name(Type *t)
     if (t->kind < T_STRUCT) {
         return (char *)builtin_name(t->kind);
     }
-    if (t->kind == T_STRUCT || t->kind == T_UNION) {
+    if (t->kind == T_STRUCT || t->kind == T_UNION || t->kind == T_ENUM) {
         return t->def->name;
     }
     if (t->kind == T_REF) {
@@ -661,6 +661,10 @@ void compose(Program *p, Def *d)
         fail(d->loc, "cyclic def^ composition at '%s'", d->name);
     }
     d->state = 1;
+    if (d->backing) {
+        d->state = 2;
+        return;
+    }
     if (d->union_specs.n) {
         for (int i = 0; i < d->union_specs.n; i++) {
             Spec *alternative = d->union_specs.v[i];

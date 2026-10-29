@@ -1485,7 +1485,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 return abrupt(c);
             }
             if (!kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
-                !(v.type->kind == T_CHAR && kind_integer(k))) {
+                !((v.type->kind == T_CHAR || v.type->kind == T_ENUM) && kind_integer(k))) {
                 fail(e->loc,
                      v.type->kind == T_STRING
                          ? "%s(...) converts numbers; read a string^ with %s.parse(s)"
@@ -1564,7 +1564,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 return abrupt(c);
             }
             if (print && !kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
-                v.type->kind != T_STRING && v.type->kind != T_BOOL && v.type->kind != T_CHAR) {
+                v.type->kind != T_STRING && v.type->kind != T_BOOL && v.type->kind != T_CHAR &&
+                v.type->kind != T_ENUM) {
                 fail(e->loc, "print^ does not support '%s'", type_name(v.type));
             }
             if (!print && v.type->kind != T_BOOL) {
@@ -2611,6 +2612,17 @@ Value expression(Context *c, Expr *e, Type *expected)
         Expr copy = *e;
         copy.constant_spec = NULL;
         Type *t = type_spec(p, e->constant_spec);
+        if (t->kind == T_ENUM) {
+            Value member = value(c, t);
+            Instr *i = emit(c, I_CONST, e->loc);
+            i->dst = member.id;
+            i->type = t;
+            i->text = e->text;
+            if (expected && expected != t) {
+                fail(e->loc, "constant type mismatch");
+            }
+            return member;
+        }
         Value v = expression(c, &copy, t);
         if (v.type != t || (expected && expected != t)) {
             fail(e->loc, "constant type mismatch");
@@ -3099,7 +3111,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             return sign;
         }
         if (!kind_integer(a.type->kind) && !kind_float(a.type->kind) &&
-            !(cmp && a.type->kind == T_BOOL && strchr("=!", e->text[0])) &&
+            !(cmp && (a.type->kind == T_BOOL || a.type->kind == T_ENUM) &&
+              strchr("=!", e->text[0])) &&
             !(cmp && a.type->kind == T_CHAR)) {
             fail(e->loc, "operator '%s' is not defined for '%s'", e->text, type_name(a.type));
         }

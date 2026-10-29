@@ -1397,8 +1397,24 @@ void analyze(Program *p)
             }
         }
         Type *t = mem(sizeof(*t));
-        t->kind = d->union_specs.n ? T_UNION : T_STRUCT;
+        t->kind = d->backing ? T_ENUM : d->union_specs.n ? T_UNION : T_STRUCT;
         t->def = d;
+        if (d->backing) {
+            int base = d->backing->kind == SPEC_NAME ? numeric_kind(d->backing->name) : -1;
+            if (base < 0 || !kind_integer(base) || base == T_U128 || base == T_I128) {
+                fail(d->loc, "enum^ '%s' needs a built-in integer type up to 64 bits", d->name);
+            }
+            t->elem = type_builtin(p, base);
+            t->size = t->elem->size;
+            t->align = t->elem->align;
+            for (int k = 0; k < d->members.n; k++) {
+                EnumMember *member = d->members.v[k];
+                if (!integer_fits(member->value, t->elem->kind)) {
+                    fail(d->loc, "enum^ '%s' value %s does not fit '%s'", d->name, member->value,
+                         type_name(t->elem));
+                }
+            }
+        }
         if (p->modules.n > 1 || (d->module && d->module->name)) {
             t->symbol = fmt(
                 "%%rh_type_%s",

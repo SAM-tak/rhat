@@ -612,7 +612,49 @@ let^ wide:i64^=20
 print^(outerthislib.sum(10),outerthislib.sum(wide))
 ''', '55 210\n')
 
+    positive('enum_basic', '''
+enum^ Mode { Idle, Walk, Dash = 10, Stop }
+let^ weight = f^ m:Mode -> i32^ {
+  for^ m: when^ Mode.Idle: 1 when^ Mode.Walk: 2 when^ Mode.Dash, Mode.Stop: 3;
+}
+let^ show = p^ m:Mode {
+  for^ m {
+  when^ Mode.Idle: print^("idle")
+  when^ Mode.Walk, Mode.Dash: print^("move")
+  when^ Mode.Stop: print^("stop")
+  }
+}
+let^ m = Mode.Dash
+print^(m, Mode.Stop, weight(m), weight(Mode.Idle), i32^(Mode.Stop), m = Mode.Dash, m != Mode.Walk)
+show(Mode.Walk) show(Mode.Stop)
+''', 'Dash Stop 3 1 11 true true\nmove\nstop\n')
+
+    positive('enum_backing', '''
+enum^ Small : u8^ { A, B = 255 }
+enum^ Signed : i16^ { Down = -2, Up = 0x10 }
+print^(Small.A, Small.B, Signed.Down, Signed.Up, i32^(Signed.Down), i32^(Small.B))
+''', 'A B Down Up -2 255\n')
+
+    positive('enum_other_arm', '''
+enum^ Mode { Idle, Walk, Dash }
+let^ fast = f^ m:Mode -> bool^ { for^ m: when^ Mode.Dash: true^ other^: false^; }
+let^ note = p^ m:Mode { for^ m { when^ Mode.Walk: print^("walk") other^: print^("else") } }
+print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
+''', 'true false\nwalk\nelse\n')
+
     cases = [
+        ('enum_statement_missing', 'enum^ Mode { Idle, Walk }\nlet^ show = p^ m:Mode { for^ m { when^ Mode.Idle: print^(1) } }',
+         "match requires other^: or arms covering Mode.Walk of 'Mode'"),
+        ('enum_expression_missing', 'enum^ Mode { Idle, Walk }\nlet^ w = f^ m:Mode -> i32^ { for^ m: when^ Mode.Walk: 1; }',
+         "value match expression requires other^: or arms covering Mode.Idle"),
+        ('enum_duplicate_member', 'enum^ Mode { Idle, Idle }', "repeats the member 'Idle'"),
+        ('enum_duplicate_value', 'enum^ Mode { Idle, Walk = 0 }', "repeats the value '0'"),
+        ('enum_value_range', 'enum^ Small : u8^ { A = 256 }', 'does not fit'),
+        ('enum_backing_type', 'enum^ Mode : f64^ { A }', 'needs a built-in integer type'),
+        ('enum_value_literal', 'enum^ Mode { A = "x" }', 'an enum^ value is an integer literal'),
+        ('enum_from_integer', 'enum^ Mode { Idle, Walk }\nlet^ m:Mode = 1', "expected 'Mode'"),
+        ('enum_order', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle < Mode.Walk)', "operator '<' is not defined for 'Mode'"),
+        ('enum_arithmetic', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle + Mode.Walk)', "operator '+' is not defined for 'Mode'"),
         ('ref_repeated_expression', 'var^ x=1 let^ r=ref^^ x', 'cannot borrow a temporary'),
         ('ref_repeated_expanded_expression', 'var^ x=1 let^ r=ref^ ref^ x', 'cannot borrow a temporary'),
 

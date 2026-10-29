@@ -38,6 +38,8 @@ char *llvm_type(Type *t)
         return "{ ptr, i64 }";
     case T_DYN:
         return "{ ptr, ptr }";
+    case T_ENUM:
+        return llvm_type(t->elem);
     case T_REF:
     case T_CFUNC:
         return "ptr";
@@ -56,6 +58,12 @@ typedef struct {
     int tmp;
     Program *p;
 } Output;
+
+// The integer an enum^ lays out as; any other type is its own.
+static Type *scalar(Type *t)
+{
+    return t->kind == T_ENUM ? t->elem : t;
+}
 
 static Type *slot_type(Output *o, int n)
 {
@@ -119,7 +127,7 @@ static void save(Output *o, int dst, Type *t, const char *operand)
 
 static int integer64(Output *o, int id)
 {
-    Type *t = slot_type(o, id);
+    Type *t = scalar(slot_type(o, id));
     int v = load(o, id);
     if (numeric_bits(t->kind) != 64) {
         int out = ++o->tmp;
@@ -329,6 +337,7 @@ static DynTable *table_for(Program *p, Def *concrete, Def *iface)
 // string passes its data pointer only; small integers carry their extension.
 static char *c_abi(Type *t, bool attributes)
 {
+    t = scalar(t);
     // A union here is ref^ T | nil^, a pointer that may be NULL.
     if (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_STRING || t->kind == T_UNION) {
         return "ptr";
@@ -346,6 +355,7 @@ static char *c_abi(Type *t, bool attributes)
 // A parameter's attributes follow its type, unlike a result's.
 static char *c_param(Type *t)
 {
+    t = scalar(t);
     bool zero = t->kind == T_BOOL || t->kind == T_U8 || t->kind == T_U16;
     bool sign = t->kind == T_I8 || t->kind == T_I16;
     return fmt("%s%s", c_abi(t, false), zero ? " zeroext" : sign ? " signext" : "");
@@ -630,7 +640,7 @@ static void flex_release(Output *o, Instr *i, const char *length)
 static void instruction(Output *o, Instr *i)
 {
     FILE *f = o->f;
-    Type *t = i->type;
+    Type *t = i->type ? scalar(i->type) : NULL;
     int a, b, r;
     switch (i->op) {
     case I_CONST:
@@ -1236,7 +1246,7 @@ static void instruction(Output *o, Instr *i)
         save(o, i->dst, t, fmt("%%t%d", r));
         break;
     case I_CONVERT: {
-        Type *source = slot_type(o, i->a);
+        Type *source = scalar(slot_type(o, i->a));
         bool src_fp = kind_float(source->kind), dst_fp = kind_float(t->kind);
         a = load(o, i->a);
         const char *src_type = llvm_type(source);
@@ -1497,6 +1507,9 @@ static void instruction(Output *o, Instr *i)
                 a = load(o, id);
                 fprintf(f, "  call void @rh_print_char(i32 %%t%d)\n", a);
             }
+            else if (ty->kind == T_ENUM) {
+                fprintf(f, "  call void @rh_print_enum_%d(ptr %%p%d)\n", ty->id, id);
+            }
             else {
                 fprintf(f, "  call void @rh_print_integer(ptr %%p%d, i32 %d, i32 %d)\n", id,
                         numeric_bits(ty->kind), kind_unsigned(ty->kind));
@@ -1731,6 +1744,38 @@ void emit_llvm(Program *p, const char *path)
           "declare void @rh_print_integer(ptr, i32, i32)\n"
           "declare void @rh_division_fail(i32, i32) cold noreturn\n",
           f);
+    // Printing an enum^ writes the member's name, or the number of a value no
+    // member has (a C caller may pass one).
+    for (int j = 0; j < p->defs.n; j++) {
+        Def *d = p->defs.v[j];
+        if (!d->backing) {
+            continue;
+        }
+        Type *t = d->type, *base = t->elem;
+        for (int k = 0; k < d->members.n; k++) {
+            const char *name = ((EnumMember *)d->members.v[k])->name;
+            fprintf(f, "@rh_enum_%d_%d = private unnamed_addr constant [%zu x i8] ", t->id, k,
+                    strlen(name) + 1);
+            bytes(f, name, strlen(name));
+            fputc('\n', f);
+        }
+        fprintf(f, "define internal void @rh_print_enum_%d(ptr %%p) {\n  %%v = load %s, ptr %%p\n",
+                t->id, llvm_type(base));
+        fprintf(f, "  switch %s %%v, label %%other [", llvm_type(base));
+        for (int k = 0; k < d->members.n; k++) {
+            fprintf(f, " %s %s, label %%m%d", llvm_type(base),
+                    ((EnumMember *)d->members.v[k])->value, k);
+        }
+        fputs(" ]\n", f);
+        for (int k = 0; k < d->members.n; k++) {
+            fprintf(f,
+                    "m%d:\n  call void @rh_print_string(ptr @rh_enum_%d_%d, i64 %zu)\n  ret void\n",
+                    k, t->id, k, strlen(((EnumMember *)d->members.v[k])->name));
+        }
+        fprintf(f,
+                "other:\n  call void @rh_print_integer(ptr %%p, i32 %d, i32 %d)\n  ret void\n}\n",
+                numeric_bits(base->kind), kind_unsigned(base->kind));
+    }
     const char *failures[] = {"stack_overflow", "index_fail",    "pop_fail",   "float_cast_fail",
                               "slice_fail",     "truncate_fail", "assert_fail"};
     for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++) {
@@ -1999,6 +2044,8 @@ static char *c_name(Type *t)
         return "double";
     case T_STRUCT:
         return t->def->c_name ? t->def->c_name : fmt("rh_c_%d", t->id);
+    case T_ENUM:
+        return c_name(t->elem);
     default:
         return "void *";
     }

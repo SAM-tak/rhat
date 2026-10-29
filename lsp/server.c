@@ -446,15 +446,14 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
     }
     if (!member) {
         const char *keywords[] = {
-            "let^",      "var^",      "f^",        "p^",       "template^",   "def^",
-            "errordef^", "self^",     "this^",     "return^",  "if^",         "else^",
-            "el^",       "for^",      "repeat^",   "while^",   "next^",       "break^",
-            "when^",     "from^",     "to^",       "until^",   "by^",         "do^",
-            "fits^",     "try^",      "catch^",    "import^",  "module^",     "public^",
-            "private^",  "abstract^", "override^", "mutable^", "true^",       "false^",
-            "nil^",      "ref^",      "overload^", "op^",      "grow^",       "flex^",
-            "externC^",  "includeC^", "exportC^",  "exportL^", "externLLVM^", "dyn^",
-            "panic^",    "print^",    "assert^"};
+            "let^",    "var^",     "f^",        "p^",       "template^", "def^",        "errordef^",
+            "enum^",   "self^",    "this^",     "return^",  "if^",       "else^",       "el^",
+            "for^",    "repeat^",  "while^",    "next^",    "break^",    "when^",       "from^",
+            "to^",     "until^",   "by^",       "do^",      "fits^",     "try^",        "catch^",
+            "import^", "module^",  "public^",   "private^", "abstract^", "override^",   "mutable^",
+            "true^",   "false^",   "nil^",      "ref^",     "overload^", "op^",         "grow^",
+            "flex^",   "externC^", "includeC^", "exportC^", "exportL^",  "externLLVM^", "dyn^",
+            "panic^",  "print^",   "assert^"};
         for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
             if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {
                 completion_item(out, keywords[j], "R^", 14);
