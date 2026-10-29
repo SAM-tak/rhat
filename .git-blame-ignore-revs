@@ -1,3 +1,8 @@
 # Whole-tree formatting with clang-format; hide it from git blame.
 # git config blame.ignoreRevsFile .git-blame-ignore-revs
 66a140f4aa1f5a0d88bbef9ddf30befdb2347a80
+
+# Comments rewritten from /* */ to // (mechanical).
+c4c79e3ecc7761f449a153cb83ee1c6eff1b19b4
+# Definitions separated by blank lines.
+e77cfc840e2ca4de786ddf3ca3458da92dbbf1b0
