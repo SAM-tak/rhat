@@ -24,9 +24,9 @@ extern "C" {
 // whether it could. Neither is asked to be thread-safe; a caller sharing a
 // stream between threads locks it itself (lsp/rpc.h).
 typedef struct {
-  void *context;
-  size_t (*read)(void *context, char *buffer, size_t size);
-  bool (*write)(void *context, const char *bytes, size_t size);
+    void *context;
+    size_t (*read)(void *context, char *buffer, size_t size);
+    bool (*write)(void *context, const char *bytes, size_t size);
 } LhatStream;
 
 // A stream over a stdio file. The file is the caller's to close.
@@ -41,13 +41,11 @@ void lhat_transport_use_binary_stdio(void);
 // NUL-terminated, and `*out_length` its length without the NUL. false on
 // end of input or a header the framing does not recognise -- either way the
 // stream has lost sync and reading on is not meaningful.
-bool lhat_transport_read_message(LhatStream *in, char **out_body,
-                                 size_t *out_length);
+bool lhat_transport_read_message(LhatStream *in, char **out_body, size_t *out_length);
 
 // Writes the framing and `body`. The caller still owns `body`. false when
 // the stream's write failed.
-bool lhat_transport_write_message(LhatStream *out, const char *body,
-                                  size_t length);
+bool lhat_transport_write_message(LhatStream *out, const char *body, size_t length);
 
 #ifdef __cplusplus
 }

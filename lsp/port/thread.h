@@ -66,38 +66,37 @@ extern "C" {
 // joined through the same object that started it.
 typedef struct {
 #ifdef _WIN32
-  HANDLE handle;
+    HANDLE handle;
 #else
-  pthread_t handle;
+    pthread_t handle;
 #endif
-  int (*entry)(void *);
-  void *argument;
-  bool started;
+    int (*entry)(void *);
+    void *argument;
+    bool started;
 } LhatThread;
 
 typedef struct {
 #ifdef _WIN32
-  // Vista and later. Smaller and faster than a CRITICAL_SECTION and needs no
-  // disposal, which is why lhat_mutex_destroy has nothing to do there.
-  SRWLOCK lock;
+    // Vista and later. Smaller and faster than a CRITICAL_SECTION and needs no
+    // disposal, which is why lhat_mutex_destroy has nothing to do there.
+    SRWLOCK lock;
 #else
-  pthread_mutex_t lock;
+    pthread_mutex_t lock;
 #endif
 } LhatMutex;
 
 typedef struct {
 #ifdef _WIN32
-  CONDITION_VARIABLE signal;
+    CONDITION_VARIABLE signal;
 #else
-  pthread_cond_t signal;
+    pthread_cond_t signal;
 #endif
 } LhatCondition;
 
 // Answers false when the system refused to start one, leaving `thread`
 // untouched by any join. Otherwise the thread is running and owes exactly one
 // lhat_thread_join.
-bool lhat_thread_start(LhatThread *thread, int (*entry)(void *),
-                       void *argument);
+bool lhat_thread_start(LhatThread *thread, int (*entry)(void *), void *argument);
 
 // Blocks until the thread has finished and releases what held it. Whatever the
 // entry answered is dropped -- every caller here carries its result out through
@@ -132,8 +131,7 @@ void lhat_condition_destroy(LhatCondition *condition);
 // Both of these are woken spuriously, the same as the primitives underneath
 // them, so both belong in a loop over the thing actually being waited for.
 void lhat_condition_wait(LhatCondition *condition, LhatMutex *mutex);
-void lhat_condition_wait_for(LhatCondition *condition, LhatMutex *mutex,
-                             int milliseconds);
+void lhat_condition_wait_for(LhatCondition *condition, LhatMutex *mutex, int milliseconds);
 
 void lhat_condition_signal(LhatCondition *condition);
 void lhat_condition_broadcast(LhatCondition *condition);

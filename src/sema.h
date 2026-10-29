@@ -6,88 +6,97 @@
  * split from it) and type inference (check.c). */
 /* Local bindings and branch facts shared by inference and IR construction. */
 typedef struct Var Var;
+
 typedef struct {
-  char *path;
-  Type *type;
+    char *path;
+    Type *type;
 } PathFact;
+
 struct Var {
-  Loc declaration; /* Source binding used by editor resolutions. */
-  char *name;
-  Type *type;
-  int slot, depth, lexical;
-  uint64_t root, deps;
-  bool mut, parameter, unavailable, pending, hidden;
-  unsigned version, path_version;
-  Var *alias;     /* Inference-only direct reference target. */
-  Type *narrowed; /* A branch-local view; the storage type never changes. */
-  List paths;     /* Stable member paths proven within the current branch. */
-  bool path_sensitive; /* Guards on this root can depend on aliased storage. */
-  Var *source; /* Match snapshots only: valid until the original changes. */
-  unsigned source_version;
+    Loc declaration; /* Source binding used by editor resolutions. */
+    char *name;
+    Type *type;
+    int slot, depth, lexical;
+    uint64_t root, deps;
+    bool mut, parameter, unavailable, pending, hidden;
+    unsigned version, path_version;
+    Var *alias;          /* Inference-only direct reference target. */
+    Type *narrowed;      /* A branch-local view; the storage type never changes. */
+    List paths;          /* Stable member paths proven within the current branch. */
+    bool path_sensitive; /* Guards on this root can depend on aliased storage. */
+    Var *source;         /* Match snapshots only: valid until the original changes. */
+    unsigned source_version;
 };
+
 /* A checked or inference-only saved value with borrow provenance. */
 typedef struct {
-  int id;
-  Type *type;
-  uint64_t deps, storage;
-  Var *var;
-  bool addressable, guarded_copy;
-  bool held; /* An owned part of a value no binding releases: copying it moves it. */
+    int id;
+    Type *type;
+    uint64_t deps, storage;
+    Var *var;
+    bool addressable, guarded_copy;
+    bool held; /* An owned part of a value no binding releases: copying it moves it. */
 } Value;
+
 /* Loop targets and scope boundaries used by control-flow analysis. */
 typedef struct {
-  int end, update, bindings, phase, outside;
-  List focuses, saved, first;
+    int end, update, bindings, phase, outside;
+    List focuses, saved, first;
 } Loop; /* Jump targets carry the ownership cleanup boundary. */
+
 /* A predicate tied to the mutation version of its refined storage. */
 typedef struct {
-  Expr *test;
-  Var *var;
-  unsigned version;
-  char *path;
-  Type *yes, *no;
-  int known; /* One for true, minus one for false, zero for a runtime test. */
+    Expr *test;
+    Var *var;
+    unsigned version;
+    char *path;
+    Type *yes, *no;
+    int known; /* One for true, minus one for false, zero for a runtime test. */
 } NilGuard;
+
 /* Predicate facts local to a semantic traversal. */
 typedef struct {
-  List guards;
+    List guards;
 } NilFlow;
+
 /* A saved binding state at a branch or loop boundary. */
 typedef struct {
-  Type *type;
-  unsigned version, path_version;
-  List paths;
+    Type *type;
+    unsigned version, path_version;
+    List paths;
 } NilFact;
+
 /* The error domain and cleanup boundary of an enclosing catch clause. */
 typedef struct {
-  Type *errors;
-  int slot, label, bindings, pending, checkpoint;
-  uint64_t deps;
-  List facts;
+    Type *errors;
+    int slot, label, bindings, pending, checkpoint;
+    uint64_t deps;
+    List facts;
 } ErrorTarget;
+
 /* IR-construction state; inference only reads snapshots of this context. */
 typedef struct {
-  Program *p;
-  Instance *in;
-  Def *access;
-  List vars;
-  int depth, root_count, lexical;
-  int root_depth[64];
-  bool root_external[64];
-  bool terminated;
-  uint64_t self_roots;
-  List default_stack, loops;
-  List handlers, pending_owners;
-  bool building_result;
-  NilFlow flow;
-  bool raw_name;
-  Expr *raw_place;
-  bool in_default;
-  Expr *operator_target; /* The operator constructing an owning destination. */
-  int operator_destination; /* Valid only when operator_target is non-NULL. */
-  List inflight; /* Values a statement still uses while evaluating later ones. */
-  uint64_t param_deps[64]; /* The external root of each reference parameter. */
-  int result_part; /* One past the slot of the owned result part built in place. */
+    Program *p;
+    Instance *in;
+    Def *access;
+    List vars;
+    int depth, root_count, lexical;
+    int root_depth[64];
+    bool root_external[64];
+    bool terminated;
+    uint64_t self_roots;
+    List default_stack, loops;
+    List handlers, pending_owners;
+    bool building_result;
+    NilFlow flow;
+    bool raw_name;
+    Expr *raw_place;
+    bool in_default;
+    Expr *operator_target;    /* The operator constructing an owning destination. */
+    int operator_destination; /* Valid only when operator_target is non-NULL. */
+    List inflight;            /* Values a statement still uses while evaluating later ones. */
+    uint64_t param_deps[64];  /* The external root of each reference parameter. */
+    int result_part;          /* One past the slot of the owned result part built in place. */
 } Context;
 
 /* Type inference and concrete-instance registry, implemented in check.c. */
@@ -123,8 +132,7 @@ Type *expression_type(Context *c, Expr *e, Type *expected);
 List first_types(Context *c, Stmt *s);
 
 /* Find or register a concrete call instance without generating its IR. */
-Instance *instance_for(Program *p, Function *f, Def *self, List *actual,
-                       Loc at);
+Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at);
 
 /* Shared type, name and flow operations, implemented in sema.c. */
 
@@ -133,8 +141,7 @@ List overload_candidates(Program *p, Def *owner, const char *name, int arity);
 /* Find the common contextual type without choosing an overload arm. */
 Type *overload_hint(Program *p, List *candidates, int index, Expr *arg);
 /* Select the sole compatible arm; unresolved inference may return NULL. */
-Function *overload_select(Program *p, List *candidates, List *actual, Loc loc,
-                          bool strict);
+Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, bool strict);
 /* Whether two declarations admit any common call, ignoring return types. */
 bool overload_overlap(Program *p, Function *a, Function *b);
 /* Reject overlapping declarations in one callable group. */
@@ -245,16 +252,13 @@ void lhat_def_validate(Program *p, Def *d);
 void external_validate(Program *p, Function *f);
 
 /* Apply the true or false facts of a previously checked condition. */
-void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e,
-                      bool truth);
+void refine_condition(Program *p, List *vars, NilFlow *flow, Expr *e, bool truth);
 
 /* Record refinements established by a nil-presence predicate. */
-void remember_guard(NilFlow *flow, Context *context, Expr *test, Expr *value,
-                    bool positive);
+void remember_guard(NilFlow *flow, Context *context, Expr *test, Expr *value, bool positive);
 
 /* Record the subsets and mutation versions proven by a predicate. */
-void remember_test(NilFlow *flow, Context *context, Expr *test, Expr *value,
-                   Type *yes, Type *no);
+void remember_test(NilFlow *flow, Context *context, Expr *test, Expr *value, Type *yes, Type *no);
 
 /* Restore refinements whose mutation versions still match. */
 void restore_facts(List *vars, List facts);

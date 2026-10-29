@@ -15,8 +15,8 @@
 #include "cJSON.h"
 
 typedef struct {
-  LhatStream out;
-  LhatMutex lock;
+    LhatStream out;
+    LhatMutex lock;
 } LspRpcOut;
 
 void lsp_rpc_out_init(LspRpcOut *out, FILE *stream);
@@ -27,17 +27,14 @@ void lsp_rpc_out_dispose(LspRpcOut *out);
 void lsp_rpc_send_response(LspRpcOut *out, const cJSON *id, cJSON *result);
 
 // {jsonrpc, id, error: {code, message}}.
-void lsp_rpc_send_error(LspRpcOut *out, const cJSON *id, int code,
-                        const char *message);
+void lsp_rpc_send_error(LspRpcOut *out, const cJSON *id, int code, const char *message);
 
 // {jsonrpc, method, params} -- a notification, with no id. Takes ownership
 // of `params` (may be NULL for a JSON null).
-void lsp_rpc_send_notification(LspRpcOut *out, const char *method,
-                               cJSON *params);
+void lsp_rpc_send_notification(LspRpcOut *out, const char *method, cJSON *params);
 
 // A server-initiated request. The caller supplies a unique id; params may
 // be NULL to omit them. Takes ownership of params, copies id.
-void lsp_rpc_send_request(LspRpcOut *out, const char *id, const char *method,
-                          cJSON *params);
+void lsp_rpc_send_request(LspRpcOut *out, const char *id, const char *method, cJSON *params);
 
 #endif // LSP_RPC_H

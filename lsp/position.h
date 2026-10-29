@@ -21,19 +21,17 @@
 #include "cJSON.h"
 
 typedef struct {
-  int line;      // 0-based
-  int character; // 0-based, UTF-16 code units
+    int line;      // 0-based
+    int character; // 0-based, UTF-16 code units
 } LspPosition;
 
 // `byte_offset` is clamped to `text_length` rather than read out of bounds.
-LspPosition lsp_position_at(const char *text, size_t text_length,
-                            uint32_t byte_offset);
+LspPosition lsp_position_at(const char *text, size_t text_length, uint32_t byte_offset);
 
 // The other way: LSP gives a line and a UTF-16 character, and lhat counts
 // bytes. A position past the end of its line stops at the line's end rather
 // than running into the next.
-uint32_t lsp_offset_at(const char *text, size_t text_length, int line,
-                       int character);
+uint32_t lsp_offset_at(const char *text, size_t text_length, int line, int character);
 
 // The caller owns what comes back, which in practice means handing it
 // straight to cJSON_AddItemToObject.
