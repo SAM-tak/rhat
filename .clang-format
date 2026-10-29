@@ -1,0 +1,42 @@
+---
+# R^'s C and C++ style: 4 spaces, a function body's { on its own line, every
+# other { at the end of its line, and an else on the line after the }.
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterEnum: false
+  AfterNamespace: false
+  AfterControlStatement: Never
+  BeforeElse: true
+  BeforeWhile: false
+  BeforeCatch: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+IndentCaseLabels: false
+PointerAlignment: Right
+SortIncludes: Never
+BreakStringLiterals: false
+ReflowComments: false
+MaxEmptyLinesToKeep: 1
+# An if, else, for or while body always has its braces.
+InsertBraces: true
+# Macros that loop are formatted as a for, but are called like a function.
+ForEachMacros:
+  - cJSON_ArrayForEach
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: false
+  AfterIfMacros: true
