@@ -12,7 +12,7 @@ public^def^RealResult = f64^ | Error.InvalidArgument
 public^def^NewResult = Random | Error.SeedUnavailable
 
 let^seeded = f^seed:i64^ -> u64^{
-    let^ mixed = u64^(seed) bitxor^ 11400714819323198485
+    let^mixed = u64^(seed) bitxor^ 11400714819323198485
     if^ mixed = 0 { return^ 2685821657736338717 }
     return^ mixed
 }
