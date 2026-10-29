@@ -76,10 +76,12 @@ let^ a, b = find(n) ?? (0, "none")      # -> (i64^, string^) | nil^ の場合
 - `exportL^` 関数は複数の値を返せます。L^ の署名は `-> number^, number^, string^` になり、
   それぞれを L^ の値として返します。各値には単一の返り値と同じ型（数値・`bool^`・`string^`・`exportL^ def^`・
   `ref^` で渡す `exportL^ ref^ def^`、その `| nil^`）を使えます。`ref^ T | nil^` の値は、グルーの C 側では
-  タグとポインタの組として受け取り、`nil^` なら L^ の `nil^` を返します。
+  タグとポインタの組として受け取り、`nil^` なら L^ の `nil^` を返します。`(i64^, string^) | Error.Bad` のように
+  `exportL^ errordef^` のエラーを加えると、L^ の署名は `-> (number^, string^)|rhat.Error.Bad` になります
+  （[ffi.md](ffi.md#エラーとして渡す型exportl-errordef)）。
 - `externC^` と `exportC^` は複数の返り値を使えません。C に対応する形がないためです。
 
 ## 未対応
 
-- `exportL^` で、合併を含む複数の返り値を返すこと。
+- `exportL^` で、`string^ | nil^` など C のポインタでない `| nil^` を含む複数の返り値を返すこと。
 - ライブラリのトップレベルでの分解束縛。モジュール定数はスカラーのリテラル演算に限られるためです。

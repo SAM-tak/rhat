@@ -150,7 +150,8 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
   `bool rhat_lhat_register(LhatProgram *program, const char *module)` が全部を `lhat_register_func` で
   `module` の下に登録します。R^ からは上のように `externC^` で宣言して呼びます。
 - 署名は R^ の型から決まります。数値型は `number^`、`bool^` は `bool^`、`string^` は `string^`、
-  `exportL^ def^` は `<module>.<名前>` です（例: `f^number^, number^ -> number^;`）。
+  `exportL^ def^` は `<module>.<名前>` です（例: `f^number^, number^ -> number^;`）。結果には
+  `exportL^ errordef^` のエラーを `|` で加えられます（[下記](#エラーとして渡す型exportl-errordef)）。
   それ以外の型は引数にも結果にもできません。
   `f^` / `p^` と結果型の注釈、`template^` などの制限は `exportC^` と同じです。
 - 整数型の引数に整数でない数が渡ると「exportL^ NAME needs a whole number」で終了します。浮動小数点型は
@@ -223,6 +224,26 @@ externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Count
   危ないのは入口だけです。`rhat_lhat_wrap_<名前>` に渡した R^ の値や `externC^` が返した C のオブジェクトを、
   元の持ち主より長く L^ が保持すると宙づりになります。`externC^` と同じ信頼境界として扱い、R^ の値は
   マシンを持つフレームかその外側に置きます。
+
+### エラーとして渡す型（exportL^ errordef^）
+
+```rhat
+exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
+exportL^ let^ check = f^ k:i64^ -> i64^ | Error { ... }       # L^ の署名は -> number^|rhat.Error
+exportL^ let^ split = f^ k:i64^ -> (i64^, string^) | Error.Bad { ... }
+                                    # L^ の署名は -> (number^, string^)|rhat.Error.Bad
+```
+
+- `exportL^ errordef^` は L^ のエラー種別（`lhat_register_error_kind`）として `<module>.<名前>` に登録し、
+  各 variant を `<module>.<名前>.<variant>` として L^ に見せます。
+- `exportL^` 関数の結果は、成功の型（単一の値か複数の返り値）に `| エラー` を加えられます。エラーを返すと、
+  中継コードが `lhat_machine_make_error` で L^ のエラーを作って返し、L^ 側では `try^` / `catch^` で扱えます。
+- L^ に渡るのはエラーの種別と message だけです。message は構築時に `message = "..."` で与えた文字列、
+  なければ variant の名前（`Error.Zero` など）です。`message()` を上書きしても L^ 側には反映されません。
+  付随フィールドと生成位置（source / line / column）は渡しません。
+- 結果に含めるエラーはすべて `exportL^ errordef^` のものに限り、ほかの `errordef^` を含むと
+  「errordef^ 'E' needs exportL^ to fail an exportL^ result」でコンパイルエラーになります。
+- `ref^ T | nil^` にエラーを加えた結果（成功の型が二つ以上の合併）はまだ使えません。
 
 ## 効果と安全性
 

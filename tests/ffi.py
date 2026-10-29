@@ -253,11 +253,15 @@ const LhatHostDataTag *lhat_register_hostdata_type(LhatProgram *program, const c
 bool lhat_register_member(LhatProgram *program, const char *module, const char *type, const char *name, const char *signature, LhatHostFn call, void *context);
 bool lhat_machine_make_hostdata(LhatMachine *machine, const LhatHostDataTag *tag, void *pointer, LhatValue *out);
 void *lhat_hostdata_pointer(LhatValue value, const LhatHostDataTag *tag);
+typedef struct LhatErrorKind { const char *name; } LhatErrorKind;
+bool lhat_register_error_kind(LhatProgram *program, const char *module, const char *name, const char *const *variant_names, size_t variant_count, const LhatErrorKind **out_group, const LhatErrorKind **out_variants);
+bool lhat_machine_make_error(LhatMachine *machine, const LhatErrorKind *kind, const char *message, LhatValue cause, LhatValue *out);
 LhatProgram *mock_program(void);
 void mock_run(int32_t mode);
 void mock_values(int32_t mode);
 void mock_multi(void);
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
+void mock_fail(void);
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -359,6 +363,52 @@ bool lhat_machine_make_hostdata(LhatMachine *machine, const LhatHostDataTag *tag
 void *lhat_hostdata_pointer(LhatValue v, const LhatHostDataTag *tag)
 {{
     return v.tag == LHAT_VALUE_OBJECT && ((MockData *)v.as.object)->tag == tag ? ((MockData *)v.as.object)->pointer : NULL;
+}}
+bool lhat_register_error_kind(LhatProgram *p, const char *module, const char *name, const char *const *names, size_t count, const LhatErrorKind **group, const LhatErrorKind **variants)
+{{
+    (void)p;
+    (void)group;
+    printf("%s.%s errors", module, name);
+    for (size_t j = 0; j < count; j++) {{
+        LhatErrorKind *k = malloc(sizeof *k);
+        k->name = names[j];
+        variants[j] = k;
+        printf(" %s", names[j]);
+    }}
+    printf("\\n");
+    return true;
+}}
+typedef struct {{ const LhatErrorKind *kind; const char *message; }} MockError;
+bool lhat_machine_make_error(LhatMachine *machine, const LhatErrorKind *kind, const char *message, LhatValue cause, LhatValue *out)
+{{
+    (void)machine;
+    (void)cause;
+    MockError *e = malloc(sizeof *e);
+    e->kind = kind;
+    e->message = message;
+    out->as.object = (LhatObject *)e;
+    out->tag = LHAT_VALUE_OBJECT;
+    return true;
+}}
+void mock_fail(void)
+{{
+    for (int j = 0; j < program.n; j++) {{
+        for (LhatInteger k = 0; k < 3; k++) {{
+            LhatValue a = lhat_integer(k), answers[2];
+            int count = 0;
+            if (strcmp(program.names[j], "check") && strcmp(program.names[j], "split")) {{
+                continue;
+            }}
+            program.fns[j](NULL, NULL, &a, 1, answers, &count);
+            if (count == 1 && answers[0].tag == LHAT_VALUE_OBJECT) {{
+                MockError *e = (MockError *)answers[0].as.object;
+                printf("%s %s: %s\\n", program.names[j], e->kind->name, e->message);
+            }}
+            else {{
+                printf("%s %d %lld\\n", program.names[j], count, (long long)answers[0].as.integer);
+            }}
+        }}
+    }}
 }}
 static LhatValue text(const char *t) {{ LhatValue v; lhat_machine_make_string(NULL, t, strlen(t), &v); return v; }}
 void mock_run(int32_t mode)
@@ -496,9 +546,33 @@ print^(c.n)
              'rhat.pick f^rhat.Counter, number^ -> rhat.Counter|nil^, number^;\n'
              'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
              'true\ntrue\n42 1 1 1\n2 1 3 2 1\ndispose 42\n1\n42\n', extra=lhat_extra)
+    errors = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_fail:p^;') + '''exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
+exportL^ let^ check = f^ k:i64^ -> i64^ | Error {
+  if^ k = 0 { let^ e:Error = Error.Zero{}
+ return^ e }
+  if^ k = 1 { let^ e:Error = Error.Bad{message = "bad one", code = 7}
+ return^ e }
+  return^ k * 10
+}
+exportL^ let^ split = f^ k:i64^ -> (i64^, i64^) | Error.Bad {
+  if^ k = 1 { return^ Error.Bad{} }
+  return^ k, k + 1
+}
+mock_fail()
+'''
+    positive('ffi_export_lhat_error', errors,
+             'rhat.Error errors Zero Bad\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.check f^number^ -> number^|rhat.Error;\n'
+             'rhat.split f^number^ -> (number^, number^)|rhat.Error.Bad;\n'
+             'true\ncheck Zero: Error.Zero\ncheck Bad: bad one\ncheck 1 20\n'
+             'split 2 0\nsplit Bad: Error.Bad\nsplit 2 2\n', extra=lhat_extra)
+    negative('ffi_export_lhat_error_unexported', header + 'errordef^ E { Bad }\nexportL^ let^ g = f^ -> i32^ | E { E.Bad{} }',
+             "errordef^ 'E' needs exportL^ to fail an exportL^ result")
+    negative('ffi_export_lhat_error_ref', header + 'exportL^ ref^ errordef^ E { Bad }', 'or exportL^ to a def^ or errordef^')
     negative('ffi_export_lhat_data_value', header + 'exportL^ ref^ def^ W { self^{ n:i32^ = 0 } }\nexportL^ let^ g = f^ w:W -> i32^ { 0 }',
              "exportL^ parameter 'w' needs")
-    negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^')
+    negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^ or errordef^')
     negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
     negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
              "exportL^ parameter 'b' needs a number, bool^, string^ or exportL^ def^ type annotation")

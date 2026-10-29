@@ -226,7 +226,7 @@ Type *error_view(Type *t, const char *name)
 
 int error_site(Type *t, const char *name)
 {
-    if (!t || t->kind != T_STRUCT || !t->def->error_variant) {
+    if (!t || t->kind != T_STRUCT || !t->def->group) {
         return -1;
     }
     return !strcmp(name, "source")     ? 0
@@ -255,6 +255,29 @@ Def *lhat_data_def(Type *t)
     }
     return t->kind == T_REF && t->elem->kind == T_STRUCT && t->elem->def->lhat_data ? t->elem->def
                                                                                     : NULL;
+}
+
+Def *error_group(Type *t)
+{
+    if (t->kind == T_STRUCT) {
+        return t->def->group;
+    }
+    Type *first = t->kind == T_UNION ? t->def->alternatives.v[0] : NULL;
+    return first && first->kind == T_STRUCT && first->def->group == t->def ? t->def : NULL;
+}
+
+Type *lhat_success(Type *t)
+{
+    Type *success = NULL;
+    int errors = 0, others = 0;
+    for (int j = 0; t->kind == T_UNION && j < t->def->alternatives.n; j++) {
+        Type *arm = t->def->alternatives.v[j];
+        bool error = error_group(arm);
+        errors += error;
+        others += !error;
+        success = error ? success : arm;
+    }
+    return !errors ? t : others == 1 ? success : NULL;
 }
 
 // A value L^ hands a host function: number^ (integers to 64 bits and
@@ -329,13 +352,24 @@ void export_validate(Program *p, Function *f)
         !((c_flat(result) && result->kind != T_ARRAY) || c_pointer(result))) {
         fail(f->result->loc, "exportC^ result must be a C scalar, a flat def^ or a C pointer");
     }
-    // Multiple results answer each part.
-    bool tuple = result && result->kind == T_STRUCT && result->def->tuple;
-    for (int j = 0; result && f->lhat_export && j < (tuple ? result->def->fields.n : 1); j++) {
-        Type *part = tuple ? ((Field *)result->def->fields.v[j])->type : result;
-        if (!l_value(part)) {
+    // A result failing with exportL^ errors answers the L^ error instead;
+    // multiple results answer each part.
+    for (int j = 0;
+         result && f->lhat_export && result->kind == T_UNION && j < result->def->alternatives.n;
+         j++) {
+        Def *group = error_group(result->def->alternatives.v[j]);
+        if (group && !group->lhat_error) {
+            fail(f->result->loc, "errordef^ '%s' needs exportL^ to fail an exportL^ result",
+                 group->name);
+        }
+    }
+    Type *success = result && f->lhat_export ? lhat_success(result) : NULL;
+    bool tuple = success && success->kind == T_STRUCT && success->def->tuple;
+    for (int j = 0; result && f->lhat_export && j < (tuple ? success->def->fields.n : 1); j++) {
+        Type *part = !success ? NULL : tuple ? ((Field *)success->def->fields.v[j])->type : success;
+        if (!part || !l_value(part)) {
             fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
-                                 "or ref^ to an exportL^ ref^ def^");
+                                 "or ref^ to an exportL^ ref^ def^, with | errors if it fails");
         }
     }
 }

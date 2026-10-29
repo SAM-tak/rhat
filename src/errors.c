@@ -180,7 +180,7 @@ void terminate(Context *c, Value subject, bool panic, Loc loc)
             message = expression(c, &literal, type_builtin(c->p, T_STRING)).id;
         }
         Type *arm = sum ? subject.type->def->alternatives.v[j] : subject.type;
-        bool error = !text && arm->kind == T_STRUCT && arm->def->error_variant;
+        bool error = !text && arm->kind == T_STRUCT && arm->def->group;
         Value detail = {0}, site = {0};
         if (error) {
             // An error also reports its message() and where it was built.

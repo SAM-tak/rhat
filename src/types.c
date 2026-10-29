@@ -498,7 +498,7 @@ Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
 bool has_error(Type *t)
 {
     if (t->kind == T_STRUCT) {
-        return t->def->error_variant;
+        return t->def->group;
     }
     if (t->kind == T_UNION) {
         for (int j = 0; j < t->def->alternatives.n; j++) {
@@ -513,7 +513,7 @@ bool has_error(Type *t)
 bool only_errors(Type *t)
 {
     if (t->kind != T_UNION) {
-        return t->kind == T_STRUCT && t->def->error_variant;
+        return t->kind == T_STRUCT && t->def->group;
     }
     for (int j = 0; j < t->def->alternatives.n; j++) {
         if (!only_errors(t->def->alternatives.v[j])) {

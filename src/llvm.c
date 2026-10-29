@@ -461,8 +461,9 @@ static void export_entry(Instance *in, FILE *f)
 {
     Type *t = in->result;
     // A string (exportL^ only) comes as data and length, and goes back
-    // through two out pointers.
-    bool out = t->kind == T_STRUCT, text = t->kind == T_STRING;
+    // through two out pointers; a result that may fail (exportL^ only)
+    // goes back whole.
+    bool out = t->kind == T_STRUCT || lhat_success(t) != t, text = t->kind == T_STRING;
     fprintf(f, "\ndefine %s @rh_entry_%s(%s",
             out || text || t->kind == T_VOID ? "void" : c_abi(t, true), in->symbol,
             out    ? "ptr %out"
@@ -2183,7 +2184,14 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
         "  void *pointer = nullable && v.tag == LHAT_VALUE_NIL ? NULL : lhat_hostdata_pointer(v, tag);\n"
         "  if (!pointer && !nullable) {\n"
         "    static const char m[] = \"exportL^ received another host data type\";\n"
-        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return pointer;\n}\n",
+        "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n  return pointer;\n}\n"
+        "/* An R^ error answered as the L^ error of its kind, with the message of\n"
+        " * the site its first field points at. */\n"
+        "static void rh_lhat_fail(LhatMachine *machine, const LhatErrorKind *kind, const unsigned char *payload, LhatValue *answers, int *answer_count)\n{\n"
+        "  const struct { const char *source; int64_t length; int32_t line, column; const char *message; } *site;\n"
+        "  memcpy(&site, payload, sizeof site);\n"
+        "  if (!lhat_machine_make_error(machine, kind, site->message, lhat_nil(), &answers[0])) {\n"
+        "    answers[0] = lhat_nil();\n  }\n  *answer_count = 1;\n}\n",
         f);
     bool table = false;
     for (int j = 0; j < p->defs.n; j++) {
@@ -2274,6 +2282,25 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                     "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
                     registrations, d->type->id, d->name, d->type->id);
         }
+        // An error kind's variant names live as long as the program.
+        char *variants = "", *kinds = "";
+        int count = 0;
+        for (int k = 0; d->lhat_error && k < p->defs.n; k++) {
+            Def *v = p->defs.v[k];
+            if (v->group == d) {
+                fprintf(f, "static const LhatErrorKind *rh_lhat_error_%d;\n", v->id);
+                kinds = fmt("%s    rh_lhat_error_%d = kinds[%d];\n", kinds, v->id, count++);
+                variants = fmt("%s\"%s\", ", variants, strrchr(v->name, '.') + 1);
+            }
+        }
+        if (d->lhat_error) {
+            registrations =
+                fmt("%s  {\n    static const char *const names[] = {%s};\n"
+                    "    const LhatErrorKind *kinds[%d];\n"
+                    "    if (!lhat_register_error_kind(program, module, \"%s\", names, %d, NULL, "
+                    "kinds)) {\n      return false;\n    }\n%s  }\n",
+                    registrations, variants, count, d->name, count, kinds);
+        }
         if (!d->lhat_value) {
             continue;
         }
@@ -2297,11 +2324,16 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
     for (int j = 0; j < hosts->n; j++) {
         Instance *in = hosts->v[j];
         const char *name = c_function_symbol(in->fn), *symbol = in->symbol;
-        Type *t = in->result;
+        // A result that may fail comes back whole into u.
+        Type *t = lhat_success(in->result);
+        bool failing = t != in->result;
         bool text = t->kind == T_STRING, none = t->kind == T_VOID, value = t->kind == T_STRUCT;
         Def *data = lhat_data_def(t), *owner = in->fn->owner;
-        char *entry = text ? "const char **, int64_t *" : value ? fmt("%s *", c_name(t)) : "";
-        char *call = text ? "&r.text, &r.length" : value ? "&r" : "";
+        char *entry = failing ? "void *"
+                      : text  ? "const char **, int64_t *"
+                      : value ? fmt("%s *", c_name(t))
+                              : "";
+        char *call = failing ? "u" : text ? "&r.text, &r.length" : value ? "&r" : "";
         char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
         for (int k = 0; k < in->params.n; k++) {
             Type *param = in->params.v[k];
@@ -2354,13 +2386,40 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             }
         }
         if (!none) {
-            signature = fmt("%s -> %s", signature, l_name(t));
+            signature = fmt("%s -> %s", signature,
+                            failing && value && t->def->tuple ? fmt("(%s)", l_name(t)) : l_name(t));
+        }
+        // L^ is told each error the result may fail with.
+        char *failures = "";
+        for (int k = 0; failing && k < in->result->def->alternatives.n; k++) {
+            Type *arm = in->result->def->alternatives.v[k];
+            if (arm == t) {
+                continue;
+            }
+            // A whole errordef^ comes as a union of its variants.
+            size_t at = in->result->payload_offset;
+            char *kind = fmt("rh_lhat_error_%d", arm->def->id), *inner = "";
+            if (arm->kind == T_UNION) {
+                inner = fmt("    int32_t inner;\n    memcpy(&inner, u + %zu, sizeof inner);\n", at);
+                kind = "(const LhatErrorKind *[]){";
+                for (int n = 0; n < arm->def->alternatives.n; n++) {
+                    kind = fmt("%s%srh_lhat_error_%d", kind, n ? ", " : "",
+                               ((Type *)arm->def->alternatives.v[n])->def->id);
+                }
+                kind = fmt("%s}[inner]", kind);
+                at += arm->payload_offset;
+            }
+            signature = fmt("%s|%%s.%s", signature, arm->def->name);
+            failures =
+                fmt("%s  if (tag == %d) {\n%s    rh_lhat_fail(machine, %s, u + %zu, answers, "
+                    "answer_count);\n    return;\n  }\n",
+                    failures, k, inner, kind, at);
         }
         if (owner && owner->lhat_data && l_held(owner) && !strcmp(name, "dispose")) {
             body = fmt("%s  rh_lhat_drop(machine, rh_lhat_data_%d, v0);\n", body, owner->type->id);
         }
-        fprintf(f, "%s rh_entry_%s(%s);\n", none || text || value ? "void" : c_name(t), symbol,
-                *entry ? entry : "void");
+        fprintf(f, "%s rh_entry_%s(%s);\n", none || text || value || failing ? "void" : c_name(t),
+                symbol, *entry ? entry : "void");
         fprintf(f,
                 "static void rh_lhat_%s(LhatMachine *machine, void *context, const LhatValue "
                 "*arguments, size_t count, LhatValue *answers, int *answer_count)\n{\n"
@@ -2383,14 +2442,22 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                                                 : fmt("r.f%d", k);
                 answers = fmt("%s%s", answers, l_answer(part, v, k));
             }
-            if (text || value) {
-                fprintf(f, "  %s r;\n  rh_entry_%s(%s);\n",
-                        text ? "struct { const char *text; int64_t length; }" : c_name(t), symbol,
-                        call);
+            char *held = text   ? "struct { const char *text; int64_t length; }"
+                         : data ? "void *"
+                                : c_name(t);
+            if (failing) {
+                fprintf(
+                    f,
+                    "  _Alignas(%zu) unsigned char u[%zu];\n  int32_t tag;\n  rh_entry_%s(%s);\n"
+                    "  memcpy(&tag, u, sizeof tag);\n%s  %s r;\n  memcpy(&r, u + %zu, sizeof r);\n",
+                    in->result->align, in->result->size, symbol, call, failures, held,
+                    in->result->payload_offset);
+            }
+            else if (text || value) {
+                fprintf(f, "  %s r;\n  rh_entry_%s(%s);\n", held, symbol, call);
             }
             else {
-                fprintf(f, "  %s r = rh_entry_%s(%s);\n", data ? "void *" : c_name(t), symbol,
-                        call);
+                fprintf(f, "  %s r = rh_entry_%s(%s);\n", held, symbol, call);
             }
             fprintf(f, "%s  *answer_count = %d;\n}\n", answers, tuple ? t->def->fields.n : 1);
         }
@@ -2442,7 +2509,8 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
     }
     bool lhat = hosts.n > 0;
     for (int j = 0; headers && j < p->defs.n; j++) {
-        lhat |= ((Def *)p->defs.v[j])->lhat_value || ((Def *)p->defs.v[j])->lhat_data;
+        Def *d = p->defs.v[j];
+        lhat |= d->lhat_value || d->lhat_data || d->lhat_error;
     }
     if (!shims.n && !exports.n && !lhat) {
         return false;
@@ -2513,7 +2581,7 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
             }
         }
         for (int j = 0; j < hosts.n; j++) {
-            c_struct(f, ((Instance *)hosts.v[j])->result, &done, headers);
+            c_struct(f, lhat_success(((Instance *)hosts.v[j])->result), &done, headers);
         }
         lhat_glue(p, f, &hosts);
     }

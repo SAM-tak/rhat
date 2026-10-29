@@ -2694,7 +2694,7 @@ void parse_file(Program *p, const char *path, Module *module)
         bool public = take(&q, "public^");
         // exportC^ and exportL^ mark a function entered from C or from L^;
         // exportL^ also marks a def^ L^ holds by value, or with ref^ by
-        // reference.
+        // reference, and an errordef^ L^ receives as its own errors.
         Loc export_at = tok(&q)->loc;
         bool exported = false, lhat_export = false;
         for (;;) {
@@ -2709,13 +2709,13 @@ void parse_file(Program *p, const char *path, Module *module)
             }
         }
         bool lhat_ref = lhat_export && take(&q, "ref^");
-        bool lhat_def =
-            lhat_export && !exported &&
-            (is(&q, "def^") || (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
-                                !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^")));
+        bool lhat_def = lhat_export && !exported &&
+                        (is(&q, "def^") || (is(&q, "errordef^") && !lhat_ref) ||
+                         (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
+                          !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^")));
         if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(&q, "let^"))) {
             fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
-                            " (or exportL^ to a def^)");
+                            " (or exportL^ to a def^ or errordef^)");
         }
         if (take(&q, "import^") || (is(&q, "let^") && q.at + 3 < q.tokens.n &&
                                     !strcmp(((Token *)q.tokens.v[q.at + 2])->text, "=") &&
@@ -2741,6 +2741,7 @@ void parse_file(Program *p, const char *path, Module *module)
             group->name = decl_word(&q);
             group->module = module;
             group->public = public;
+            group->lhat_error = lhat_def;
             group->id = p->defs.n;
             add(&p->defs, group);
             add(&module->defs, group);
@@ -2754,7 +2755,7 @@ void parse_file(Program *p, const char *path, Module *module)
                 arm->name = fmt("%s.%s", group->name, decl_word(&q));
                 arm->module = module;
                 arm->public = public;
-                arm->error_variant = true;
+                arm->group = group;
                 error_variant(&q, arm);
                 arm->id = p->defs.n;
                 add(&p->defs, arm);

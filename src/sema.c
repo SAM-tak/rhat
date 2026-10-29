@@ -1918,7 +1918,7 @@ Type *union_literal_hint(Type *t, Expr *e)
              (!literal->tuple || a->def->fields.n == literal->args.n)) ||
             (literal->kind == E_ARRAY && (a->kind == T_ARRAY || a->kind == T_GROW))) {
             // A mixed result must not implicitly choose an error constructor.
-            if (literal->kind == E_RECORD && a->def->error_variant) {
+            if (literal->kind == E_RECORD && a->def->group) {
                 return NULL;
             }
             if (hint) {
@@ -2186,7 +2186,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         for (int j = 0; j < e->names.n; j++) {
             char *name = e->names.v[j];
             Field *f = field(t->def, name);
-            if (!f && t->def->error_variant && !strcmp(name, "message")) {
+            if (!f && t->def->group && !strcmp(name, "message")) {
                 continue;
             }
             if (!f) {
@@ -2232,7 +2232,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->type = t;
             a->label = f->index;
             Value v = {0};
-            if (t->def->error_variant && !f->index) {
+            if (t->def->group && !f->index) {
                 // The hidden site records where this error is built and its message.
                 char *message = t->def->name;
                 for (int k = 0; k < e->names.n; k++) {

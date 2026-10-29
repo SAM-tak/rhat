@@ -229,7 +229,8 @@ struct Field {
 
 struct Def {
     Module *module;
-    bool public, error_variant;
+    bool public;
+    Def *group; // An error variant's errordef^, else NULL.
     Loc loc;
     char *name;
     List base_names, bases, own_fields, own_methods;
@@ -242,6 +243,7 @@ struct Def {
     bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.
     bool lhat_value; // exportL^ def^: an L^ host value type, its methods members.
     bool lhat_data;  // exportL^ ref^ def^: an L^ host data type over ref^ to it.
+    bool lhat_error; // exportL^ errordef^: an L^ error kind; L^ sees no fields.
     bool tuple;      // The anonymous struct of multiple results, fields 0, 1, ...
 };
 
@@ -472,5 +474,10 @@ bool emit_c_shims(Program *p, const char *path, bool headers);
 const char *c_function_symbol(Function *f);
 // The exportL^ ref^ def^ that t, a ref^ (or a ref^ | nil^), refers to.
 Def *lhat_data_def(Type *t);
+// The errordef^ t is, or is a variant of, else NULL.
+Def *error_group(Type *t);
+// What an exportL^ result t answers when it does not fail: t itself unless
+// it has error alternatives, then its one other alternative, or NULL.
+Type *lhat_success(Type *t);
 char *llvm_type(Type *t);
 #endif
