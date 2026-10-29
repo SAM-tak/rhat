@@ -251,7 +251,7 @@ test(1) test(nil^)
         ('fits_replacement_assert_mutation','var^ value:A|B=A{} assert^(value fits^ A) value:=B{} print^(value.a)','field access requires'),
         ('fits_unknown_type','print^(1 fits^ Missing)','unknown type'),
         ('fits_value_rhs','let^ value=1 print^(1 fits^ value)','unknown type'),
-        ('fits_void_rhs','print^(1 fits^ void^)','requires a value type'),
+        ('fits_void_rhs','print^(1 fits^ void^)',"unknown type 'void^'"),
         ('fits_void_lhs','let^ noop=p^ {} print^(noop() fits^ nil^)','requires a value type'),
         ('fits_wrong_branch','var^ x:A|B=A.new() if^ x fits^ A {print^(x.b)}','has no field'),
         ('fits_assignment_invalidates','var^ x:A|B=A.new() if^ x fits^ A {x:=B.new() print^(x.a)}','field access requires'),

@@ -987,9 +987,12 @@ print^(low,high,high/seven,high%seven)
                             f"let^ n:{kind}={minimum}; let^ d:{kind}=-1; print^(n%d)",
                             "invalid integer remainder")
 
-for name in ("void", "bool", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f8", "f16", "f32", "f64", "string"):
+for name in ("bool", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f8", "f16", "f32", "f64", "string"):
     negative("no_bare_type_" + name, f"let^ x:{name}=0", "unknown type")
     negative("reserved_type_" + name, f"def^ {name}^ {{}}", "cannot be redeclared")
+negative("no_bare_type_void", "let^ x:void=0", "unknown type")
+negative("no_void_type", "let^ x:void^=0", "unknown type 'void^'")
+negative("void_cannot_be_declared", "def^ void^ {}", "hat identifiers cannot be declared")
 
 positive("plain_type_names_are_user_symbols", """
 def^ bool { self^{ n:i8^=7 } }
@@ -1754,7 +1757,12 @@ negative("literal_overflow", 'let^ x:i32^=2147483648', "does not fit")
 negative("unknown_type", 'let^ x:Missing=1', "unknown type")
 negative("recursive_default", 'def^ A { self^{ n:i32^=A.new().n } }\nlet^ a=A.new()', "recursive default construction")
 negative("default_capture", 'def^ A { self^{ n:i32^=local } }\nlet^ local:i32^=1; let^ a=A.new()', "cannot capture caller locals")
-negative("void_parameter", 'let^ bad=f^ x:void^ {}\n', "parameter cannot have void")
+negative("void_parameter", 'let^ bad=f^ x:void^ {}\n', "unknown type 'void^'")
+negative("void_result", 'let^ bad=p^ -> void^ {}\n', "unknown type 'void^'")
+negative("void_binding", 'let^ x:void^ = 1\n', "unknown type 'void^'")
+negative("void_callable_parameter", 'let^ h:p^ void^; = p^ {}\n', "unknown type 'void^'")
+negative("void_field", 'def^ D { self^{ x:void^ } }\n', "unknown type 'void^'")
+negative("void_value_binding", 'let^ f=p^ {}\nlet^ x=f()\n', "binding cannot have void type")
 negative("false_mutable_self", 'let^ bad=f^mutable^ x:i32^ {}\n', "requires an f^ method receiver")
 negative("method_conflict", 'def^ A { n=f^self^ -> i32^ { return^ 1 } } def^ B { n=f^self^ -> i32^ { return^ 2 } } def^ C:A,B {}\n', "is ambiguous")
 negative("inherited_field_method", 'def^ A { self^{ n:i32^=0 } } def^ B { n=f^self^ -> i32^ { return^ 2 } } def^ C:A,B {}\n', "field/method name collision")

@@ -1079,7 +1079,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             return type_builtin(c->p, T_BOOL);
         }
         Type *target = type_spec(c->p, e->test_spec);
-        if (target->kind == T_VOID || (type && type->kind == T_VOID)) {
+        if (type && type->kind == T_VOID) {
             fail(e->loc, "fits^ requires a value type");
         }
         if (type) {

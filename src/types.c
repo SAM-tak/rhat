@@ -290,11 +290,7 @@ Type *type_spec(Program *p, Spec *s)
     if (s->kind == SPEC_FUNCTION) {
         List params = {0};
         for (int j = 0; j < s->params.n; j++) {
-            Type *param = type_spec(p, s->params.v[j]);
-            if (param->kind == T_VOID) {
-                fail(s->loc, "callable parameter cannot have void type");
-            }
-            add(&params, param);
+            add(&params, type_spec(p, s->params.v[j]));
         }
         Type *t = callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
         return s->foreign ? type_wrap(p, T_CFUNC, t, 0) : t;
@@ -320,7 +316,7 @@ Type *type_spec(Program *p, Spec *s)
                                                  : T_ARRAY,
                          type_spec(p, s->elem), s->count);
     }
-    for (int k = 0; k < T_STRUCT; k++) {
+    for (int k = T_BOOL; k < T_STRUCT; k++) {
         if (!strcmp(s->name, builtin_name(k))) {
             return type_builtin(p, k);
         }
@@ -359,7 +355,9 @@ char *type_name(Type *t)
         for (int j = 0; j < t->params.n; j++) {
             name = fmt("%s%s%s", name, j ? ", " : " ", type_name(t->params.v[j]));
         }
-        return fmt("%s -> %s;", name, type_name(t->result));
+        return t->result && t->result->kind != T_VOID
+                   ? fmt("%s -> %s;", name, type_name(t->result))
+                   : fmt("%s;", name);
     }
     if (t->kind < T_STRUCT) {
         return (char *)builtin_name(t->kind);
@@ -675,7 +673,7 @@ void compose(Program *p, Def *d)
             }
             if (alternative->kind == SPEC_NAME && !arm) {
                 bool builtin = false;
-                for (int k = 0; k < T_STRUCT; k++) {
+                for (int k = T_BOOL; k < T_STRUCT; k++) {
                     builtin |= !strcmp(alternative->name, builtin_name(k));
                 }
                 if (!builtin) {
@@ -684,9 +682,6 @@ void compose(Program *p, Def *d)
             }
             Type *at = type_spec(p, alternative);
             char *name = type_name(at);
-            if (at->kind == T_VOID) {
-                fail(d->loc, "void cannot be a union alternative");
-            }
             for (int j = 0; j < d->alternatives.n; j++) {
                 if (d->alternatives.v[j] == at) {
                     fail(d->loc, "duplicate union alternative '%s'", name);
@@ -788,9 +783,6 @@ void compose(Program *p, Def *d)
         f->type = type_spec(p, f->spec);
         if (f->abstract && f->priv) {
             fail(f->loc, "private abstract fields cannot be implemented by another def^");
-        }
-        if (f->type->kind == T_VOID) {
-            fail(f->loc, "field cannot have void type");
         }
         Field *old = field(d, f->name);
         if (old) {

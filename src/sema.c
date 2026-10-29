@@ -805,7 +805,7 @@ Value fits_value(Context *c, Expr *e)
         return out;
     }
     Type *target = type_spec(c->p, e->test_spec);
-    if (src.type->kind == T_VOID || target->kind == T_VOID) {
+    if (src.type->kind == T_VOID) {
         fail(e->loc, "fits^ requires a value type");
     }
     if (!callable_type(target)) {
@@ -1618,7 +1618,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             }
             Type *t = type_builtin(p, T_VOID);
             if (expected && expected != t) {
-                fail(e->loc, "truncate returns void^");
+                fail(e->loc, "truncate has no result");
             }
             Instr *i = emit(c, I_TRUNCATE, e->loc);
             i->a = base.id;
@@ -1643,7 +1643,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             forget_roots(&c->vars, base.storage | base.deps, false);
             Type *t = type_builtin(p, T_VOID);
             if (expected && expected != t) {
-                fail(e->loc, "append returns void^");
+                fail(e->loc, "append has no result");
             }
             Instr *i = emit(c, I_APPEND, e->loc);
             i->a = base.id;

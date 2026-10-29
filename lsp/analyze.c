@@ -187,7 +187,7 @@ static char *spec_text(Spec *s)
         for (int j = 0; j < s->params.n; j++) {
             out = fmt("%s%s%s", out, j ? ", " : " ", spec_text(s->params.v[j]));
         }
-        return fmt("%s -> %s;", out, s->elem ? spec_text(s->elem) : "void^");
+        return s->elem ? fmt("%s -> %s;", out, spec_text(s->elem)) : fmt("%s;", out);
     }
     if (s->kind == SPEC_DYN) {
         return fmt("dyn^ %s", spec_text(s->elem));

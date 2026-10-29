@@ -220,7 +220,7 @@ static char *decl_word(Parser *p)
 {
     Loc loc = tok(p)->loc;
     char *name = word(p);
-    for (int k = 0; k < T_STRUCT; k++) {
+    for (int k = T_BOOL; k < T_STRUCT; k++) {
         if (!strcmp(name, builtin_name(k))) {
             fail(loc, "built-in type name '%s' cannot be redeclared", name);
         }
