@@ -892,7 +892,7 @@ print^(8 bitshift^ amount())
 negative("bits_on_float", "print^(1.0 bitxor^ 2.0)", "bitwise operands must be integers")
 negative("bitnot_on_bool", "print^(bitnot^ true^)", "invalid unary operand")
 negative("conversion_arity", "print^(i32^())", "numeric conversion expects one argument")
-negative("conversion_string", 'print^(i32^("12"))', "numeric conversion requires a number")
+negative("conversion_string", 'print^(i32^("12"))', "read a string^ with i32^.parse(s)")
 negative("conversion_result_mismatch", "let^ x:i64^=i32^(1)", "conversion result")
 for name, value in (("negative_unsigned", "u8^(-0.5)"), ("too_large", "i8^(128.0)"),
                     ("too_negative", "i8^(-129.0)"), ("nan", "i32^(f8^(1000.0))"),

@@ -211,16 +211,16 @@ let^ inf = 1.0/0.0
 print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(1.0), m.isfinite(1.0), m.isfinite(inf), m.isnan(f32^(1.0)))
 '''}, '1.4142135623730951 2.5 1.0 true 1024.0\n-2.0 -1.0 -1.0 3.0 3.0 -2.0 7.0\n1.0 3.0 3.0 8.0 0.0 1.0 true\n'
           'true true true false true false false\n')
-    positive('std_text_parse', {'main.rh': '''let^ t = import^ std.text
+    positive('number_parse', {'main.rh': '''let^ t = import^ std.text
 let^ show = p^ r:i64^ | t.Error.Invalid | t.Error.OutOfRange {
     if^ r fits^ i64^ { print^(r) elseif^ r fits^ t.Error.Invalid: print^("invalid") else^: print^("range") }
 }
-show(t.parse_i64("42")) show(t.parse_i64("-9223372036854775808")) show(t.parse_i64("9223372036854775808"))
-show(t.parse_i64("+7")) show(t.parse_i64("")) show(t.parse_i64("-")) show(t.parse_i64("1x")) show(t.parse_i64(" 1"))
-let^ a = t.parse_i32("-2147483648") let^ b = t.parse_i32("2147483648")
+show(i64^.parse("42")) show(i64^.parse("-9223372036854775808")) show(i64^.parse("9223372036854775808"))
+show(i64^.parse("+7")) show(i64^.parse("")) show(i64^.parse("-")) show(i64^.parse("1x")) show(i64^.parse(" 1"))
+let^ a = i32^.parse("-2147483648") let^ b = i32^.parse("2147483648")
 print^(a fits^ i32^, b fits^ t.Error.OutOfRange)
-let^ x = t.parse_f64("2.5e3") let^ y = t.parse_f64("1e999") let^ z = t.parse_f64("1.5 ") let^ w = t.parse_f32("0.1")
-print^(x fits^ f64^, y fits^ t.Error.OutOfRange, z fits^ t.Error.Invalid, w fits^ f32^, t.parse_f64("") fits^ t.Error.Invalid)
+let^ x = f64^.parse("2.5e3") let^ y = f64^.parse("1e999") let^ z = f64^.parse("1.5 ") let^ w = f32^.parse("0.1")
+print^(x fits^ f64^, y fits^ t.Error.OutOfRange, z fits^ t.Error.Invalid, w fits^ f32^, f64^.parse("") fits^ t.Error.Invalid)
 if^ x fits^ f64^ { print^(x) }
 if^ w fits^ f32^ { print^(w = f32^(0.1)) }
 '''}, '42\n-9223372036854775808\nrange\n7\ninvalid\ninvalid\ninvalid\ninvalid\ntrue true\n'

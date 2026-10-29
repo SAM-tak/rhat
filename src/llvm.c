@@ -1710,6 +1710,7 @@ void emit_llvm(Program *p, const char *path)
           "declare void @rh_print_char(i32)\n"
           "declare i64 @rh_text_valid(ptr, i64, i32) readonly\n"
           "declare i64 @rh_text_format(ptr, i64, ptr, i64, ptr, i64, i32)\n"
+          "declare i64 @rh_text_parse(ptr, i64, ptr, i64, i32)\n"
           "declare i64 @rh_text_count(ptr, i64, i32) readonly\n"
           "declare i64 @rh_text_find(ptr, i64, ptr, i64, i32) readonly\n"
           "declare i64 @rh_text_starts(ptr, i64, ptr, i64, i32) readonly\n"

@@ -336,6 +336,9 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
     if (!e) {
         return;
     }
+    if (e->kind == E_MEMBER && e->a && e->a->kind == E_NAME && numeric_kind(e->a->text) >= 0) {
+        return; // i32^.parse: a member of a built-in type, which no module declares
+    }
     char *path = path_of(e);
     if (path && !local(names, path)) {
         Constant *c = NULL;

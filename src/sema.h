@@ -303,6 +303,9 @@ bool range_type(Type *t);
 Type *char_cast_type(Program *p, Loc loc);
 // What string^(bytes) casts to: string^ | std.text.Error.Invalid.
 Type *text_cast_type(Program *p, Loc loc);
+// What T.parse(s) answers for number type kind: T | std.text.Error.Invalid |
+// std.text.Error.OutOfRange.
+Type *parse_type(Program *p, int kind, Loc loc);
 // Whether t writes itself as text: a number, bool^, char^ or string^.
 bool textual(Type *t);
 // The type of string^ method name, or NULL when string^ has none.
@@ -433,6 +436,9 @@ Value char_cast(Context *c, Expr *e, int destination);
 // dst = the runtime function name applied to args, or no result when k is
 // T_VOID.
 Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc);
+// T.parse(s) for a number type T: all of s read as a decimal integer or a C real, else
+// std.text.Error.Invalid or OutOfRange.
+Value number_parse(Context *c, Expr *e, int destination);
 // string^(bytes): the bytes as a string^ when they are UTF-8, else
 // std.text.Error.Invalid.
 Value text_cast(Context *c, Expr *e, int destination);

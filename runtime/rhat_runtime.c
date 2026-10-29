@@ -218,14 +218,51 @@ static int32_t rh_parse_float(const char *text, int64_t length, bool single, dou
     return status;
 }
 
-int32_t rh_parse_f64(const char *text, int64_t length, double *out)
-{
-    return rh_parse_float(text, length, false, out, NULL);
-}
+typedef unsigned __int128 rh_u128;
 
-int32_t rh_parse_f32(const char *text, int64_t length, float *out)
+// Read all of s as a number: kind is its width in bits, plus 256 for an unsigned integer and 512
+// for a real, and an f8 or f16 is read as a double. The value goes to out. Answers 0, 1 for text
+// that is no number (an integer is an optional sign and decimal digits), or 2 for one the type
+// cannot hold.
+int64_t rh_text_parse(const unsigned char *s, int64_t n, void *out, int64_t kind, int32_t line)
 {
-    return rh_parse_float(text, length, true, NULL, out);
+    (void)line;
+    int bits = (int)(kind & 255), form = (int)(kind >> 8);
+    if (form == 2) {
+        if (bits == 32) {
+            return rh_parse_float((const char *)s, n, true, NULL, out);
+        }
+        double *wide = out;
+        int32_t status = rh_parse_float((const char *)s, n, false, wide, NULL);
+        // The first value that rounds past the largest finite f16 or f8 (E4M3FN).
+        double limit = bits == 16 ? 65520.0 : bits == 8 ? 464.0 : 0;
+        return !status && limit && isfinite(*wide) && fabs(*wide) >= limit ? 2 : status;
+    }
+    int64_t at = n > 0 && (s[0] == '+' || s[0] == '-');
+    bool negative = at && s[0] == '-';
+    if (at == n) {
+        return 1;
+    }
+    for (int64_t j = at; j < n; j++) {
+        if (s[j] < '0' || s[j] > '9') {
+            return 1;
+        }
+    }
+    rh_u128 most = ~(rh_u128)0, value = 0;
+    bool over = false;
+    for (int64_t j = at; j < n && !over; j++) {
+        unsigned digit = s[j] - '0';
+        over = value > (most - digit) / 10;
+        value = over ? value : value * 10 + digit;
+    }
+    rh_u128 limit = form == 1 ? (bits == 128 ? most : ((rh_u128)1 << bits) - 1)
+                              : ((rh_u128)1 << (bits - 1)) - (negative ? 0 : 1);
+    if (over || value > limit || (form == 1 && negative && value)) {
+        return 2;
+    }
+    rh_u128 stored = negative ? (rh_u128)0 - value : value;
+    memcpy(out, &stored, (size_t)bits / 8);
+    return 0;
 }
 
 void rh_runtime_shutdown(void)

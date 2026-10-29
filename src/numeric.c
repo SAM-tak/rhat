@@ -11,6 +11,16 @@ const char *builtin_name(int k)
     return k >= T_VOID && k < T_STRUCT ? names[k] : NULL;
 }
 
+int numeric_kind(const char *name)
+{
+    for (int k = T_U8; k <= T_F64; k++) {
+        if (!strcmp(name, builtin_name(k))) {
+            return k;
+        }
+    }
+    return -1;
+}
+
 bool kind_integer(int k)
 {
     return k >= T_U8 && k <= T_I128;

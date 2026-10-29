@@ -1,60 +1,8 @@
 module^std.text
 
+# What T.parse(s) and the char^ and string^ casts answer when they fail.
 # Invalid: not a number in the accepted form. OutOfRange: too large for the type.
 public^errordef^Error { Invalid, OutOfRange }
-
-let^min64:i64^ = -9223372036854775807 - 1
-let^max64:i64^ = 9223372036854775807
-
-externC^rh_parse_f64:f^text:string^, length:i64^, out:ref^ f64^ -> i32^;
-externC^rh_parse_f32:f^text:string^, length:i64^, out:ref^ f32^ -> i32^;
-
-# An optional + or - followed by decimal digits, without spaces. The value
-# accumulates toward its sign so that the minimum of the range is reachable.
-let^integer = f^s:string^, low:i64^, high:i64^ -> i64^ | Error.Invalid | Error.OutOfRange {
-    let^b = s.bytes
-    if^b.len = 0 { return^Error.Invalid{} }
-    let^negative = b[0] = 45
-    var^start:i64^ = 0
-    if^negative or^ b[0] = 43 { start := 1 }
-    if^start = b.len { return^Error.Invalid{} }
-    var^n:i64^ = 0
-    for^ var^ i:i64^ = start while^ i < b.len next^ i += 1 {
-        let^d = i64^(b[i]) - 48
-        if^d < 0 or^ d > 9 { return^Error.Invalid{} }
-        if^negative {
-            if^n < low / 10 or^ (n = low / 10 and^ d > -(low % 10)) { return^Error.OutOfRange{} }
-            n := n * 10 - d
-        else^:
-            if^n > high / 10 or^ (n = high / 10 and^ d > high % 10) { return^Error.OutOfRange{} }
-            n := n * 10 + d
-        }
-    }
-    return^n
-}
-
-public^let^parse_i64 = f^s:string^ -> i64^ | Error.Invalid | Error.OutOfRange { integer(s, min64, max64) }
-public^let^parse_i32 = f^s:string^ -> i32^ | Error.Invalid | Error.OutOfRange {
-    let^v = try^ integer(s, -2147483648, 2147483647)
-    return^i32^(v)
-}
-
-# The forms C's strtod accepts (decimal or hexadecimal, inf, nan) without
-# surrounding spaces. Underflow rounds toward zero; overflow is OutOfRange.
-public^let^parse_f64 = f^s:string^ -> f64^ | Error.Invalid | Error.OutOfRange {
-    var^out:f64^ = 0.0
-    let^status = rh_parse_f64(s, s.bytes.len, ref^ out)
-    if^status = 1 { return^Error.Invalid{} }
-    if^status = 2 { return^Error.OutOfRange{} }
-    return^out
-}
-public^let^parse_f32 = f^s:string^ -> f32^ | Error.Invalid | Error.OutOfRange {
-    var^out:f32^ = 0.0
-    let^status = rh_parse_f32(s, s.bytes.len, ref^ out)
-    if^status = 1 { return^Error.Invalid{} }
-    if^status = 2 { return^Error.OutOfRange{} }
-    return^out
-}
 
 # Owned UTF-8 text built by appending. Every way in keeps its bytes UTF-8,
 # so text() views them as a string^. tostring() builds one.

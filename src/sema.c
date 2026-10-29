@@ -1486,7 +1486,11 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             }
             if (!kind_integer(v.type->kind) && !kind_float(v.type->kind) &&
                 !(v.type->kind == T_CHAR && kind_integer(k))) {
-                fail(e->loc, "numeric conversion requires a number");
+                fail(e->loc,
+                     v.type->kind == T_STRING
+                         ? "%s(...) converts numbers; read a string^ with %s.parse(s)"
+                         : "numeric conversion requires a number",
+                     builtin_name(k), builtin_name(k));
             }
             if (expected && expected != t) {
                 fail(e->loc, "conversion result is '%s', expected '%s'", type_name(t),
@@ -1505,6 +1509,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     if (target->kind == E_NAME && !strcmp(target->text, "string^")) {
         return text_cast(c, e, destination);
+    }
+    if (target->kind == E_MEMBER && !strcmp(target->text, "parse") && target->a->kind == E_NAME &&
+        numeric_kind(target->a->text) >= 0) {
+        return number_parse(c, e, destination);
     }
     if (target->kind == E_MEMBER && !strcmp(target->text, "append") && e->args.n == 1 &&
         ((Expr *)e->args.v[0])->kind == E_INTERP) {

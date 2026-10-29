@@ -1180,6 +1180,10 @@ static Expr *primary(Parser *p)
     Expr *e = NULL;
     p->text_cast |= t->kind == TOK_WORD &&
                     (!strcmp(t->text, "char^") || !strcmp(t->text, "string^")) && is(p, "(");
+    // T.parse(s) for a number type T answers with std.text's errors.
+    p->text_cast |= t->kind == TOK_WORD && numeric_kind(t->text) >= 0 && is(p, ".") &&
+                    p->at + 1 < p->tokens.n &&
+                    !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "parse");
     if (t->kind == TOK_WORD && (!strcmp(t->text, "externC^") || !strcmp(t->text, "externLLVM^"))) {
         fail(t->loc, "%s declarations are only allowed at the top level", t->text);
     }

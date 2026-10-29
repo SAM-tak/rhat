@@ -532,22 +532,30 @@ print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 
 ## 文字列から数値への変換
 
+すべての数値型が、型の側のメソッド `T.parse(s)` を持ちます。
+
 ```rhat
-let^ t = import^ std.text
 var^ disc:i64^ = 3
 if^ (...).len > 0 {
-    let^ parsed = t.parse_i64(...[0])
+    let^ parsed = i64^.parse(...[0])
     if^ parsed fits^ i64^ { disc := parsed else^: print^("usage: hanoi [DISCS]") return^ }
 }
 print^(disc)
 ```
 
-`std.text` の `parse_i64`・`parse_i32`・`parse_f64`・`parse_f32` は文字列全体を読み、
-`T | Error.Invalid | Error.OutOfRange` を返します。前後の空白は認めません。
+`T.parse(s)` は文字列全体を読み、`T | std.text.Error.Invalid | std.text.Error.OutOfRange` を返します。
+前後の空白は認めません。`import^` は要らず、エラー型のために `std.text` を見えない名前で読み込みます。
+`try^`・`catch^`・`??` がそのまま使えます（`try^ i32^.parse(s)`）。
 
-- 整数: 省略可能な `+` / `-` と十進の数字だけを R^ で読みます。型の範囲を超えると `OutOfRange` です。
-- 浮動小数点: ランタイムがNUL終端のコピーを作り、C の `strtod` / `strtof` で読みます（十進・十六進・`inf`・`nan`）。
-  f32^ は `strtof` で直接丸めます。絶対値が型の最大値を超えると `OutOfRange`、アンダーフローは0側に丸めた値です。
+- 整数（`u8^` から `i128^` まで）: 省略可能な `+` / `-` と十進の数字だけを読みます。数字以外が混じれば `Invalid`、
+  型の範囲を超えれば `OutOfRange` です。符号なしの型では `-0` だけが通ります。
+- 浮動小数点（`f32^`・`f64^`）: ランタイムがNUL終端のコピーを作り、C の `strtod` / `strtof` で読みます
+  （十進・十六進・`inf`・`nan`）。`f32^` は `strtof` で直接丸めます。絶対値が型の最大値を超えると `OutOfRange`、
+  アンダーフローは0側に丸めた値です。
+- `f16^`・`f8^` は `f64^` として読んでから型に丸めます。丸めた結果が最大有限値を超える値（`f16^` は 65520 以上、
+  `f8^` は 464 以上）は `OutOfRange` です。
+- `i32^("123")` のように、型名の括弧で文字列を変換することはできません（コンパイルエラー）。
+  括弧付きの型名は数値の変換で、文字列を読むのは `parse` です。
 
 ## 検証
 

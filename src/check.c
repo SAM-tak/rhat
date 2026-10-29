@@ -145,6 +145,17 @@ bool error_messages(Program *p, Expr *target, int arguments, Type *base)
            base->kind == T_UNION && only_errors(base);
 }
 
+Type *parse_type(Program *p, int kind, Loc loc)
+{
+    Def *invalid = lookup_def(p, "std.text.Error.Invalid");
+    Def *range = lookup_def(p, "std.text.Error.OutOfRange");
+    if (!invalid || !range) {
+        fail(loc, "internal: parse needs std.text");
+    }
+    return type_union(p, type_union(p, type_builtin(p, kind), invalid->type, loc), range->type,
+                      loc);
+}
+
 Type *text_cast_type(Program *p, Loc loc)
 {
     Def *invalid = lookup_def(p, "std.text.Error.Invalid");
@@ -664,6 +675,14 @@ static Type *infer_call(Infer *c, Expr *e)
     List actual = {0}, candidates = {0};
     if (target->kind == E_FUNCTION) {
         f = target->function;
+    }
+    else if (target->kind == E_MEMBER && !strcmp(target->text, "parse") &&
+             target->a->kind == E_NAME && numeric_kind(target->a->text) >= 0) {
+        for (int j = 0; j < e->args.n; j++) {
+            infer_expr(c, e->args.v[j], NULL);
+        }
+        return c->terminated ? type_builtin(c->p, T_NEVER)
+                             : parse_type(c->p, numeric_kind(target->a->text), e->loc);
     }
     else if (target->kind == E_NAME &&
              (!strcmp(target->text, "char^") || !strcmp(target->text, "string^"))) {

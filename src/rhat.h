@@ -322,6 +322,8 @@ Type *type_wrap(Program *p, int kind, Type *elem, int count);
 char *type_name(Type *t);
 const char *builtin_name(int kind);
 bool kind_integer(int kind);
+// The number type named name, such as i32^ or f64^, or -1.
+int numeric_kind(const char *name);
 bool kind_unsigned(int kind);
 bool kind_float(int kind);
 int numeric_bits(int kind);

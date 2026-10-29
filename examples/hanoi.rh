@@ -1,4 +1,3 @@
-import^std.text
 print^f^n, src, dst, aux {
     if^n <= 0: 0 el^:this^(n - 1, src, aux, dst) + 1 + this^(n - 1, aux, dst, src);
-}(if^....len > 0: try^std.text.parse_i32(...[0]) el^: 28;, 1, 3, 2)
+}(if^....len > 0: try^i32^.parse(...[0]) el^: 28;, 1, 3, 2)

@@ -52,6 +52,75 @@ Value range_contains(Context *c, Value r, Value i, Loc loc)
     return operate(c, "bitand^", operate(c, "<=", start, i, loc), below, loc);
 }
 
+// Build std.text.Error variant with message, a literal, as union t into slot dst.
+static void construct_error(Context *c, const char *variant, const char *message, Type *t, int dst,
+                            Loc loc)
+{
+    Expr text = {.kind = E_STRING, .loc = loc, .text = (char *)message};
+    text.length = strlen(message);
+    Expr error = {.kind = E_RECORD, .loc = loc, .text = (char *)variant};
+    add(&error.names, "message");
+    add(&error.args, &text);
+    construct(c, &error, t, dst);
+}
+
+Value number_parse(Context *c, Expr *e, int destination)
+{
+    Program *p = c->p;
+    int k = numeric_kind(e->a->a->text);
+    Type *number = type_builtin(p, k), *t = parse_type(p, k, e->loc);
+    if (e->args.n != 1) {
+        fail(e->loc, "%s.parse takes one string^", builtin_name(k));
+    }
+    Value text = expression(c, e->args.v[0], type_builtin(p, T_STRING));
+    if (dead(text)) {
+        return text;
+    }
+    if (text.type->kind != T_STRING) {
+        fail(e->loc, "%s.parse reads a string^, found '%s'", builtin_name(k), type_name(text.type));
+    }
+    // An f8 or f16 is read as an f64 and then rounded to the type.
+    bool narrow = k == T_F8 || k == T_F16;
+    Type *read = narrow ? type_builtin(p, T_F64) : number;
+    Value result = value(c, read);
+    Value address = {.id = slot(c, type_wrap(p, T_REF, read, 0), false)};
+    Instr *i = emit(c, I_ADDR, e->loc);
+    i->dst = address.id;
+    i->a = result.id;
+    i->type = ((Slot *)c->in->slots.v[address.id])->type;
+    int form = kind_unsigned(k) ? 1 : kind_float(k) ? 2 : 0;
+    Value args[3] = {text, address,
+                     constant(c, T_I64, fmt("%d", numeric_bits(k) | form << 8), e->loc)};
+    Value status = helper(c, "rh_text_parse", args, 3, T_I64, e->loc);
+    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
+    int good = ++c->in->labels, bad = ++c->in->labels, invalid = ++c->in->labels;
+    int range = ++c->in->labels, done = ++c->in->labels;
+    nil_branch(c, operate(c, "=", status, constant(c, T_I64, "0", e->loc), e->loc), good, bad,
+               e->loc);
+    nil_label(c, good, e->loc);
+    Value parsed = result;
+    if (narrow) {
+        parsed = value(c, number);
+        i = emit(c, I_CONVERT, e->loc);
+        i->dst = parsed.id;
+        i->a = result.id;
+        i->type = number;
+    }
+    convert_value(c, parsed, t, out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, bad, e->loc);
+    nil_branch(c, operate(c, "=", status, constant(c, T_I64, "1", e->loc), e->loc), invalid, range,
+               e->loc);
+    nil_label(c, invalid, e->loc);
+    construct_error(c, "std.text.Error.Invalid", "not a number", t, out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, range, e->loc);
+    construct_error(c, "std.text.Error.OutOfRange", "number out of range", t, out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, done, e->loc);
+    return out;
+}
+
 // char^(x): the one character of string^ x, or integer x as a scalar
 // value, else std.text.Error.Invalid.
 Value char_cast(Context *c, Expr *e, int destination)
@@ -95,15 +164,9 @@ Value char_cast(Context *c, Expr *e, int destination)
     convert_value(c, scalar, t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, bad, e->loc);
-    Expr message = {.kind = E_STRING,
-                    .loc = e->loc,
-                    .text = text ? "not exactly one Unicode scalar value"
-                                 : "not a Unicode scalar value"};
-    message.length = strlen(message.text);
-    Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
-    add(&invalid.names, "message");
-    add(&invalid.args, &message);
-    construct(c, &invalid, t, out.id);
+    construct_error(c, "std.text.Error.Invalid",
+                    text ? "not exactly one Unicode scalar value" : "not a Unicode scalar value", t,
+                    out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, done, e->loc);
     return out;
@@ -154,12 +217,7 @@ Value text_cast(Context *c, Expr *e, int destination)
     convert_value(c, view, t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, bad, e->loc);
-    Expr message = {.kind = E_STRING, .loc = e->loc, .text = "not valid UTF-8"};
-    message.length = strlen(message.text);
-    Expr invalid = {.kind = E_RECORD, .loc = e->loc, .text = "std.text.Error.Invalid"};
-    add(&invalid.names, "message");
-    add(&invalid.args, &message);
-    construct(c, &invalid, t, out.id);
+    construct_error(c, "std.text.Error.Invalid", "not valid UTF-8", t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, done, e->loc);
     return out;

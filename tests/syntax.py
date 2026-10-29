@@ -423,6 +423,27 @@ let^ xs=[1,2,3]
 print^($"{xs[1 :: 3].len} {xs[2]}")
 ''', 'hello R^, n = 42, pi = 3.14, hex 002a, braces {} and }\nx=43 true あ 3.142e+00|\t.\n[   42]big42.0 2a\nab42cd 42\n18446744073709551615 18446744073709551615 2 7.000000e+00\n2 3\n')
 
+    positive('number_parse_types', '''
+import^ std.text
+let^ c=u8^.parse("255") let^ d=u8^.parse("256") let^ e=u8^.parse("-1") let^ z=u8^.parse("-0")
+print^(c fits^ u8^,d fits^ std.text.Error.OutOfRange,e fits^ std.text.Error.OutOfRange,z fits^ u8^)
+let^ big=i128^.parse("-170141183460469231731687303715884105728")
+let^ ubig=u128^.parse("340282366920938463463374607431768211455")
+let^ over=u128^.parse("340282366920938463463374607431768211456")
+let^ huge=i128^.parse("99999999999999999999999999999999999999999999")
+print^(big fits^ i128^,ubig fits^ u128^,over fits^ std.text.Error.OutOfRange,huge fits^ std.text.Error.OutOfRange)
+if^ big fits^ i128^ { print^(big) }
+if^ ubig fits^ u128^ { print^(ubig) }
+let^ h=f16^.parse("65519") let^ h2=f16^.parse("65520") let^ q=f8^.parse("448") let^ q2=f8^.parse("464")
+print^(h fits^ f16^,h2 fits^ std.text.Error.OutOfRange,q fits^ f8^,q2 fits^ std.text.Error.OutOfRange)
+if^ h fits^ f16^ { print^(h) }
+let^ wrong=i16^.parse("1e3")
+print^(wrong fits^ std.text.Error.Invalid,(i16^.parse("12") catch^ 0),(i16^.parse("zz") catch^ -1))
+let^ ok=f64^.parse("0x1p4") let^ nan=f64^.parse("nan")
+if^ ok fits^ f64^ { print^(ok) }
+print^(nan fits^ f64^)
+''', 'true true true true\ntrue true true true\n-170141183460469231731687303715884105728\n340282366920938463463374607431768211455\ntrue true true true\n65504.0\ntrue 12 -1\n16.0\ntrue\n')
+
     positive('loops', '''
 var^ total=0
 for^ var^ i=0 while^ i<5 next^ i+=1 { if^ i=2 { next^ } total+=i }
@@ -661,6 +682,9 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('parallel_type_collision', 'def^ P {} let^ P,x=1,2', 'conflicts with def^'),
         ('parallel_import_collision', 'import^ std.random let^ std,x=1,2', 'conflicts with import'),
         ('parallel_count', 'var^ x,y=1,2,3', 'does not match'),
+        ('number_cast_string', 'let^ n=i32^("123")', 'read a string^ with i32^.parse(s)'),
+        ('number_parse_arity', 'let^ n=i32^.parse()', 'takes one string^'),
+        ('number_parse_argument', 'let^ n=i32^.parse(5)', 'reads a string^'),
         ('interp_unterminated', 'print^($"abc)', 'unterminated interpolated string'),
         ('interp_single_quote', "print^($'x')", 'does not interpolate'),
         ('interp_hole_type', 'def^ P {}\nlet^ p=P{}\nprint^($"{p}")', 'an interpolation hole takes'),
