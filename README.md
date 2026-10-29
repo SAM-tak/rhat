@@ -208,6 +208,5 @@ C 標準ライブラリの入出力内部まで動的確保を禁止する frees
 シグネチャヘルプ・文書シンボル・semantic tokens を利用できます。
 未保存の編集と import 依存も検査します。[設定・実装範囲](docs/lsp.md)。
 
-
 関数・手続きの型によるオーバーロード、交差型 `&`、`op^` による演算子定義に対応します。
 仕様は [関数・手続きの交差型と演算子定義](docs/overloads.md)、例は [examples/overloads.rh](examples/overloads.rh) を参照してください。
