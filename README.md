@@ -1,6 +1,6 @@
 # The Programming Language R^
 
-![R^ logo](./media/rhat-logo.svg)
+![R^ logo](./media/rhat-logo.png)
 
 R^ `(rhat)` は L^ の構文を基にした、GC を使わないシステム言語の実装です。
 
