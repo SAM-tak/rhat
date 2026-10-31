@@ -97,6 +97,20 @@ static char *executable(const char *name)
 #endif
 }
 
+// The digest of a published cache file. On Windows a parallel build replacing
+// the same content-addressed file holds it unreadable for a moment.
+static char *digest_published(const char *path)
+{
+    char *hash = digest_file(path);
+#if defined(_WIN32)
+    for (int attempt = 0; !hash && attempt < 50; attempt++) {
+        Sleep(10);
+        hash = digest_file(path);
+    }
+#endif
+    return hash;
+}
+
 static void publish(const char *tmp, const char *path)
 {
     // Content-addressed inputs are immutable. Leave an identical published file
@@ -185,7 +199,7 @@ static char *compile(const char *input, const char *identity, const char *name, 
         publish(preprocessed, expanded);
         input = expanded;
     }
-    char *source_hash = digest_file(input);
+    char *source_hash = digest_published(input);
     if (!source_hash) {
         fail((Loc){input, 1, 1}, "cannot read compilation input");
     }
