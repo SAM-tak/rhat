@@ -134,7 +134,7 @@ print^(value.a, value.b, value.c)
 - **列挙体**: `enum^ Mode : u8^ { Idle, Walk, Dash = 10 }`。C 互換の整数で、`=` / `!=` で比べ、`print^` はメンバ名を表示します。
   [列挙体](docs/enums.md)。
 - **パターンマッチ**: `for^ value { when^ 1,2: ... when^ 3 to^ 5: ... other^: ... }` と式形。
-  `other^` を省くマッチは、`bool^`・`enum^`・合併型のすべての値を腕で尽くさなければなりません（[網羅](docs/syntax.md#パターンマッチの網羅)）。
+  `other^` を省く式形のマッチは、`bool^`・`enum^`・合併型のすべての値を腕で尽くさなければなりません。文形は網羅を検査しません（[網羅](docs/syntax.md#パターンマッチの網羅)）。
 - **エラー**: `errordef^` のエラー値（付随フィールド・生成位置・`message()`）、`try^` による伝播、
   遅延代替の `catch^`、型付き・既定の `catch^` 節。[エラー値](docs/errors.md)。
 - **複数の返り値**: `-> (A, B)`、分解束縛 `let^ a, b = f()`。エラーや `nil^` との合併も使えます。[複数の返り値](docs/results.md)。
