@@ -35,6 +35,10 @@ if(MSVC)
 else()
   target_compile_options(rhat PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_definitions(rhat PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+  if(APPLE)
+    # _POSIX_C_SOURCE alone hides _SC_NPROCESSORS_ONLN on macOS.
+    target_compile_definitions(rhat PRIVATE _DARWIN_C_SOURCE)
+  endif()
 endif()
 # The editor runs a copy of rhat (rhat lsp) so that building does not fight a
 # running language server for the executable; a locked copy only warns.
