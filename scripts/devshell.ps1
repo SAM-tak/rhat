@@ -35,7 +35,9 @@ param(
 
     if (-not $Clang) { $Clang = $env:RHAT_CLANG }
     if (-not $Clang) {
-        $clangCommand = Get-Command clang -CommandType Application -ErrorAction SilentlyContinue
+        # A machine can have several (a standalone LLVM and Visual Studio's); the first on PATH wins.
+        $clangCommand = Get-Command clang -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
         if ($clangCommand) { $Clang = $clangCommand.Source }
     }
     if (-not $Clang) {

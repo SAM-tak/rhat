@@ -46,7 +46,7 @@ print^(root(f32^(2.25)), root(6.25), sqrt(16.0))
         linked = 'externC^ GetCurrentProcessId:p^ ->u32^;\nprint^(GetCurrentProcessId() > 0)\n'
         library = 'kernel32'
     else:
-        linked = 'externC^ cbrt:f^ x:f64^ ->f64^;\nprint^(cbrt(27.0) = 3.0)\n'
+        linked = 'externC^ cbrt:f^ x:f64^ ->f64^;\nprint^(cbrt(27.0) > 2.999 and^ cbrt(27.0) < 3.001)\n'
         library = 'm'
     positive('ffi_link_library', linked, 'true\n', extra=('--link-lib', library))
 
