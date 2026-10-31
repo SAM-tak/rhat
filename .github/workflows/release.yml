@@ -6,8 +6,9 @@
 # Clang on the machine.
 #
 # Windows x86-64 is the platform R^ is verified on and is released as such.
-# macOS arm64 is built too, but a failure there does not stop the release; a
-# build that does not pass its suite simply has no archive to attach.
+# Linux x86-64 and macOS arm64 are built too, but a failure there does not
+# stop the release; a build that does not pass its suite simply has no archive
+# to attach.
 name: release
 
 on:
@@ -87,8 +88,42 @@ jobs:
           path: rhat-macos-arm64.tar.gz
           if-no-files-found: error
 
+  build-linux:
+    name: linux-x64
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Clang and Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang libclang-rt-dev
+
+      - name: Build and test
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      - name: Install
+        run: cmake --install build --prefix dist/rhat
+
+      - name: Smoke test the installed tree
+        run: |
+          echo 'print^("installed")' > hello.rh
+          ./dist/rhat/bin/rhat run hello.rh
+
+      - name: Pack
+        run: tar -C dist/rhat -czf rhat-linux-x64.tar.gz .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries-linux-x64
+          path: rhat-linux-x64.tar.gz
+          if-no-files-found: error
+
   publish:
-    needs: [build, build-macos]
+    needs: [build, build-macos, build-linux]
     runs-on: ubuntu-latest
     # A tag is what makes this a release; workflow_dispatch only proves the
     # build still works.
