@@ -5,8 +5,9 @@
 # Clang is not part of it: rhat compiles the LLVM IR it generates with the
 # Clang on the machine.
 #
-# Windows x86-64 is the only platform R^ is verified on, so it is the only
-# one released.
+# Windows x86-64 is the platform R^ is verified on and is released as such.
+# macOS arm64 is built too, but a failure there does not stop the release; a
+# build that does not pass its suite simply has no archive to attach.
 name: release
 
 on:
@@ -55,8 +56,39 @@ jobs:
           path: rhat-win-x64.zip
           if-no-files-found: error
 
+  build-macos:
+    name: macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and test
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build -j 4
+          ctest --test-dir build --output-on-failure
+
+      - name: Install
+        run: cmake --install build --prefix dist/rhat
+
+      - name: Smoke test the installed tree
+        run: |
+          echo 'print^("installed")' > hello.rh
+          ./dist/rhat/bin/rhat run hello.rh
+
+      - name: Pack
+        run: tar -C dist/rhat -czf rhat-macos-arm64.tar.gz .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries-macos-arm64
+          path: rhat-macos-arm64.tar.gz
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, build-macos]
     runs-on: ubuntu-latest
     # A tag is what makes this a release; workflow_dispatch only proves the
     # build still works.

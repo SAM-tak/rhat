@@ -1,9 +1,9 @@
 # Builds the compiler and runs the whole suite.
 #
 # Windows x86-64 is the platform R^ is verified on, so it is the one that has
-# to pass. Linux has never been built or run until now: that job reports what
-# breaks without failing the workflow, and is meant to be promoted once it is
-# green.
+# to pass. Linux and macOS (Apple silicon only) are newer: their jobs report
+# what breaks without failing the workflow, and are meant to be promoted once
+# they are green.
 name: ci
 
 on:
@@ -53,6 +53,26 @@ jobs:
 
       - name: Build
         run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    name: macos / apple clang, arm64 (experimental)
+    # macos-latest is Apple silicon; Intel Macs are not a target.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    # See the header: not yet a gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      # Clang is Apple's own; nothing to install.
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build -j 4
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
