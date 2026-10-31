@@ -185,10 +185,12 @@ let^ read=p^ x:A|B|C {
 read(A.new()) read(C.new())
 let^ pick=f^ x:A|B|nil^ ->i32^ {for^ x: when^ fits^ A: 1 when^ fits^ B: 2 when^ fits^ nil^: 3;}
 print^(pick(A.new()),pick(B.new()),pick(nil^))
+let^ named=f^ x:A|B|nil^ ->i32^ {for^ x: when^ fits^ A: 1 when^ fits^ B: 2 when^ nil^: 3;}
+print^(named(A.new()),named(B.new()),named(nil^))
 let^ yes=f^ b:bool^ ->i32^ {for^ b: when^ true^: 1 when^ false^: 0;}
 let^ some=p^ n:i32^ {for^ n {when^ 1: print^("one")}}
 print^(yes(true^),yes(false^)) some(1) some(2)
-''', '7\nother\n1 2 3\n1 0\none\n')
+''', '7\nother\n1 2 3\n1 2 3\n1 0\none\n')
 
     positive('fits_loop', '''
 var^ x:i32^|nil^=3
@@ -281,8 +283,7 @@ test(1) test(nil^)
         ('fits_method_invalidates','def^ H {self^{item:A|B=A.new()} clear=p^ self^ {self^.item:=B.new()}} var^ h=H.new() if^ h.item fits^ A {h.clear() print^(h.item.a)}','field access requires'),
         ('fits_push_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:grow^ H[]=[H.new()] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.push(H{item=B.new()}) print^(ref.item.a)}','field access requires'),
         ('fits_append_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:grow^ H[]=[H.new()] var^ b:H[1]=[H{item=B.new()}] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.append(b[:: 1]) print^(ref.item.a)}','field access requires'),
-        ('fits_match_statement_missing','let^ read=p^ x:A|B {for^ x {when^ fits^ A: print^(it^.a)}}',"requires other^: or arms covering B of 'A | B'"),
-        ('fits_match_statement_nil','let^ read=p^ x:A|nil^ {for^ x {when^ fits^ A: print^(it^.a)}}',"covering nil^"),
+        ('fits_match_nil_value_missing','let^ read=f^ x:A|B|nil^ ->i32^ {for^ x: when^ fits^ A: 1 when^ nil^: 3;}',"covering B"),
         ('fits_match_expression_missing','let^ read=f^ x:A|B ->i32^ {for^ x: when^ fits^ A: 1;}',"value match expression requires other^: or arms covering B"),
         ('fits_match_bool_missing','let^ read=f^ x:bool^ ->i32^ {for^ x: when^ true^: 1;}',"covering false^"),
         ('fits_match_original_invalidates','let^ change=p^ x:ref^ (A|B) ->bool^ {*x:=B.new() return^ false^} var^ x:A|B=A.new() for^ x {when^ fits^ A: x:=B.new() print^(x.a) other^: print^(0)}','field access requires'),

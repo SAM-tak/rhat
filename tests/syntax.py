@@ -635,6 +635,28 @@ enum^ Signed : i16^ { Down = -2, Up = 0x10 }
 print^(Small.A, Small.B, Signed.Down, Signed.Up, i32^(Signed.Down), i32^(Small.B))
 ''', 'A B Down Up -2 255\n')
 
+    positive('enum_statement_open', '''
+enum^ Mode { Idle, Walk, Dash }
+def^ A {}
+def^ B {}
+let^ show = p^ m:Mode { for^ m { when^ Mode.Idle: print^("idle") } }
+let^ kind = p^ x:A|B|nil^ { for^ x { when^ fits^ A: print^("A") } }
+show(Mode.Idle) show(Mode.Dash) kind(A{}) kind(B{}) kind(nil^)
+''', 'idle\nA\n')
+
+    positive('union_equality', '''
+enum^ Mode { Idle, Walk }
+let^ x:bool^|nil^ = true^
+let^ y:i32^|nil^ = 5
+var^ n:i32^|nil^ = nil^
+let^ m:Mode|nil^ = Mode.Walk
+print^(x = true^, x != true^, true^ = x, x = false^, y = 5, y != 5)
+print^(n = 5, n != 5, n = nil^, m = Mode.Walk, m = Mode.Idle)
+let^ name = f^ v:bool^|nil^ -> i32^ { for^ v: when^ true^: 1 when^ false^: 2 when^ nil^: 3; }
+let^ walk = f^ v:Mode|nil^ -> i32^ { for^ v: when^ Mode.Idle: 1 when^ Mode.Walk: 2 when^ nil^: 3; }
+print^(name(true^), name(false^), name(nil^), walk(Mode.Walk), walk(nil^))
+''', 'true false true false true false\nfalse true true true false\n1 2 3 2 3\n')
+
     positive('enum_other_arm', '''
 enum^ Mode { Idle, Walk, Dash }
 let^ fast = f^ m:Mode -> bool^ { for^ m: when^ Mode.Dash: true^ other^: false^; }
@@ -643,8 +665,9 @@ print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
 ''', 'true false\nwalk\nelse\n')
 
     cases = [
-        ('enum_statement_missing', 'enum^ Mode { Idle, Walk }\nlet^ show = p^ m:Mode { for^ m { when^ Mode.Idle: print^(1) } }',
-         "match requires other^: or arms covering Mode.Walk of 'Mode'"),
+        ('union_equality_other_type', 'let^ z:i64^|nil^ = 5' + '\n' + 'print^(z = 5)', 'binary operands have different types'),
+        ('union_equality_missing', 'let^ f = f^ v:bool^|nil^ -> i32^ { for^ v: when^ true^: 1 when^ nil^: 3; }',
+         "value match expression requires other^: or arms covering bool^ of 'bool^ | nil^'"),
         ('enum_expression_missing', 'enum^ Mode { Idle, Walk }\nlet^ w = f^ m:Mode -> i32^ { for^ m: when^ Mode.Walk: 1; }',
          "value match expression requires other^: or arms covering Mode.Idle"),
         ('enum_duplicate_member', 'enum^ Mode { Idle, Idle }', "repeats the member 'Idle'"),

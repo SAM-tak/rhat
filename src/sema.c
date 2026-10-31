@@ -761,6 +761,41 @@ void nil_jump(Context *c, int label, Loc loc)
     i->label = label;
 }
 
+// u = v and u != v for a union u and a value v of one of its alternatives: u
+// holds that alternative and the alternative equals v.
+static Value union_equal(Context *c, Expr *e, Value u, Value v)
+{
+    Value out = value(c, type_builtin(c->p, T_BOOL));
+    Value held = value(c, out.type);
+    int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
+    Instr *i = emit(c, I_CASE_IS, e->loc);
+    i->dst = held.id;
+    i->a = u.id;
+    i->type = u.type;
+    i->label = union_alternative(u.type, v.type);
+    nil_branch(c, held, yes, no, e->loc);
+    nil_label(c, yes, e->loc);
+    Value payload = case_value(c, u, v.type, e->loc);
+    Expr left = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &payload};
+    Expr right = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &v};
+    Expr equal = {.kind = E_BIN, .loc = e->loc, .text = "=", .a = &left, .b = &right};
+    copy_to(c, out, expression(c, &equal, NULL), e->loc, true);
+    nil_jump(c, end, e->loc);
+    nil_label(c, no, e->loc);
+    i = emit(c, I_CONST, e->loc);
+    i->dst = out.id;
+    i->type = out.type;
+    i->text = "0";
+    nil_jump(c, end, e->loc);
+    nil_label(c, end, e->loc);
+    if (!strcmp(e->text, "!=")) {
+        Expr result = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &out};
+        Expr negate = {.kind = E_UNARY, .loc = e->loc, .text = "!", .a = &result};
+        return expression(c, &negate, NULL);
+    }
+    return out;
+}
+
 Value nil_literal(Context *c, Loc loc)
 {
     Expr e = {.kind = E_NAME, .loc = loc, .text = "nil^"};
@@ -3044,9 +3079,10 @@ Value expression(Context *c, Expr *e, Type *expected)
         Value b = comparison && nil_name(e->a) && e->b->kind == E_NAME
                       ? place_expression(c, e->b)
                       : expression(c, e->b,
-                                   operand_hint       ? operand_hint
-                                   : shift || nil_rhs ? NULL
-                                                      : a.type);
+                                   operand_hint ? operand_hint
+                                   : shift || nil_rhs || (comparison && a.type->kind == T_UNION)
+                                       ? NULL
+                                       : a.type);
         if (dead(b)) {
             return b;
         }
@@ -3091,6 +3127,15 @@ Value expression(Context *c, Expr *e, Type *expected)
             i->type = test.type;
             i->text = "!";
             return result;
+        }
+        bool equality = !strcmp(e->text, "=") || !strcmp(e->text, "!=");
+        if (equality && a.type->kind == T_UNION && b.type->kind != T_UNION &&
+            union_alternative(a.type, b.type) >= 0) {
+            return union_equal(c, e, a, b);
+        }
+        if (equality && b.type->kind == T_UNION && a.type->kind != T_UNION &&
+            union_alternative(b.type, a.type) >= 0) {
+            return union_equal(c, e, b, a);
         }
         if (!shift && a.type != b.type) {
             fail(e->loc, "binary operands have different types");

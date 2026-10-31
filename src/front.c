@@ -1804,7 +1804,6 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
     }
     p->scope_depth++;
     List *arm = &scope->body;
-    Stmt *first = NULL;
     while (take(p, "when^")) {
         Stmt *s = mem(sizeof(*s));
         s->kind = S_IF;
@@ -1814,14 +1813,10 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
         match_body(p, &s->body);
         add(arm, s);
         arm = &s->other;
-        first = first ? first : s;
     }
     if (take(p, "other^") || take(p, "el^") || take(p, "else^")) {
         need(p, ":");
         match_body(p, arm);
-    }
-    else if (first) {
-        first->match = named(name, subject->loc);
     }
     need(p, "}");
     p->scope_depth--;

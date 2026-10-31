@@ -182,8 +182,7 @@ struct Stmt {
     bool optional;   // Nil-guarded assignment evaluates only present pairs.
     bool flow_alias; // A compiler-generated match snapshot shares type facts.
     bool internal;   // A compiler-generated write to a read-only focus.
-    Expr *match; // The first arm of a match with no other^: its subject, which the arms must cover.
-    int depth;   // A jump counts enclosing loops, starting at one.
+    int depth;       // A jump counts enclosing loops, starting at one.
 };
 
 typedef struct {

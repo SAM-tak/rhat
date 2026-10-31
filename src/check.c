@@ -1076,6 +1076,10 @@ static void cover_arm(Infer *c, Expr *e, Cover *cover)
     else if (e->kind == E_BIN && !strcmp(e->text, "=") && cover_key(e->b)) {
         add(&cover->values, cover_key(e->b));
     }
+    else if (e->kind == E_BIN && !strcmp(e->text, "=") && e->b->kind == E_NAME &&
+             !strcmp(e->b->text, "nil^") && cover->rest) {
+        cover->rest = without_nil(c->p, cover->rest, e->loc);
+    }
 }
 
 static bool covered(Cover *cover, const char *key)
@@ -1088,10 +1092,24 @@ static bool covered(Cover *cover, const char *key)
     return false;
 }
 
-// Fails unless the arms of a match without other^ cover its subject: every
-// bool^ value, enum member or alternative of a union. A statement match over
-// any other type may leave values unmatched.
-static void match_cover(Infer *c, Expr *subject, List *arms, bool statement, Loc loc)
+// Whether the values the arms name are every value of t: bool^ or an enum.
+static bool values_covered(Cover *cover, Type *t)
+{
+    if (t->kind == T_BOOL) {
+        return covered(cover, "true^") && covered(cover, "false^");
+    }
+    for (int j = 0; t->kind == T_ENUM && j < t->def->members.n; j++) {
+        if (!covered(cover, ((EnumMember *)t->def->members.v[j])->value)) {
+            return false;
+        }
+    }
+    return t->kind == T_ENUM;
+}
+
+// Fails unless the arms of a value match without other^ cover its subject:
+// every bool^ value, enum member or alternative of a union. A statement match
+// may leave values unmatched.
+static void match_cover(Infer *c, Expr *subject, List *arms, Loc loc)
 {
     Type *t = infer_expr(c, subject, NULL);
     if (c->terminated || !t) {
@@ -1107,8 +1125,17 @@ static void match_cover(Infer *c, Expr *subject, List *arms, bool statement, Loc
                   : !covered(&cover, "false^") ? "false^"
                                                : NULL;
     }
+    else if (t->kind == T_UNION && cover.rest) {
+        // What no fits^ arm took is covered if its values are all named.
+        Type *rest = cover.rest;
+        int n = rest->kind == T_UNION ? rest->def->alternatives.n : 1;
+        for (int j = 0; j < n && !missing; j++) {
+            Type *alternative = rest->kind == T_UNION ? rest->def->alternatives.v[j] : rest;
+            missing = values_covered(&cover, alternative) ? NULL : type_name(alternative);
+        }
+    }
     else if (t->kind == T_UNION) {
-        missing = cover.rest ? type_name(cover.rest) : NULL;
+        missing = NULL;
     }
     else if (t->kind == T_ENUM) {
         for (int j = 0; j < t->def->members.n && !missing; j++) {
@@ -1117,12 +1144,12 @@ static void match_cover(Infer *c, Expr *subject, List *arms, bool statement, Loc
                 covered(&cover, member->value) ? NULL : fmt("%s.%s", t->def->name, member->name);
         }
     }
-    else if (!statement) {
+    else {
         missing = "every value";
     }
     if (missing) {
-        fail(loc, "%s requires other^: or arms covering %s of '%s'",
-             statement ? "match" : "value match expression", missing, type_name(t));
+        fail(loc, "value match expression requires other^: or arms covering %s of '%s'", missing,
+             type_name(t));
     }
 }
 
@@ -1585,7 +1612,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             for (Expr *arm = e; arm && arm->kind == E_IF; arm = arm->c) {
                 add(&arms, arm->a);
             }
-            match_cover(c, e->match, &arms, false, e->loc);
+            match_cover(c, e->match, &arms, e->loc);
         }
         infer_expr(c, e->a, type_builtin(c->p, T_BOOL));
         if (c->terminated) {
@@ -1638,11 +1665,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             refine_condition(c->p, &c->vars, &c->flow, e->a, !strcmp(e->text, "and^"));
         }
         Type *hint = operator_hint(c->p, e->text, a, false, e->b);
+        bool against_union = comparison && a && a->kind == T_UNION;
         Type *b = right_type ? right_type
                              : infer_expr(c, e->b,
-                                          hint                            ? hint
-                                          : !strcmp(e->text, "bitshift^") ? NULL
-                                                                          : a);
+                                          hint                                             ? hint
+                                          : !strcmp(e->text, "bitshift^") || against_union ? NULL
+                                                                                           : a);
         if (b && b->kind == T_NEVER && !logic) {
             return b;
         }
@@ -1840,13 +1868,6 @@ static void infer_statements(Infer *c, List *body, bool scoped)
             c->loops.n--;
         }
         else if (s->kind == S_IF) {
-            if (s->match) {
-                List arms = {0};
-                for (Stmt *arm = s; arm; arm = arm->other.n == 1 ? arm->other.v[0] : NULL) {
-                    add(&arms, arm->a);
-                }
-                match_cover(c, s->match, &arms, true, s->loc);
-            }
             infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
             if (c->terminated) {
                 break;
