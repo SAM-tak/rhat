@@ -1,0 +1,79 @@
+# Builds the compiler, runs the suite, and attaches the result to a release.
+#
+# The archive is the install tree (bin/rhat, share/rhat/{runtime,stdlib,
+# licenses}), which is what rhat finds its runtime and standard library in.
+# Clang is not part of it: rhat compiles the LLVM IR it generates with the
+# Clang on the machine.
+#
+# Windows x86-64 is the only platform R^ is verified on, so it is the only
+# one released.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  # Buildable without a tag, to check the workflow itself. Nothing is
+  # published then: the release step is what a tag adds.
+  workflow_dispatch:
+
+permissions:
+  contents: write # gh release create, on the tag that started this
+
+jobs:
+  build:
+    name: win-x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      # Only what passed goes out. A release built from a tree that fails
+      # its own suite is worse than no release.
+      - name: Build and test
+        shell: pwsh
+        run: ./scripts/build.ps1 -Release -Test
+
+      - name: Install
+        shell: pwsh
+        run: cmake --install build --config Release --prefix dist/rhat
+
+      - name: Smoke test the installed tree
+        shell: pwsh
+        # The MSVC environment and Clang come from the same script as the build.
+        run: |
+          . ./scripts/devshell.ps1
+          Set-Content -Path hello.rh -Value 'print^("installed")'
+          ./dist/rhat/bin/rhat.exe run hello.rh
+
+      - name: Pack
+        shell: pwsh
+        run: Compress-Archive -Path dist/rhat/* -DestinationPath rhat-win-x64.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries-win-x64
+          path: rhat-win-x64.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # A tag is what makes this a release; workflow_dispatch only proves the
+    # build still works.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the release
+        run: |
+          ls -l dist
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" --generate-notes --repo "$GITHUB_REPOSITORY" dist/*
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

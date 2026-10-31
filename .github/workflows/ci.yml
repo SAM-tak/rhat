@@ -1,0 +1,58 @@
+# Builds the compiler and runs the whole suite.
+#
+# Windows x86-64 is the platform R^ is verified on, so it is the one that has
+# to pass. Linux has never been built or run until now: that job reports what
+# breaks without failing the workflow, and is meant to be promoted once it is
+# green.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    # Nothing the build or the suite reads. examples/ and stdlib/ stay: tests
+    # and the compiler load from them.
+    paths-ignore: ['**.md', 'docs/**', 'media/**', 'bench/**', 'LICENSE']
+  pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'media/**', 'bench/**', 'LICENSE']
+
+# A newer push on the same branch supersedes the run before it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: windows / msvc + clang
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      # The same steps as a local build: the MSVC environment, the Clang that
+      # is on the machine, then the whole suite.
+      - name: Build and test
+        shell: pwsh
+        run: ./scripts/build.ps1 -Release -Test
+
+  linux:
+    name: linux / gcc + clang (experimental)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # See the header: not yet a gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      # Generated programs are compiled and linked with Clang against
+      # compiler-rt, which Ubuntu packages separately from the driver.
+      - name: Clang and Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang libclang-rt-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

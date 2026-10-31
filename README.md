@@ -54,6 +54,12 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+### CI とリリース
+
+GitHub Actions が、`main` への push とプルリクエストで全テストを実行します（Windows x86-64 が必須、Linux は試験的で失敗しても全体は失敗になりません）。
+`v*` のタグを push すると、Windows x86-64 版をテストしたうえで、`cmake --install` の結果（`bin/rhat.exe`、`share/rhat/` のランタイム・標準ライブラリ・ライセンス）を
+`rhat-win-x64.zip` にして GitHub のリリースへ添付します。Clang は同梱しないので、利用側に Clang が必要です。
+
 ### コマンド
 
 ```powershell
