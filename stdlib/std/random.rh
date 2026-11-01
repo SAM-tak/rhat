@@ -3,7 +3,7 @@ import^std.sys
 let^math = import^std.math
 
 externC^nextafter:f^x:f64^, toward:f64^ -> f64^;
-externC^rh_random_seed:f^state:ref^ u64^ -> i64^;
+externC^rh_random_seed:f^state:ref^u64^ -> i64^;
 
 public^errordef^Error { InvalidState, InvalidArgument, SeedUnavailable }
 public^def^LoadResult = nil^ | Error.InvalidState
@@ -12,7 +12,7 @@ public^def^RealResult = f64^ | Error.InvalidArgument
 public^def^NewResult = Random | Error.SeedUnavailable
 
 let^seeded = f^seed:i64^ -> u64^{
-    let^mixed = u64^(seed) bitxor^ 11400714819323198485
+    let^mixed = u64^(seed) bitxor^11400714819323198485
     if^ mixed = 0 { return^ 2685821657736338717 }
     return^ mixed
 }
@@ -27,14 +27,14 @@ public^def^Random {
         return^ self^.state * 2685821657736338717
     }
     reseed = p^self^, seed:i64^{ self^.state := seeded(seed) }
-    save = f^self^ -> i64^{ i64^(self^.state) }
+    save = f^self^-> i64^{ i64^(self^.state) }
     load = f^mutable^self^, state:i64^ -> LoadResult {
         if^state = 0 { return^Error.InvalidState{} }
         self^.state := u64^(state)
-        return^ nil^
+        return^nil^
     }
     next = f^mutable^self^ -> f64^ {
-        return^ f64^(self^.raw() bitshift^ -11) / 9007199254740992.0
+        return^f64^(self^.raw() bitshift^ -11) / 9007199254740992.0
     }
     rangeint = f^mutable^self^, lo:i64^, hi:i64^ -> IntResult {
         if^hi < lo { return^ Error.InvalidArgument{} }
