@@ -60,7 +60,7 @@ else^:
 
 ```rhat
 def^ Holder { self^{ item:Point | nil^ = nil^ } }
-var^ holder = Holder{item=Point{x=7}}
+var^ holder = Holder{ item=Point{ x = 7 } }
 if^ holder.item fits^ Point {
     print^(holder.item.x)
 }
@@ -80,7 +80,7 @@ if^ holder.item fits^ Point {
 ```rhat
 for^ let^ result=value {
 when^ fits^ Point:
-    print^(result.x,it^.x)
+    print^(result.x, it^.x)
 when^ fits^ i32^:
     print^(result + 1)
 other^:

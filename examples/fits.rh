@@ -3,11 +3,11 @@ def^Label { self^{ text:string^="" } }
 
 let^show=p^value:Point | Label | nil^{
     if^value fits^ Point {
-        print^(value.x)
+        print^value.x
     elseif^value fits^ Label:
-        print^(value.text)
+        print^value.text
     else^:
-        print^("absent")
+        print^"absent"
     }
 }
 
