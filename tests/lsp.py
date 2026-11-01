@@ -564,6 +564,34 @@ number_result(1)
     assert signature['signatures'][0]['label'] == 'reseed : p^self^:Random, seed:i64^', signature
     print('PASS no-result signatures omit the arrow and remain distinct from nil results',flush=True)
 
+    self_type="""def^ F2 {
+ self^{x:i32^=4}
+ add=f^self^,other:Self^ ->Self^ {F2{x=self^.x+other.x}}
+ copy=f^self^ ->Self^ {*self^}
+}
+var^ value=F2{}
+print^(value.add(value.copy()).x)
+"""
+    client.change(path,self_type,111)
+    assert client.diagnostics(path,111) == []
+    assert request('hover','Self^',text=self_type)['contents']['value'] == 'Self^: F2'
+    definition=request('definition','Self^',text=self_type)
+    assert definition['range']['start'] == at(self_type,'F2 {'), definition
+    assert request('hover','copy=f^',text=self_type)['contents']['value'] == 'copy : f^self^:F2 -> Self^'
+    colored=tokens(self_type)
+    for occurrence,_ in enumerate(re.finditer(r'Self\^',self_type)):
+        position=at(self_type,'Self^',occurrence)
+        assert colored[(position['line'],position['character'])] == (4,1), colored
+    broken_self='def^ Broken {self^{bad:Self^^}}\nlet^ outside:Self^=1\nlet^ good:i32^=42\nprint^(good)\n'
+    client.change(path,broken_self,112)
+    diagnostics=client.diagnostics(path,112)
+    assert len(diagnostics) == 2, diagnostics
+    assert all('outside the enclosing type definition' in d['message'] for d in diagnostics), diagnostics
+    assert request('hover','print^(good)',shift=7,text=broken_self)['contents']['value'] == 'good: i32^'
+    client.change(path,self_type,113)
+    assert client.diagnostics(path,113) == []
+    print('PASS lexical Self types, navigation, coloring and scope recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

@@ -321,7 +321,7 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (!strcmp(s->name, "f128^")) {
         fail(s->loc, "f128^ is pending; binary128 is not implemented");
     }
-    Def *d = lookup_def(p, s->name);
+    Def *d = s->self_type ? s->self_type : lookup_def(p, s->name);
     if (!d) {
         fail(s->loc, "unknown type '%s'", s->name);
     }

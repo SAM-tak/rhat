@@ -581,7 +581,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
         }
         Expr *arg = call->args.v[j];
         Var *target = infer_alias(c, arg);
-        if (target) {
+        if (target && target->type) {
             layout(target->type, arg->loc);
             if (!target->type->refs) {
                 target->version++;
@@ -594,7 +594,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
         }
         // Unknown references may alias a local whose address was passed earlier.
         Var *v = infer_variable(c, arg);
-        if (target || !v || v->type->refs) {
+        if (target || !v || !v->type || v->type->refs) {
             forget_roots(&c->vars, (Roots){0}, true);
             return;
         }

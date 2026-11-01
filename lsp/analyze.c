@@ -385,6 +385,10 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     const char *decl_name = declaration_spelling(p, r);
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
+    if (r->kind == 23 && !r->definition && source &&
+        !strncmp(source->text + loc_offset(source, r->use), "Self^", 5)) {
+        use_name = "Self^";
+    }
     if (r->function && source) {
         const char *at = source->text + loc_offset(source, r->use);
         if (r->function->operator_member && strncmp(at, "op^", 3)) {
@@ -465,7 +469,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddItemToObject(out, "target", decl);
     char *detail = r->function
                        ? signature(p, r->function)
-                       : fmt("%s: %s", short_name(r->name), r->type ? type_name(r->type) : "?");
+                       : fmt("%s: %s", short_name(use_name), r->type ? type_name(r->type) : "?");
     cJSON_AddStringToObject(out, "detail", detail);
     if (callable_type(r->type)) {
         cJSON *signatures = cJSON_AddArrayToObject(out, "callableSignatures");

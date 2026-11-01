@@ -267,7 +267,7 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
         return;
     }
     s->resolved = true;
-    if (s->kind == SPEC_NAME) {
+    if (s->kind == SPEC_NAME && !s->self_type) {
         s->name = resolve_type_name(m, s->name, s->loc);
     }
     else {

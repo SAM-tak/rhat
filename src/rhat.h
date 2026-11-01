@@ -58,8 +58,9 @@ struct Module {
 };
 
 struct Spec {
-    bool invalid; // An editor diagnostic already explains this unavailable type.
-    Type *type;   // Canonical type, cached after module name resolution.
+    Def *self_type; // Lexical definition denoted by Self^; unaffected by inheritance.
+    bool invalid;   // An editor diagnostic already explains this unavailable type.
+    Type *type;     // Canonical type, cached after module name resolution.
     bool resolved;
     Loc loc;
     char *name;

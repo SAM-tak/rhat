@@ -136,6 +136,7 @@ typedef struct {
     Program *p;
     Module *module;
     Function *enclosing;
+    Def *type_owner;
     List tokens;
     int at, serial, scope_depth;
     List type_names, error_names; // Declaration names indexed once after lexing.
@@ -916,6 +917,15 @@ static int reference_depth(const char *text)
 static Spec *spec(Parser *p);
 static Spec *result_spec(Parser *p);
 
+static int self_type_depth(const char *text)
+{
+    if (strncmp(text, "Self", 4) || text[4] != '^') {
+        return 0;
+    }
+    size_t count = strspn(text + 4, "^");
+    return text[4 + count] ? 0 : (int)count;
+}
+
 static Spec *spec_part(Parser *p)
 {
     Spec *s = mem(sizeof(*s));
@@ -981,7 +991,17 @@ static Spec *spec_part(Parser *p)
     }
     else {
         s->kind = SPEC_NAME;
-        s->name = qualified_word(p);
+        int depth = tok(p)->kind == TOK_WORD ? self_type_depth(tok(p)->text) : 0;
+        if (depth) {
+            s->name = next(p)->text;
+            if (depth != 1 || !p->type_owner) {
+                fail(s->loc, "'%s' is outside the enclosing type definition", s->name);
+            }
+            s->self_type = p->type_owner;
+        }
+        else {
+            s->name = qualified_word(p);
+        }
     }
     while (take(p, "[")) {
         Spec *w = mem(sizeof(*w));
@@ -1297,6 +1317,9 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p)
 {
     Token *t = next(p);
+    if (t->kind == TOK_WORD && self_type_depth(t->text)) {
+        fail(t->loc, "'%s' names a type, not a value", t->text);
+    }
     if (t->kind == TOK_INVALID) {
         tool_abort();
     }
@@ -2531,6 +2554,7 @@ static Stmt *stmt(Parser *p)
     int start = p->at, depth = p->scope_depth;
     bool header = p->header;
     Function *enclosing = p->enclosing;
+    Def *type_owner = p->type_owner;
     ToolRecovery recovery;
     tool_enter(&recovery);
     if (setjmp(recovery.escape)) {
@@ -2538,6 +2562,7 @@ static Stmt *stmt(Parser *p)
         p->scope_depth = depth;
         p->header = header;
         p->enclosing = enclosing;
+        p->type_owner = type_owner;
         Token *first = p->tokens.v[start];
         Stmt *bad = mem(sizeof(*bad));
         bad->kind = S_EXPR;
@@ -2709,7 +2734,10 @@ static void definition(Parser *p, bool structure)
     add(&p->p->defs, d);
     if (structure) {
         need(p, "{");
+        Def *outer = p->type_owner;
+        p->type_owner = d;
         fields(p, d);
+        p->type_owner = outer;
         return;
     }
     if (take(p, "=")) {
@@ -2811,6 +2839,7 @@ static void def_member_checked(Parser *p, Def *d)
     int start = p->at, depth = p->scope_depth;
     bool header = p->header, fields = is(p, "self^");
     Function *enclosing = p->enclosing;
+    Def *type_owner = p->type_owner;
     ToolRecovery recovery;
     tool_enter(&recovery);
     if (setjmp(recovery.escape)) {
@@ -2818,6 +2847,7 @@ static void def_member_checked(Parser *p, Def *d)
         p->scope_depth = depth;
         p->header = header;
         p->enclosing = enclosing;
+        p->type_owner = type_owner;
         d->invalid |= fields;
     }
     else {
@@ -2830,6 +2860,8 @@ static void def_member_checked(Parser *p, Def *d)
 static void def_body(Parser *p, Def *d)
 {
     need(p, "{");
+    Def *outer = p->type_owner;
+    p->type_owner = d;
     while (!take(p, "}")) {
         if (p->p->tooling && (is(p, "let^") || is(p, "var^") || is(p, "def^") || is(p, "struct^") ||
                               is(p, "import^") || is(p, "public^"))) {
@@ -2842,6 +2874,7 @@ static void def_body(Parser *p, Def *d)
         }
         def_member_checked(p, d);
     }
+    p->type_owner = outer;
 }
 
 // An integer literal's value: decimal, 0x, 0o or 0b, with _ separators.
@@ -3187,6 +3220,7 @@ static void declaration_checked(Parser *q)
     }
     int start = q->at, defs = q->p->defs.n, depth = q->scope_depth;
     Function *enclosing = q->enclosing;
+    Def *type_owner = q->type_owner;
     ToolRecovery recovery;
     tool_enter(&recovery);
     if (setjmp(recovery.escape)) {
@@ -3194,6 +3228,7 @@ static void declaration_checked(Parser *q)
         q->scope_depth = depth;
         q->header = false;
         q->enclosing = enclosing;
+        q->type_owner = type_owner;
         // Keep the name of a damaged definition so its uses do not cascade.
         for (int j = defs; j < q->p->defs.n; j++) {
             Def *d = q->p->defs.v[j];

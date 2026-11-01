@@ -11,6 +11,17 @@ def main():
         assert '-> i32^' in ir and '-> i64^' in ir and '-> string^' in ir
         assert 'malloc' not in ll
 
+    positive('pending_mutation_argument', '''
+let^ make=f^ {42}
+let^ consume=p^value:i32^ {print^(value)}
+let^ pending=make()
+consume(pending)
+let^ write=p^value:ref^ i32^ {*value:=43}
+var^ mutable=make()
+write(ref^ mutable)
+print^(mutable)
+''', '42\n43\n')
+
     positive('inference_identity', '''
 let^ id=f^ x {x}
 print^(id(42),id(i64^(43)),id("hello"),id("hello").bytes.len)

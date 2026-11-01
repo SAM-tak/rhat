@@ -698,7 +698,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 at++;
             }
             cJSON *s = lookup[start];
-            if (s && buffer[at - 1] != '^') {
+            if (s && (buffer[at - 1] != '^' || number(s, "kind") == 23)) {
                 int symbol_kind = number(s, "kind");
                 kind = symbol_kind == 23               ? 1
                        : symbol_kind == 12             ? 2
@@ -722,9 +722,15 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             continue;
         }
         // LSP tokens are split at physical line boundaries, even inside strings.
-        while (start < at) {
+        size_t token_end = at;
+        if (kind == 1) {
+            while (token_end > start && buffer[token_end - 1] == '^') {
+                token_end--;
+            }
+        }
+        while (start < token_end) {
             size_t end = start;
-            while (end < at && buffer[end] != '\n' && buffer[end] != '\r') {
+            while (end < token_end && buffer[end] != '\n' && buffer[end] != '\r') {
                 end++;
             }
             if (end > start) {
@@ -739,7 +745,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 last_line = a.line;
                 last_col = a.character;
             }
-            start = end < at ? end + 1 : end;
+            start = end < token_end ? end + 1 : end;
         }
     }
     free(lookup);

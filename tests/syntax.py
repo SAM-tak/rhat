@@ -9,6 +9,61 @@ def main():
     def versioned(rir, ll):
         assert '; range.guard result=' in ll
 
+    positive('self_type_methods', """
+def^ F2 {
+ self^{x:i32^=1,y:i32^=2}
+ op^+ =f^self^,b:Self^ ->Self^ {F2{x=self^.x+b.x,y=self^.y+b.y}}
+ copy=f^self^ ->Self^ {*self^}
+ view=f^self^ ->ref^ Self^ {self^}
+ apply=f^self^,action:f^ Self^ ->Self^; ->Self^ {action(*self^)}
+ nested=f^self^ ->Self^ {
+  let^ identity=f^item:Self^ ->Self^ {item}
+  let^ local:Self^=identity(*self^)
+  return^ local
+ }
+}
+let^ identity=f^item:F2 ->F2 {item}
+var^ a=F2{}
+let^ b=a+a
+print^(b.x,b.y,a.copy().x,a.view().y,a.apply(identity).x,a.nested().y)
+def^ Other {self^{x:i32^=9} copy=f^self^ ->Self^ {*self^}}
+print^(Other{}.copy().x)
+""", '2 4 1 2 1 2\n9\n')
+    positive('self_type_recursive_reference', """
+struct^ Node {next:ref^ Self^|nil^=nil^,value:i32^=3}
+var^ first=Node{}
+var^ second=Node{next=ref^ first,value=5}
+print^(first.next?,second.next?.value??0,second.value)
+""", 'false 3 5\n')
+    positive('self_type_lexical_inheritance', """
+def^ Base {self^{x:i32^=7} copy=f^self^ ->Self^ {Base{x=self^.x}}}
+def^ Derived:Base {self^{y:i32^=9}}
+var^ derived=Derived{}
+let^ copy:Base=derived.copy()
+print^(copy.x)
+""", '7\n')
+    positive('self_type_error_variant', """
+errordef^ Failure {
+ Bad {
+  self^{code:i32^=7}
+  copy=f^self^ ->Self^ {*self^}
+ }
+}
+var^ failure=Failure.Bad{}
+print^(failure.copy().code)
+""", '7\n')
+    for name,text,diagnostic in [
+        ('outside','let^ x:Self^=1','outside the enclosing type definition'),
+        ('function_scope','let^ f=f^x:Self^ {x}','outside the enclosing type definition'),
+        ('outer','def^ Box {self^{x:Self^^}}','outside the enclosing type definition'),
+        ('leak','def^ Box {self^{x:i32^=1}}\nlet^ x:Self^=Box{}','outside the enclosing type definition'),
+        ('value','def^ Box {self^{x:i32^=1} bad=f^self^ {Self^}}','names a type, not a value'),
+        ('constructor','def^ Box {self^{x:i32^=1} bad=f^self^ {Self^{x=1}}}','names a type, not a value'),
+        ('recursive_value','def^ Box {self^{x:Self^}}','recursive by-value layout'),
+        ('inherited_result','def^ Base {self^{x:i32^=1} copy=f^self^ ->Self^ {Base{x=self^.x}}}\ndef^ Derived:Base {}\nvar^ d=Derived{}\nlet^ copy:Derived=d.copy()',"expected 'Derived'"),
+    ]:
+        negative('self_type_'+name,text,diagnostic)
+
     positive('ref_keyword', '''
 var^ n=7
 var^ r:ref^ i32^=ref^n

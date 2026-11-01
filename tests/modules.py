@@ -42,6 +42,21 @@ def main():
             assert diagnostic in p.stderr and re.search(r':\d+:\d+: error:', p.stderr), (name, p.stderr)
         suite.case(name, body)
 
+    positive('self_type_import', {
+        'lib/vector.rh': """module^ lib.vector
+public^ def^ Vector {
+ self^{x:i32^=4}
+ copy=f^self^ ->Self^ {let^ local:Self^=*self^ return^ local}
+ add=f^self^,other:Self^ ->Self^ {Vector{x=self^.x+other.x}}
+}
+""",
+        'main.rh': """let^ v=import^lib.vector
+var^ a=v.Vector{}
+let^ b=a.add(a.copy())
+print^(b.x)
+""",
+    }, '8\n')
+
     lib = '''module^ lib.example
 public^ def^ Item { self^{ value:i64^ } }
 public^ let^ twice=f^ x:i64^ -> i64^ { x*2 }
@@ -415,8 +430,8 @@ print^("ok")
         state ^= state >> 27
         return (state*0x2545F4914F6CDD1D)&mask
     statements = ['import^ std.random',
-                  'let^ expect_int=f^ value:std.random.IntResult ->i64^ {assert^(value fits^ i64^) return^ value}',
-                  'let^ expect_real=f^ value:std.random.RealResult ->f64^ {assert^(value fits^ f64^) return^ value}',
+                  'let^ expect_int=f^ value:i64^|std.random.Error.InvalidArgument ->i64^ {assert^(value fits^ i64^) return^ value}',
+                  'let^ expect_real=f^ value:f64^|std.random.Error.InvalidArgument ->f64^ {assert^(value fits^ f64^) return^ value}',
                   'var^ r=std.random.new(12345)']
     integer_expected = []
     for lo, hi in [(-100,100), (-(1<<63),0), (-(1<<63),(1<<63)-1), ((1<<63)-3,(1<<63)-1)]:
