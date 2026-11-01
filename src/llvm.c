@@ -47,6 +47,8 @@ char *llvm_type(Type *t)
         return fmt("[%d x %s]", t->count, llvm_type(t->elem));
     case T_GROW:
         return "{ ptr, i64, ptr }";
+    case T_BOUNDED:
+        return fmt("{ i64, [%d x %s] }", t->count, llvm_type(t->elem));
     default:
         return t->symbol ? t->symbol : fmt("%%rh_type_%d", t->id);
     }
@@ -623,9 +625,26 @@ static void address_declarations(Program *p, FILE *f)
 }
 
 // Lower the stack top of a shrunk flex^ array to its new length.
+// The address of a T[..N]'s length (field 0) or of its first element.
+static int bounded_field(Output *o, Type *t, int slot, int field)
+{
+    int r = ++o->tmp;
+    fprintf(o->f, "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 %d\n", r, llvm_type(t), slot,
+            field);
+    return r;
+}
+
+// The current length of a T[..N].
+static int bounded_length(Output *o, Type *t, int slot)
+{
+    int at = bounded_field(o, t, slot, 0), r = ++o->tmp;
+    fprintf(o->f, "  %%t%d = load i64, ptr %%t%d\n", r, at);
+    return r;
+}
+
 static void flex_release(Output *o, Instr *i, const char *length)
 {
-    if (!i->type->count) {
+    if (i->type->kind != T_GROW || !i->type->count) {
         return;
     }
     int desc = load(o, i->a), data = ++o->tmp, stack = ++o->tmp, bytes = ++o->tmp;
@@ -637,11 +656,86 @@ static void flex_release(Output *o, Instr *i, const char *length)
             data, desc, stack, desc, bytes, length, i->type->elem->size, stack, data, bytes);
 }
 
+// Branches to a cold failure unless ok holds.
+static void check_or_fail(Output *o, int ok, const char *failure, int line)
+{
+    fprintf(o->f, "  br i1 %%t%d, label %%ok_%d, label %%bad_%d, !prof !0\nbad_%d:\n", ok, ok, ok,
+            ok);
+    fprintf(o->f, "  call void @rh_%s(i32 %d)\n  unreachable\nok_%d:\n", failure, line, ok);
+}
+
+// push, pop, clear, truncate and append on a T[..N]: its length and
+// elements live in place, so each only moves the length and copies elements.
+static void bounded_change(Output *o, Instr *i)
+{
+    FILE *f = o->f;
+    Type *t = i->type;
+    const char *elem = llvm_type(t->elem);
+    int lenaddr = bounded_field(o, t, i->a, 0), data = bounded_field(o, t, i->a, 1);
+    int len = ++o->tmp, ok = ++o->tmp, at = ++o->tmp, next = ++o->tmp;
+    fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", len, lenaddr);
+    if (i->op == I_CLEAR) {
+        fprintf(f, "  store i64 0, ptr %%t%d\n", lenaddr);
+    }
+    else if (i->op == I_PUSH) {
+        fprintf(f, "  %%t%d = icmp ult i64 %%t%d, %d\n", ok, len, t->count);
+        check_or_fail(o, ok, "capacity_fail", i->loc.line);
+        fprintf(f, "  %%t%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", at, elem, data, len);
+        fprintf(f, "  store %s %%t%d, ptr %%t%d\n", elem, load(o, i->b), at);
+        fprintf(f, "  %%t%d = add i64 %%t%d, 1\n  store i64 %%t%d, ptr %%t%d\n", next, len, next,
+                lenaddr);
+        if (i->dst >= 0) {
+            save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", at));
+        }
+    }
+    else if (i->op == I_POP) {
+        fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", ok, len);
+        check_or_fail(o, ok, "pop_fail", i->loc.line);
+        fprintf(f, "  %%t%d = sub i64 %%t%d, 1\n  store i64 %%t%d, ptr %%t%d\n", next, len, next,
+                lenaddr);
+        fprintf(f, "  %%t%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", at, elem, data, next);
+        int value = ++o->tmp;
+        fprintf(f, "  %%t%d = load %s, ptr %%t%d\n", value, elem, at);
+        save(o, i->dst, t->elem, fmt("%%t%d", value));
+    }
+    else if (i->op == I_TRUNCATE) {
+        int length = load(o, i->b), low = ++o->tmp, high = ++o->tmp;
+        fprintf(f, "  %%t%d = icmp sge i64 %%t%d, 0\n", low, length);
+        fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %%t%d\n", high, length, len);
+        fprintf(f, "  %%t%d = and i1 %%t%d, %%t%d\n", ok, low, high);
+        check_or_fail(o, ok, "truncate_fail", i->loc.line);
+        fprintf(f, "  store i64 %%t%d, ptr %%t%d\n", length, lenaddr);
+    }
+    else {
+        // append: the free room bounds the count, so the sum cannot overflow.
+        int view = load(o, i->b), src = ++o->tmp, count = ++o->tmp, room = ++o->tmp;
+        int bytes = ++o->tmp;
+        fprintf(f, "  %%t%d = extractvalue {ptr,i64} %%t%d, 0\n", src, view);
+        fprintf(f, "  %%t%d = extractvalue {ptr,i64} %%t%d, 1\n", count, view);
+        fprintf(f, "  %%t%d = sub i64 %d, %%t%d\n", room, t->count, len);
+        fprintf(f, "  %%t%d = icmp ule i64 %%t%d, %%t%d\n", ok, count, room);
+        check_or_fail(o, ok, "capacity_fail", i->loc.line);
+        fprintf(f, "  %%t%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", at, elem, data, len);
+        fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", bytes, count, t->elem->size);
+        fprintf(f,
+                "  call void @llvm.memmove.p0.p0.i64(ptr %%t%d, ptr %%t%d, i64 %%t%d, i1 false)\n",
+                at, src, bytes);
+        fprintf(f, "  %%t%d = add i64 %%t%d, %%t%d\n  store i64 %%t%d, ptr %%t%d\n", next, len,
+                count, next, lenaddr);
+    }
+}
+
 static void instruction(Output *o, Instr *i)
 {
     FILE *f = o->f;
     Type *t = i->type ? scalar(i->type) : NULL;
     int a, b, r;
+    if (t && t->kind == T_BOUNDED &&
+        (i->op == I_PUSH || i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE ||
+         i->op == I_APPEND)) {
+        bounded_change(o, i);
+        return;
+    }
     switch (i->op) {
     case I_CONST:
         save(o, i->dst, t, i->text);
@@ -668,8 +762,8 @@ static void instruction(Output *o, Instr *i)
         break;
     case I_INDEX:
         if (i->b < 0) {
-            fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, i64 %d\n", i->dst,
-                    llvm_type(t), i->a, i->label);
+            fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, %si64 %d\n", i->dst,
+                    llvm_type(t), i->a, t->kind == T_BOUNDED ? "i32 1, " : "", i->label);
             break;
         }
         {
@@ -687,6 +781,9 @@ static void instruction(Output *o, Instr *i)
                 char *length;
                 if (t->kind == T_ARRAY) {
                     length = fmt("%d", t->count);
+                }
+                else if (t->kind == T_BOUNDED) {
+                    length = fmt("%%t%d", bounded_length(o, t, i->a));
                 }
                 else {
                     b = ++o->tmp;
@@ -723,9 +820,9 @@ static void instruction(Output *o, Instr *i)
                 fprintf(f, "  %%p%d = getelementptr %s, ptr %%t%d, i64 %%t%d\n", i->dst,
                         t->kind == T_STRING ? "i8" : llvm_type(t->elem), r, a);
             }
-            else if (t->kind == T_ARRAY) {
-                fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, i64 %%t%d\n", i->dst,
-                        llvm_type(t), i->a, a);
+            else if (t->kind == T_ARRAY || t->kind == T_BOUNDED) {
+                fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, %si64 %%t%d\n", i->dst,
+                        llvm_type(t), i->a, t->kind == T_BOUNDED ? "i32 1, " : "", a);
             }
             else {
                 b = ++o->tmp;
@@ -1018,6 +1115,10 @@ static void instruction(Output *o, Instr *i)
             data = fmt("%%p%d", i->a);
             length = fmt("%d", t->count);
         }
+        else if (t->kind == T_BOUNDED) {
+            length = fmt("%%t%d", bounded_length(o, t, i->a));
+            data = fmt("%%t%d", bounded_field(o, t, i->a, 1));
+        }
         else {
             int base = load(o, i->a);
             int ptr = ++o->tmp, len = ++o->tmp;
@@ -1077,6 +1178,9 @@ static void instruction(Output *o, Instr *i)
     case I_LENGTH:
         if (t->kind == T_ARRAY) {
             save(o, i->dst, slot_type(o, i->dst), fmt("%d", t->count));
+        }
+        else if (t->kind == T_BOUNDED) {
+            save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", bounded_length(o, t, i->a)));
         }
         else {
             a = ++o->tmp;
@@ -1781,8 +1885,8 @@ void emit_llvm(Program *p, const char *path)
                 "other:\n  call void @rh_print_integer(ptr %%p, i32 %d, i32 %d)\n  ret void\n}\n",
                 numeric_bits(base->kind), kind_unsigned(base->kind));
     }
-    const char *failures[] = {"stack_overflow", "index_fail",    "pop_fail",   "float_cast_fail",
-                              "slice_fail",     "truncate_fail", "assert_fail"};
+    const char *failures[] = {"stack_overflow", "index_fail",    "pop_fail",    "float_cast_fail",
+                              "slice_fail",     "truncate_fail", "assert_fail", "capacity_fail"};
     for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++) {
         fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
     }

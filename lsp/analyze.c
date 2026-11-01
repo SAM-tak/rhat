@@ -208,9 +208,10 @@ static char *spec_text(Spec *s)
                 s->elem->kind == SPEC_INTERSECTION;
     return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", s->kind == SPEC_GROW ? "grow^ " : "",
                spec_text(s->elem),
-               s->kind == SPEC_GROW    ? ""
-               : s->kind == SPEC_SLICE ? ":"
-                                       : fmt("%d", s->count));
+               s->kind == SPEC_GROW      ? ""
+               : s->kind == SPEC_SLICE   ? ":"
+               : s->kind == SPEC_BOUNDED ? fmt("..%d", s->count)
+                                         : fmt("%d", s->count));
 }
 
 static char *signature(Program *p, Function *f)

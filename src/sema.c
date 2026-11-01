@@ -1246,7 +1246,7 @@ static bool may_reference(Type *t, Type *elem)
     if (t->kind == T_DYN) {
         return elem->kind == T_STRUCT; // Any composer of the dyn^ def.
     }
-    if (t->kind == T_ARRAY || t->kind == T_GROW) {
+    if (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED) {
         return may_reference(t->elem, elem);
     }
     if (t->kind == T_UNION) {
@@ -1645,7 +1645,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             return abrupt(c);
         }
         Value base = deref(c, receiver, e->loc);
-        if (base.type->kind == T_GROW && !strcmp(target->text, "truncate")) {
+        bool growable = base.type->kind == T_GROW || base.type->kind == T_BOUNDED;
+        bool flex = base.type->kind == T_GROW && base.type->count;
+        if (growable && !strcmp(target->text, "truncate")) {
             if (e->args.n != 1) {
                 fail(e->loc, "truncate expects one new length");
             }
@@ -1657,7 +1659,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "truncate length must be i64^");
             }
             store_check(c, base, (Value){0}, e->loc);
-            if (base.type->count) {
+            if (flex) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
             }
             Type *t = type_builtin(p, T_VOID);
@@ -1670,7 +1672,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             i->type = base.type;
             return (Value){.id = -1, .type = t};
         }
-        if (base.type->kind == T_GROW && !strcmp(target->text, "append")) {
+        if (growable && !strcmp(target->text, "append")) {
             if (e->args.n != 1) {
                 fail(e->loc, "append expects one slice");
             }
@@ -1695,14 +1697,13 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             i->type = base.type;
             return (Value){.id = -1, .type = t};
         }
-        if (base.type->kind == T_GROW &&
-            (!strcmp(target->text, "pop") || !strcmp(target->text, "clear"))) {
+        if (growable && (!strcmp(target->text, "pop") || !strcmp(target->text, "clear"))) {
             bool pop = !strcmp(target->text, "pop");
             if (e->args.n) {
                 fail(e->loc, "%s expects no arguments", target->text);
             }
             store_check(c, base, (Value){0}, e->loc);
-            if (base.type->count) {
+            if (flex) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
             }
             Type *t = pop ? base.type->elem : type_builtin(p, T_VOID);
@@ -1719,7 +1720,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             i->type = base.type;
             return out;
         }
-        if (base.type->kind == T_GROW && !strcmp(target->text, "push")) {
+        if (growable && !strcmp(target->text, "push")) {
             if (e->args.n != 1) {
                 fail(e->loc, "push expects one element");
             }
@@ -1952,7 +1953,8 @@ Type *union_literal_hint(Type *t, Expr *e)
             (literal->kind == E_FLOAT && kind_float(a->kind)) ||
             (literal->kind == E_RECORD && a->kind == T_STRUCT && a->def->tuple == literal->tuple &&
              (!literal->tuple || a->def->fields.n == literal->args.n)) ||
-            (literal->kind == E_ARRAY && (a->kind == T_ARRAY || a->kind == T_GROW))) {
+            (literal->kind == E_ARRAY &&
+             (a->kind == T_ARRAY || a->kind == T_GROW || a->kind == T_BOUNDED))) {
             // A mixed result must not implicitly choose an error constructor.
             if (literal->kind == E_RECORD && a->def->group) {
                 return NULL;
@@ -2300,7 +2302,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 Expr empty = {.kind = E_RECORD, .loc = e->loc, .text = f->type->def->name};
                 v = construct(c, &empty, f->type, dest.id);
             }
-            else if (f->type->kind == T_GROW) {
+            else if (f->type->kind == T_GROW || f->type->kind == T_BOUNDED) {
                 Expr empty = {.kind = E_ARRAY, .loc = e->loc};
                 v = construct(c, &empty, f->type, dest.id);
             }
@@ -2366,11 +2368,14 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             }
             return out;
         }
-        if (t->kind != T_ARRAY && t->kind != T_GROW) {
+        if (t->kind != T_ARRAY && t->kind != T_GROW && t->kind != T_BOUNDED) {
             fail(e->loc, "array literal requires array type");
         }
         if (t->kind == T_ARRAY && e->args.n != t->count) {
             fail(e->loc, "fixed array requires exactly %d elements", t->count);
+        }
+        if (t->kind == T_BOUNDED && e->args.n > t->count) {
+            fail(e->loc, "'%s' holds at most %d elements", type_name(t), t->count);
         }
         Value out = {0};
         out.type = t;
@@ -2384,10 +2389,17 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->dst = out.id;
             a->type = t;
         }
+        if (t->kind == T_BOUNDED) {
+            // Only the length is set; elements past it are never read.
+            layout(t, e->loc);
+            Instr *a = emit(c, I_CLEAR, e->loc);
+            a->a = out.id;
+            a->type = t;
+        }
         int inflight = c->inflight.n;
         add(&c->inflight, &out);
         for (int j = 0; j < e->args.n; j++) {
-            if (t->kind == T_GROW) {
+            if (t->kind == T_GROW || t->kind == T_BOUNDED) {
                 Value v = j || !first.type ? expression(c, e->args.v[j], t->elem) : first;
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");
@@ -2511,10 +2523,12 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
         fail(e->loc,
              "string^ has no []; slice it with s.slice(a .. b), or its bytes with s.bytes[a .. b]");
     }
-    if (base.type->kind != T_ARRAY && base.type->kind != T_GROW && base.type->kind != T_SLICE) {
+    bool inline_storage =
+        base.type->kind == T_ARRAY || base.type->kind == T_GROW || base.type->kind == T_BOUNDED;
+    if (!inline_storage && base.type->kind != T_SLICE) {
         fail(e->loc, "slicing requires an array or slice");
     }
-    if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) && !base.addressable) {
+    if (inline_storage && !base.addressable) {
         fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
     }
     int bounds[2] = {-1, -1};
@@ -2548,11 +2562,9 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     if (expected && expected != t) {
         fail(e->loc, "slice is '%s', expected '%s'", type_name(t), type_name(expected));
     }
-    Value out = {
-        .id = slot(c, t, false),
-        .type = t,
-        .deps = base.deps |
-                ((base.type->kind == T_ARRAY || base.type->kind == T_GROW) ? base.storage : 0)};
+    Value out = {.id = slot(c, t, false),
+                 .type = t,
+                 .deps = base.deps | (inline_storage ? base.storage : 0)};
     Instr *i = emit(c, I_SLICE, e->loc);
     i->dst = out.id;
     i->a = base.id;
@@ -2826,7 +2838,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             return base;
         }
         if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
-             base.type->kind == T_STRING || base.type->kind == T_SLICE) &&
+             base.type->kind == T_BOUNDED || base.type->kind == T_STRING ||
+             base.type->kind == T_SLICE) &&
             !strcmp(e->text, "len")) {
             out = value(c, type_builtin(p, T_I64));
             Instr *i = emit(c, I_LENGTH, e->loc);
@@ -2839,7 +2852,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             return range_member(c, base, e->text, e->loc);
         }
         if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
-             base.type->kind == T_SLICE) &&
+             base.type->kind == T_BOUNDED || base.type->kind == T_SLICE) &&
             !strcmp(e->text, "bytes")) {
             // a.bytes views the elements as bytes, like a whole-array slice.
             if (!plain_data(base.type->elem)) {
@@ -2941,7 +2954,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             fail(e->loc,
                  "string^ has no []; read bytes with s.bytes[i], or characters with s.decode(at)");
         }
-        if (base.type->kind != T_ARRAY && base.type->kind != T_GROW && base.type->kind != T_SLICE) {
+        if (base.type->kind != T_ARRAY && base.type->kind != T_GROW &&
+            base.type->kind != T_BOUNDED && base.type->kind != T_SLICE) {
             fail(e->loc, "indexing requires an array");
         }
         Value index = expression(c, e->b, type_builtin(p, T_I64));

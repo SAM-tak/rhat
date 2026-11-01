@@ -875,6 +875,7 @@ static Spec *spec_part(Parser *p)
             w->kind = SPEC_SLICE;
         }
         else {
+            bool bounded = take(p, "..");
             Token *n = next(p);
             if (n->kind != TOK_INT) {
                 fail(n->loc, "fixed array length must be an integer constant");
@@ -884,7 +885,7 @@ static Spec *spec_part(Parser *p)
             if (errno || k <= 0 || k > 1000000) {
                 fail(n->loc, "array length out of range (1..1000000)");
             }
-            w->kind = SPEC_ARRAY;
+            w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
             w->count = (int)k;
         }
         need(p, "]");

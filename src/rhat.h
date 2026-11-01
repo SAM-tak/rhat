@@ -73,6 +73,7 @@ enum {
     SPEC_ARRAY,
     SPEC_GROW,
     SPEC_SLICE,
+    SPEC_BOUNDED,      // T[..N]
     SPEC_UNION,        // An inline set of alternative types.
     SPEC_FUNCTION,     // A callable signature ending in a semicolon.
     SPEC_INTERSECTION, // A value satisfying every callable signature.
@@ -287,7 +288,8 @@ enum {
     T_DYN,          // ref^ dyn^ D: data reference and method table of a type composing
                     // elem's def.
     T_CFUNC,        // externC^ f^ ...;: a C function pointer with elem's signature.
-    T_ENUM          // enum^: a closed set of named integer constants laid out as elem.
+    T_ENUM,         // enum^: a closed set of named integer constants laid out as elem.
+    T_BOUNDED       // T[..N]: up to count elems inline after an i64 length; owns nothing.
 };
 
 struct Type {

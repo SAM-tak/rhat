@@ -336,6 +336,32 @@ let^ missing=fs.read("no_such_dir/no_such.tmp",ref^ got)
 for^ missing { when^ fits^ fs.Error.OpenFailed: print^("open failed") other^: print^("other") }
 ''', 'true\n7 104 108\n150000 7\ntrue false false\nopen failed\n')
 
+    positive('bounded_arrays', '''
+def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
+def^ World {
+    self^{ points:V[..8] = [], ids:i64^[..4] = [1, 2], count:i64^ = 0, log:grow^ i64^[] = [] }
+}
+let^ add = p^ w:ref^ World, x:f32^ {
+    w.points.push(V{x=x, y=1.0})
+    w.count += 1
+    w.log.push(w.count)
+}
+var^ w = World{}
+add(ref^ w, 2.0)
+add(ref^ w, 4.0)
+w.ids.push(3)
+let^ last = w.ids.pop()
+w.ids.append(w.ids[0 .. 2])
+print^(w.count, w.points.len, w.points[1].x, w.ids.len, last, w.ids[3], w.points.bytes.len, w.log.len)
+var^ copy = w.points
+copy.clear()
+w.ids.truncate(1)
+let^ view = w.points[..]
+print^(copy.len, w.points.len, w.ids.len, view.len, view[0].x)
+let^ empty:i32^[..3] = []
+print^(empty.len)
+''', '2 2 4.0 4 3 2 16 2\n0 2 1 2 2.0\n0\n')
+
     positive('array_bytes', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
 let^ ints:i32^[3]=[1,258,-1]
@@ -792,6 +818,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('bytes_of_bool', 'let^ a:bool^[2]=[true^,false^]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
         ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:(ref^ i32^)[1]=[ref^ n]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
         ('bytes_of_temporary', 'print^([1,2].bytes.len)', 'cannot borrow a temporary'),
+        ('bounded_literal_too_long', 'let^ a:i32^[..2]=[1,2,3]', 'holds at most 2 elements'),
+        ('bounded_owned_elements', 'var^ a:(grow^ i32^[])[..2]=[]', 'nonempty fixed-size'),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
         ('string_chars_owned', 'let^ n=f^ s:string^ { s.chars().len }', 'bind it'),
@@ -843,6 +871,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     suite.runtime_failure('string_decode_middle', 'let^ s="あ"\nlet^ c,n=s.decode(1)', 'not the start of a character')
     suite.runtime_failure('interp_bad_format', 'print^($"{1:%s}")', 'one numeric conversion')
     suite.runtime_failure('interp_two_conversions', 'print^($"{1:%d%d}")', 'one numeric conversion')
+    suite.runtime_failure('bounded_full', 'var^ a:i64^[..2]=[7,8]\na.push(9)', 'bounded array is full')
+    suite.runtime_failure('bounded_index', 'var^ a:i64^[..4]=[7]\nprint^(a[1])', 'array index out of bounds')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ..)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
     suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 .. 5\nprint^(xs[r].len)', 'slice range out of bounds')

@@ -781,26 +781,31 @@ static Type *infer_call(Infer *c, Expr *e)
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
-        if (base && base->kind == T_GROW && !strcmp(target->text, "pop")) {
+        if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
+            !strcmp(target->text, "pop")) {
             return base->elem;
         }
-        if (base && base->kind == T_GROW && !strcmp(target->text, "truncate")) {
+        if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
+            !strcmp(target->text, "truncate")) {
             for (int j = 0; j < e->args.n; j++) {
                 infer_expr(c, e->args.v[j], type_builtin(c->p, T_I64));
             }
             return type_builtin(c->p, T_VOID);
         }
-        if (base && base->kind == T_GROW && !strcmp(target->text, "append")) {
+        if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
+            !strcmp(target->text, "append")) {
             for (int j = 0; j < e->args.n; j++) {
                 infer_expr(c, e->args.v[j], NULL);
             }
             forget_paths(&c->vars);
             return type_builtin(c->p, T_VOID);
         }
-        if (base && base->kind == T_GROW && !strcmp(target->text, "clear")) {
+        if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
+            !strcmp(target->text, "clear")) {
             return type_builtin(c->p, T_VOID);
         }
-        if (base && base->kind == T_GROW && !strcmp(target->text, "push")) {
+        if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
+            !strcmp(target->text, "push")) {
             for (int j = 0; j < e->args.n; j++) {
                 infer_expr(c, e->args.v[j], base->elem);
             }
@@ -1388,7 +1393,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (e->test_spec) {
             return type_spec(c->p, e->test_spec);
         }
-        if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW)) {
+        if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW ||
+                         expected->kind == T_BOUNDED)) {
             for (int j = 0; j < e->args.n; j++) {
                 infer_expr(c, e->args.v[j], expected->elem);
             }
@@ -1438,12 +1444,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (!base) {
             return NULL;
         }
-        if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_STRING ||
-             base->kind == T_SLICE) &&
+        if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
+             base->kind == T_STRING || base->kind == T_SLICE) &&
             !strcmp(e->text, "len")) {
             return type_builtin(c->p, T_I64);
         }
-        if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE) &&
+        if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
+             base->kind == T_SLICE) &&
             !strcmp(e->text, "bytes")) {
             if (!plain_data(base->elem)) {
                 fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
@@ -1511,7 +1518,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         return base && base->kind == T_STRING
                    ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
-               : base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)
+               : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                          base->kind == T_BOUNDED || base->kind == T_SLICE)
                    ? type_wrap(c->p, T_SLICE, base->elem, 0)
                    : NULL;
     }
@@ -1531,13 +1539,14 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (range_type(index)) {
             return base && base->kind == T_STRING
                        ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
-                   : base &&
-                           (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)
+                   : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                              base->kind == T_BOUNDED || base->kind == T_SLICE)
                        ? type_wrap(c->p, T_SLICE, base->elem, 0)
                        : NULL;
         }
         return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
-               : base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)
+               : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                          base->kind == T_BOUNDED || base->kind == T_SLICE)
                    ? base->elem
                    : NULL;
     }
@@ -2245,7 +2254,8 @@ static void body_require(BodyCheck *c, BodyNode *n, Type *want, uint64_t kinds)
         }
     }
     else if (n->kind == E_ARRAY && want &&
-             (want->kind == T_ARRAY || want->kind == T_GROW || want->kind == T_SLICE)) {
+             (want->kind == T_ARRAY || want->kind == T_GROW || want->kind == T_BOUNDED ||
+              want->kind == T_SLICE)) {
         for (int j = 0; j < n->children.n; j++) {
             body_require(c, n->children.v[j], want->elem, UINT64_MAX);
         }
@@ -2439,7 +2449,8 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         if (base && base->kind == T_STRING) {
             n->type = type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
         }
-        else if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)) {
+        else if (base && (base->kind == T_ARRAY || base->kind == T_GROW ||
+                          base->kind == T_BOUNDED || base->kind == T_SLICE)) {
             n->type = type_wrap(c->p, T_SLICE, base->elem, 0);
         }
         break;
@@ -2452,7 +2463,8 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
-        if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE)) {
+        if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
+                     base->kind == T_SLICE)) {
             n->type = base->elem;
         }
         break;
@@ -2492,8 +2504,8 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
                 offset = 1;
                 add(&actual, type_wrap(c->p, T_REF, base, 0));
             }
-            else if (base &&
-                     (base->kind == T_GROW || base->kind == T_ARRAY || base->kind == T_SLICE)) {
+            else if (base && (base->kind == T_GROW || base->kind == T_BOUNDED ||
+                              base->kind == T_ARRAY || base->kind == T_SLICE)) {
                 if (!strcmp(e->a->text, "push") && e->args.n == 1) {
                     body_expr(c, e->args.v[0], base->elem);
                     return n;

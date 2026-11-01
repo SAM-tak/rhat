@@ -314,6 +314,11 @@ _Noreturn void rh_truncate_fail(int32_t line)
     rh_panic("truncate length out of bounds", line);
 }
 
+_Noreturn void rh_capacity_fail(int32_t line)
+{
+    rh_panic("bounded array is full", line);
+}
+
 _Noreturn void rh_slice_fail(int32_t line)
 {
     rh_panic("slice range out of bounds", line);

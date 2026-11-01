@@ -312,8 +312,9 @@ Type *type_spec(Program *p, Spec *s)
         return type_wrap(p,
                          s->kind == SPEC_REF     ? T_REF
                          : s->kind == SPEC_GROW  ? T_GROW
-                         : s->kind == SPEC_SLICE ? T_SLICE
-                                                 : T_ARRAY,
+                         : s->kind == SPEC_SLICE   ? T_SLICE
+                         : s->kind == SPEC_BOUNDED ? T_BOUNDED
+                                                   : T_ARRAY,
                          type_spec(p, s->elem), s->count);
     }
     for (int k = T_BOOL; k < T_STRUCT; k++) {
@@ -378,6 +379,10 @@ char *type_name(Type *t)
     if (t->kind == T_GROW) {
         return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "%s (%s)[]" : "%s %s[]",
                    t->count ? "flex^" : "grow^", type_name(t->elem));
+    }
+    if (t->kind == T_BOUNDED) {
+        return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[..%d]" : "%s[..%d]",
+                   type_name(t->elem), t->count);
     }
     return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[%d]" : "%s[%d]",
                type_name(t->elem), t->count);
@@ -890,7 +895,8 @@ void layout(Type *t, Loc l)
         }
         return;
     }
-    if ((t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_SLICE) && callable_type(t->elem)) {
+    if ((t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_SLICE || t->kind == T_BOUNDED) &&
+        callable_type(t->elem)) {
         fail(l, "callable array storage is not supported; use statically selected let^ bindings");
     }
     if (t->kind == T_GROW) {
@@ -942,16 +948,21 @@ void layout(Type *t, Loc l)
             align = 4;
         }
     }
-    else if (t->kind == T_ARRAY) {
+    else if (t->kind == T_ARRAY || t->kind == T_BOUNDED) {
         layout(t->elem, l);
         if (t->elem->owned || !t->elem->size) {
             fail(l, "array elements must be nonempty fixed-size values");
         }
-        if (t->elem->size > SIZE_MAX / (size_t)t->count) {
+        if (t->elem->size > (SIZE_MAX - 16) / (size_t)t->count) {
             fail(l, "array layout overflows");
         }
         size = t->elem->size * (size_t)t->count;
         align = t->elem->align;
+        if (t->kind == T_BOUNDED) {
+            // The i64 length comes first; the elements follow at their alignment.
+            align = align > 8 ? align : 8;
+            size += align;
+        }
         t->refs = t->elem->refs;
     }
     else {
