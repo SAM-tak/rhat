@@ -504,7 +504,7 @@ print^(rng fits^ random.Random,rng.load(0) fits^ random.Error.InvalidState)
 
     positive('module_contextual_construction', {
         'lib/point.rh': '''module^ lib.point
-public^ def^ Point {self^{x:i32^=1,y:i32^=2}}
+public^ struct^ Point {x:i32^=1,y:i32^=2}
 public^ let^ sum=f^ point:Point {point.x+point.y}
 public^ let^ make=f^ ->Point {return^ {x=3,y=4}}
 def^ Hidden {self^{value:i32^=9}}

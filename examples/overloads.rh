@@ -20,3 +20,7 @@ var^a, b = Vec{x=2}, Vec{x=5}
 print^((a+b).x, (a+3).x, (3+a).x, (-a).x,a<b)
 a += 3
 print^(a.x, a=b)
+
+struct^Point { x:i32^ = 0, y:i32^ = 0 }
+let^point = Point{x=3, y=4}
+print^(point.x, point.y)

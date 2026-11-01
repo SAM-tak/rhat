@@ -67,7 +67,7 @@ double ffi_sum(const Point *ps, uint64_t n) {{ double s = 0; for (uint64_t i = 0
 Nest ffi_nest(Nest n) {{ n.p.lo++; n.ok = !n.ok; n.w[2] = (uint16_t)(n.w[0] + n.w[1]); return n; }}
 ''', encoding='utf-8')
     positive('ffi_struct_values', '''
-def^ Point { self^{ x:f64^ = 0.0, y:f64^ = 0.0 } }
+struct^ Point { x:f64^ = 0.0, y:f64^ = 0.0 }
 def^ Mixed { self^{ a:i32^ = 0, b:i8^ = 0, c:i64^ = 0 } }
 def^ Pair { self^{ lo:i32^ = 0, hi:i32^ = 0 } }
 def^ Big { self^{ v:i64^[4] = [1, 2, 3, 4] } }
@@ -123,7 +123,7 @@ int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x) {{ return fn ? fn(x) : -1; 
     header = 'includeC^ "ffi_lib.h"\n'
     value = header + 'externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }\nexternC^ ffi_int:f^ i:i64^ -> FfiValue;\n'
     positive('ffi_header_inline_and_opaque', header + '''externC^ def^ FfiBox;
-externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
+externC^ struct^ FfiValue { as:u64^ = 0, tag:i32^ = 0 }
 externC^ ffi_int:f^ i:i64^ -> FfiValue;
 externC^ ffi_real:f^ r:f64^ -> FfiValue;
 externC^ ffi_twice:f^ n:i64^ -> i64^;
@@ -531,6 +531,8 @@ exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { Vec3{x = a.x + b.x, y = a.y + b.
              'true\n4 6 8 116\n', extra=lhat_extra)
     suite.runtime_failure('ffi_export_lhat_value_type', values + 'mock_values(1)\n', 'exportL^ received another host value type', extra=lhat_extra)
     negative('ffi_export_lhat_value_flat', header + 'exportL^ def^ S { self^{ s:string^ = "" } }', "exportL^ def^ 'S' needs a flat def^")
+    negative('ffi_export_lhat_struct_flat', header + 'exportL^ struct^ S { s:string^ = "" }',
+             "exportL^ def^ 'S' needs a flat def^")
     negative('ffi_export_lhat_value_mutable', header + 'exportL^ def^ C { self^{ n:i32^ = 0 }\n  bump = f^ mutable^ self^ -> i32^ { self^.n += 1 return^ self^.n } }', "cannot change self^")
     data = lhat.replace('externC^ mock_run:p^ mode:i32^;', '''externC^ def^ LhatMachine;
 externC^ def^ LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }

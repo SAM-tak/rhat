@@ -55,6 +55,21 @@ let^ nestedFlag=f^ item:Outer {item.point.x>0}
 if^ nestedFlag({point=Point{x=1}}) {print^(88)}
 ''', '1 2\n10 20\n3 20\n4 5\n6 7\n8 9\n11 20\n10 12\n13\n99\n88\n')
 
+    positive('struct_fields', '''
+struct^ Point { x:i32^=1, y:i32^=2 }
+def^ Other { self^{ x:i32^=1, y:i32^=2 } }
+let^ make=f^ ->Point { Point{} }
+let^ point=make()
+let^ other=Other{}
+print^(point.x,point.y,other.x,other.y)
+let^ changed:Point={y=7}
+print^(changed.x,changed.y)
+''', '1 2 1 2\n1 7\n')
+    negative('struct_no_methods', 'struct^ Point { x:i32^=0; move=f^ self^ {} }',
+             "expected ':'")
+    negative('struct_no_bases', 'def^ Base {} struct^ Point : Base {}',
+             "expected '{'")
+
     positive('do_blocks', '''
 var^ x=1
 do^{}

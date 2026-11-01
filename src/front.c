@@ -197,7 +197,8 @@ static bool type_constructor(Parser *p, Expr *e)
     }
     for (int j = 0; j + 1 < p->tokens.n; j++) {
         Token *a = p->tokens.v[j], *b = p->tokens.v[j + 1];
-        if (!strcmp(a->text, "def^") && !strcmp(b->text, name)) {
+        if ((!strcmp(a->text, "def^") || !strcmp(a->text, "struct^")) &&
+            !strcmp(b->text, name)) {
             return true;
         }
         size_t n = strlen(b->text);
@@ -2535,13 +2536,18 @@ static void require_new_function_name(Module *module, const char *name, Loc loc)
     }
 }
 
-static void definition(Parser *p)
+static void definition(Parser *p, bool structure)
 {
     Def *d = mem(sizeof(*d));
     d->loc = tok(p)->loc;
     d->name = decl_word(p);
     d->id = p->p->defs.n;
     add(&p->p->defs, d);
+    if (structure) {
+        need(p, "{");
+        fields(p, d);
+        return;
+    }
     if (take(p, "=")) {
         do {
             add(&d->union_specs, spec_part(p));
@@ -2812,9 +2818,11 @@ void parse_file(Program *p, const char *path, Module *module)
         }
         bool lhat_ref = lhat_export && take(&q, "ref^");
         bool lhat_def = lhat_export && !exported &&
-                        (is(&q, "def^") || (is(&q, "errordef^") && !lhat_ref) ||
+                        (is(&q, "def^") || is(&q, "struct^") ||
+                         (is(&q, "errordef^") && !lhat_ref) ||
                          (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
-                          !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^")));
+                          (!strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^") ||
+                           !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "struct^"))));
         if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(&q, "let^"))) {
             fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
                             " (or exportL^ to a def^ or errordef^)");
@@ -2889,7 +2897,8 @@ void parse_file(Program *p, const char *path, Module *module)
             continue;
         }
         if (take(&q, "externC^")) {
-            if (!take(&q, "def^")) {
+            bool structure = take(&q, "struct^");
+            if (!structure && !take(&q, "def^")) {
                 Loc declaration = tok(&q)->loc;
                 char *name = decl_word(&q);
                 require_new_function_name(module, name, declaration);
@@ -2906,14 +2915,14 @@ void parse_file(Program *p, const char *path, Module *module)
             int start = q.at;
             char *name = decl_word(&q);
             Def *d = NULL;
-            if (take(&q, ";")) {
+            if (!structure && take(&q, ";")) {
                 d = mem(sizeof(*d));
                 *d = (Def){.loc = loc, .name = name, .id = p->defs.n, .opaque = true};
                 add(&p->defs, d);
             }
             else {
                 q.at = start;
-                definition(&q);
+                definition(&q, structure);
                 d = p->defs.v[p->defs.n - 1];
             }
             // With methods only, it is still opaque.
@@ -2926,8 +2935,9 @@ void parse_file(Program *p, const char *path, Module *module)
             add(&module->defs, d);
             continue;
         }
-        if (take(&q, "def^")) {
-            definition(&q);
+        bool structure = take(&q, "struct^");
+        if (structure || take(&q, "def^")) {
+            definition(&q, structure);
             Def *d = p->defs.v[p->defs.n - 1];
             d->module = module;
             d->public = public;
