@@ -57,6 +57,7 @@ struct Module {
 };
 
 struct Spec {
+    Type *type; // Canonical type, cached after module name resolution.
     bool resolved;
     Loc loc;
     char *name;
@@ -206,6 +207,7 @@ struct Function {
     char *name;
     Def *owner;
     List params, body;
+    List instances; // Concrete call shapes belonging to this declaration.
     Spec *result;
     Type *required_result;
     char *external; // C symbol of an externC^ declaration, which has no body.
@@ -297,6 +299,7 @@ struct Type {
     char *symbol;
     int kind, id, count;
     Type *elem;
+    List wrappers; // Canonical ref/array/etc. types whose element is this type.
     Def *def;
     size_t size, align;
     size_t payload_align, payload_bytes, payload_offset;
@@ -316,9 +319,11 @@ typedef struct {
     Module *emitting;
     const char *stdlib_dir;
     List defs, functions, types, instances, strings;
-    List dyn_tables; // DynTable records, one per converted concrete type and
-                     // dyn^ def.
+    Type *builtins[T_NEVER + 1]; // Primitive types indexed by kind.
+    List dyn_tables;             // DynTable records, one per converted concrete type and
+                                 // dyn^ def.
     Function *entry;
+    int inferred_instances; // Instance count at the last return-inference fixed point.
     int stack_count;
     bool callbacks; // Some exportC^ function may be entered from C.
     bool crt_dll;   // --crt-dll: build and link against the C runtime DLL.

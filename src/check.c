@@ -500,8 +500,9 @@ static Infer infer_context(Context *c)
     for (int j = 0; j < c->loops.n; j++) {
         add(&out.loops, (void *)(intptr_t)(((Loop *)c->loops.v[j])->outside + 1));
     }
+    Var *vars = mem((size_t)c->vars.n * sizeof(*vars));
     for (int j = 0; j < c->vars.n; j++) {
-        Var *v = mem(sizeof(*v));
+        Var *v = &vars[j];
         *v = *(Var *)c->vars.v[j];
         v->alias = NULL;
         v->source = NULL;
@@ -509,6 +510,9 @@ static Infer infer_context(Context *c)
     }
     for (int j = 0; j < c->vars.n; j++) {
         Var *old = c->vars.v[j];
+        if (!old->alias && !old->source) {
+            continue;
+        }
         for (int k = 0; k < c->vars.n; k++) {
             if (old->alias && old->alias == c->vars.v[k]) {
                 ((Var *)out.vars.v[j])->alias = out.vars.v[k];
@@ -1987,10 +1991,16 @@ List first_types(Context *c, Stmt *s)
 
 void infer_results(Program *p)
 {
+    if (p->inferred_instances == p->instances.n) {
+        return;
+    }
+    // At a fixed point, all dependencies of these instances already exist.
+    // New call shapes cannot change their immutable parameter/result graph.
+    int first = p->inferred_instances;
     for (int round = 0; round < 1024; round++) {
         bool changed = false;
         int count = p->instances.n;
-        for (int j = 0; j < p->instances.n; j++) {
+        for (int j = first; j < p->instances.n; j++) {
             Instance *in = p->instances.v[j];
             Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
             for (int k = 0; k < in->fn->params.n; k++) {
@@ -2032,6 +2042,7 @@ void infer_results(Program *p)
             changed = true;
         }
         if (!changed) {
+            p->inferred_instances = p->instances.n;
             return;
         }
     }
@@ -2067,9 +2078,9 @@ Type *expression_type(Context *c, Expr *e, Type *expected)
 
 Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
 {
-    for (int j = 0; j < p->instances.n; j++) {
-        Instance *in = p->instances.v[j];
-        if (in->fn != f || in->self != self || in->params.n != actual->n) {
+    for (int j = 0; j < f->instances.n; j++) {
+        Instance *in = f->instances.v[j];
+        if (in->self != self || in->params.n != actual->n) {
             continue;
         }
         bool same = true;
@@ -2104,6 +2115,7 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
         in->symbol = fmt("rh_fn_%s", link_identity(identity));
     }
     in->result_slot = -1;
+    add(&f->instances, in);
     add(&p->instances, in);
     return in;
 }
@@ -2734,6 +2746,14 @@ static bool body_function(Program *p, Function *f)
     if (f->templ || f->abstract) {
         return false;
     }
+    bool untyped = false;
+    for (int j = 0; j < f->params.n; j++) {
+        Param *a = f->params.v[j];
+        untyped |= !a->spec && !a->self;
+    }
+    if (!untyped) {
+        return false;
+    }
     BodyCheck c = {.p = p, .fn = f, .scope = {.p = p, .lexical = f->lexical ? f->lexical : 1}};
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
@@ -2748,9 +2768,6 @@ static bool body_function(Program *p, Function *f)
             add(&c.params, bp);
         }
         body_bind(&c, a->name, n);
-    }
-    if (!c.params.n) {
-        return false;
     }
     body_statements(&c, &f->body, false);
     bool changed = false;

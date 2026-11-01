@@ -15,11 +15,8 @@ Def *lookup_def(Program *p, const char *n)
 
 Type *type_builtin(Program *p, int k)
 {
-    for (int i = 0; i < p->types.n; i++) {
-        Type *t = p->types.v[i];
-        if (t->kind == k && (k < T_STRUCT || k == T_NEVER)) {
-            return t;
-        }
+    if (p->builtins[k]) {
+        return p->builtins[k];
     }
     Type *t = mem(sizeof(*t));
     t->kind = k;
@@ -44,15 +41,16 @@ Type *type_builtin(Program *p, int k)
         }
         break;
     }
+    p->builtins[k] = t;
     add(&p->types, t);
     return t;
 }
 
 Type *type_wrap(Program *p, int k, Type *e, int n)
 {
-    for (int i = 0; i < p->types.n; i++) {
-        Type *t = p->types.v[i];
-        if (t->kind == k && t->elem == e && t->count == n) {
+    for (int i = 0; i < e->wrappers.n; i++) {
+        Type *t = e->wrappers.v[i];
+        if (t->kind == k && t->count == n) {
             return t;
         }
     }
@@ -76,6 +74,7 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
         t->owned = true;
         t->refs = e->refs;
     }
+    add(&e->wrappers, t);
     add(&p->types, t);
     return t;
 }
@@ -266,11 +265,8 @@ bool range_type(Type *t)
     return t && t->kind == T_STRUCT && !strcmp(t->def->name, "range^");
 }
 
-Type *type_spec(Program *p, Spec *s)
+static Type *resolve_spec_type(Program *p, Spec *s)
 {
-    if (!s) {
-        return type_builtin(p, T_VOID);
-    }
     if (s->kind == SPEC_NAME && !strcmp(s->name, "range^")) {
         return type_range(p);
     }
@@ -310,8 +306,8 @@ Type *type_spec(Program *p, Spec *s)
     }
     if (s->kind != SPEC_NAME) {
         return type_wrap(p,
-                         s->kind == SPEC_REF     ? T_REF
-                         : s->kind == SPEC_GROW  ? T_GROW
+                         s->kind == SPEC_REF       ? T_REF
+                         : s->kind == SPEC_GROW    ? T_GROW
                          : s->kind == SPEC_SLICE   ? T_SLICE
                          : s->kind == SPEC_BOUNDED ? T_BOUNDED
                                                    : T_ARRAY,
@@ -331,6 +327,17 @@ Type *type_spec(Program *p, Spec *s)
     }
     tool_record(p, s->loc, d->loc, d->name, d->type, NULL, d, 23, false);
     return d->type;
+}
+
+Type *type_spec(Program *p, Spec *s)
+{
+    if (!s) {
+        return type_builtin(p, T_VOID);
+    }
+    if (!s->type) {
+        s->type = resolve_spec_type(p, s);
+    }
+    return s->type;
 }
 
 char *type_name(Type *t)
@@ -356,9 +363,8 @@ char *type_name(Type *t)
         for (int j = 0; j < t->params.n; j++) {
             name = fmt("%s%s%s", name, j ? ", " : " ", type_name(t->params.v[j]));
         }
-        return t->result && t->result->kind != T_VOID
-                   ? fmt("%s -> %s;", name, type_name(t->result))
-                   : fmt("%s;", name);
+        return t->result && t->result->kind != T_VOID ? fmt("%s -> %s;", name, type_name(t->result))
+                                                      : fmt("%s;", name);
     }
     if (t->kind < T_STRUCT) {
         return (char *)builtin_name(t->kind);

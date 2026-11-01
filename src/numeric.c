@@ -194,15 +194,24 @@ char *float_constant(const char *text, int kind, Loc loc)
         Decimal d = decimal(text);
         unsigned low = 0, high = kind == T_F8 ? 126 : kind == T_F16 ? 31743 : 2139095039;
         unsigned maximum = high;
-        // First find the greatest representable value <= the exact literal.
+        // Locate the literal approximately without formatting 160 decimal
+        // places at every binary-search step. Exact comparisons below correct
+        // a strtod rounding across a narrow-float boundary before tie-breaking.
+        double approximate = strtod(text, NULL);
         while (low < high) {
             unsigned mid = (low + high + 1) / 2;
-            if (decimal_compare(d, narrow_value(mid, kind)) >= 0) {
+            if (approximate >= narrow_value(mid, kind)) {
                 low = mid;
             }
             else {
                 high = mid - 1;
             }
+        }
+        while (low && decimal_compare(d, narrow_value(low, kind)) < 0) {
+            low--;
+        }
+        while (low < maximum && decimal_compare(d, narrow_value(low + 1, kind)) >= 0) {
+            low++;
         }
         double a = narrow_value(low, kind);
         double b = narrow_value(low + 1, kind);

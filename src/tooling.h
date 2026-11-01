@@ -13,7 +13,7 @@ typedef struct {
 // NULL for the command-line compiler; installed by an embedded checker.
 extern _Thread_local CompilerHooks *compiler_hooks;
 
-// Release compiler memory through its current allocation boundary.
+// Release client-managed compiler memory; CLI chunks live until process exit.
 void mem_free(void *pointer);
 
 // One source buffer, optionally replacing the corresponding file on disk.

@@ -8,9 +8,7 @@ void mem_free(void *pointer)
     if (compiler_hooks) {
         compiler_hooks->release(pointer);
     }
-    else {
-        free(pointer);
-    }
+    // CLI allocations belong to process-lifetime chunks.
 }
 
 static bool path_equal(const char *a, const char *b)

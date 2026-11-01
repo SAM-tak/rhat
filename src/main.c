@@ -268,8 +268,10 @@ int main(int argc, char **argv)
     }
     analyze(&p);
     plan_stacks(&p);
-    analyze_array_growth(&p);
-    version_range_loops(&p);
+    if (strcmp(command, "check") || rir) {
+        analyze_array_growth(&p);
+        version_range_loops(&p);
+    }
     if (stacks) {
         report_stacks(&p);
     }

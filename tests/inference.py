@@ -16,6 +16,20 @@ let^ id=f^ x {x}
 print^(id(42),id(i64^(43)),id("hello"),id("hello").bytes.len)
 ''', '42 43 hello 5\n', instances)
 
+    def late_results(ir, ll):
+        assert '-> i32^' in ir and '-> string^' in ir
+
+    # The unused typed declaration is lowered after the entry's fixed point.
+    # It introduces a new recursive call shape that must still converge.
+    positive('inference_late_specialization', """
+let^ repeat=f^ value,n:i32^ {
+ if^ n=0 {return^ value}
+ return^ this^(value,n-1)
+}
+let^ late=f^ ->string^ {repeat("late",2)}
+print^(repeat(42,2))
+""", '42\n', late_results)
+
     positive('inference_mixed_annotations', '''
 let^ choose=f^ flag:bool^, a, b:i64^ {if^ flag: i64^(a) el^: b;}
 print^(choose(true^,12,99),choose(false^,u8^(7),42))

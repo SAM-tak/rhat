@@ -753,6 +753,19 @@ static void pass_top_bindings(Module *m)
                  ((Stmt *)caller->uses.v[0])->name);
         }
     }
+    // Identify value references once, rather than for every captured function.
+    int values = 0;
+    for (int j = 0; j < top_references.n; j++) {
+        Expr *e = top_references.v[j];
+        bool callee = false;
+        for (int k = 0; !callee && k < top_calls.n; k++) {
+            callee = ((TopCall *)top_calls.v[k])->call->a == e;
+        }
+        if (!callee) {
+            top_references.v[values++] = e;
+        }
+    }
+    top_references.n = values;
     for (int j = 0; j < m->functions.n; j++) {
         Function *f = m->functions.v[j];
         if (!f->uses.n) {
@@ -768,11 +781,7 @@ static void pass_top_bindings(Module *m)
         }
         for (int k = 0; k < top_references.n; k++) {
             Expr *e = top_references.v[k];
-            bool callee = false;
-            for (int n = 0; n < top_calls.n; n++) {
-                callee |= ((TopCall *)top_calls.v[n])->call->a == e;
-            }
-            if (!callee && !strcmp(e->text, f->name)) {
+            if (!strcmp(e->text, f->name)) {
                 fail(e->loc, "'%s' uses the top-level binding '%s' and cannot be a value", f->name,
                      first->name);
             }

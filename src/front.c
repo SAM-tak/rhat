@@ -5,11 +5,30 @@
 
 void *mem(size_t n)
 {
-    void *p = compiler_hooks ? compiler_hooks->allocate(n) : calloc(1, n ? n : 1);
-    if (!p) {
+    if (compiler_hooks) {
+        return compiler_hooks->allocate(n);
+    }
+    // CLI compiler objects live until process exit. Zeroed chunks avoid a heap
+    // allocation for every token, expression, inference node and instruction.
+    static _Thread_local unsigned char *next;
+    static _Thread_local size_t remaining;
+    size_t align = _Alignof(long double);
+    if (n > SIZE_MAX - align) {
         fputs("out of memory\n", stderr);
         exit(1);
     }
+    size_t size = ((n ? n : 1) + align - 1) / align * align;
+    if (size > remaining) {
+        remaining = size > 65536 ? size : 65536;
+        next = calloc(1, remaining);
+        if (!next) {
+            fputs("out of memory\n", stderr);
+            exit(1);
+        }
+    }
+    void *p = next;
+    next += size;
+    remaining -= size;
     return p;
 }
 
@@ -118,6 +137,7 @@ typedef struct {
     Function *enclosing;
     List tokens;
     int at, serial, scope_depth;
+    List type_names, error_names; // Declaration names indexed once after lexing.
     bool header;
     bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
 } Parser;
@@ -195,14 +215,15 @@ static bool type_constructor(Parser *p, Expr *e)
     if (!name) {
         return false;
     }
-    for (int j = 0; j + 1 < p->tokens.n; j++) {
-        Token *a = p->tokens.v[j], *b = p->tokens.v[j + 1];
-        if ((!strcmp(a->text, "def^") || !strcmp(a->text, "struct^")) &&
-            !strcmp(b->text, name)) {
+    for (int j = 0; j < p->type_names.n; j++) {
+        if (!strcmp(p->type_names.v[j], name)) {
             return true;
         }
-        size_t n = strlen(b->text);
-        if (!strcmp(a->text, "errordef^") && !strncmp(name, b->text, n) && name[n] == '.') {
+    }
+    for (int j = 0; j < p->error_names.n; j++) {
+        const char *error = p->error_names.v[j];
+        size_t n = strlen(error);
+        if (!strncmp(name, error, n) && name[n] == '.') {
             return true;
         }
     }
@@ -421,9 +442,8 @@ static void utf8_text(const char *out, size_t n, Loc loc)
 
 // The text of an interpolated string up to its next hole or its end, with
 // {{ and }} for braces.
-static const char *interp_text(const char *s, Token *t)
+static const char *interp_text(const char *s, Token *t, char *out)
 {
-    char *out = mem(strlen(s) + 1);
     size_t n = 0;
     while (*s && *s != '"' && !(*s == '{' && s[1] != '{')) {
         if ((*s == '{' || *s == '}') && s[1] == *s) {
@@ -446,7 +466,7 @@ static const char *interp_text(const char *s, Token *t)
     }
     utf8_text(out, n, t->loc);
     t->kind = TOK_STRING;
-    t->text = out;
+    t->text = slice(out, n);
     t->length = n;
     return s;
 }
@@ -454,6 +474,7 @@ static const char *interp_text(const char *s, Token *t)
 static void lex(Parser *p)
 {
     const char *s = p->p->source;
+    char *scratch = mem(strlen(s) + 1);
     int line = 1, col = 1;
     // Open interpolated strings, the bracket depth inside each one's hole,
     // and whether the innermost is in its text rather than a hole.
@@ -473,7 +494,7 @@ static void lex(Parser *p)
                 text = false;
             }
             else if (text) {
-                s = interp_text(s, t);
+                s = interp_text(s, t, scratch);
             }
             else if (*s == '}') {
                 s++;
@@ -592,7 +613,7 @@ static void lex(Parser *p)
         }
         else if (*s == '`') {
             s++;
-            char *out = mem(strlen(s) + 1);
+            char *out = scratch;
             size_t n = 0;
             bool closed = false;
             while (*s) {
@@ -614,7 +635,7 @@ static void lex(Parser *p)
             if (!closed || !n) {
                 fail(t->loc, "empty or unterminated quoted identifier");
             }
-            t->text = out;
+            t->text = slice(out, n);
             t->kind = TOK_QUOTED;
         }
         else if (isalpha((unsigned char)*s) || *s == '_' || (unsigned char)*s >= 128) {
@@ -676,7 +697,7 @@ static void lex(Parser *p)
             if (line_string) {
                 s += 2;
             }
-            char *out = mem(strlen(s) + 1);
+            char *out = scratch;
             size_t n = 0;
             bool closed = line_string;
             while (*s && (!line_string || (*s != '\n' && *s != '\r'))) {
@@ -706,7 +727,7 @@ static void lex(Parser *p)
             }
             utf8_text(out, n, t->loc);
             t->kind = TOK_STRING;
-            t->text = out;
+            t->text = slice(out, n);
             t->length = n;
         }
         else if (*s == '?') {
@@ -2530,7 +2551,8 @@ static void require_new_function_name(Module *module, const char *name, Loc loc)
     for (int j = 0; j < module->functions.n; j++) {
         Function *previous = module->functions.v[j];
         if (!strcmp(previous->name, name)) {
-            fail(loc, "function '%s' is already declared; put its overloads in one declaration with &",
+            fail(loc,
+                 "function '%s' is already declared; put its overloads in one declaration with &",
                  name);
         }
     }
@@ -2776,6 +2798,15 @@ void parse_file(Program *p, const char *path, Module *module)
     q.p = p;
     q.module = module;
     lex(&q);
+    for (int j = 0; j + 1 < q.tokens.n; j++) {
+        Token *a = q.tokens.v[j], *b = q.tokens.v[j + 1];
+        if (!strcmp(a->text, "def^") || !strcmp(a->text, "struct^")) {
+            add(&q.type_names, b->text);
+        }
+        else if (!strcmp(a->text, "errordef^")) {
+            add(&q.error_names, b->text);
+        }
+    }
     p->entry = mem(sizeof(*p->entry));
     p->entry->loc = (Loc){path, 1, 1};
     p->entry->name = "<top-level>";
@@ -2817,12 +2848,12 @@ void parse_file(Program *p, const char *path, Module *module)
             }
         }
         bool lhat_ref = lhat_export && take(&q, "ref^");
-        bool lhat_def = lhat_export && !exported &&
-                        (is(&q, "def^") || is(&q, "struct^") ||
-                         (is(&q, "errordef^") && !lhat_ref) ||
-                         (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
-                          (!strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^") ||
-                           !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "struct^"))));
+        bool lhat_def =
+            lhat_export && !exported &&
+            (is(&q, "def^") || is(&q, "struct^") || (is(&q, "errordef^") && !lhat_ref) ||
+             (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
+              (!strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^") ||
+               !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "struct^"))));
         if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(&q, "let^"))) {
             fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
                             " (or exportL^ to a def^ or errordef^)");
@@ -3014,7 +3045,7 @@ void parse_file(Program *p, const char *path, Module *module)
                 // A called literal initializes a value; it does not declare a named
                 // function.
                 if (first_arm && (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-                    (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0))) {
+                                  (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0))) {
                     q.at = binding_start;
                     add(&p->entry->body, stmt(&q));
                     break;

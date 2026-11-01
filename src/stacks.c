@@ -52,6 +52,7 @@ static void local_plan(Instance *in)
     List queue = {0};
     State empty = {0};
     join(states, 0, &empty, &queue, in->fn->loc);
+    int *owners = mem((size_t)(in->slots.n + 1) * sizeof(int));
     for (int q = 0; q < queue.n; q++) {
         int k = (int)(intptr_t)queue.v[q] - 1;
         if (k == n) {
@@ -59,7 +60,6 @@ static void local_plan(Instance *in)
         }
         Instr *i = in->code.v[k];
         State state = states[k];
-        int *owners = mem((size_t)(in->slots.n + 1) * sizeof(int));
         if (state.n) {
             memcpy(owners, state.owners, (size_t)state.n * sizeof(int));
         }
