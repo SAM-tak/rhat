@@ -289,8 +289,8 @@ static char *spec_text(Spec *s)
 
 static char *signature(Program *p, Function *f)
 {
-    char *out = fmt("%s%s %s(", f->templ ? "template^" : "", f->procedure ? "p^" : "f^",
-                    short_name(f->name));
+    char *out = fmt("%s : %s%s", short_name(f->name), f->templ ? "template^" : "",
+                    f->procedure ? "p^" : "f^");
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
         Type *t = a->self && f->owner ? f->owner->type : a->inferred;
@@ -310,7 +310,10 @@ static char *signature(Program *p, Function *f)
             }
         }
     }
-    return fmt("%s) -> %s", out,
+    if (!f->result && result && result->kind == T_VOID) {
+        return out;
+    }
+    return fmt("%s -> %s", out,
                f->result ? spec_text(f->result)
                : result  ? type_name(result)
                          : "?");

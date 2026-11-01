@@ -125,7 +125,7 @@ print^(twice(point.x))
     definition = request('definition', 'point.x', shift=6)
     assert definition['range']['start'] == at(content, 'x:i64^'), definition
     hover=request('hover', 'twice(point')
-    assert hover['contents']['value'].startswith('f^ twice(n:i64^)'), hover
+    assert hover['contents']['value'].startswith('twice : f^n:i64^'), hover
     assert request('definition', 'twice(point')['range']['start'] == at(content, 'twice=f^')
     refs = client.request('textDocument/references', dict(textDocument=dict(uri=path.as_uri()), position=at(content,'point.x'), context=dict(includeDeclaration=True)))
     assert len(refs) == 2, refs
@@ -532,6 +532,38 @@ let^ report=p^x:f64^ {print^(x)}
     client.send('textDocument/didClose',dict(textDocument=dict(uri=math_path.as_uri())))
     print('PASS overload keyword spans and consistent foreign parameter coloring',flush=True)
 
+    result_signatures="""def^ Random {
+ self^{state:i64^=0}
+ reseed=p^self^,seed:i64^ {self^.state:=seed}
+}
+let^ consume=p^n:i64^ {print^(n)}
+let^ empty=f^ {}
+let^ nil_result=p^ {return^ nil^}
+let^ number_result=p^n:i64^ {return^ n}
+externC^srand:p^seed:u32^;
+var^ rng=Random{}
+rng.reseed(1)
+consume(1)
+empty()
+nil_result()
+number_result(1)
+"""
+    client.change(path,result_signatures,110)
+    assert client.diagnostics(path,110) == []
+    for needle,shift,expected in [
+        ('rng.reseed(1)',4,'reseed : p^self^:Random, seed:i64^'),
+        ('consume(1)',0,'consume : p^n:i64^'),
+        ('empty()',0,'empty : f^'),
+        ('nil_result()',0,'nil_result : p^ -> nil^'),
+        ('number_result(1)',0,'number_result : p^n:i64^ -> i64^'),
+        ('srand:p^',0,'srand : p^seed:u32^'),
+    ]:
+        hover=request('hover',needle,shift=shift,text=result_signatures)
+        assert hover['contents']['value'] == expected, hover
+    signature=request('signatureHelp','rng.reseed(1)',shift=11,text=result_signatures)
+    assert signature['signatures'][0]['label'] == 'reseed : p^self^:Random, seed:i64^', signature
+    print('PASS no-result signatures omit the arrow and remain distinct from nil results',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
@@ -541,9 +573,9 @@ let^ report=p^x:f64^ {print^(x)}
     client.open(hats, hat_text)
     assert client.diagnostics(hats, 1) == []
     hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'count = f^count')))
-    assert hover['contents']['value'] == 'f^ count(count:i64^) -> i64^', hover
+    assert hover['contents']['value'] == 'count : f^count:i64^ -> i64^', hover
     hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'zero = f^ ->')))
-    assert hover['contents']['value'] == 'f^ zero() -> i64^', hover
+    assert hover['contents']['value'] == 'zero : f^ -> i64^', hover
     client.send('textDocument/didClose',dict(textDocument=dict(uri=hats.as_uri())))
     client.send('textDocument/didClose',dict(textDocument=dict(uri=path.as_uri())))
     client.send('textDocument/didClose',dict(textDocument=dict(uri=module.as_uri())))
