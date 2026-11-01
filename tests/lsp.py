@@ -298,7 +298,7 @@ print^(read(view))
     assert 'ref^' in {item['label'] for item in completions}, completions
     print('PASS reference keyword hover, signature and completion',flush=True)
     overloads='''let^ choose=f^ n:i32^ ->i32^ {n+1}
-let^ choose=f^ n:string^ ->i32^ {42}
+& f^ n:string^ ->i32^ {42}
 let^ dispatch=choose
 print^(dispatch(1),choose("s"))
 def^ V {self^{n:i32^=1} op^+ =f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}}
@@ -312,7 +312,7 @@ print^(v+1)
     signatures=request('signatureHelp','dispatch(1)',shift=9,text=overloads)
     assert len(signatures['signatures']) == 2, signatures
     definition=request('definition','choose("s")',text=overloads)
-    assert definition['range']['start'] == at(overloads,'choose=f^',occurrence=1), definition
+    assert definition['range']['start'] == at(overloads,'& f^',shift=2), definition
     definition=request('definition','v+1',shift=1,text=overloads)
     assert definition['range']['start'] == at(overloads,'op^+'), definition
     print('PASS callable intersections, overload navigation and operator navigation',flush=True)
@@ -321,13 +321,13 @@ print^(v+1)
 
     # A name right after a hat is the declaration even if it recurs later.
     hats = work/'hats.rh'
-    hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^count = f^ -> i64^ { 0 }\n'
+    hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^zero = f^ -> i64^ { 0 }\n'
     client.open(hats, hat_text)
     assert client.diagnostics(hats, 1) == []
     hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'count = f^count')))
     assert hover['contents']['value'] == 'f^ count(count:i64^) -> i64^', hover
-    hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'count = f^ ->')))
-    assert hover['contents']['value'] == 'f^ count() -> i64^', hover
+    hover = client.request('textDocument/hover', dict(textDocument=dict(uri=hats.as_uri()), position=at(hat_text, 'zero = f^ ->')))
+    assert hover['contents']['value'] == 'f^ zero() -> i64^', hover
     client.send('textDocument/didClose',dict(textDocument=dict(uri=hats.as_uri())))
     client.send('textDocument/didClose',dict(textDocument=dict(uri=path.as_uri())))
     client.send('textDocument/didClose',dict(textDocument=dict(uri=module.as_uri())))

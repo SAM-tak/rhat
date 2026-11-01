@@ -2524,6 +2524,17 @@ static Function *external_function(Parser *p, char *name, char *symbol)
     return f;
 }
 
+static void require_new_function_name(Module *module, const char *name, Loc loc)
+{
+    for (int j = 0; j < module->functions.n; j++) {
+        Function *previous = module->functions.v[j];
+        if (!strcmp(previous->name, name)) {
+            fail(loc, "function '%s' is already declared; put its overloads in one declaration with &",
+                 name);
+        }
+    }
+}
+
 static void definition(Parser *p)
 {
     Def *d = mem(sizeof(*d));
@@ -2881,6 +2892,7 @@ void parse_file(Program *p, const char *path, Module *module)
             if (!take(&q, "def^")) {
                 Loc declaration = tok(&q)->loc;
                 char *name = decl_word(&q);
+                require_new_function_name(module, name, declaration);
                 Function *f = external_function(&q, name, name);
                 f->declaration = declaration;
                 f->module = module;
@@ -2977,32 +2989,39 @@ void parse_file(Program *p, const char *path, Module *module)
         Loc declaration = tok(&q)->loc;
         char *name = decl_word(&q);
         need(&q, "=");
-        Function *parsed_function = NULL;
-        if (take(&q, "externC^")) {
-            parsed_function = external_function(&q, name, word(&q));
-        }
-        else if (take(&q, "externLLVM^")) {
-            parsed_function = external_function(&q, name, qualified_word(&q));
-            parsed_function->intrinsic = true;
-        }
-        else {
-            parsed_function = function(&q, name, NULL, false);
-            // A called literal initializes a value; it does not declare a named
-            // function.
-            if (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-                (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0)) {
-                q.at = binding_start;
-                add(&p->entry->body, stmt(&q));
-                continue;
+        bool first_arm = true;
+        do {
+            Function *parsed_function = NULL;
+            if (take(&q, "externC^")) {
+                parsed_function = external_function(&q, name, word(&q));
             }
-        }
-        parsed_function->declaration = declaration;
-        parsed_function->module = module;
-        parsed_function->public = public;
-        parsed_function->exported = exported;
-        parsed_function->lhat_export = lhat_export;
-        add(&module->functions, parsed_function);
-        add(&p->functions, parsed_function);
+            else if (take(&q, "externLLVM^")) {
+                parsed_function = external_function(&q, name, qualified_word(&q));
+                parsed_function->intrinsic = true;
+            }
+            else {
+                parsed_function = function(&q, name, NULL, false);
+                // A called literal initializes a value; it does not declare a named
+                // function.
+                if (first_arm && (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
+                    (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0))) {
+                    q.at = binding_start;
+                    add(&p->entry->body, stmt(&q));
+                    break;
+                }
+            }
+            if (first_arm) {
+                require_new_function_name(module, name, declaration);
+            }
+            parsed_function->declaration = first_arm ? declaration : parsed_function->loc;
+            parsed_function->module = module;
+            parsed_function->public = public;
+            parsed_function->exported = exported;
+            parsed_function->lhat_export = lhat_export;
+            add(&module->functions, parsed_function);
+            add(&p->functions, parsed_function);
+            first_arm = false;
+        } while (take(&q, "&"));
         take(&q, ";");
     }
     // A char^(...) or string^(...) cast fails with std.text's error, imported out of sight.
