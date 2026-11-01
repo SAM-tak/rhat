@@ -336,6 +336,9 @@ let^ missing=fs.read("no_such_dir/no_such.tmp",ref^ got)
 for^ missing { when^ fits^ fs.Error.OpenFailed: print^("open failed") other^: print^("other") }
 ''', 'true\n7 104 108\n150000 7\ntrue false false\nopen failed\n')
 
+    # More borrow roots than the 64 a bit mask could hold, live across a loop.
+    positive('many_roots', '\n'.join(['var^ v%d:i64^ = %d' % (i, i) for i in range(100)]) + '\nvar^ sum:i64^ = 0\nfor^ k:i64^ from^ 0 to^ 2 { sum += v99 + k }\nprint^(sum, v0 + v50)', '300 50\n')
+
     positive('literal_left_operand', '''
 let^ n:i64^ = 5
 let^ x:f32^ = 1.5

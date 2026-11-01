@@ -46,18 +46,18 @@ static void plain_loop(Context *c, Stmt *s)
         .end = end, .update = update, .bindings = c->vars.n, .outside = c->vars.n, .phase = 1};
     add(&c->loops, &target);
     branch_to(c, test, s->loc);
-    int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels, roots = c->root_count;
+    int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels;
     int bindings = c->vars.n;
     List entry_facts = save_facts(&c->vars);
     for (;;) {
         List turn_facts = save_facts(&c->vars);
-        Type *before_fact[64];
-        bool before_paths[64];
+        Type **before_fact = mem((size_t)(bindings + 1) * sizeof(*before_fact));
+        bool *before_paths = mem((size_t)(bindings + 1) * sizeof(*before_paths));
         for (int j = 0; j < bindings; j++) {
             before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
             before_paths[j] = ((Var *)c->vars.v[j])->paths.n != 0;
         }
-        uint64_t before[64];
+        Roots *before = mem((size_t)(bindings + 1) * sizeof(*before));
         for (int j = 0; j < bindings; j++) {
             before[j] = ((Var *)c->vars.v[j])->deps;
         }
@@ -109,7 +109,7 @@ static void plain_loop(Context *c, Stmt *s)
         restore_facts(&c->vars, turn_facts);
         bool changed = false;
         for (int j = 0; j < bindings; j++) {
-            changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
+            changed |= !roots_equal(before[j], ((Var *)c->vars.v[j])->deps) ||
                        (before_fact[j] && !((Var *)c->vars.v[j])->narrowed) ||
                        (before_paths[j] && !((Var *)c->vars.v[j])->paths.n);
         }
@@ -119,7 +119,6 @@ static void plain_loop(Context *c, Stmt *s)
         c->in->code.n = code;
         c->in->slots.n = slots;
         c->in->labels = labels;
-        c->root_count = roots;
     }
     c->loops.n--;
     label_at(c, end, s->loc);
@@ -158,7 +157,7 @@ static void loop_code(Context *c, Stmt *s)
         layout(v->type, s->loc);
         v->depth = c->depth;
         v->lexical = c->lexical;
-        v->root = root(c, c->depth, false, s->loc);
+        v->root = root(c, v->name, c->depth, false);
         v->slot = slot(c, v->type, false);
         v->unavailable = v->pending = true;
         if (v->type->owned) {
@@ -196,18 +195,18 @@ static void loop_code(Context *c, Stmt *s)
     }
     add(&c->loops, &target);
     branch_to(c, test, s->loc);
-    int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels, roots = c->root_count;
+    int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels;
     int persistent = c->vars.n;
     List loop_inputs = save_facts(&c->vars);
     for (;;) {
         List turn_facts = save_facts(&c->vars);
-        Type *before_fact[64];
-        bool before_paths[64];
+        Type **before_fact = mem((size_t)(persistent + 1) * sizeof(*before_fact));
+        bool *before_paths = mem((size_t)(persistent + 1) * sizeof(*before_paths));
         for (int j = 0; j < persistent; j++) {
             before_fact[j] = ((Var *)c->vars.v[j])->narrowed;
             before_paths[j] = ((Var *)c->vars.v[j])->paths.n != 0;
         }
-        uint64_t before[64];
+        Roots *before = mem((size_t)(persistent + 1) * sizeof(*before));
         for (int j = 0; j < persistent; j++) {
             before[j] = ((Var *)c->vars.v[j])->deps;
         }
@@ -354,7 +353,7 @@ static void loop_code(Context *c, Stmt *s)
         restore_facts(&c->vars, turn_facts);
         bool changed = false;
         for (int j = 0; j < persistent; j++) {
-            changed |= before[j] != ((Var *)c->vars.v[j])->deps ||
+            changed |= !roots_equal(before[j], ((Var *)c->vars.v[j])->deps) ||
                        (before_fact[j] && !((Var *)c->vars.v[j])->narrowed) ||
                        (before_paths[j] && !((Var *)c->vars.v[j])->paths.n);
         }
@@ -364,7 +363,6 @@ static void loop_code(Context *c, Stmt *s)
         c->in->code.n = code;
         c->in->slots.n = slots;
         c->in->labels = labels;
-        c->root_count = roots;
     }
     restore_facts(&c->vars, loop_inputs);
     label_at(c, finish, s->loc);
@@ -463,7 +461,7 @@ static void nil_assignment(Context *c, Stmt *s)
             address->dst = pair->pointer.id;
             address->a = pair->location.id;
             address->type = pair->pointer.type;
-            pair->pointer.deps = pair->location.storage | pair->location.deps;
+            pair->pointer.deps = roots_union(pair->location.storage, pair->location.deps);
         }
         else {
             pair->location = place_expression(c, target);
@@ -655,7 +653,7 @@ void handle_statements(Context *c, Stmt *s)
             c->depth++;
             c->lexical++;
         }
-        error_focus(c, pack_error(c, remaining, yes, -1, arm->loc), arm->loc);
+        error_focus(c, pack_error(c, remaining, yes, -1, arm->loc), arm);
         statements(c, &arm->body, false);
         if (!c->terminated) {
             cleanup(c, base, arm->loc);
@@ -743,7 +741,7 @@ void statements(Context *c, List *body, bool scope)
                 Value dst = variable(v);
                 dst.var = NULL;
                 store_check(c, dst, out, b->loc);
-                v->deps |= out.deps;
+                v->deps = roots_union(v->deps, out.deps);
             }
             if (c->terminated) {
                 break;
@@ -765,7 +763,7 @@ void statements(Context *c, List *body, bool scope)
             Value dst = variable(var);
             dst.var = NULL;
             store_check(c, dst, v, s->loc);
-            var->deps |= v.deps;
+            var->deps = roots_union(var->deps, v.deps);
             var->unavailable = var->pending = false;
         }
         else if (s->kind == S_HANDLE) {
@@ -869,7 +867,7 @@ void statements(Context *c, List *body, bool scope)
             var->depth = c->depth;
             var->lexical = c->lexical;
             var->mut = s->mut;
-            var->root = root(c, c->depth, false, s->loc);
+            var->root = root(c, s, c->depth, false);
             var->deps = v.deps;
             if (s->flow_alias && s->a->kind == E_NAME) {
                 var->source = selected(c, s->a);
@@ -1133,7 +1131,7 @@ void statements(Context *c, List *body, bool scope)
                             v = part;
                             break;
                         }
-                        v.deps |= part.deps;
+                        v.deps = roots_union(v.deps, part.deps);
                     }
                 }
                 else {
@@ -1155,8 +1153,8 @@ void statements(Context *c, List *body, bool scope)
                     fail(s->loc, "missing return value");
                 }
             }
-            for (int j = 0; j < c->root_count; j++) {
-                if ((v.deps & (UINT64_C(1) << j)) && !c->root_external[j]) {
+            for (int j = 0; j < v.deps.n; j++) {
+                if (!v.deps.v[j]->external) {
                     fail(s->loc, "cannot return a reference rooted in a local owner");
                 }
             }
@@ -1358,9 +1356,9 @@ Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
         v->lexical = c.lexical;
         v->mut = true;
         v->parameter = true;
-        v->root = root(&c, 1, false, a->loc);
+        v->root = root(&c, a, 1, false);
         if (t->refs) {
-            v->deps = root(&c, 0, true, a->loc);
+            v->deps = root(&c, &a->name, 0, true);
         }
         if (j < 64) {
             c.param_deps[j] = v->deps;

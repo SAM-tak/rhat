@@ -561,7 +561,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
         if (receiver && receiver->kind == T_REF) {
             layout(receiver->elem, call->loc);
             if (receiver->elem->refs) {
-                forget_roots(&c->vars, 0, true);
+                forget_roots(&c->vars, (Roots){0}, true);
                 return;
             }
         }
@@ -590,7 +590,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
         // Unknown references may alias a local whose address was passed earlier.
         Var *v = infer_variable(c, arg);
         if (target || !v || v->type->refs) {
-            forget_roots(&c->vars, 0, true);
+            forget_roots(&c->vars, (Roots){0}, true);
             return;
         }
     }
@@ -1022,7 +1022,7 @@ static void infer_handle(Infer *c, Stmt *s)
         if (yes) {
             rewind_facts(&c->vars, before);
             // A failed try may follow a mutation on any path through the main body.
-            forget_roots(&c->vars, 0, true);
+            forget_roots(&c->vars, (Roots){0}, true);
             for (int j = visible; j < base; j++) {
                 ((Var *)c->vars.v[j])->hidden = true;
             }
@@ -1819,7 +1819,7 @@ static void infer_statements(Infer *c, List *body, bool scoped)
                         forget_paths(&c->vars);
                     }
                     else {
-                        forget_roots(&c->vars, 0, true);
+                        forget_roots(&c->vars, (Roots){0}, true);
                     }
                 }
             }

@@ -144,7 +144,7 @@ Value error_message(Context *c, Value err, Loc loc)
             fail(loc, "'%s' has no message() taking only self^", type_name(arm));
         }
         Value r = invoke_operator(c, m, v, v, &(Expr){.loc = loc});
-        out.deps |= r.deps;
+        out.deps = roots_union(out.deps, r.deps);
         copy_to(c, out, r, loc, true);
         nil_jump(c, end, loc);
         if (j + 1 < arms) {
@@ -208,7 +208,7 @@ void route_error(Context *c, Value error, Loc loc)
 {
     if (c->handlers.n) {
         ErrorTarget *target = c->handlers.v[c->handlers.n - 1];
-        target->deps |= error.deps;
+        target->deps = roots_union(target->deps, error.deps);
         pack_error(c, error, target->errors, target->slot, loc);
         List edge = save_facts(&c->vars);
         edge.n = target->bindings;
@@ -255,8 +255,8 @@ void route_error(Context *c, Value error, Loc loc)
                  type_name(error.type), type_name(c->in->result));
         }
         Value out = pack_error(c, error, c->in->result, c->in->result_slot, loc);
-        for (int j = 0; j < c->root_count; j++) {
-            if ((out.deps & (UINT64_C(1) << j)) && !c->root_external[j]) {
+        for (int j = 0; j < out.deps.n; j++) {
+            if (!out.deps.v[j]->external) {
                 fail(loc, "cannot return a reference rooted in a local owner");
             }
         }
@@ -267,7 +267,7 @@ void route_error(Context *c, Value error, Loc loc)
     c->terminated = true;
 }
 
-void error_focus(Context *c, Value error, Loc loc)
+void error_focus(Context *c, Value error, const void *key)
 {
     Var *v = mem(sizeof(*v));
     v->name = "it^";
@@ -276,7 +276,7 @@ void error_focus(Context *c, Value error, Loc loc)
     v->depth = c->depth;
     v->lexical = c->lexical;
     v->deps = error.deps;
-    v->root = root(c, c->depth, false, loc);
+    v->root = root(c, key, c->depth, false);
     add(&c->vars, v);
 }
 
@@ -333,7 +333,7 @@ Value catch_value(Context *c, Expr *e, Type *expected, int dst)
         nil_branch(c, error_test(c, src, e->loc), failed, yes, e->loc);
         nil_label(c, yes, e->loc);
         Value normal = convert_value(c, src, plain, -1, e->loc);
-        out.deps |= convert_value(c, normal, result, out.id, e->loc).deps;
+        out.deps = roots_union(out.deps, convert_value(c, normal, result, out.id, e->loc).deps);
         nil_jump(c, end, e->loc);
     }
     else {
@@ -343,13 +343,13 @@ Value catch_value(Context *c, Expr *e, Type *expected, int dst)
     int begin = c->vars.n;
     c->depth++;
     c->lexical++;
-    error_focus(c, pack_error(c, src, errors, -1, e->loc), e->loc);
+    error_focus(c, pack_error(c, src, errors, -1, e->loc), e);
     Value replacement = construct(c, e->b, expected ? expected : result, out.id);
-    out.deps |= replacement.deps;
+    out.deps = roots_union(out.deps, replacement.deps);
     bool ended = c->terminated;
     if (!ended) {
-        for (int j = 0; j < c->root_count; j++) {
-            if ((replacement.deps & (UINT64_C(1) << j)) && c->root_depth[j] > c->depth - 1) {
+        for (int j = 0; j < replacement.deps.n; j++) {
+            if (replacement.deps.v[j]->depth > c->depth - 1) {
                 fail(e->loc, "catch^ expression cannot escape a local error focus");
             }
         }

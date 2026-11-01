@@ -83,15 +83,69 @@ bool dead(Value v)
     return v.type->kind == T_NEVER;
 }
 
-uint64_t root(Context *c, int depth, bool external, Loc l)
+Roots root(Context *c, const void *key, int depth, bool external)
 {
-    if (c->root_count == 64) {
-        fail(l, "function exceeds 64 provenance roots; split the function");
+    Root *r = NULL;
+    for (int j = 0; !r && j < c->root_keys.n; j++) {
+        r = c->root_keys.v[j] == key ? c->root_list.v[j] : NULL;
     }
-    int n = c->root_count++;
-    c->root_depth[n] = depth;
-    c->root_external[n] = external;
-    return UINT64_C(1) << n;
+    if (!r) {
+        r = mem(sizeof(*r));
+        add(&c->root_keys, (void *)key);
+        add(&c->root_list, r);
+    }
+    r->depth = depth;
+    r->external = external;
+    Root **v = mem(sizeof(*v));
+    v[0] = r;
+    return (Roots){v, 1};
+}
+
+static bool roots_has(Roots a, Root *r)
+{
+    for (int j = 0; j < a.n; j++) {
+        if (a.v[j] == r) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Roots roots_union(Roots a, Roots b)
+{
+    int extra = 0;
+    for (int j = 0; j < b.n; j++) {
+        extra += !roots_has(a, b.v[j]);
+    }
+    if (!extra) {
+        return a;
+    }
+    if (!a.n) {
+        return b;
+    }
+    Roots out = {mem(((size_t)a.n + (size_t)extra) * sizeof(*out.v)), a.n};
+    memcpy(out.v, a.v, (size_t)a.n * sizeof(*out.v));
+    for (int j = 0; j < b.n; j++) {
+        if (!roots_has(a, b.v[j])) {
+            out.v[out.n++] = b.v[j];
+        }
+    }
+    return out;
+}
+
+bool roots_meet(Roots a, Roots b)
+{
+    for (int j = 0; j < a.n; j++) {
+        if (roots_has(b, a.v[j])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool roots_equal(Roots a, Roots b)
+{
+    return a.n == b.n && roots_union(a, b).n == a.n;
 }
 
 Var *lookup(Context *c, const char *name)
@@ -152,16 +206,16 @@ Var *selected(Context *c, Expr *e)
     return NULL;
 }
 
-void forget_roots(List *vars, uint64_t roots, bool all)
+void forget_roots(List *vars, Roots roots, bool all)
 {
     for (int j = 0; j < vars->n; j++) {
         Var *v = vars->v[j];
-        bool direct = all || (v->root & roots);
+        bool direct = all || roots_meet(v->root, roots);
         if (direct) {
             v->version++;
             v->narrowed = NULL;
         }
-        if (direct || (v->path_sensitive && (v->deps & roots))) {
+        if (direct || (v->path_sensitive && roots_meet(v->deps, roots))) {
             v->path_version++;
             v->paths = (List){0};
         }
@@ -406,7 +460,7 @@ Value place_expression(Context *c, Expr *e)
 
 Value variable(Var *v)
 {
-    return (Value){v->slot, v->type, v->type->refs ? v->deps : 0, v->root, v, true};
+    return (Value){v->slot, v->type, v->type->refs ? v->deps : (Roots){0}, v->root, v, true};
 }
 
 static void access_check(Context *c, bool priv, Def *owner, Loc l, const char *name)
@@ -428,7 +482,7 @@ Value deref(Context *c, Value v, Loc l)
     r.type = v.type->elem;
     r.id = slot(c, r.type, true);
     r.storage = v.deps;
-    r.deps = r.type->refs ? v.deps : 0;
+    r.deps = r.type->refs ? v.deps : (Roots){0};
     r.addressable = true;
     Instr *i = emit(c, I_DEREF, l);
     i->dst = r.id;
@@ -442,33 +496,30 @@ void store_check(Context *c, Value dst, Value src, Loc l)
     if (dst.var && !dst.var->mut) {
         fail(l, "cannot modify let^ binding '%s'", dst.var->name);
     }
-    for (int n = 0; n < c->root_count; n++) {
-        if (dst.storage & (UINT64_C(1) << n)) {
-            if (c->root_external[n] && !c->in->fn->procedure &&
-                !(c->in->fn->mutable_self && (c->self_roots & (UINT64_C(1) << n)))) {
-                fail(l, "f^ cannot mutate borrowed storage; use p^ or mutable^self^");
+    for (int n = 0; n < dst.storage.n; n++) {
+        Root *owner = dst.storage.v[n];
+        if (owner->external && !c->in->fn->procedure &&
+            !(c->in->fn->mutable_self && roots_has(c->self_roots, owner))) {
+            fail(l, "f^ cannot mutate borrowed storage; use p^ or mutable^self^");
+        }
+        for (int j = 0; j < src.deps.n; j++) {
+            if (src.deps.v[j]->depth > owner->depth) {
+                fail(l, "reference would outlive its owner (scope %d into scope %d)",
+                     src.deps.v[j]->depth, owner->depth);
             }
-            for (int j = 0; j < c->root_count; j++) {
-                if (src.deps & (UINT64_C(1) << j)) {
-                    if (c->root_depth[j] > c->root_depth[n]) {
-                        fail(l, "reference would outlive its owner (scope %d into scope %d)",
-                             c->root_depth[j], c->root_depth[n]);
-                    }
-                    if (c->root_external[n]) {
-                        fail(l, "cannot store nonstatic references through borrowed storage");
-                    }
-                }
+            if (owner->external) {
+                fail(l, "cannot store nonstatic references through borrowed storage");
             }
         }
     }
     for (int n = 0; n < c->vars.n; n++) {
         Var *v = c->vars.v[n];
-        if (v->type->refs && (v->root & dst.storage)) {
-            v->deps |= src.deps;
+        if (v->type->refs && roots_meet(v->root, dst.storage)) {
+            v->deps = roots_union(v->deps, src.deps);
         }
     }
     if (dst.var && dst.var->type->refs) {
-        dst.var->deps |= src.deps;
+        dst.var->deps = roots_union(dst.var->deps, src.deps);
     }
 }
 
@@ -497,7 +548,7 @@ Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
     i->type = dst.type;
     dst.deps = src.deps;
     if (dst.var && dst.var->type->refs) {
-        dst.var->deps |= src.deps;
+        dst.var->deps = roots_union(dst.var->deps, src.deps);
     }
     return dst;
 }
@@ -577,14 +628,14 @@ Value case_value(Context *c, Value src, Type *arm, Loc loc)
         // An owned alternative is used where it lies.
         return (Value){.id = case_at(c, src, arm, false, loc),
                        .type = arm,
-                       .deps = arm->refs ? src.deps : 0,
+                       .deps = arm->refs ? src.deps : (Roots){0},
                        .storage = src.storage,
                        .var = src.var,
                        .addressable = src.addressable,
                        .held = src.held};
     }
     Value out = value(c, arm);
-    out.deps = arm->refs ? src.deps : 0;
+    out.deps = arm->refs ? src.deps : (Roots){0};
     out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
     Instr *i = emit(c, I_CASE_GET, loc);
     i->dst = out.id;
@@ -605,8 +656,9 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     if (src.type == to && dst < 0) {
         return src;
     }
-    Value out = {
-        .id = dst >= 0 ? dst : slot(c, to, false), .type = to, .deps = to->refs ? src.deps : 0};
+    Value out = {.id = dst >= 0 ? dst : slot(c, to, false),
+                 .type = to,
+                 .deps = to->refs ? src.deps : (Roots){0}};
     if (src.type == to) {
         return copy_to(c, out, src, loc, true);
     }
@@ -939,7 +991,7 @@ static Value chain_value(Context *c, Expr *e)
     }
     if (!never && !c->terminated) {
         if (result->kind != T_VOID) {
-            out.deps |= convert_value(c, base, result, out.id, e->loc).deps;
+            out.deps = roots_union(out.deps, convert_value(c, base, result, out.id, e->loc).deps);
         }
         nil_jump(c, end, e->loc);
     }
@@ -972,11 +1024,12 @@ static Value coalesce_value(Context *c, Expr *e, int dst)
     int yes = ++c->in->labels, no = ++c->in->labels, end = ++c->in->labels;
     nil_branch(c, present_value(c, base, e->loc), yes, no, e->loc);
     nil_label(c, yes, e->loc);
-    out.deps |=
-        convert_value(c, convert_value(c, base, plain, -1, e->loc), result, out.id, e->loc).deps;
+    out.deps = roots_union(
+        out.deps,
+        convert_value(c, convert_value(c, base, plain, -1, e->loc), result, out.id, e->loc).deps);
     nil_jump(c, end, e->loc);
     nil_label(c, no, e->loc);
-    out.deps |= construct(c, e->b, result, out.id).deps;
+    out.deps = roots_union(out.deps, construct(c, e->b, result, out.id).deps);
     if (!c->terminated) {
         nil_jump(c, end, e->loc);
     }
@@ -992,7 +1045,7 @@ Value field_value(Context *c, Value base, Field *f, Loc l)
     r.type = f->type;
     r.id = slot(c, r.type, true);
     r.storage = base.storage;
-    r.deps = r.type->refs ? base.deps : 0;
+    r.deps = r.type->refs ? base.deps : (Roots){0};
     r.var = base.var;
     r.addressable = base.addressable;
     r.guarded_copy = base.guarded_copy;
@@ -1291,11 +1344,12 @@ static Type *flex_elements(Type *t)
 // Shrinking flex^ storage returns its tail to the data stack and the OS, so
 // no variable in scope or value still in use may refer into it. skip is the
 // shrinking argument itself.
-static void shrink_check(Context *c, uint64_t storage, Type *elem, Value *skip, Loc loc)
+static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc loc)
 {
     for (int j = 0; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
-        if (!(v->root & storage) && (v->deps & storage) && may_reference(v->type, elem)) {
+        if (!roots_meet(v->root, storage) && roots_meet(v->deps, storage) &&
+            may_reference(v->type, elem)) {
             fail(loc,
                  "cannot shrink flex^ storage while '%s' may refer into it; end its scope first",
                  v->name);
@@ -1303,12 +1357,12 @@ static void shrink_check(Context *c, uint64_t storage, Type *elem, Value *skip, 
     }
     for (int j = 0; j < c->inflight.n; j++) {
         Value *v = c->inflight.v[j];
-        if (v != skip && (v->deps & storage) && may_reference(v->type, elem)) {
+        if (v != skip && roots_meet(v->deps, storage) && may_reference(v->type, elem)) {
             fail(loc, "cannot shrink flex^ storage while an earlier operand may refer into it");
         }
     }
     for (int k = 0; k < c->in->params.n && k < 64; k++) {
-        if (c->param_deps[k] & storage) {
+        if (roots_meet(c->param_deps[k], storage)) {
             c->in->shrinks |= UINT64_C(1) << k;
         }
     }
@@ -1444,7 +1498,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     i->op = I_DYNCALL;
     i->loc = e->loc;
     add(&i->args, (void *)(intptr_t)(receiver.id + 1));
-    uint64_t deps = receiver.deps;
+    Roots deps = receiver.deps;
     for (int j = 0; j < e->args.n; j++) {
         Type *want = parameter_type(p, f->params.v[j + 1]);
         Value v = expression(c, e->args.v[j], want);
@@ -1457,7 +1511,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                  type_name(want), type_name(v.type));
         }
         v = snapshot(c, v, e->loc);
-        deps |= v.deps;
+        deps = roots_union(deps, v.deps);
         add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     Type *t = dyn_result(p, f);
@@ -1468,7 +1522,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                  .id = t->kind == T_VOID  ? -1
                        : destination >= 0 ? destination
                                           : slot(c, t, false),
-                 .deps = t->refs ? deps : 0};
+                 .deps = t->refs ? deps : (Roots){0}};
     i->dst = out.id;
     i->type = t;
     i->label = index;
@@ -1684,9 +1738,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                   (src.type->kind == T_STRING && base.type->elem->kind == T_U8))) {
                 fail(e->loc, "append needs a slice with the same element type");
             }
-            Value dependencies = {.deps = base.type->elem->refs ? src.deps : 0};
+            Value dependencies = {.deps = base.type->elem->refs ? src.deps : (Roots){0}};
             store_check(c, base, dependencies, e->loc);
-            forget_roots(&c->vars, base.storage | base.deps, false);
+            forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
             Type *t = type_builtin(p, T_VOID);
             if (expected && expected != t) {
                 fail(e->loc, "append has no result");
@@ -1713,7 +1767,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             }
             Value out = {.id = pop ? (destination >= 0 ? destination : slot(c, t, false)) : -1,
                          .type = t,
-                         .deps = t->refs ? base.storage | base.deps : 0};
+                         .deps = t->refs ? roots_union(base.storage, base.deps) : (Roots){0}};
             Instr *i = emit(c, pop ? I_POP : I_CLEAR, e->loc);
             i->dst = out.id;
             i->a = base.id;
@@ -1732,14 +1786,14 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "push element type mismatch");
             }
             store_check(c, base, v, e->loc);
-            forget_roots(&c->vars, base.storage | base.deps, false);
+            forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
             Type *t = type_wrap(p, T_REF, base.type->elem, 0);
             if (expected && expected != t) {
                 fail(e->loc, "push returns '%s', expected '%s'", type_name(t), type_name(expected));
             }
             Value out = {.id = destination >= 0 ? destination : slot(c, t, false),
                          .type = t,
-                         .deps = base.storage | base.deps | v.deps};
+                         .deps = roots_union(roots_union(base.storage, base.deps), v.deps)};
             Instr *i = emit(c, I_PUSH, e->loc);
             i->dst = out.id;
             i->a = base.id;
@@ -1774,9 +1828,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         i->dst = ref.id;
         i->a = base.id;
         i->type = ref.type;
-        ref.deps = base.storage | base.deps;
+        ref.deps = roots_union(base.storage, base.deps);
         if (!base.addressable) {
-            ref.deps |= root(c, c->depth + 1, false, e->loc);
+            ref.deps = roots_union(ref.deps, root(c, e, c->depth + 1, false));
         }
         Value *saved = mem(sizeof(*saved));
         *saved = ref;
@@ -1895,7 +1949,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     for (int j = 0; j < values.n && j < 64; j++) {
         Value *v = values.v[j];
         Type *elem = flex_elements(v->type);
-        if (elem && (in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps) {
+        if (elem && (in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps.n) {
             shrink_check(c, v->deps, elem, v, e->loc);
         }
     }
@@ -1907,10 +1961,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     Value out = {0};
     out.type = t;
     out.id = t->kind == T_VOID ? -1 : destination >= 0 ? destination : slot(c, t, false);
-    uint64_t deps = 0;
+    Roots deps = {0};
     for (int j = 0; j < values.n; j++) {
         Value *v = values.v[j];
-        deps |= v->deps;
+        deps = roots_union(deps, v->deps);
     }
     if (t->refs) {
         out.deps = deps;
@@ -2057,8 +2111,8 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             c->lexical--;
             return out;
         }
-        for (int j = 0; j < c->root_count; j++) {
-            if ((out.deps & (UINT64_C(1) << j)) && c->root_depth[j] > depth) {
+        for (int j = 0; j < out.deps.n; j++) {
+            if (out.deps.v[j]->depth > depth) {
                 fail(e->loc, "scoped expression cannot escape a local owner");
             }
         }
@@ -2169,7 +2223,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             i = emit(c, I_LABEL, e->loc);
             i->label = end;
         }
-        out.deps = a.deps | b.deps;
+        out.deps = roots_union(a.deps, b.deps);
         return c->terminated ? abrupt(c) : out;
     }
     if (e->kind == E_RECORD) {
@@ -2320,7 +2374,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 c->inflight.n = inflight;
                 return abrupt(c);
             }
-            out.deps |= v.deps;
+            out.deps = roots_union(out.deps, v.deps);
         }
         c->inflight.n = inflight;
         return out;
@@ -2364,7 +2418,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 ix->type = t;
                 ix->label = j;
                 ix->b = -1;
-                out.deps |= copy_to(c, d, v, e->loc, true).deps;
+                out.deps = roots_union(out.deps, copy_to(c, d, v, e->loc, true).deps);
             }
             return out;
         }
@@ -2404,7 +2458,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");
                 }
-                out.deps |= v.deps;
+                out.deps = roots_union(out.deps, v.deps);
                 Instr *a = emit(c, I_PUSH, e->loc);
                 a->a = out.id;
                 a->b = v.id;
@@ -2423,7 +2477,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                     c->inflight.n = inflight;
                     return abrupt(c);
                 }
-                out.deps |= v.deps;
+                out.deps = roots_union(out.deps, v.deps);
             }
         }
         c->inflight.n = inflight;
@@ -2491,9 +2545,9 @@ Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
     address->dst = ref.id;
     address->a = receiver.id;
     address->type = ref.type;
-    ref.deps = receiver.storage | receiver.deps;
+    ref.deps = roots_union(receiver.storage, receiver.deps);
     if (!receiver.addressable) {
-        ref.deps |= root(c, c->depth + 1, false, loc);
+        ref.deps = roots_union(ref.deps, root(c, origin, c->depth + 1, false));
     }
     Expr target = {.kind = E_FUNCTION, .loc = loc, .function = f};
     Expr invoke = {.kind = E_CALL, .loc = loc, .a = &target};
@@ -2564,7 +2618,7 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     }
     Value out = {.id = slot(c, t, false),
                  .type = t,
-                 .deps = base.deps | (inline_storage ? base.storage : 0)};
+                 .deps = inline_storage ? roots_union(base.deps, base.storage) : base.deps};
     Instr *i = emit(c, I_SLICE, e->loc);
     i->dst = out.id;
     i->a = base.id;
@@ -2610,7 +2664,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
     }
     Value out = {.id = slot(c, expected, false),
                  .type = expected,
-                 .deps = items.deps | root(c, c->depth + 1, false, e->loc)};
+                 .deps = roots_union(items.deps, root(c, e, c->depth + 1, false))};
     Instr *i = emit(c, I_SLICE, e->loc);
     i->dst = out.id;
     i->a = items.id;
@@ -2864,7 +2918,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
             out = (Value){.id = slot(c, view, false),
                           .type = view,
-                          .deps = base.deps | (base.type->kind != T_SLICE ? base.storage : 0)};
+                          .deps = base.type->kind != T_SLICE ? roots_union(base.deps, base.storage)
+                                                             : base.deps};
             Instr *i = emit(c, I_SLICE, e->loc);
             i->dst = out.id;
             i->a = base.id;
@@ -2971,7 +3026,9 @@ Value expression(Context *c, Expr *e, Type *expected)
         out.storage = view ? base.deps : base.storage;
         // The container must outlive references loaded from it. This conservative
         // bound also covers aliases and loop-carried updates to element roots.
-        out.deps = out.type->refs ? base.deps | (view ? 0 : base.storage) : 0;
+        out.deps = !out.type->refs ? (Roots){0}
+                   : view          ? base.deps
+                                   : roots_union(base.deps, base.storage);
         out.var = base.var;
         out.addressable = base.addressable;
         out.guarded_copy = base.guarded_copy;
@@ -3004,7 +3061,7 @@ Value expression(Context *c, Expr *e, Type *expected)
                 fail(e->loc, "borrowing storage requires var^, found let^ '%s'", a.var->name);
             }
             out = value(c, type_wrap(p, T_REF, a.type, 0));
-            out.deps = a.storage | a.deps;
+            out.deps = roots_union(a.storage, a.deps);
             Instr *i = emit(c, I_ADDR, e->loc);
             i->dst = out.id;
             i->a = a.id;

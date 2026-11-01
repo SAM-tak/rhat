@@ -7,6 +7,19 @@
 // Local bindings and branch facts shared by inference and IR construction.
 typedef struct Var Var;
 
+// A borrow root: a binding, parameter or temporary whose storage a reference
+// may point into, at a lexical depth, or storage from outside the function.
+typedef struct {
+    int depth;
+    bool external;
+} Root;
+
+// A set of roots, an immutable array in the compiler's arena; empty with n 0.
+typedef struct {
+    Root **v;
+    int n;
+} Roots;
+
 typedef struct {
     char *path;
     Type *type;
@@ -17,7 +30,7 @@ struct Var {
     char *name;
     Type *type;
     int slot, depth, lexical;
-    uint64_t root, deps;
+    Roots root, deps;
     bool mut, parameter, unavailable, pending, hidden;
     unsigned version, path_version;
     Var *alias;          // Inference-only direct reference target.
@@ -32,7 +45,7 @@ struct Var {
 typedef struct {
     int id;
     Type *type;
-    uint64_t deps, storage;
+    Roots deps, storage;
     Var *var;
     bool addressable, guarded_copy;
     bool held; // An owned part of a value no binding releases: copying it moves it.
@@ -70,7 +83,7 @@ typedef struct {
 typedef struct {
     Type *errors;
     int slot, label, bindings, pending, checkpoint;
-    uint64_t deps;
+    Roots deps;
     List facts;
 } ErrorTarget;
 
@@ -80,11 +93,9 @@ typedef struct {
     Instance *in;
     Def *access;
     List vars;
-    int depth, root_count, lexical;
-    int root_depth[64];
-    bool root_external[64];
+    int depth, lexical;
     bool terminated;
-    uint64_t self_roots;
+    Roots self_roots;
     List default_stack, loops;
     List handlers, pending_owners;
     bool building_result;
@@ -92,11 +103,12 @@ typedef struct {
     bool raw_name;
     Expr *raw_place;
     bool in_default;
-    Expr *operator_target;    // The operator constructing an owning destination.
-    int operator_destination; // Valid only when operator_target is non-NULL.
-    List inflight;            // Values a statement still uses while evaluating later ones.
-    uint64_t param_deps[64];  // The external root of each reference parameter.
-    int result_part;          // One past the slot of the owned result part built in place.
+    Expr *operator_target;     // The operator constructing an owning destination.
+    int operator_destination;  // Valid only when operator_target is non-NULL.
+    List inflight;             // Values a statement still uses while evaluating later ones.
+    Roots param_deps[64];      // The external root of each reference parameter.
+    List root_keys, root_list; // Roots by the source node that made them (see root).
+    int result_part;           // One past the slot of the owned result part built in place.
 } Context;
 
 // Type inference and concrete-instance registry, implemented in check.c.
@@ -194,7 +206,7 @@ Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc);
 void forget_paths(List *vars);
 
 // Invalidate refinements on roots that may have changed.
-void forget_roots(List *vars, uint64_t roots, bool all);
+void forget_roots(List *vars, Roots roots, bool all);
 
 // Recognize a postfix chain that contains a nil guard.
 bool guarded_chain(Expr *e);
@@ -364,8 +376,16 @@ Value value(Context *c, Type *t);
 Value abrupt(Context *c);
 // Whether v is abrupt: evaluation stopped before producing it.
 bool dead(Value v);
-// A new borrow root at lexical depth, or for storage from outside.
-uint64_t root(Context *c, int depth, bool external, Loc l);
+// The borrow root that key, a source node, makes: at lexical depth, or for
+// storage from outside. The same node gives the same root, so that a loop
+// analysed again until its roots settle meets the same ones.
+Roots root(Context *c, const void *key, int depth, bool external);
+// Both sets of roots together.
+Roots roots_union(Roots a, Roots b);
+// Whether the sets share a root.
+bool roots_meet(Roots a, Roots b);
+// Whether the sets hold the same roots.
+bool roots_equal(Roots a, Roots b);
 // The value v refers to when it is a ref^, else v.
 Value deref(Context *c, Value v, Loc l);
 // Copy src into dst, converting to dst's union; init skips the store
@@ -419,7 +439,7 @@ void terminate(Context *c, Value subject, bool panic, Loc loc);
 // Hand error to the innermost catch^, or return it from the function.
 void route_error(Context *c, Value error, Loc loc);
 // Bind the caught error as it^ for a catch^ arm.
-void error_focus(Context *c, Value error, Loc loc);
+void error_focus(Context *c, Value error, const void *key);
 // try^ e: its success, or the error routed out; into dst when owned.
 Value try_value(Context *c, Expr *e, int dst);
 // e catch^ replacement, typed as expected, into dst.
