@@ -102,17 +102,17 @@ def^ V {
  self^{n:i32^=2}
  op^//=f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}
  op^**=f^ self^,rhs:V ->V {V{n=self^.n*10+rhs.n}}
- op^..=f^ self^,rhs:V ->V {V{n=self^.n*10+rhs.n}}
+ op^::=f^ self^,rhs:V ->V {V{n=self^.n*10+rhs.n}}
  op^cross^=f^ self^,rhs:i32^ ->i32^ {self^.n+rhs}
  op^dot^=f^ self^,rhs:i32^ ->i32^ {self^.n-rhs}
 }
 var^ a,b,c=V{n=1},V{n=2},V{n=3}
-print^(a//2,(a**b**c).n,(a..b..c).n,a cross^ 2,a dot^ 2)
+print^(a//2,(a**b**c).n,(a::b::c).n,a cross^ 2,a dot^ 2)
 var^ n=9
 var^ r=ref^ n
 let^ rr:ref^^i32^=ref^ r;
 print^(**rr)
-'''.replace('op^//=', 'op^// =').replace('op^**=', 'op^** =').replace('op^..=', 'op^.. ='),
+'''.replace('op^//=', 'op^// =').replace('op^**=', 'op^** =').replace('op^::=', 'op^:: ='),
              '3 33 33 3 -1\n9\n')
 
     positive('operator_contextual_width', '''
@@ -130,17 +130,17 @@ print^(v.n)
 
     positive('operator_owned_result_destination', '''def^ Packet {
  self^{n:i32^=2}
- op^.. =f^ self^,rhs:i32^ ->grow^ i32^[] {
+ op^:: =f^ self^,rhs:i32^ ->grow^ i32^[] {
   var^ result:grow^ i32^[]=[self^.n,rhs]
   return^ result
  }
 }
 var^ packet=Packet{}
-var^ items=packet..3
+var^ items=packet::3
 print^(items.len,items[0],items[1])
 let^ build=f^ n:i32^ ->grow^ i32^[] {
  var^ local=Packet{n=n}
- return^ local..4
+ return^ local::4
 }
 var^ other=build(8)
 print^(other.len,other[0],other[1])

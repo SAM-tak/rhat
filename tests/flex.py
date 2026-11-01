@@ -44,7 +44,7 @@ print^(lit.len, lit.pop(), lit.pop(), lit.len)
 var^ empty = flex^ i32^[]
 empty.push(7)
 var^ more:flex^ i64^[] = [5, 6]
-more.append(more[0 :: 2])
+more.append(more[0 .. 2])
 print^(empty[0], more.len, more[3])
 def^ Box { self^{ n:i32^ = 0, items:flex^ i64^[] = [] } }
 var^ b = Box{}
@@ -73,7 +73,7 @@ print^(*r)
 
     for name, text, diagnostic in [
         ('flex_reference', 'let^ r = ref^ q[0]\nq.pop()', "while 'r' may refer into it"),
-        ('flex_slice', 'let^ s = q[0 :: 1]\nq.clear()', "while 's' may refer into it"),
+        ('flex_slice', 'let^ s = q[0 .. 1]\nq.clear()', "while 's' may refer into it"),
         ('flex_push_result', 'let^ r = q.push(4)\nq.truncate(1)', "while 'r' may refer into it"),
         ('flex_earlier_argument', 'two(ref^ q[0], q.pop())', 'an earlier operand'),
         ('flex_literal_field', 'def^ H { self^{ r:ref^ i64^, n:i64^ = 0 } }\nvar^ h = H{ r = ref^ q[0], n = q.pop() }', 'an earlier operand'),

@@ -115,7 +115,7 @@ R^ から `externC^` を呼ぶ直前に、呼び出し元がその時点で使�
 ```rhat
 externC^ qsort:p^ base:i32^[:], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
 exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
-qsort(xs[0 :: 5], 5, 4, descending)        # 名前を呼ばずに書くと C のアドレス
+qsort(xs[0 .. 5], 5, 4, descending)        # 名前を呼ばずに書くと C のアドレス
 
 externC^ lhat_program_new:p^ strict:bool^,
     load:externC^ p^ ref^ LhatContext | nil^, string^, ref^ u64^ -> ref^ u8^ | nil^;,

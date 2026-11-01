@@ -23,7 +23,7 @@ let^ magnitude=f^ n:i32^ ->i32^ { abs(n) }
 var^ exponent:i32^=0
 let^ mantissa=frexp(8.0, ref^ exponent)
 var^ bytes:u8^[4]=[1,2,3,4]
-memset(bytes[1 :: 3], 7, 2)
+memset(bytes[1 .. 3], 7, 2)
 print^(hypot(3.0,4.0), mantissa, exponent, strlen("hello"), abs(-5), magnitude(-6))
 print^(bytes[0], bytes[1], bytes[2], bytes[3])
 ''', '5.0 0.5 4 5 5 6\n1 7 7 4\n', inspect=declarations)
@@ -90,7 +90,7 @@ var^ ps:Point[2] = [Point{x = 1.0, y = 1.0}, Point{x = 2.0, y = 3.0}]
 let^ n = ffi_nest(Nest{})
 let^ q = lldiv(17, 5)
 print^(s.x, s.y, m.a, m.b, m.c, ffi_pair_sum(Pair{lo = 40, hi = 2}))
-print^(b.v[0], b.v[3], p.x, p.y, ffi_sum(ps[::], 2), n.p.lo, n.ok, n.w[2], q.quot, q.rem)
+print^(b.v[0], b.v[3], p.x, p.y, ffi_sum(ps[..], 2), n.p.lo, n.ok, n.w[2], q.quot, q.rem)
 ''', '11.0 22.0 6 6 95 42\n10 40 4.0 6.0 7.0 1 true 3 3 2\n', extra=('--runtime', structs))
 
     # includeC^: a header's static inline functions, its struct and opaque types.
@@ -605,7 +605,7 @@ mock_fail()
     positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[:], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
 exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
 var^ xs:i32^[5] = [3, 1, 4, 1, 5]
-qsort(xs[0 :: 5], 5, 4, descending)
+qsort(xs[0 .. 5], 5, 4, descending)
 print^(xs[0], xs[1], xs[2], xs[3], xs[4])
 ''', '5 4 3 1 1\n')
     positive('ffi_header_function_pointer', header + '''externC^ ffi_twice:f^ n:i64^ -> i64^;

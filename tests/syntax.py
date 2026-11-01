@@ -317,10 +317,10 @@ print^(one,eight[1])
 
     positive('range_values', '''
 let^ xs=[10,20,30,40,50]
-let^ head=0 :: 3
-let^ tail=(3 ::)
+let^ head=0 .. 3
+let^ tail=(3 ..)
 let^ both=1 to^ 3
-let^ all=(::)
+let^ all=(..)
 let^ a=xs[head]
 let^ b=xs[tail]
 let^ c=xs[both]
@@ -329,8 +329,8 @@ print^(a.len,a[2],b.len,b[0],c.len,c[2],d.len)
 print^(head.start,head.len,both.len,tail.end ?? -1,head.end ?? -1)
 print^(head.contains(2),head.contains(3),tail.contains(1000),tail.contains(2))
 let^ pick=f^ v:i32^[:],r:range^ ->i32^[:] { v[r] }
-let^ ys=xs[::]
-print^(pick(ys,2 :: 4)[1],pick(ys,:: 2).len)
+let^ ys=xs[..]
+print^(pick(ys,2 .. 4)[1],pick(ys,.. 2).len)
 let^ e=3 to^ 2
 print^(e.len,xs[e].len)
 for^ 2 { when^ 1 to^ 3: print^(it^) other^: print^(0) }
@@ -358,7 +358,7 @@ print^(s.bytes.len,s.count_chars(),s.bytes[0])
 var^ at:i64^=0
 repeat^ while^ at<s.bytes.len {
  let^ c,next=s.decode(at)
- print^(c,s.slice(at :: next))
+ print^(c,s.slice(at .. next))
  at:=next
 }
 let^ cs=s.chars()
@@ -366,10 +366,10 @@ print^(cs.len,cs[1],cs[2])
 print^(s.find("😀") ?? -1,s.find("z") ?? -1,s.starts_with("aあ"),s.ends_with("b"),s.ends_with("x"))
 print^("abc"="abc","abc"<"abd","b">"abc","a"<=>"b","x"!="y")
 let^ raw:u8^[3]=[104,105,33]
-let^ t=string^(raw[::]) catch^ "?"
+let^ t=string^(raw[..]) catch^ "?"
 let^ bad:u8^[2]=[255,1]
-let^ u=string^(bad[::]) catch^ "invalid"
-print^(t,u,s.slice(1 :: 4),s.slice((4 ::)))
+let^ u=string^(bad[..]) catch^ "invalid"
+print^(t,u,s.slice(1 .. 4),s.slice((4 ..)))
 ''', '9 4 97\na a\nあ あ\n😀 😀\nb b\n4 あ 😀\n4 -1 true true false\ntrue true true -1 true\nhi! invalid あ 😀b\n')
 
     positive('tostring', '''
@@ -420,7 +420,7 @@ print^($"a{b.text()}d",$"{ $"{n}" }")
 let^ u:u64^=18446744073709551615
 print^($"{u:%u} {u} {2.5:%d} {7:%e}")
 let^ xs=[1,2,3]
-print^($"{xs[1 :: 3].len} {xs[2]}")
+print^($"{xs[1 .. 3].len} {xs[2]}")
 ''', 'hello R^, n = 42, pi = 3.14, hex 002a, braces {} and }\nx=43 true あ 3.142e+00|\t.\n[   42]big42.0 2a\nab42cd 42\n18446744073709551615 18446744073709551615 2 7.000000e+00\n2 3\n')
 
     positive('number_parse_types', '''
@@ -758,18 +758,18 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
-        ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 :: 1]', 'slice it with s.slice'),
+        ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
         ('string_chars_owned', 'let^ n=f^ s:string^ { s.chars().len }', 'bind it'),
         ('char_literal_two', 'let^ a=char^"ab"', 'exactly one Unicode scalar value'),
         ('char_literal_empty', 'let^ a=char^""', 'exactly one Unicode scalar value'),
         ('char_arithmetic', 'let^ a=char^"a"+char^"b"', "operator '+' is not defined for 'char^'"),
         ('char_cast_wide', 'let^ n:u128^=65\nlet^ c=char^(n)', 'at most 64 bits'),
-        ('range_open_end', 'let^ r=0 ::\nprint^(r)', 'goes right before ), ] or ,'),
-        ('range_open_start', 'let^ r=:: 3', 'goes right after (, [ or ,'),
+        ('range_open_end', 'let^ r=0 ..\nprint^(r)', 'goes right before ), ] or ,'),
+        ('range_open_start', 'let^ r=.. 3', 'goes right after (, [ or ,'),
         ('range_inclusive_open', 'let^ r=(1 to^)', 'needs both bounds'),
-        ('range_bounds', 'let^ r=1.5 :: 2.0', 'must be i64^'),
-        ('range_member', 'let^ r=0 :: 2\nprint^(r.size)', 'range^ has start, end, len'),
+        ('range_bounds', 'let^ r=1.5 .. 2.0', 'must be i64^'),
+        ('range_member', 'let^ r=0 .. 2\nprint^(r.size)', 'range^ has start, end, len'),
         ('results_not_multiple', 'var^ x,y=1', "'i32^' is not multiple results"),
         ('results_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a,b,c=f()', '3 names for the 2 results'),
         ('results_assign_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nvar^ a,b,c=1,2,3\na,b,c:=f()', '3 names for the 2 results'),
@@ -805,13 +805,13 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     for name, text, diagnostic in cases:
         negative(name, text, diagnostic)
 
-    suite.runtime_failure('string_slice_cut', 'let^ s="あい"\nprint^(s.slice(1 :: 3))', 'string slice cuts a character')
+    suite.runtime_failure('string_slice_cut', 'let^ s="あい"\nprint^(s.slice(1 .. 3))', 'string slice cuts a character')
     suite.runtime_failure('string_decode_middle', 'let^ s="あ"\nlet^ c,n=s.decode(1)', 'not the start of a character')
     suite.runtime_failure('interp_bad_format', 'print^($"{1:%s}")', 'one numeric conversion')
     suite.runtime_failure('interp_two_conversions', 'print^($"{1:%d%d}")', 'one numeric conversion')
-    suite.runtime_failure('range_open_len', 'let^ r=(5 ::)\nprint^(r.len)', 'an open range has no length')
+    suite.runtime_failure('range_open_len', 'let^ r=(5 ..)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
-    suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 :: 5\nprint^(xs[r].len)', 'slice range out of bounds')
+    suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 .. 5\nprint^(xs[r].len)', 'slice range out of bounds')
     suite.runtime_failure('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}', 'assert')
     suite.finish()
 

@@ -36,9 +36,9 @@ def^ Circle : Shape {
 var^ a = Square{}
 var^ b = Circle{}
 var^ all:(ref^ dyn^ Shape)[2] = [ref^ a, ref^ b]
-print^ total(all[::])
+print^ total(all[..])
 for^ var^ i:i64^ = 0 while^ i < 2 next^ i += 1 { all[i].describe() all[i].scale(2.0) }
-print^ total(all[::])
+print^ total(all[..])
 let^ one:ref^ dyn^ Shape = ref^ a
 one.describe()
 ''', '7.0\narea 4.0\ncircle 3.0\n28.0\narea 16.0\n', inspect=tables)

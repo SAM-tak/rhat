@@ -162,7 +162,7 @@ repeat^ while^ i < n {
     corrupt(ref^ text,s)
     stats.chars := stats.chars+text.len
     pool.clear()
-    let^ result=run(text[::],ref^ pool)
+    let^ result=run(text[..],ref^ pool)
     stats.nodes := stats.nodes+pool.len
     if^ result fits^ Ok {
         stats.ok := stats.ok+1

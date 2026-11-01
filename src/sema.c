@@ -2495,7 +2495,7 @@ Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
     return result;
 }
 
-// A range index borrows a view: [lo :: hi] excludes hi, [lo to^ hi] includes
+// A range index borrows a view: [lo .. hi] excludes hi, [lo to^ hi] includes
 // it, and an omitted bound is the start or the length.
 static Value slice_view(Context *c, Expr *e, Type *expected)
 {
@@ -2509,7 +2509,7 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     }
     if (base.type->kind == T_STRING) {
         fail(e->loc,
-             "string^ has no []; slice it with s.slice(a :: b), or its bytes with s.bytes[a :: b]");
+             "string^ has no []; slice it with s.slice(a .. b), or its bytes with s.bytes[a .. b]");
     }
     if (base.type->kind != T_ARRAY && base.type->kind != T_GROW && base.type->kind != T_SLICE) {
         fail(e->loc, "slicing requires an array or slice");
@@ -2570,7 +2570,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
 {
     Program *p = c->p;
     if (e->a) {
-        Expr view = {.kind = E_SLICE, .loc = e->a->loc, .a = e->a, .text = "::"};
+        Expr view = {.kind = E_SLICE, .loc = e->a->loc, .a = e->a, .text = ".."};
         return slice_view(c, &view, expected);
     }
     layout(expected->elem, e->loc);
@@ -3175,7 +3175,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             Expr choice = {.kind = E_IF, .loc = e->loc, .a = &less, .b = &minus, .c = &tail};
             return expression(c, &choice, type_builtin(p, T_I32));
         }
-        if (!strcmp(e->text, "//") || !strcmp(e->text, "**") || !strcmp(e->text, "..") ||
+        if (!strcmp(e->text, "//") || !strcmp(e->text, "**") || !strcmp(e->text, "::") ||
             !strcmp(e->text, "cross^") || !strcmp(e->text, "dot^")) {
             fail(e->loc, "operator '%s' requires a user-defined operator member", e->text);
         }

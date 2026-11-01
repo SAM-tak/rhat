@@ -87,7 +87,7 @@ for kind in ("i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128
     positive("direct_index_" + kind, f'''
 var^ fixed:i32^[2]=[10,20]
 var^ grow:grow^ i32^[]=[30,40]
-let^ view=grow[:: 2]
+let^ view=grow[.. 2]
 let^ text="ab"
 let^ index:{kind}^=1
 fixed[index]:=21
@@ -97,7 +97,7 @@ print^(fixed[index],grow[index],view[index],text.bytes[index])
 
 for name,setup,access in (
     ("grow", "var^ a:grow^ i32^[]=[1,2]", "a[i]"),
-    ("view", "var^ a:grow^ i32^[]=[1,2]; let^ v=a[:: 2]", "v[i]"),
+    ("view", "var^ a:grow^ i32^[]=[1,2]; let^ v=a[.. 2]", "v[i]"),
     ("string", 'let^ text="ab"', "text.bytes[i]"),
 ):
     for suffix,kind,value in (("wide", "u128", "18446744073709551617"),
@@ -171,7 +171,7 @@ print^(a[29])
 ''', [120], "30\n", append_only=True)
 high_water("push_after_append", '''
 var^ a:grow^ i32^[]=[1,2]
-a.append(a[:: 2])
+a.append(a[.. 2])
 a.push(5)
 assert^(a.len=5)
 print^(a[4])
@@ -188,7 +188,7 @@ print^(a[2])
 high_water("borrowed_append_after_caller_shrink", '''
 let^ write=p^ a:ref^ grow^ i32^[] { a.push(9) }
 var^ a:grow^ i32^[]=[1,2,3]
-let^ view=a[:: 3]
+let^ view=a[.. 3]
 a.clear()
 write(ref^ a)
 assert^(a.len=1)
@@ -197,7 +197,7 @@ print^(view[2])
 high_water("literal_append_keeps_high_water", '''
 var^ a:grow^ u8^[]=[1,2,3,4,5,6]
 a.append("abcd")
-let^ held=a[:: 10]
+let^ held=a[.. 10]
 a.clear()
 a.append("xy")
 assert^(a.len=2)
@@ -207,7 +207,7 @@ print^(held[9])
 ''', [10,10], "100\n")
 high_water("push_shrink_loop_backedge", '''
 var^ a:grow^ i32^[]=[1,2,3,4]
-let^ view=a[:: 4]
+let^ view=a[.. 4]
 var^ i:i32^=0
 repeat^ while^ i<3 { a.push(9); assert^(true^); a.clear(); i:=i+1 }
 print^(view[3])
@@ -282,7 +282,7 @@ negative("checked_structure_layout",layout_chain,"layout overflows")
 positive("truncate_retains_slots", """
 var^ a:grow^ i32^[]=[10,20,30]
 let^ held=ref^ a[2]
-let^ view=a[:: 3]
+let^ view=a[.. 3]
 a.truncate(1)
 print^(a.len,*held,view[2])
 a.push(99)
@@ -328,7 +328,7 @@ values.push(choose(0))
 values.push(branch(true^))
 print^(get(values[0]),get(values[1]),get(values[2]),get(Num{value=5}),get(branch(false^)))
 values[0] := Pair{a=7,b=8}
-let^ view=values[:: 1]
+let^ view=values[.. 1]
 print^(get(view[0]),(values[0] fits^ Num))
 """, "42 7 9 5 11\n15 false\n",
          lambda ir,ll: ("type Expr size=12 align=4" in ir and "union.project" in ir
@@ -353,7 +353,7 @@ def^ Holder { self^{ tag:u8^, value:Value, tail:u8^ } }
 let^ identity=f^ v:Value { return^ v }
 let^ fixed:Value[2]=[Wide{value=340282366920938463463374607431768211455},Small{value=255}]
 var^ a:grow^ Value[]=[]
-a.append(fixed[:: 2])
+a.append(fixed[.. 2])
 let^ copy=identity(a[0])
 var^ h=Holder{tag=7,value=copy,tail=9}
 let^ small=a[1]
@@ -413,24 +413,24 @@ do^{ var^ x:i32^=1; v := Ref{value=ref^ x} }
 
 positive("slice_fixed_grow_string", """
 let^ a:i32^[4]=[10,20,30,40]
-let^ middle=a[1 :: 3]
+let^ middle=a[1 .. 3]
 var^ b:grow^ i32^[]=[1]
 b.append(middle)
-let^ live=b[1 :: 3]
+let^ live=b[1 .. 3]
 b[1] := 42
 b.clear()
 b.append(live)
 print^(middle.len,middle[0],live[0],b[0],b[1])
 var^ bytes:grow^ u8^[]=[]
 bytes.append("hello")
-bytes.append("world".bytes[1 :: 4])
-print^(bytes.len,bytes[5],"hello".bytes[4],"abc".bytes[3 :: 3].len)
+bytes.append("world".bytes[1 .. 4])
+print^(bytes.len,bytes[5],"hello".bytes[4],"abc".bytes[3 .. 3].len)
 """, "2 20 30 42 30\n8 111 111 0\n")
 positive("grow_literal_and_range_slices", """
 var^ g=grow^[10,20,30,40]
 g.push(50)
-let^ tail=g[3 ::]
-let^ all=g[::]
+let^ tail=g[3 ..]
+let^ all=g[..]
 let^ closed=g[1 to^ 3]
 let^ empty=g[3 to^ 2]
 let^ text:string^|nil^="hello"
@@ -455,21 +455,21 @@ negative("grow_typed_empty_sized", "var^ a=grow^ i64^[4]", "needs an array type 
 negative("slice_inclusive_open", "var^ a=grow^[1,2]; let^ v=a[1 to^]", "needs both bounds")
 positive("slice_nested_return", """
 let^ sub=f^ a:i32^[:] {
-    let^ local=a[1 :: 3]
-    return^ local[1 :: 2]
+    let^ local=a[1 .. 3]
+    return^ local[1 .. 2]
 }
-let^ borrowed=f^ a:ref^ grow^ i32^[] { return^ a[::] }
+let^ borrowed=f^ a:ref^ grow^ i32^[] { return^ a[..] }
 var^ a:grow^ i32^[]=[1,2,3,4]
 let^ view=sub(borrowed(ref^ a))
 a.push(5)
 print^(view.len,view[0])
-let^ literal=f^ { return^ "hello".bytes[1 :: 4] }
+let^ literal=f^ { return^ "hello".bytes[1 .. 4] }
 print^(literal()[0])
 """, "1 3\n101\n")
 positive("slice_record_copy", """
 def^ Item { self^{ value:i32^ } }
 var^ a:grow^ Item[]=[Item{value=7}]
-let^ view=a[:: 1]
+let^ view=a[.. 1]
 var^ item=view[0]
 item.value := 42
 print^(a[0].value,item.value)
@@ -477,48 +477,48 @@ print^(a[0].value,item.value)
 positive("slice_reference_and_view_elements", """
 var^ x:i32^=7
 var^ refs:grow^ (ref^ i32^)[]=[ref^ x]
-let^ view=refs[:: 1];
+let^ view=refs[.. 1];
 *view[0] := 42
 var^ other:grow^ (ref^ i32^)[]=[]
 other.append(view)
 var^ views:grow^ i32^[:][]=[]
 let^ values:i32^[2]=[10,20]
-views.push(values[:: 2])
+views.push(values[.. 2])
 print^(x,*other[0],views[0][1])
 """, "42 42 20\n")
 positive("slice_overlap_append", """
 var^ a:grow^ u8^[]=[1,2,3,4]
-let^ tail=a[2 :: 4]
+let^ tail=a[2 .. 4]
 a.clear()
 a.append(tail)
-a.append(a[:: 2])
-a.append(a[a.len :: a.len])
+a.append(a[.. 2])
+a.append(a[a.len .. a.len])
 print^(a.len,a[0],a[1],a[2],a[3])
 """, "4 3 4 3 4\n")
 for name,text in (
-    ("negative_start", "a[-1 :: 0]"),
-    ("negative_end", "a[:: -1]"),
-    ("past_start", "a[3 ::]"),
-    ("past_end", "a[1 :: 3]"),
-    ("reversed", "a[2 :: 1]"),
+    ("negative_start", "a[-1 .. 0]"),
+    ("negative_end", "a[.. -1]"),
+    ("past_start", "a[3 ..]"),
+    ("past_end", "a[1 .. 3]"),
+    ("reversed", "a[2 .. 1]"),
     ("inclusive_past_end", "a[0 to^ 2]"),
     ("overflow_range", "a[1 to^ 9223372036854775807]"),
 ):
     runtime_failure("slice_"+name, "var^ a:grow^ i32^[]=[1,2]; let^ v="+text, "slice range out of bounds")
-runtime_failure("slice_index_bounds", "let^ a:i32^[2]=[1,2]; let^ v=a[:: 1]; print^(v[1])", "array index out of bounds")
+runtime_failure("slice_index_bounds", "let^ a:i32^[2]=[1,2]; let^ v=a[.. 1]; print^(v[1])", "array index out of bounds")
 runtime_failure("string_index_bounds", 'print^("abc".bytes[3])', "array index out of bounds")
-negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a[:: 2] }", "cannot return a reference")
-negative("slice_outer_escape", "var^ v=\"abc\".bytes[:: 0]; do^{ var^ a:grow^ u8^[]=[1]; v := a[:: 1] }", "reference would outlive its owner")
-negative("slice_write", "var^ a:grow^ i32^[]=[1]; var^ v=a[:: 1]; v[0] := 2", "not addressable")
-negative("slice_borrow_element", "var^ a:grow^ i32^[]=[1]; let^ v=a[:: 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
-negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:grow^ Item[]=[Item{x=1}]; a[:: 1][0].x := 2", "not addressable")
-negative("slice_temporary", "let^ v=[1,2][:: 2]", "slice source needs a binding")
-negative("slice_index_type", "let^ a:i32^[1]=[1]; let^ n:i32^=0; a[n :: n+1]", "must be i64^")
+negative("slice_local_escape", "let^ bad=f^ -> i32^[:] { let^ a:i32^[2]=[1,2]; return^ a[.. 2] }", "cannot return a reference")
+negative("slice_outer_escape", "var^ v=\"abc\".bytes[.. 0]; do^{ var^ a:grow^ u8^[]=[1]; v := a[.. 1] }", "reference would outlive its owner")
+negative("slice_write", "var^ a:grow^ i32^[]=[1]; var^ v=a[.. 1]; v[0] := 2", "not addressable")
+negative("slice_borrow_element", "var^ a:grow^ i32^[]=[1]; let^ v=a[.. 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
+negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:grow^ Item[]=[Item{x=1}]; a[.. 1][0].x := 2", "not addressable")
+negative("slice_temporary", "let^ v=[1,2][.. 2]", "slice source needs a binding")
+negative("slice_index_type", "let^ a:i32^[1]=[1]; let^ n:i32^=0; a[n .. n+1]", "must be i64^")
 negative("slice_initializer", "def^ Box { self^{ view:i32^[:] } } let^ b=Box{}", "needs an initializer")
 negative("append_mismatch", 'var^ a:grow^ i32^[]=[]; a.append("hello")', "same element type")
 negative("append_immutable", 'let^ a:grow^ u8^[]=[]; a.append("hello")', "cannot modify let^")
 negative("append_pure_borrow", 'let^ bad=f^ a:ref^ grow^ u8^[] { a.append("hello") }', "cannot mutate borrowed storage")
-negative("append_inner_owner", "var^ a:grow^ (ref^ i32^)[]=[]; do^{ var^ x:i32^=1; var^ b:grow^ (ref^ i32^)[]=[ref^ x]; a.append(b[:: 1]) }", "reference would outlive its owner")
+negative("append_inner_owner", "var^ a:grow^ (ref^ i32^)[]=[]; do^{ var^ x:i32^=1; var^ b:grow^ (ref^ i32^)[]=[ref^ x]; a.append(b[.. 1]) }", "reference would outlive its owner")
 negative("append_borrowed_references", "let^ bad=p^ a:ref^ grow^ (ref^ i32^)[], b:(ref^ i32^)[:] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
 
 def direct_pop_ir(ir, ll):
@@ -550,7 +550,7 @@ positive("pop_copies_before_overlapping_assignment", """
 def^ Pair { self^{ x:i64^, y:i64^ } }
 var^ a:grow^ Pair[]=[Pair{x=1,y=2},Pair{x=3,y=4}]
 let^ held=ref^ a[0]
-let^ tail=a[1 :: 2]
+let^ tail=a[1 .. 2]
 a[0]:=a.pop()
 print^(a.len,held.x,held.y,tail[0].x,tail[0].y)
 a.push(Pair{x=5,y=6})
@@ -1266,7 +1266,7 @@ check("1/0 + (",ref^ pool)
 check("1/0 #",ref^ pool)
 check("4294967296",ref^ pool)
 pool.clear()
-let^ failed=run("1+(2*".bytes[:: 5],ref^ pool)
+let^ failed=run("1+(2*".bytes[.. 5],ref^ pool)
 assert^(failed fits^ Failure)
 print^(failed.code,pool.len)
 """, "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
@@ -1277,19 +1277,19 @@ text.append("(abc 4294967296 ()) ")
 var^ pool:grow^ Node[]=[Num{value=0,next=0}]
 var^ symbols:grow^ u8^[]=[]
 var^ roots:grow^ u32^[]=[]
-print^(parse_all(text[::],ref^ pool,ref^ symbols,ref^ roots))
+print^(parse_all(text[..],ref^ pool,ref^ symbols,ref^ roots))
 text.clear()
 text.append("xxxxxxxxxxxxxxxxxxx")
 print^(pool.len-1,roots.len,walk(ref^ pool,ref^ symbols,roots[0],0))
 roots.clear()
-print^(parse_all("(".bytes[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
-print^(parse_all(")".bytes[:: 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
+print^(parse_all("(".bytes[.. 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
+print^(parse_all(")".bytes[.. 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
 """, "0\n4 1 4294967398\n8 0\n5 0\n")
 packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^ n:i64^",1)[0]
 positive("packed_words_own_copies", packed_word_helpers+"""
 var^ text:grow^ u8^[]=[]
 text.append(" a  bc ")
-var^ words=split(text[::])
+var^ words=split(text[..])
 text.clear()
 text.append("xxxxxxx")
 print^(words.count,words.data.len,words.data[0],words.data[1],words.data[2],words.data[3],words.data[4])
@@ -1851,7 +1851,7 @@ var^ v:i32^=42
 let^ pair=id(Pair{a=12,b=30})
 let^ ref=id(Ref{p=ref^ v})
 let^ text=id("abc")
-let^ view=id(text.bytes[1 :: 3])
+let^ view=id(text.bytes[1 .. 3])
 let^ ary=id([1,2,3,4])
 let^ u:U=A{value=42}
 let^ got=id(u)

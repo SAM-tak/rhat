@@ -79,7 +79,7 @@ let^ parse_node=p^ text:u8^[:], c:ref^ Cursor, pool:ref^ grow^ Node[], symbols:r
     if^ c.pos = start { return^ ParseError{code=3} }
     let^ offset=symbols.len
     let^ len=c.pos-start
-    symbols.append(text[start :: start+len])
+    symbols.append(text[start .. start+len])
     pool.push(Sym{start=u32^(offset),len=u32^(len),next=prev})
     return^ Parsed{index=u32^(pool.len-1)}
 }
@@ -125,7 +125,7 @@ repeat^ while^ i < n { seed := gen(ref^ text,4,seed); i := i+1 }
 var^ pool:grow^ Node[]=[Num{value=0,next=0}]
 var^ symbols:grow^ u8^[]=[]
 var^ roots:grow^ u32^[]=[]
-let^ err=parse_all(text[::],ref^ pool,ref^ symbols,ref^ roots)
+let^ err=parse_all(text[..],ref^ pool,ref^ symbols,ref^ roots)
 print^(text.len)
 print^(pool.len-1)
 print^(roots.len)

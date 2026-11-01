@@ -737,10 +737,10 @@ static void lex(Parser *p)
             }
         }
         if (s - start == 2 && !strncmp(start, "..", 2) && *s == '.') {
-            s++; // The variadic marker ... is matched before concatenation.
+            s++; // The variadic marker ... is matched before a range.
         }
         if (s - start == 2 && *s == '=' &&
-            (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "..", 2))) {
+            (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "::", 2))) {
             s++;
         }
         if (!t->text) {
@@ -1428,7 +1428,7 @@ static int prec(const char *s)
     if (!strcmp(s, "<=>")) {
         return 4;
     }
-    if (!strcmp(s, "..")) {
+    if (!strcmp(s, "::")) {
         return 5;
     }
     if (!strcmp(s, "+") || !strcmp(s, "-")) {
@@ -1499,7 +1499,7 @@ static Expr *operation(Parser *p, int min)
                                 t->loc);
             binary->text = t->text;
             binary->a = e;
-            binary->b = expr(p, pr + ((!strcmp(t->text, "..") || !strcmp(t->text, "**")) ? 0 : 1));
+            binary->b = expr(p, pr + (!strcmp(t->text, "::") || !strcmp(t->text, "**") ? 0 : 1));
             e = binary;
         }
     }
@@ -1517,18 +1517,18 @@ static bool range_delimiter(Parser *p, int k, bool opening)
                    : !strcmp(s, ")") || !strcmp(s, "]") || !strcmp(s, ",");
 }
 
-// An expression, at the top level also a range a :: b or a to^ b. A
+// An expression, at the top level also a range a .. b or a to^ b. A
 // header's to^ belongs to its loop or arm instead. An omitted end must
 // stand next to a delimiter, so that a range never runs on to the next
 // line's expression.
 static Expr *expr(Parser *p, int min)
 {
-    bool open_start = !min && !p->header && is(p, "::");
+    bool open_start = !min && !p->header && is(p, "..");
     if (open_start && !range_delimiter(p, -1, true)) {
-        fail(tok(p)->loc, "a range without its start goes right after (, [ or ,; write (:: n)");
+        fail(tok(p)->loc, "a range without its start goes right after (, [ or ,; write (.. n)");
     }
     Expr *e = open_start ? NULL : operation(p, min);
-    if (min || p->header || !(is(p, "::") || is(p, "to^"))) {
+    if (min || p->header || !(is(p, "..") || is(p, "to^"))) {
         return e;
     }
     Token *t = next(p);
@@ -1537,7 +1537,7 @@ static Expr *expr(Parser *p, int min)
     r->a = e;
     if (!range_delimiter(p, 0, false)) {
         if (tok(p)->loc.line != t->loc.line) {
-            fail(t->loc, "a range without its end goes right before ), ] or ,; write (n ::)");
+            fail(t->loc, "a range without its end goes right before ), ] or ,; write (n ..)");
         }
         r->b = operation(p, 0);
     }
@@ -1680,7 +1680,7 @@ static Stmt *if_statement(Parser *p, Expr *condition, Loc loc)
 static const char *assignment_operator(Parser *p)
 {
     const char *ops[] = {":=",  "+=",  "-=",  "*=",  "/=",  "%=",  "//=", "**=",
-                         "..=", "?:=", "?+=", "?-=", "?*=", "?/=", "?%="};
+                         "::=", "?:=", "?+=", "?-=", "?*=", "?/=", "?%="};
     for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++) {
         if (is(p, ops[j])) {
             return ops[j];
@@ -2586,7 +2586,7 @@ static void def_body(Parser *p, Def *d)
         if (take(p, "op^")) {
             Token *op = next(p);
             const char *allowed[] = {"+",  "-",  "*",      "/",    "%",   "//",
-                                     "**", "..", "cross^", "dot^", "<=>", "="};
+                                     "**", "::", "cross^", "dot^", "<=>", "="};
             bool valid = false;
             for (size_t k = 0; k < sizeof(allowed) / sizeof(*allowed); k++) {
                 valid |= !strcmp(op->text, allowed[k]);

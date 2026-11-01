@@ -16,7 +16,7 @@ let^ label = f^ name:string^, ...:i64^ -> i64^ { sum(...) + ....len }
 let^ twice = f^ xs:i64^[:] -> i64^ { sum(xs...) * 2 }
 let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return^ this^(n - 1, ...) }
 var^ values:i64^[3] = [1, 2, 3]
-print^(sum(), sum(5), sum(1, 2, 3), label("x", 10, 20), twice(values[0 :: 3]), sum(values...), depth(3, 4, 5))
+print^(sum(), sum(5), sum(1, 2, 3), label("x", 10, 20), twice(values[0 .. 3]), sum(values...), depth(3, 4, 5))
 ''', '0 5 6 32 12 6 9\n')
 
     positive('variadic_values_methods_and_references', '''

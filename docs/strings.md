@@ -101,7 +101,7 @@ R^ はこれを採りません。
 ```rhat
 let^ size = s.bytes.len        # バイト数
 let^ first = s.bytes[0]        # u8^
-let^ raw = s.bytes[0 :: 4]     # u8^[:]
+let^ raw = s.bytes[0 .. 4]     # u8^[:]
 ```
 
 `string^` 自身は `[]` と `len` を持ちません。文字とバイトの取り違えを、書く時点で防ぐためです。
@@ -123,7 +123,7 @@ let^ s = "aあ😀"
 var^ at = 0
 repeat^ while^ at < s.bytes.len {
     let^ c, next = s.decode(at)      # 文字と、次の文字のバイト位置
-    print^(c, s.slice(at :: next))    # char^ と、その1文字分のビュー
+    print^(c, s.slice(at .. next))    # char^ と、その1文字分のビュー
     at := next
 }
 
@@ -141,7 +141,7 @@ print^(cs[2], cs.len)                 # 以後は O(1)
 - `s.at(x)` と、文字位置で切る `slice` は設けません。
 - 文字の途中で範囲を切った場合にエラー値を返す版は設けません。範囲の端は `decode` が返す位置から得るのが通常で、
   途中を切るのは範囲外の添字と同じくプログラムの誤りだからです。
-- 1文字分の文字列が欲しいときは `s.slice(at :: next)` のビューを使います。`char^` から文字列を作る操作は、
+- 1文字分の文字列が欲しいときは `s.slice(at .. next)` のビューを使います。`char^` から文字列を作る操作は、
   書き出し先を受け取る形（下記）で提供し、`char^` を文字列に変換して返す関数は設けません。
 
 ## 文字列を作る

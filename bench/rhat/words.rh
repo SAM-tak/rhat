@@ -13,7 +13,7 @@ let^ split=p^ text:u8^[:] -> WordList {
         if^ len > 0 {
             assert^(len <= 127)
             out.data.push(u8^(len))
-            out.data.append(text[start :: start+len])
+            out.data.append(text[start .. start+len])
             out.count := out.count+1
         }
         repeat^ while^ i < text.len and^ text[i] = 32 { i := i+1 }
@@ -67,23 +67,23 @@ repeat^ while^ i < n {
     r := std.random.xorshift64(r)
     let^ a=r % u64^(vocab)
     let^ k=a*a/u64^(vocab)
-    text.append(dict[k].bytes[:: i64^(dict[k].len)])
+    text.append(dict[k].bytes[.. i64^(dict[k].len)])
     text.push(32)
     i := i+1
 }
-var^ words=split(text[::])
+var^ words=split(text[..])
 var^ nslots:i64^=16
 repeat^ while^ nslots < vocab*4 { nslots := nslots*2 }
 let^ mask=u64^(nslots-1)
 var^ slots:grow^ Slot[]=[]
-let^ empty=words.data[:: 0]
+let^ empty=words.data[.. 0]
 i := 0
 repeat^ while^ i < nslots { slots.push(Slot{key=empty,count=0}); i := i+1 }
 var^ distinct:i64^=0
 var^ at:i64^=0
 repeat^ while^ at < words.data.len {
     let^ len=i64^(words.data[at])
-    let^ key=words.data[at+1 :: at+1+len]
+    let^ key=words.data[at+1 .. at+1+len]
     let^ index=find(ref^ slots,key,mask)
     if^ slots[index].count = 0 {
         slots[index].key := key
