@@ -80,6 +80,20 @@ v+=4
 print^(v.n,w<v,v>w,v>=w,v<=w,1<=>2,2<=>2,3<=>2)
 ''', '5 40 15 -2 -1 true false true -1\n6 true true true false -1 0 1\n')
 
+    self_dot = '''let^ math=import^std.math
+def^ F2 {
+ self^{x:f32^=3.0,y:f32^=4.0}
+ op^dot^=f^ self^,rhs:F2 ->f32^ {self^.x*rhs.x+self^.y*rhs.y}
+ length=f^ self^ ->f32^ {math.sqrt(self^ dot^ self^)}
+}
+var^ v=F2{}
+print^(v.length())
+'''
+    negative('nested_operator_reference_diagnostic', self_dot,
+             "operator 'dot^' has no matching overload for 'ref^ F2' and 'ref^ F2'")
+    positive('operator_explicit_reference_operand',
+             self_dot.replace('self^ dot^ self^', 'self^ dot^ *self^'), '5.0\n')
+
     positive('operator_evaluation_and_chains', '''
 def^ V {
  self^{n:i32^=0}

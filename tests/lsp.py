@@ -316,6 +316,25 @@ print^(v+1)
     definition=request('definition','v+1',shift=1,text=overloads)
     assert definition['range']['start'] == at(overloads,'op^+'), definition
     print('PASS callable intersections, overload navigation and operator navigation',flush=True)
+    self_dot = '''let^ math=import^std.math
+def^ F2 {
+ self^{x:f32^=3.0,y:f32^=4.0}
+ op^dot^=f^ self^,rhs:F2 ->f32^ {self^.x*rhs.x+self^.y*rhs.y}
+ length=f^ self^ ->f32^ {math.sqrt(self^ dot^ self^)}
+}
+var^ v=F2{}
+print^(v.length())
+'''
+    client.change(path,self_dot,70)
+    diagnostics=client.diagnostics(path,70)
+    assert len(diagnostics) == 1, diagnostics
+    diagnostic=diagnostics[0]
+    assert "operator 'dot^'" in diagnostic['message'], diagnostic
+    assert "'ref^ F2' and 'ref^ F2'" in diagnostic['message'], diagnostic
+    assert diagnostic['range']['start'] == at(self_dot,'dot^ self^'), diagnostic
+    client.change(path,self_dot.replace('self^ dot^ self^','self^ dot^ *self^'),71)
+    assert client.diagnostics(path,71) == []
+    print('PASS nested operator diagnostic and explicit reference operand',flush=True)
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

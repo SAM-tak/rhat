@@ -1707,6 +1707,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             Type *result = operator_result(c->p, op, a, b, e->loc);
             return comparison && strcmp(e->text, "<=>") ? type_builtin(c->p, T_BOOL) : result;
         }
+        // A failed nominal dispatch has no arithmetic fallback. Propagating an
+        // operand's type here would blame an enclosing call for this operator.
+        if (!logic && a && b &&
+            !(comparison &&
+              (a->kind == T_NIL || b->kind == T_NIL || a->kind == T_UNION || b->kind == T_UNION)) &&
+            (a->kind == T_STRUCT || a->kind == T_REF || b->kind == T_STRUCT || b->kind == T_REF)) {
+            fail(e->loc, "operator '%s' has no matching overload for '%s' and '%s'", e->text,
+                 type_name(a), type_name(b));
+        }
         if (!strcmp(e->text, "<=>")) {
             return type_builtin(c->p, T_I32);
         }
