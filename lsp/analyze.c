@@ -355,12 +355,32 @@ static bool first_reference(char *key)
     return true;
 }
 
+// Later overload arms have no written name: navigation points at their keyword.
+static const char *declaration_spelling(Program *p, ToolRef *r)
+{
+    Function *f = r->function;
+    if (f && r->declaration.line == f->loc.line && r->declaration.col == f->loc.col) {
+        Source *s = source_for(p, r->declaration.file);
+        if (s) {
+            const char *at = s->text + loc_offset(s, r->declaration);
+            const char *keywords[] = {"template^", "f^", "p^"};
+            for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
+                if (!strncmp(at, keywords[j], strlen(keywords[j]))) {
+                    return keywords[j];
+                }
+            }
+        }
+    }
+    return r->name;
+}
+
 static void emit_ref(Program *p, cJSON *array, ToolRef *r)
 {
     if (!r->declaration.file || !r->name || *short_name(r->name) == '<') {
         return;
     }
-    const char *use_name = r->name;
+    const char *decl_name = declaration_spelling(p, r);
+    const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
     if (r->function && source) {
         const char *at = source->text + loc_offset(source, r->use);
@@ -403,7 +423,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         cJSON_Delete(use);
         return;
     }
-    cJSON *decl = location(p, r->declaration, r->name);
+    cJSON *decl = location(p, r->declaration, decl_name);
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(out, "id", key);
     cJSON_AddStringToObject(out, "name", short_name(r->name));

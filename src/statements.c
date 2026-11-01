@@ -1488,6 +1488,12 @@ static void signature_checked(Program *p, Function *f)
         Param *param = f->params.v[j];
         TOOL_CHECK(p, type_spec(p, param->spec););
         f->invalid |= param->spec && param->spec->invalid;
+        if (f->external) {
+            // Foreign declarations have no body to materialize their parameters.
+            Type *type = param->spec ? param->spec->type : NULL;
+            tool_record(p, param->loc, param->loc, param->name, type, NULL, NULL, TOOL_PARAMETER,
+                        true);
+        }
     }
     TOOL_CHECK(p, type_spec(p, f->result););
     f->invalid |= f->result && f->result->invalid;

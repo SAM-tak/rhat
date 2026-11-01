@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -313,6 +314,7 @@ print^(v+1)
     assert len(signatures['signatures']) == 2, signatures
     definition=request('definition','choose("s")',text=overloads)
     assert definition['range']['start'] == at(overloads,'& f^',shift=2), definition
+    assert definition['range']['end'] == at(overloads,'& f^',shift=4), definition
     definition=request('definition','v+1',shift=1,text=overloads)
     assert definition['range']['start'] == at(overloads,'op^+'), definition
     print('PASS callable intersections, overload navigation and operator navigation',flush=True)
@@ -401,8 +403,8 @@ print^(read(value))
     assert request('definition','read(value)',text=recovery)['range']['start'] == at(recovery,'read=f^')
     assert request('hover','a.x}',shift=2,text=recovery)['contents']['value'] == 'x: f32^'
 
-    def tokens(text):
-        data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    def tokens(text, document=path):
+        data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=document.as_uri())))['data']
         row=column=0
         result={}
         for n in range(0,len(data),5):
@@ -502,6 +504,33 @@ public^ let^ read=f^n:Unknown ->i32^ {0}
     client.change(path,'let^ tail:i32^=42\nprint^(tail)\n',108)
     assert client.diagnostics(path,108) == []
     print('PASS standalone library detection after multiple diagnostics',flush=True)
+
+    coloring="""let^ isfinite=f^x:f64^ ->bool^ {x-x=0.0}
+ & f^x:f32^ ->bool^ {x-x=0.0}
+let^ report=p^x:f64^ {print^(x)}
+ & p^x:f32^ {print^(x)}
+"""
+    client.change(path,coloring,109)
+    assert client.diagnostics(path,109) == []
+    colored=tokens(coloring)
+    for line_no,line in enumerate(coloring.splitlines()):
+        column=line.index('x:')
+        assert colored[(line_no,column)] == (1,4), (line,colored)
+    definition=request('definition','isfinite=f^',text=coloring)
+    assert definition['range']['start'] == at(coloring,'isfinite=f^'), definition
+    math_path=Path(__file__).resolve().parents[1]/'stdlib/std/math.rh'
+    math_source=math_path.read_bytes().decode('utf-8')
+    client.open(math_path,math_source)
+    assert client.diagnostics(math_path,1) == []
+    colored=tokens(math_source,math_path)
+    # Include all intrinsic arms: multi-argument declarations, compact f^x,
+    # bodyful overloads and both the first and subsequent arms.
+    for line_no,line in enumerate(math_source.splitlines()):
+        for match in re.finditer(r'(?<![\w])([xyz]|sign):f(?:32|64)\^',line):
+            spelling=match.group(1)
+            assert colored[(line_no,match.start())] == (len(spelling),4), (line,colored)
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=math_path.as_uri())))
+    print('PASS overload keyword spans and consistent foreign parameter coloring',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
