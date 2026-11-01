@@ -1,6 +1,44 @@
 #ifndef RHAT_TOOLING_H
 #define RHAT_TOOLING_H
 #include "rhat.h"
+#include <setjmp.h>
+
+// Nested editor-only recovery boundaries; command-line compilation stays fatal.
+typedef struct ToolRecovery ToolRecovery;
+
+struct ToolRecovery {
+    jmp_buf escape;
+    ToolRecovery *previous;
+};
+
+// Push/pop a boundary in the same stack frame that calls setjmp.
+void tool_enter(ToolRecovery *recovery);
+void tool_leave(ToolRecovery *recovery);
+// Abandon a dependent unit without reporting a second, cascading error.
+_Noreturn void tool_abort(void);
+
+// Snapshot mutable analysis state, preserving live list buffers on rollback.
+typedef struct ToolState ToolState;
+ToolState *tool_save(void *target, size_t size, const size_t *lists, size_t count);
+void tool_restore(ToolState *state);
+// Snapshot the objects referenced by a list (bindings carry mutable flow facts).
+ToolState *tool_save_objects(List *objects, size_t size);
+
+// Run an independent phase/unit; the body must not return, break or continue.
+#define TOOL_CHECK(p, ...)                                                                         \
+    do {                                                                                           \
+        if (!(p)->tooling) {                                                                       \
+            __VA_ARGS__                                                                            \
+        }                                                                                          \
+        else {                                                                                     \
+            ToolRecovery tool_boundary;                                                            \
+            tool_enter(&tool_boundary);                                                            \
+            if (setjmp(tool_boundary.escape) == 0) {                                               \
+                __VA_ARGS__                                                                        \
+            }                                                                                      \
+            tool_leave(&tool_boundary);                                                            \
+        }                                                                                          \
+    } while (0)
 
 // Optional per-thread allocation and diagnostic boundary for compiler clients.
 typedef struct {
@@ -8,6 +46,7 @@ typedef struct {
     void *(*resize)(void *, size_t);
     void (*release)(void *);
     void (*error)(Loc, const char *);
+    void (*abandon)(void);
 } CompilerHooks;
 
 // NULL for the command-line compiler; installed by an embedded checker.

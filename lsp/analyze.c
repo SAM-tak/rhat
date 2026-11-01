@@ -25,12 +25,15 @@ typedef struct {
 } Source;
 
 typedef struct {
+    Loc loc;
+    char *message;
+} Diagnostic;
+
+typedef struct {
     Allocation *head;
     jmp_buf *escape;
     Program program;
-    Loc error;
-    char message[4096];
-    List sources;
+    List sources, diagnostics;
     char **references;
     size_t reference_count, reference_capacity;
 } Session;
@@ -93,8 +96,26 @@ static void *resize(void *pointer, size_t size)
 
 static void diagnostic(Loc loc, const char *message)
 {
-    session->error = loc;
-    snprintf(session->message, sizeof(session->message), "%s", message);
+    // Inference and concrete checking may encounter the same mistake.
+    for (int j = 0; j < session->diagnostics.n; j++) {
+        Diagnostic *old = session->diagnostics.v[j];
+        if (old->loc.line == loc.line && old->loc.col == loc.col &&
+            (old->loc.file == loc.file ||
+             (old->loc.file && loc.file && source_same_path(old->loc.file, loc.file))) &&
+            !strcmp(old->message, message)) {
+            tool_abort();
+        }
+    }
+    if (session->diagnostics.n < 100) {
+        Diagnostic *d = mem(sizeof(*d));
+        *d = (Diagnostic){loc, str(message)};
+        add(&session->diagnostics, d);
+    }
+    tool_abort();
+}
+
+static void abandon(void)
+{
     longjmp(*session->escape, 1);
 }
 
@@ -543,9 +564,10 @@ static cJSON *export_index(Session *s)
         emit_ref(p, refs, p->resolutions.v[j]);
     }
     cJSON *errors = cJSON_AddArrayToObject(out, "diagnostics");
-    if (*s->message) {
-        cJSON *e = location(p, s->error, "");
-        cJSON_AddStringToObject(e, "message", s->message);
+    for (int j = 0; j < s->diagnostics.n; j++) {
+        Diagnostic *d = s->diagnostics.v[j];
+        cJSON *e = location(p, d->loc, "");
+        cJSON_AddStringToObject(e, "message", d->message);
         cJSON_AddItemToArray(errors, e);
     }
     return out;
@@ -564,7 +586,7 @@ static cJSON *check_once(const char *path, const cJSON *documents, const cJSON *
         return NULL;
     }
     session = s;
-    CompilerHooks hooks = {allocate, resize, release, diagnostic};
+    CompilerHooks hooks = {allocate, resize, release, diagnostic, abandon};
     compiler_hooks = &hooks;
     Program *p = &s->program;
     p->tooling = true;
@@ -603,9 +625,12 @@ cJSON *rhat_lsp_analyze(const char *path, const cJSON *documents, const cJSON *m
     if (entry && *string(entry, "rootModule") &&
         cJSON_GetArraySize(cJSON_GetObjectItem(entry, "diagnostics"))) {
         cJSON *library = check_once(path, documents, module_paths, stdlib, true);
-        cJSON *error = cJSON_GetArrayItem(cJSON_GetObjectItem(entry, "diagnostics"), 0);
-        bool public_constant =
-            strstr(string(error, "message"), "public^ executable bindings") != NULL;
+        bool public_constant = false;
+        cJSON *error;
+        cJSON_ArrayForEach(error, cJSON_GetObjectItem(entry, "diagnostics")) {
+            public_constant |=
+                strstr(string(error, "message"), "public^ executable bindings") != NULL;
+        }
         if (library &&
             (public_constant || !cJSON_GetArraySize(cJSON_GetObjectItem(library, "diagnostics")))) {
             cJSON_Delete(entry);

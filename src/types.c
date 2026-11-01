@@ -326,6 +326,9 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         fail(s->loc, "unknown type '%s'", s->name);
     }
     tool_record(p, s->loc, d->loc, d->name, d->type, NULL, d, 23, false);
+    if (d->invalid) {
+        tool_abort();
+    }
     return d->type;
 }
 
@@ -334,8 +337,24 @@ Type *type_spec(Program *p, Spec *s)
     if (!s) {
         return type_builtin(p, T_VOID);
     }
+    if (s->invalid) {
+        tool_abort();
+    }
     if (!s->type) {
-        s->type = resolve_spec_type(p, s);
+        if (!p->tooling) {
+            s->type = resolve_spec_type(p, s);
+        }
+        else {
+            ToolRecovery recovery;
+            tool_enter(&recovery);
+            if (setjmp(recovery.escape)) {
+                s->invalid = true;
+                tool_leave(&recovery);
+                tool_abort();
+            }
+            s->type = resolve_spec_type(p, s);
+            tool_leave(&recovery);
+        }
     }
     return s->type;
 }
@@ -663,7 +682,7 @@ static void compatible(Program *p, Function *a, Function *b)
     }
 }
 
-void compose(Program *p, Def *d)
+static void compose_unchecked(Program *p, Def *d)
 {
     if (d->state == 2) {
         return;
@@ -890,7 +909,27 @@ void compose(Program *p, Def *d)
     d->state = 2;
 }
 
-void layout(Type *t, Loc l)
+void compose(Program *p, Def *d)
+{
+    if (d->invalid) {
+        tool_abort();
+    }
+    if (!p->tooling) {
+        compose_unchecked(p, d);
+        return;
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        d->invalid = true;
+        tool_leave(&recovery);
+        tool_abort();
+    }
+    compose_unchecked(p, d);
+    tool_leave(&recovery);
+}
+
+static void layout_unchecked(Type *t, Loc l)
 {
     if (callable_type(t)) {
         if (t->kind == T_FUNCTION && !t->function) {
@@ -1001,4 +1040,24 @@ void layout(Type *t, Loc l)
     if (!t->size) {
         t->size = 1;
     }
+}
+
+void layout(Type *t, Loc l)
+{
+    if (t->invalid || (t->def && t->def->invalid)) {
+        tool_abort();
+    }
+    if (!compiler_hooks) {
+        layout_unchecked(t, l);
+        return;
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        t->invalid = true;
+        tool_leave(&recovery);
+        tool_abort();
+    }
+    layout_unchecked(t, l);
+    tool_leave(&recovery);
 }

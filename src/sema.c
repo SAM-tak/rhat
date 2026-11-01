@@ -164,6 +164,9 @@ Var *lookup(Context *c, const char *name)
 
 Var *selected(Context *c, Expr *e)
 {
+    if (e->invalid) {
+        tool_abort();
+    }
     if (!e->scope_kind) {
         Var *pending = NULL;
         for (int j = c->vars.n - 1; j >= 0; j--) {
@@ -175,6 +178,9 @@ Var *selected(Context *c, Expr *e)
                 continue;
             }
             if (!v->pending) {
+                if (v->invalid) {
+                    tool_abort();
+                }
                 return v;
             }
             pending = v;
@@ -196,14 +202,47 @@ Var *selected(Context *c, Expr *e)
         }
         if (e->scope_kind == 3) {
             if (skip-- == 0) {
+                if (v->invalid) {
+                    tool_abort();
+                }
                 return v;
             }
         }
         else if (v->lexical <= target) {
+            if (v->invalid) {
+                tool_abort();
+            }
             return v;
         }
     }
     return NULL;
+}
+
+void tool_failed_binding(Program *p, List *vars, Stmt *s, int depth, int lexical)
+{
+    if (s->kind == S_BIND_MANY) {
+        for (int j = 0; j < s->body.n; j++) {
+            tool_failed_binding(p, vars, s->body.v[j], depth, lexical);
+        }
+    }
+    if (s->kind != S_BIND || !strcmp(s->name, "_^")) {
+        return;
+    }
+    for (int j = vars->n - 1; j >= 0; j--) {
+        Var *v = vars->v[j];
+        if (v->lexical == lexical && !strcmp(v->name, s->name)) {
+            return;
+        }
+    }
+    Var *v = mem(sizeof(*v));
+    v->invalid = true;
+    v->name = s->name;
+    v->declaration = s->loc;
+    v->type = type_builtin(p, T_VOID);
+    v->depth = depth;
+    v->lexical = lexical;
+    add(vars, v);
+    tool_record(p, s->loc, s->loc, s->name, NULL, NULL, NULL, 13, true);
 }
 
 void forget_roots(List *vars, Roots roots, bool all)
@@ -460,6 +499,9 @@ Value place_expression(Context *c, Expr *e)
 
 Value variable(Var *v)
 {
+    if (v->invalid) {
+        tool_abort();
+    }
     return (Value){v->slot, v->type, v->type->refs ? v->deps : (Roots){0}, v->root, v, true};
 }
 
@@ -2024,6 +2066,9 @@ Type *union_literal_hint(Type *t, Expr *e)
 
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
+    if (e->invalid) {
+        tool_abort();
+    }
     if (c->terminated) {
         return abrupt(c);
     }
@@ -2676,6 +2721,9 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
 
 Value expression(Context *c, Expr *e, Type *expected)
 {
+    if (e->invalid) {
+        tool_abort();
+    }
     if (c->terminated) {
         return abrupt(c);
     }

@@ -128,7 +128,8 @@ enum {
     TOK_FORMAT,     // The raw format after a hole's first top-level :.
     TOK_HOLE_END,   // } closing a hole.
     TOK_INTERP_END, // " closing the string.
-    TOK_EOF
+    TOK_EOF,
+    TOK_INVALID
 };
 
 typedef struct {
@@ -170,9 +171,59 @@ static Token *next(Parser *p)
     return t;
 }
 
+// Balance braces while skipping a damaged unit. A new declaration on a later
+// line can also recover from a missing closing delimiter at the same indentation.
+static void synchronize(Parser *p, int start, int failed, bool outer)
+{
+    Token *first = p->tokens.v[start];
+    int braces = 0;
+    p->at = start;
+    while (tok(p)->kind != TOK_EOF) {
+        Token *t = tok(p);
+        bool starter = is(p, "let^") || is(p, "var^") || is(p, "return^") || is(p, "def^") ||
+                       is(p, "struct^") || is(p, "import^") || is(p, "public^") ||
+                       is(p, "exportC^") || is(p, "exportL^") || is(p, "if^") || is(p, "for^") ||
+                       is(p, "while^") || is(p, "print^") || is(p, "op^") || is(p, "private^") ||
+                       is(p, "abstract^") || is(p, "override^") || is(p, "overload^");
+        if (t->kind == TOK_WORD && p->at + 2 < p->tokens.n) {
+            Token *equal = p->tokens.v[p->at + 1], *value = p->tokens.v[p->at + 2];
+            starter |= (!strcmp(equal->text, "=") || !strcmp(equal->text, ":=")) &&
+                       (!strcmp(value->text, "f^") || !strcmp(value->text, "p^"));
+        }
+        if (p->at > start && p->at >= failed &&
+            ((starter && !braces) ||
+             (t->loc.line > first->loc.line && t->loc.col <= first->loc.col && starter))) {
+            return;
+        }
+        if (is(p, "}")) {
+            if (!braces) {
+                if (outer) {
+                    next(p);
+                }
+                return;
+            }
+            braces--;
+            next(p);
+            if (!braces && p->at >= failed) {
+                return;
+            }
+        }
+        else if (take(p, ";") && !braces && p->at >= failed) {
+            return;
+        }
+        else {
+            braces += is(p, "{");
+            next(p);
+        }
+    }
+}
+
 static void need(Parser *p, const char *s)
 {
     if (!take(p, s)) {
+        if (tok(p)->kind == TOK_INVALID) {
+            tool_abort();
+        }
         fail(tok(p)->loc, "expected '%s', found '%s'", s, tok(p)->text);
     }
 }
@@ -471,335 +522,381 @@ static const char *interp_text(const char *s, Token *t, char *out)
     return s;
 }
 
-static void lex(Parser *p)
+typedef struct {
+    const char *s;
+    char *scratch;
+    int line, col, level, nest[33];
+    bool text;
+} Lexer;
+
+static void lex_step(Parser *p, Lexer *l)
 {
-    const char *s = p->p->source;
-    char *scratch = mem(strlen(s) + 1);
-    int line = 1, col = 1;
-    // Open interpolated strings, the bracket depth inside each one's hole,
-    // and whether the innermost is in its text rather than a hole.
-    int level = 0, nest[33] = {0};
-    bool text = false;
-    while (*s) {
-        if (text || (level && !nest[level] && (*s == '}' || *s == ':'))) {
-            Token *t = mem(sizeof(*t));
-            t->loc = (Loc){p->p->path, line, col};
-            const char *start = s;
-            if (text && (*s == '"' || *s == '{')) {
-                bool hole = *s++ == '{';
-                t->kind = hole ? TOK_HOLE : TOK_INTERP_END;
-                t->text = hole ? "\001hole" : "\001end";
-                level -= !hole;
-                nest[level] = hole ? 0 : nest[level];
-                text = false;
-            }
-            else if (text) {
-                s = interp_text(s, t, scratch);
-            }
-            else if (*s == '}') {
-                s++;
-                t->kind = TOK_HOLE_END;
-                t->text = "\001hole_end";
-                text = true;
-            }
-            else {
-                // A format is raw text up to the hole's }.
-                const char *format = ++s;
-                while (*s && *s != '}' && *s != '\n') {
-                    s++;
-                }
-                if (*s != '}') {
-                    fail(t->loc, "unterminated format in an interpolated string");
-                }
-                t->kind = TOK_FORMAT;
-                t->text = slice(format, (size_t)(s - format));
-            }
-            for (; start < s; start++) {
-                line += *start == '\n';
-                col = *start == '\n' ? 1 : col + 1;
-            }
-            add(&p->tokens, t);
-            continue;
-        }
-        if (isspace((unsigned char)*s)) {
-            if (*s++ == '\n') {
-                line++;
-                col = 1;
-            }
-            else {
-                col++;
-            }
-            continue;
-        }
-        if (s[0] == '#' && s[1] == '[') {
-            s += 2;
-            col += 2;
-            int depth = 1;
-            while (*s && depth) {
-                if (s[0] == '#' && s[1] == '[') {
-                    depth++;
-                    s += 2;
-                    col += 2;
-                }
-                else if (s[0] == ']' && s[1] == '#') {
-                    depth--;
-                    s += 2;
-                    col += 2;
-                }
-                else if (*s++ == '\n') {
-                    line++;
-                    col = 1;
-                }
-                else {
-                    col++;
-                }
-            }
-            if (depth) {
-                fail((Loc){p->p->path, line, col}, "unterminated comment");
-            }
-            continue;
-        }
-        if (*s == '#') {
-            while (*s && *s != '\n') {
-                s++;
-                col++;
-            }
-            continue;
-        }
+    if (l->text || (l->level && !l->nest[l->level] && (*l->s == '}' || *l->s == ':'))) {
         Token *t = mem(sizeof(*t));
-        t->loc = (Loc){p->p->path, line, col};
-        const char *start = s;
-        const char *operators[] = {"≤", "≦", "≥", "≧", "≠"};
-        int unicode = -1;
-        for (int j = 0; j < 5; j++) {
-            if (!strncmp(s, operators[j], strlen(operators[j]))) {
-                unicode = j;
+        t->loc = (Loc){p->p->path, l->line, l->col};
+        const char *start = l->s;
+        if (l->text && (*l->s == '"' || *l->s == '{')) {
+            bool hole = *l->s++ == '{';
+            t->kind = hole ? TOK_HOLE : TOK_INTERP_END;
+            t->text = hole ? "\001hole" : "\001end";
+            l->level -= !hole;
+            l->nest[l->level] = hole ? 0 : l->nest[l->level];
+            l->text = false;
+        }
+        else if (l->text) {
+            l->s = interp_text(l->s, t, l->scratch);
+        }
+        else if (*l->s == '}') {
+            l->s++;
+            t->kind = TOK_HOLE_END;
+            t->text = "\001hole_end";
+            l->text = true;
+        }
+        else {
+            // A format is raw text up to the hole's }.
+            const char *format = ++l->s;
+            while (*l->s && *l->s != '}' && *l->s != '\n') {
+                l->s++;
             }
-        }
-        if (unicode >= 0) {
-            s += strlen(operators[unicode]);
-            t->text = unicode < 2 ? "<=" : unicode < 4 ? ">=" : "!=";
-            t->kind = '=';
-        }
-        else if (s[0] == '$' && s[1] == '"') {
-            s += 2;
-            t->kind = TOK_INTERP;
-            t->text = "\001interp";
-            if (++level > 32) {
-                fail(t->loc, "interpolated strings nest deeper than 32");
+            if (*l->s != '}') {
+                fail(t->loc, "unterminated format in an interpolated string");
             }
-            text = true;
+            t->kind = TOK_FORMAT;
+            t->text = slice(format, (size_t)(l->s - format));
         }
-        else if (s[0] == '$' && s[1] == '\'') {
-            fail(t->loc, "interpolation is written $\"...\"; $'...' does not interpolate");
+        for (; start < l->s; start++) {
+            l->line += *start == '\n';
+            l->col = *start == '\n' ? 1 : l->col + 1;
         }
-        else if (*s == '$') {
-            s++;
-            if (*s == '^') {
-                while (*s == '^') {
-                    s++;
-                }
+        add(&p->tokens, t);
+        return;
+    }
+    if (isspace((unsigned char)*l->s)) {
+        if (*l->s++ == '\n') {
+            l->line++;
+            l->col = 1;
+        }
+        else {
+            l->col++;
+        }
+        return;
+    }
+    if (l->s[0] == '#' && l->s[1] == '[') {
+        l->s += 2;
+        l->col += 2;
+        int depth = 1;
+        while (*l->s && depth) {
+            if (l->s[0] == '#' && l->s[1] == '[') {
+                depth++;
+                l->s += 2;
+                l->col += 2;
+            }
+            else if (l->s[0] == ']' && l->s[1] == '#') {
+                depth--;
+                l->s += 2;
+                l->col += 2;
+            }
+            else if (*l->s++ == '\n') {
+                l->line++;
+                l->col = 1;
             }
             else {
-                while (*s == '$') {
-                    s++;
-                }
-            }
-            if (!(isalpha((unsigned char)*s) || *s == '_' || *s == '`' ||
-                  (unsigned char)*s >= 128)) {
-                fail(t->loc, "scope prefix must be adjacent to an identifier");
-            }
-            t->kind = TOK_SCOPE;
-        }
-        else if (*s == '`') {
-            s++;
-            char *out = scratch;
-            size_t n = 0;
-            bool closed = false;
-            while (*s) {
-                if (*s == '\n' || *s == '\r') {
-                    fail(t->loc, "newline in quoted identifier");
-                }
-                if (*s == '`') {
-                    s++;
-                    if (*s != '`') {
-                        closed = true;
-                        break;
-                    }
-                }
-                if ((unsigned char)*s < 32 || (unsigned char)*s == 127) {
-                    fail(t->loc, "control character in quoted identifier");
-                }
-                out[n++] = *s++;
-            }
-            if (!closed || !n) {
-                fail(t->loc, "empty or unterminated quoted identifier");
-            }
-            t->text = slice(out, n);
-            t->kind = TOK_QUOTED;
-        }
-        else if (isalpha((unsigned char)*s) || *s == '_' || (unsigned char)*s >= 128) {
-            while (isalnum((unsigned char)*s) || *s == '_' || (unsigned char)*s >= 128) {
-                bool symbol = false;
-                for (int j = 0; j < 5; j++) {
-                    if (!strncmp(s, operators[j], strlen(operators[j]))) {
-                        symbol = true;
-                    }
-                }
-                if (symbol) {
-                    break;
-                }
-                s++;
-            }
-            while (*s == '^') {
-                s++;
-            }
-            t->kind = TOK_WORD;
-        }
-        else if (isdigit((unsigned char)*s)) {
-            t->kind = TOK_INT;
-            if (s[0] == '0' && strchr("xXoObB", s[1]) && s[1]) {
-                int base = s[1] == 'x' || s[1] == 'X' ? 16 : s[1] == 'o' || s[1] == 'O' ? 8 : 2;
-                s += 2;
-                const char *begin = s;
-                s = digits(s, base, t->loc);
-                t->text = decimal_base(begin, s, base);
-            }
-            else {
-                s = digits(s, 10, t->loc);
-                if (*s == '.' && isdigit((unsigned char)s[1])) {
-                    t->kind = TOK_FLOAT;
-                    s = digits(s + 1, 10, t->loc);
-                }
-                if (*s == 'e' || *s == 'E') {
-                    t->kind = TOK_FLOAT;
-                    s++;
-                    if (*s == '+' || *s == '-') {
-                        s++;
-                    }
-                    s = digits(s, 10, t->loc);
-                }
-                t->text = mem((size_t)(s - start) + 1);
-                size_t n = 0;
-                for (const char *q = start; q < s; q++) {
-                    if (*q != '_') {
-                        t->text[n++] = *q;
-                    }
-                }
-            }
-            if (isalnum((unsigned char)*s) || *s == '_') {
-                fail(t->loc, "invalid numeric literal");
+                l->col++;
             }
         }
-        else if (*s == '"' || *s == '\'') {
-            char quote = *s++;
-            bool line_string = quote == '"' && s[0] == '"' && s[1] == '"';
-            if (line_string) {
-                s += 2;
-            }
-            char *out = scratch;
-            size_t n = 0;
-            bool closed = line_string;
-            while (*s && (!line_string || (*s != '\n' && *s != '\r'))) {
-                if (!line_string && *s == quote) {
-                    s++;
-                    if (quote != '\'' || *s != '\'') {
-                        closed = true;
-                        break;
-                    }
-                    out[n++] = *s++;
-                    continue;
-                }
-                if (*s == '\r' && s[1] == '\n') {
-                    out[n++] = '\n';
-                    s += 2;
-                    continue;
-                }
-                if (!line_string && quote == '"' && *s == '\\') {
-                    s = string_escape(s + 1, out, &n, t->loc);
-                }
-                else {
-                    out[n++] = *s++;
-                }
-            }
-            if (!closed) {
-                fail(t->loc, "unterminated string");
-            }
-            utf8_text(out, n, t->loc);
-            t->kind = TOK_STRING;
-            t->text = slice(out, n);
-            t->length = n;
+        if (depth) {
+            fail((Loc){p->p->path, l->line, l->col}, "unterminated comment");
         }
-        else if (*s == '?') {
-            const char *ops[] = {"?:=", "?+=", "?-=", "?*=", "?/=", "?%=", "?.", "?[", "?(", "??"};
-            t->kind = '?';
-            s++;
-            for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++) {
-                size_t n = strlen(ops[j]);
-                if (!strncmp(start, ops[j], n)) {
-                    s = start + n;
-                    break;
-                }
+        return;
+    }
+    if (*l->s == '#') {
+        while (*l->s && *l->s != '\n') {
+            l->s++;
+            l->col++;
+        }
+        return;
+    }
+    Token *t = mem(sizeof(*t));
+    t->loc = (Loc){p->p->path, l->line, l->col};
+    const char *start = l->s;
+    const char *operators[] = {"≤", "≦", "≥", "≧", "≠"};
+    int unicode = -1;
+    for (int j = 0; j < 5; j++) {
+        if (!strncmp(l->s, operators[j], strlen(operators[j]))) {
+            unicode = j;
+        }
+    }
+    if (unicode >= 0) {
+        l->s += strlen(operators[unicode]);
+        t->text = unicode < 2 ? "<=" : unicode < 4 ? ">=" : "!=";
+        t->kind = '=';
+    }
+    else if (l->s[0] == '$' && l->s[1] == '"') {
+        l->s += 2;
+        t->kind = TOK_INTERP;
+        t->text = "\001interp";
+        if (++l->level > 32) {
+            fail(t->loc, "interpolated strings nest deeper than 32");
+        }
+        l->text = true;
+    }
+    else if (l->s[0] == '$' && l->s[1] == '\'') {
+        fail(t->loc, "interpolation is written $\"...\"; $'...' does not interpolate");
+    }
+    else if (*l->s == '$') {
+        l->s++;
+        if (*l->s == '^') {
+            while (*l->s == '^') {
+                l->s++;
             }
         }
         else {
-            t->kind = (unsigned char)*s++;
-            if (!strncmp(start, "<=>", 3)) {
-                s = start + 3;
-            }
-            else if ((start[0] == '*' && *s == '*') || (start[0] == '/' && *s == '/')) {
-                s++;
-            }
-            else if ((strchr("+-*/%", start[0]) && *s == '=') || (start[0] == '=' && *s == '/') ||
-                     (start[0] == ':' && (*s == '=' || *s == ':')) ||
-                     (start[0] == '-' && *s == '>') || (strchr("=!<>", start[0]) && *s == '=') ||
-                     (start[0] == '&' && *s == '&') || (start[0] == '|' && *s == '|') ||
-                     (start[0] == '.' && *s == '.')) {
-                s++;
+            while (*l->s == '$') {
+                l->s++;
             }
         }
-        if (s - start == 2 && !strncmp(start, "..", 2) && *s == '.') {
-            s++; // The variadic marker ... is matched before a range.
+        if (!(isalpha((unsigned char)*l->s) || *l->s == '_' || *l->s == '`' ||
+              (unsigned char)*l->s >= 128)) {
+            fail(t->loc, "scope prefix must be adjacent to an identifier");
         }
-        if (s - start == 2 && *s == '=' &&
-            (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "::", 2))) {
-            s++;
+        t->kind = TOK_SCOPE;
+    }
+    else if (*l->s == '`') {
+        l->s++;
+        char *out = l->scratch;
+        size_t n = 0;
+        bool closed = false;
+        while (*l->s) {
+            if (*l->s == '\n' || *l->s == '\r') {
+                fail(t->loc, "newline in quoted identifier");
+            }
+            if (*l->s == '`') {
+                l->s++;
+                if (*l->s != '`') {
+                    closed = true;
+                    break;
+                }
+            }
+            if ((unsigned char)*l->s < 32 || (unsigned char)*l->s == 127) {
+                fail(t->loc, "control character in quoted identifier");
+            }
+            out[n++] = *l->s++;
         }
-        if (!t->text) {
-            t->text = slice(start, (size_t)(s - start));
+        if (!closed || !n) {
+            fail(t->loc, "empty or unterminated quoted identifier");
         }
-        if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "=/")) {
-            t->text = "!=";
+        t->text = slice(out, n);
+        t->kind = TOK_QUOTED;
+    }
+    else if (isalpha((unsigned char)*l->s) || *l->s == '_' || (unsigned char)*l->s >= 128) {
+        while (isalnum((unsigned char)*l->s) || *l->s == '_' || (unsigned char)*l->s >= 128) {
+            bool symbol = false;
+            for (int j = 0; j < 5; j++) {
+                if (!strncmp(l->s, operators[j], strlen(operators[j]))) {
+                    symbol = true;
+                }
+            }
+            if (symbol) {
+                break;
+            }
+            l->s++;
         }
-        if (t->kind != TOK_STRING && t->kind != TOK_QUOTED &&
-            (!strcmp(t->text, "==") || !strcmp(t->text, "||"))) {
-            fail(t->loc, "use '=', 'and^', or 'or^'; C-style comparison/logical "
-                         "operators are not supported");
+        while (*l->s == '^') {
+            l->s++;
         }
-        for (const char *q = start; q < s; q++) {
-            if (*q == '\n') {
-                line++;
-                col = 1;
+        t->kind = TOK_WORD;
+    }
+    else if (isdigit((unsigned char)*l->s)) {
+        t->kind = TOK_INT;
+        if (l->s[0] == '0' && strchr("xXoObB", l->s[1]) && l->s[1]) {
+            int base = l->s[1] == 'x' || l->s[1] == 'X'   ? 16
+                       : l->s[1] == 'o' || l->s[1] == 'O' ? 8
+                                                          : 2;
+            l->s += 2;
+            const char *begin = l->s;
+            l->s = digits(l->s, base, t->loc);
+            t->text = decimal_base(begin, l->s, base);
+        }
+        else {
+            l->s = digits(l->s, 10, t->loc);
+            if (*l->s == '.' && isdigit((unsigned char)l->s[1])) {
+                t->kind = TOK_FLOAT;
+                l->s = digits(l->s + 1, 10, t->loc);
+            }
+            if (*l->s == 'e' || *l->s == 'E') {
+                t->kind = TOK_FLOAT;
+                l->s++;
+                if (*l->s == '+' || *l->s == '-') {
+                    l->s++;
+                }
+                l->s = digits(l->s, 10, t->loc);
+            }
+            t->text = mem((size_t)(l->s - start) + 1);
+            size_t n = 0;
+            for (const char *q = start; q < l->s; q++) {
+                if (*q != '_') {
+                    t->text[n++] = *q;
+                }
+            }
+        }
+        if (isalnum((unsigned char)*l->s) || *l->s == '_') {
+            fail(t->loc, "invalid numeric literal");
+        }
+    }
+    else if (*l->s == '"' || *l->s == '\'') {
+        char quote = *l->s++;
+        bool line_string = quote == '"' && l->s[0] == '"' && l->s[1] == '"';
+        if (line_string) {
+            l->s += 2;
+        }
+        char *out = l->scratch;
+        size_t n = 0;
+        bool closed = line_string;
+        while (*l->s && (!line_string || (*l->s != '\n' && *l->s != '\r'))) {
+            if (!line_string && *l->s == quote) {
+                l->s++;
+                if (quote != '\'' || *l->s != '\'') {
+                    closed = true;
+                    break;
+                }
+                out[n++] = *l->s++;
+                continue;
+            }
+            if (*l->s == '\r' && l->s[1] == '\n') {
+                out[n++] = '\n';
+                l->s += 2;
+                continue;
+            }
+            if (!line_string && quote == '"' && *l->s == '\\') {
+                l->s = string_escape(l->s + 1, out, &n, t->loc);
             }
             else {
-                col++;
+                out[n++] = *l->s++;
             }
         }
-        if (level && t->kind != TOK_STRING && t->kind != TOK_QUOTED && s - start <= 2) {
-            // Brackets inside a hole keep its } and : from closing it.
-            nest[level] += strchr("([{", s[-1])                     ? 1
-                           : strchr(")]}", s[-1]) && s - start == 1 ? -1
-                                                                    : 0;
+        if (!closed) {
+            fail(t->loc, "unterminated string");
         }
-        add(&p->tokens, t);
+        utf8_text(out, n, t->loc);
+        t->kind = TOK_STRING;
+        t->text = slice(out, n);
+        t->length = n;
     }
-    if (level) {
-        fail((Loc){p->p->path, line, col}, "unterminated interpolated string");
+    else if (*l->s == '?') {
+        const char *ops[] = {"?:=", "?+=", "?-=", "?*=", "?/=", "?%=", "?.", "?[", "?(", "??"};
+        t->kind = '?';
+        l->s++;
+        for (size_t j = 0; j < sizeof(ops) / sizeof(*ops); j++) {
+            size_t n = strlen(ops[j]);
+            if (!strncmp(start, ops[j], n)) {
+                l->s = start + n;
+                break;
+            }
+        }
+    }
+    else {
+        t->kind = (unsigned char)*l->s++;
+        if (!strncmp(start, "<=>", 3)) {
+            l->s = start + 3;
+        }
+        else if ((start[0] == '*' && *l->s == '*') || (start[0] == '/' && *l->s == '/')) {
+            l->s++;
+        }
+        else if ((strchr("+-*/%", start[0]) && *l->s == '=') || (start[0] == '=' && *l->s == '/') ||
+                 (start[0] == ':' && (*l->s == '=' || *l->s == ':')) ||
+                 (start[0] == '-' && *l->s == '>') || (strchr("=!<>", start[0]) && *l->s == '=') ||
+                 (start[0] == '&' && *l->s == '&') || (start[0] == '|' && *l->s == '|') ||
+                 (start[0] == '.' && *l->s == '.')) {
+            l->s++;
+        }
+    }
+    if (l->s - start == 2 && !strncmp(start, "..", 2) && *l->s == '.') {
+        l->s++; // The variadic marker ... is matched before a range.
+    }
+    if (l->s - start == 2 && *l->s == '=' &&
+        (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "::", 2))) {
+        l->s++;
+    }
+    if (!t->text) {
+        t->text = slice(start, (size_t)(l->s - start));
+    }
+    if (t->kind != TOK_STRING && t->kind != TOK_QUOTED && !strcmp(t->text, "=/")) {
+        t->text = "!=";
+    }
+    if (t->kind != TOK_STRING && t->kind != TOK_QUOTED &&
+        (!strcmp(t->text, "==") || !strcmp(t->text, "||"))) {
+        fail(t->loc, "use '=', 'and^', or 'or^'; C-style comparison/logical "
+                     "operators are not supported");
+    }
+    for (const char *q = start; q < l->s; q++) {
+        if (*q == '\n') {
+            l->line++;
+            l->col = 1;
+        }
+        else {
+            l->col++;
+        }
+    }
+    if (l->level && t->kind != TOK_STRING && t->kind != TOK_QUOTED && l->s - start <= 2) {
+        // Brackets inside a hole keep its } and : from closing it.
+        l->nest[l->level] += strchr("([{", l->s[-1])                        ? 1
+                             : strchr(")]}", l->s[-1]) && l->s - start == 1 ? -1
+                                                                            : 0;
+    }
+    add(&p->tokens, t);
+}
+
+static void lex_checked(Parser *p, Lexer *l)
+{
+    const char *start = l->s;
+    Loc loc = {p->p->path, l->line, l->col};
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        l->s = start;
+        // A broken quoted token ends at its physical line. An open block
+        // comment has no unambiguous code after it, so it consumes the rest.
+        while (*l->s && (*l->s != '\n' || (start[0] == '#' && start[1] == '['))) {
+            l->s++;
+        }
+        l->line = loc.line;
+        l->col = loc.col;
+        for (const char *at = start; at < l->s; at++) {
+            l->line += *at == '\n';
+            l->col = *at == '\n' ? 1 : l->col + 1;
+        }
+        l->level = 0;
+        l->text = false;
+        Token *bad = mem(sizeof(*bad));
+        *bad = (Token){.text = "<invalid>", .loc = loc, .kind = TOK_INVALID};
+        add(&p->tokens, bad);
+    }
+    else {
+        lex_step(p, l);
+    }
+    tool_leave(&recovery);
+}
+
+static void lex(Parser *p)
+{
+    Lexer l = {.s = p->p->source, .line = 1, .col = 1};
+    l.scratch = mem(strlen(l.s) + 1);
+    while (*l.s) {
+        if (p->p->tooling) {
+            lex_checked(p, &l);
+        }
+        else {
+            lex_step(p, &l);
+        }
+    }
+    if (l.level) {
+        TOOL_CHECK(p->p,
+                   fail((Loc){p->p->path, l.line, l.col}, "unterminated interpolated string"););
     }
     Token *end = mem(sizeof(*end));
     end->kind = TOK_EOF;
     end->text = "<eof>";
-    end->loc = (Loc){p->p->path, line, col};
+    end->loc = (Loc){p->p->path, l.line, l.col};
     add(&p->tokens, end);
 }
 
@@ -1200,6 +1297,9 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p)
 {
     Token *t = next(p);
+    if (t->kind == TOK_INVALID) {
+        tool_abort();
+    }
     Expr *e = NULL;
     p->text_cast |= t->kind == TOK_WORD &&
                     (!strcmp(t->text, "char^") || !strcmp(t->text, "string^")) && is(p, "(");
@@ -2235,7 +2335,7 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
     return scope;
 }
 
-static Stmt *stmt(Parser *p)
+static Stmt *stmt_unchecked(Parser *p)
 {
     Token *t = tok(p);
     if (is(p, "catch^")) {
@@ -2423,13 +2523,53 @@ static Stmt *stmt(Parser *p)
     return s;
 }
 
+static Stmt *stmt(Parser *p)
+{
+    if (!p->p->tooling) {
+        return stmt_unchecked(p);
+    }
+    int start = p->at, depth = p->scope_depth;
+    bool header = p->header;
+    Function *enclosing = p->enclosing;
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        synchronize(p, start, p->at, depth == 0);
+        p->scope_depth = depth;
+        p->header = header;
+        p->enclosing = enclosing;
+        Token *first = p->tokens.v[start];
+        Stmt *bad = mem(sizeof(*bad));
+        bad->kind = S_EXPR;
+        bad->loc = first->loc;
+        bad->a = node(E_NAME, first->loc);
+        bad->a->invalid = true;
+        bad->a->text = "<invalid>";
+        if ((!strcmp(first->text, "let^") || !strcmp(first->text, "var^")) &&
+            start + 1 < p->tokens.n) {
+            Token *name = p->tokens.v[start + 1];
+            if (name->kind == TOK_WORD && !strchr(name->text, '^')) {
+                bad->kind = S_BIND;
+                bad->name = name->text;
+                bad->loc = name->loc;
+            }
+        }
+        tool_leave(&recovery);
+        return bad;
+    }
+    Stmt *out = stmt_unchecked(p);
+    tool_leave(&recovery);
+    return out;
+}
+
 static void block(Parser *p, List *out)
 {
     need(p, "{");
     p->scope_depth++;
     while (!is(p, "}") && !catch_head(p)) {
         if (tok(p)->kind == TOK_EOF) {
-            fail(tok(p)->loc, "unterminated block");
+            TOOL_CHECK(p->p, fail(tok(p)->loc, "unterminated block"););
+            break;
         }
         if (take(p, ";")) {
             continue;
@@ -2437,7 +2577,9 @@ static void block(Parser *p, List *out)
         add(out, stmt(p));
     }
     catches(p, out, false);
-    need(p, "}");
+    if (tok(p)->kind != TOK_EOF || !p->p->tooling) {
+        need(p, "}");
+    }
     p->scope_depth--;
 }
 
@@ -2586,83 +2728,119 @@ static void definition(Parser *p, bool structure)
 }
 
 // A def^ body from its {: fields in self^{ ... } and methods outside.
+static void def_member(Parser *p, Def *d)
+{
+    if (tok(p)->kind == TOK_EOF) {
+        fail(tok(p)->loc, "unterminated def^");
+    }
+    if (take(p, ",") || take(p, ";")) {
+        return;
+    }
+    if (take(p, "self^")) {
+        need(p, "{");
+        fields(p, d);
+        return;
+    }
+    bool priv = false, abstr = false, over = false, overload = false;
+    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") || is(p, "overload^")) {
+        if (take(p, "private^")) {
+            priv = true;
+        }
+        else if (take(p, "abstract^")) {
+            abstr = true;
+        }
+        else if (take(p, "overload^")) {
+            overload = true;
+        }
+        else {
+            next(p);
+            over = true;
+        }
+    }
+    if (over && overload) {
+        fail(tok(p)->loc, "override^ and overload^ cannot be combined");
+    }
+    Loc declaration = tok(p)->loc;
+    char *name;
+    if (take(p, "op^")) {
+        Token *op = next(p);
+        const char *allowed[] = {"+",  "-",  "*",      "/",    "%",   "//",
+                                 "**", "::", "cross^", "dot^", "<=>", "="};
+        bool valid = false;
+        for (size_t k = 0; k < sizeof(allowed) / sizeof(*allowed); k++) {
+            valid |= !strcmp(op->text, allowed[k]);
+        }
+        if (!valid) {
+            fail(op->loc, "invalid operator definition '%s'", op->text);
+        }
+        name = fmt("op^%s", op->text);
+    }
+    else {
+        name = decl_word(p);
+    }
+    if (abstr) {
+        need(p, ":");
+    }
+    else if (!take(p, ":=")) {
+        need(p, "=");
+    }
+    Function *f = function(p, name, d, abstr);
+    f->declaration = declaration;
+    f->priv = priv;
+    f->override = over;
+    f->overload = overload;
+    if (f->operator_member) {
+        int self_count = 0;
+        for (int k = 0; k < f->params.n; k++) {
+            self_count += ((Param *)f->params.v[k])->self;
+        }
+        bool unary = !strcmp(name, "op^-") && f->params.n == 1;
+        if (f->procedure || f->mutable_self || self_count != 1 || (!unary && f->params.n != 2)) {
+            fail(f->loc, "operator requires a pure f^ with self^ and one operand (or unary '-')");
+        }
+    }
+    add(&d->own_methods, f);
+}
+
+static void def_member_checked(Parser *p, Def *d)
+{
+    if (!p->p->tooling) {
+        def_member(p, d);
+        return;
+    }
+    int start = p->at, depth = p->scope_depth;
+    bool header = p->header, fields = is(p, "self^");
+    Function *enclosing = p->enclosing;
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        synchronize(p, start, p->at, false);
+        p->scope_depth = depth;
+        p->header = header;
+        p->enclosing = enclosing;
+        d->invalid |= fields;
+    }
+    else {
+        def_member(p, d);
+    }
+    tool_leave(&recovery);
+}
+
+// An editor can still resolve the remaining methods after a damaged member.
 static void def_body(Parser *p, Def *d)
 {
     need(p, "{");
     while (!take(p, "}")) {
+        if (p->p->tooling && (is(p, "let^") || is(p, "var^") || is(p, "def^") || is(p, "struct^") ||
+                              is(p, "import^") || is(p, "public^"))) {
+            TOOL_CHECK(p->p, fail(tok(p)->loc, "expected '}' before a top-level declaration"););
+            break;
+        }
         if (tok(p)->kind == TOK_EOF) {
-            fail(tok(p)->loc, "unterminated def^");
+            TOOL_CHECK(p->p, fail(tok(p)->loc, "unterminated def^"););
+            break;
         }
-        if (take(p, ",") || take(p, ";")) {
-            continue;
-        }
-        if (take(p, "self^")) {
-            need(p, "{");
-            fields(p, d);
-            continue;
-        }
-        bool priv = false, abstr = false, over = false, overload = false;
-        while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") ||
-               is(p, "overload^")) {
-            if (take(p, "private^")) {
-                priv = true;
-            }
-            else if (take(p, "abstract^")) {
-                abstr = true;
-            }
-            else if (take(p, "overload^")) {
-                overload = true;
-            }
-            else {
-                next(p);
-                over = true;
-            }
-        }
-        if (over && overload) {
-            fail(tok(p)->loc, "override^ and overload^ cannot be combined");
-        }
-        Loc declaration = tok(p)->loc;
-        char *name;
-        if (take(p, "op^")) {
-            Token *op = next(p);
-            const char *allowed[] = {"+",  "-",  "*",      "/",    "%",   "//",
-                                     "**", "::", "cross^", "dot^", "<=>", "="};
-            bool valid = false;
-            for (size_t k = 0; k < sizeof(allowed) / sizeof(*allowed); k++) {
-                valid |= !strcmp(op->text, allowed[k]);
-            }
-            if (!valid) {
-                fail(op->loc, "invalid operator definition '%s'", op->text);
-            }
-            name = fmt("op^%s", op->text);
-        }
-        else {
-            name = decl_word(p);
-        }
-        if (abstr) {
-            need(p, ":");
-        }
-        else if (!take(p, ":=")) {
-            need(p, "=");
-        }
-        Function *f = function(p, name, d, abstr);
-        f->declaration = declaration;
-        f->priv = priv;
-        f->override = over;
-        f->overload = overload;
-        if (f->operator_member) {
-            int self_count = 0;
-            for (int k = 0; k < f->params.n; k++) {
-                self_count += ((Param *)f->params.v[k])->self;
-            }
-            bool unary = !strcmp(name, "op^-") && f->params.n == 1;
-            if (f->procedure || f->mutable_self || self_count != 1 ||
-                (!unary && f->params.n != 2)) {
-                fail(f->loc,
-                     "operator requires a pure f^ with self^ and one operand (or unary '-')");
-            }
-        }
-        add(&d->own_methods, f);
+        def_member_checked(p, d);
     }
 }
 
@@ -2760,6 +2938,278 @@ static void enum_declaration(Parser *q, Program *p, Module *module, bool public)
     }
 }
 
+static void declaration(Parser *q)
+{
+    Program *p = q->p;
+    Module *module = q->module;
+    if (take(q, ";")) {
+        return;
+    }
+    bool public = take(q, "public^");
+    // exportC^ and exportL^ mark a function entered from C or from L^;
+    // exportL^ also marks a def^ L^ holds by value, or with ref^ by
+    // reference, and an errordef^ L^ receives as its own errors.
+    Loc export_at = tok(q)->loc;
+    bool exported = false, lhat_export = false;
+    for (;;) {
+        if (take(q, "exportC^")) {
+            exported = true;
+        }
+        else if (take(q, "exportL^")) {
+            lhat_export = true;
+        }
+        else {
+            break;
+        }
+    }
+    bool lhat_ref = lhat_export && take(q, "ref^");
+    bool lhat_def = lhat_export && !exported &&
+                    (is(q, "def^") || is(q, "struct^") || (is(q, "errordef^") && !lhat_ref) ||
+                     (is(q, "externC^") && q->at + 1 < q->tokens.n &&
+                      (!strcmp(((Token *)q->tokens.v[q->at + 1])->text, "def^") ||
+                       !strcmp(((Token *)q->tokens.v[q->at + 1])->text, "struct^"))));
+    if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(q, "let^"))) {
+        fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
+                        " (or exportL^ to a def^ or errordef^)");
+    }
+    if (take(q, "import^") || (is(q, "let^") && q->at + 3 < q->tokens.n &&
+                               !strcmp(((Token *)q->tokens.v[q->at + 2])->text, "=") &&
+                               !strcmp(((Token *)q->tokens.v[q->at + 3])->text, "import^"))) {
+        if (public) {
+            fail(tok(q)->loc, "imports cannot be public^");
+        }
+        Import *i = mem(sizeof(*i));
+        i->loc = tok(q)->loc;
+        if (take(q, "let^")) {
+            i->alias = decl_word(q);
+            need(q, "=");
+            need(q, "import^");
+        }
+        i->name = qualified_word(q);
+        add(&module->imports, i);
+        take(q, ";");
+        return;
+    }
+    if (take(q, "enum^")) {
+        enum_declaration(q, p, module, public);
+        return;
+    }
+    if (take(q, "errordef^")) {
+        Def *group = mem(sizeof(*group));
+        group->loc = tok(q)->loc;
+        group->name = decl_word(q);
+        group->module = module;
+        group->public = public;
+        group->lhat_error = lhat_def;
+        group->id = p->defs.n;
+        add(&p->defs, group);
+        add(&module->defs, group);
+        need(q, "{");
+        do {
+            if (is(q, "}")) {
+                break;
+            }
+            Def *arm = mem(sizeof(*arm));
+            arm->loc = tok(q)->loc;
+            arm->name = fmt("%s.%s", group->name, decl_word(q));
+            arm->module = module;
+            arm->public = public;
+            arm->group = group;
+            error_variant(q, arm);
+            arm->id = p->defs.n;
+            add(&p->defs, arm);
+            add(&module->defs, arm);
+            Spec *alternative = mem(sizeof(*alternative));
+            alternative->kind = SPEC_NAME;
+            alternative->loc = arm->loc;
+            alternative->name = arm->name;
+            add(&group->union_specs, alternative);
+        } while (take(q, ","));
+        need(q, "}");
+        if (!group->union_specs.n) {
+            fail(group->loc, "errordef^ requires a variant");
+        }
+        return;
+    }
+    if (is(q, "includeC^")) {
+        Loc at = next(q)->loc;
+        Token *header = next(q);
+        if (header->kind != TOK_STRING || public) {
+            fail(at, "includeC^ takes a header name string and cannot be public^");
+        }
+        add(&module->c_headers, header->text);
+        take(q, ";");
+        return;
+    }
+    if (take(q, "externC^")) {
+        bool structure = take(q, "struct^");
+        if (!structure && !take(q, "def^")) {
+            Loc declaration = tok(q)->loc;
+            char *name = decl_word(q);
+            require_new_function_name(module, name, declaration);
+            Function *f = external_function(q, name, name);
+            f->declaration = declaration;
+            f->module = module;
+            f->public = public;
+            add(&module->functions, f);
+            add(&p->functions, f);
+            return;
+        }
+        // A def^ laid out as the C type of the same name, or opaque.
+        Loc loc = tok(q)->loc;
+        int start = q->at;
+        char *name = decl_word(q);
+        Def *d = NULL;
+        if (!structure && take(q, ";")) {
+            d = mem(sizeof(*d));
+            *d = (Def){.loc = loc, .name = name, .id = p->defs.n, .opaque = true};
+            add(&p->defs, d);
+        }
+        else {
+            q->at = start;
+            definition(q, structure);
+            d = p->defs.v[p->defs.n - 1];
+        }
+        // With methods only, it is still opaque.
+        d->opaque |= !d->own_fields.n;
+        d->c_name = name;
+        d->module = module;
+        d->public = public;
+        d->lhat_value = lhat_def && !lhat_ref;
+        d->lhat_data = lhat_ref;
+        add(&module->defs, d);
+        return;
+    }
+    bool structure = take(q, "struct^");
+    if (structure || take(q, "def^")) {
+        definition(q, structure);
+        Def *d = p->defs.v[p->defs.n - 1];
+        d->module = module;
+        d->public = public;
+        d->lhat_value = lhat_def && !lhat_ref;
+        d->lhat_data = lhat_ref;
+        add(&module->defs, d);
+        return;
+    }
+    bool binding = false;
+    if (is(q, "let^") && q->at + 3 < q->tokens.n) {
+        Token *equal = q->tokens.v[q->at + 2];
+        Token *initializer = q->tokens.v[q->at + 3];
+        binding =
+            !strcmp(equal->text, "=") && initializer->kind == TOK_WORD &&
+            (!strcmp(initializer->text, "f^") || !strcmp(initializer->text, "p^") ||
+             !strcmp(initializer->text, "externC^") || !strcmp(initializer->text, "externLLVM^") ||
+             !strcmp(initializer->text, "template^"));
+    }
+    if ((exported || lhat_export) && (!binding || q->at + 3 >= q->tokens.n ||
+                                      strstr(((Token *)q->tokens.v[q->at + 3])->text, "extern"))) {
+        fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
+    }
+    if (!binding) {
+        Stmt *s = stmt(q);
+        if (!module->root) {
+            if ((s->kind != S_BIND && s->kind != S_BIND_MANY) || s->mut) {
+                fail(s->loc, "library top level permits only declarations and "
+                             "immutable constants");
+            }
+            List bindings = {0};
+            if (s->kind == S_BIND) {
+                add(&bindings, s);
+            }
+            else {
+                bindings = s->body;
+            }
+            for (int j = 0; j < bindings.n; j++) {
+                Stmt *value = bindings.v[j];
+                Constant *c = mem(sizeof(*c));
+                bool discard = !strcmp(value->name, "_^");
+                c->name = discard ? fmt("\001constant_discard%d", ++q->serial) : value->name;
+                c->binding = value;
+                c->public = public && !discard;
+                add(&module->constants, c);
+            }
+        }
+        else {
+            if (public) {
+                fail(s->loc, "public^ executable bindings are not supported in the "
+                             "entry file");
+            }
+            add(&p->entry->body, s);
+        }
+        return;
+    }
+    int binding_start = q->at;
+    need(q, "let^");
+    Loc declaration = tok(q)->loc;
+    char *name = decl_word(q);
+    need(q, "=");
+    bool first_arm = true;
+    do {
+        Function *parsed_function = NULL;
+        if (take(q, "externC^")) {
+            parsed_function = external_function(q, name, word(q));
+        }
+        else if (take(q, "externLLVM^")) {
+            parsed_function = external_function(q, name, qualified_word(q));
+            parsed_function->intrinsic = true;
+        }
+        else {
+            parsed_function = function(q, name, NULL, false);
+            // A called literal initializes a value; it does not declare a named
+            // function.
+            if (first_arm && (is(q, "(") || is(q, ".") || is(q, "[") ||
+                              (tok(q)->kind != TOK_STRING && prec(tok(q)->text) >= 0))) {
+                q->at = binding_start;
+                add(&p->entry->body, stmt(q));
+                break;
+            }
+        }
+        if (first_arm) {
+            require_new_function_name(module, name, declaration);
+        }
+        parsed_function->declaration = first_arm ? declaration : parsed_function->loc;
+        parsed_function->module = module;
+        parsed_function->public = public;
+        parsed_function->exported = exported;
+        parsed_function->lhat_export = lhat_export;
+        add(&module->functions, parsed_function);
+        add(&p->functions, parsed_function);
+        first_arm = false;
+    } while (take(q, "&"));
+    take(q, ";");
+}
+
+static void declaration_checked(Parser *q)
+{
+    if (!q->p->tooling) {
+        declaration(q);
+        return;
+    }
+    int start = q->at, defs = q->p->defs.n, depth = q->scope_depth;
+    Function *enclosing = q->enclosing;
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        synchronize(q, start, q->at, true);
+        q->scope_depth = depth;
+        q->header = false;
+        q->enclosing = enclosing;
+        // Keep the name of a damaged definition so its uses do not cascade.
+        for (int j = defs; j < q->p->defs.n; j++) {
+            Def *d = q->p->defs.v[j];
+            d->invalid = true;
+            if (!d->module) {
+                d->module = q->module;
+                add(&q->module->defs, d);
+            }
+        }
+    }
+    else {
+        declaration(q);
+    }
+    tool_leave(&recovery);
+}
+
 void parse_file(Program *p, const char *path, Module *module)
 {
     p->path = path;
@@ -2827,244 +3277,9 @@ void parse_file(Program *p, const char *path, Module *module)
         take(&q, ";");
     }
     while (tok(&q)->kind != TOK_EOF) {
-        if (take(&q, ";")) {
-            continue;
-        }
-        bool public = take(&q, "public^");
-        // exportC^ and exportL^ mark a function entered from C or from L^;
-        // exportL^ also marks a def^ L^ holds by value, or with ref^ by
-        // reference, and an errordef^ L^ receives as its own errors.
-        Loc export_at = tok(&q)->loc;
-        bool exported = false, lhat_export = false;
-        for (;;) {
-            if (take(&q, "exportC^")) {
-                exported = true;
-            }
-            else if (take(&q, "exportL^")) {
-                lhat_export = true;
-            }
-            else {
-                break;
-            }
-        }
-        bool lhat_ref = lhat_export && take(&q, "ref^");
-        bool lhat_def =
-            lhat_export && !exported &&
-            (is(&q, "def^") || is(&q, "struct^") || (is(&q, "errordef^") && !lhat_ref) ||
-             (is(&q, "externC^") && q.at + 1 < q.tokens.n &&
-              (!strcmp(((Token *)q.tokens.v[q.at + 1])->text, "def^") ||
-               !strcmp(((Token *)q.tokens.v[q.at + 1])->text, "struct^"))));
-        if ((exported || lhat_export) && !lhat_def && (lhat_ref || !is(&q, "let^"))) {
-            fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration"
-                            " (or exportL^ to a def^ or errordef^)");
-        }
-        if (take(&q, "import^") || (is(&q, "let^") && q.at + 3 < q.tokens.n &&
-                                    !strcmp(((Token *)q.tokens.v[q.at + 2])->text, "=") &&
-                                    !strcmp(((Token *)q.tokens.v[q.at + 3])->text, "import^"))) {
-            if (public) {
-                fail(tok(&q)->loc, "imports cannot be public^");
-            }
-            Import *i = mem(sizeof(*i));
-            i->loc = tok(&q)->loc;
-            if (take(&q, "let^")) {
-                i->alias = decl_word(&q);
-                need(&q, "=");
-                need(&q, "import^");
-            }
-            i->name = qualified_word(&q);
-            add(&module->imports, i);
-            take(&q, ";");
-            continue;
-        }
-        if (take(&q, "enum^")) {
-            enum_declaration(&q, p, module, public);
-            continue;
-        }
-        if (take(&q, "errordef^")) {
-            Def *group = mem(sizeof(*group));
-            group->loc = tok(&q)->loc;
-            group->name = decl_word(&q);
-            group->module = module;
-            group->public = public;
-            group->lhat_error = lhat_def;
-            group->id = p->defs.n;
-            add(&p->defs, group);
-            add(&module->defs, group);
-            need(&q, "{");
-            do {
-                if (is(&q, "}")) {
-                    break;
-                }
-                Def *arm = mem(sizeof(*arm));
-                arm->loc = tok(&q)->loc;
-                arm->name = fmt("%s.%s", group->name, decl_word(&q));
-                arm->module = module;
-                arm->public = public;
-                arm->group = group;
-                error_variant(&q, arm);
-                arm->id = p->defs.n;
-                add(&p->defs, arm);
-                add(&module->defs, arm);
-                Spec *alternative = mem(sizeof(*alternative));
-                alternative->kind = SPEC_NAME;
-                alternative->loc = arm->loc;
-                alternative->name = arm->name;
-                add(&group->union_specs, alternative);
-            } while (take(&q, ","));
-            need(&q, "}");
-            if (!group->union_specs.n) {
-                fail(group->loc, "errordef^ requires a variant");
-            }
-            continue;
-        }
-        if (is(&q, "includeC^")) {
-            Loc at = next(&q)->loc;
-            Token *header = next(&q);
-            if (header->kind != TOK_STRING || public) {
-                fail(at, "includeC^ takes a header name string and cannot be public^");
-            }
-            add(&module->c_headers, header->text);
-            take(&q, ";");
-            continue;
-        }
-        if (take(&q, "externC^")) {
-            bool structure = take(&q, "struct^");
-            if (!structure && !take(&q, "def^")) {
-                Loc declaration = tok(&q)->loc;
-                char *name = decl_word(&q);
-                require_new_function_name(module, name, declaration);
-                Function *f = external_function(&q, name, name);
-                f->declaration = declaration;
-                f->module = module;
-                f->public = public;
-                add(&module->functions, f);
-                add(&p->functions, f);
-                continue;
-            }
-            // A def^ laid out as the C type of the same name, or opaque.
-            Loc loc = tok(&q)->loc;
-            int start = q.at;
-            char *name = decl_word(&q);
-            Def *d = NULL;
-            if (!structure && take(&q, ";")) {
-                d = mem(sizeof(*d));
-                *d = (Def){.loc = loc, .name = name, .id = p->defs.n, .opaque = true};
-                add(&p->defs, d);
-            }
-            else {
-                q.at = start;
-                definition(&q, structure);
-                d = p->defs.v[p->defs.n - 1];
-            }
-            // With methods only, it is still opaque.
-            d->opaque |= !d->own_fields.n;
-            d->c_name = name;
-            d->module = module;
-            d->public = public;
-            d->lhat_value = lhat_def && !lhat_ref;
-            d->lhat_data = lhat_ref;
-            add(&module->defs, d);
-            continue;
-        }
-        bool structure = take(&q, "struct^");
-        if (structure || take(&q, "def^")) {
-            definition(&q, structure);
-            Def *d = p->defs.v[p->defs.n - 1];
-            d->module = module;
-            d->public = public;
-            d->lhat_value = lhat_def && !lhat_ref;
-            d->lhat_data = lhat_ref;
-            add(&module->defs, d);
-            continue;
-        }
-        bool binding = false;
-        if (is(&q, "let^") && q.at + 3 < q.tokens.n) {
-            Token *equal = q.tokens.v[q.at + 2];
-            Token *initializer = q.tokens.v[q.at + 3];
-            binding = !strcmp(equal->text, "=") && initializer->kind == TOK_WORD &&
-                      (!strcmp(initializer->text, "f^") || !strcmp(initializer->text, "p^") ||
-                       !strcmp(initializer->text, "externC^") ||
-                       !strcmp(initializer->text, "externLLVM^") ||
-                       !strcmp(initializer->text, "template^"));
-        }
-        if ((exported || lhat_export) &&
-            (!binding || q.at + 3 >= q.tokens.n ||
-             strstr(((Token *)q.tokens.v[q.at + 3])->text, "extern"))) {
-            fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
-        }
-        if (!binding) {
-            Stmt *s = stmt(&q);
-            if (!module->root) {
-                if ((s->kind != S_BIND && s->kind != S_BIND_MANY) || s->mut) {
-                    fail(s->loc, "library top level permits only declarations and "
-                                 "immutable constants");
-                }
-                List bindings = {0};
-                if (s->kind == S_BIND) {
-                    add(&bindings, s);
-                }
-                else {
-                    bindings = s->body;
-                }
-                for (int j = 0; j < bindings.n; j++) {
-                    Stmt *value = bindings.v[j];
-                    Constant *c = mem(sizeof(*c));
-                    bool discard = !strcmp(value->name, "_^");
-                    c->name = discard ? fmt("\001constant_discard%d", ++q.serial) : value->name;
-                    c->binding = value;
-                    c->public = public && !discard;
-                    add(&module->constants, c);
-                }
-            }
-            else {
-                if (public) {
-                    fail(s->loc, "public^ executable bindings are not supported in the "
-                                 "entry file");
-                }
-                add(&p->entry->body, s);
-            }
-            continue;
-        }
-        int binding_start = q.at;
-        need(&q, "let^");
-        Loc declaration = tok(&q)->loc;
-        char *name = decl_word(&q);
-        need(&q, "=");
-        bool first_arm = true;
-        do {
-            Function *parsed_function = NULL;
-            if (take(&q, "externC^")) {
-                parsed_function = external_function(&q, name, word(&q));
-            }
-            else if (take(&q, "externLLVM^")) {
-                parsed_function = external_function(&q, name, qualified_word(&q));
-                parsed_function->intrinsic = true;
-            }
-            else {
-                parsed_function = function(&q, name, NULL, false);
-                // A called literal initializes a value; it does not declare a named
-                // function.
-                if (first_arm && (is(&q, "(") || is(&q, ".") || is(&q, "[") ||
-                                  (tok(&q)->kind != TOK_STRING && prec(tok(&q)->text) >= 0))) {
-                    q.at = binding_start;
-                    add(&p->entry->body, stmt(&q));
-                    break;
-                }
-            }
-            if (first_arm) {
-                require_new_function_name(module, name, declaration);
-            }
-            parsed_function->declaration = first_arm ? declaration : parsed_function->loc;
-            parsed_function->module = module;
-            parsed_function->public = public;
-            parsed_function->exported = exported;
-            parsed_function->lhat_export = lhat_export;
-            add(&module->functions, parsed_function);
-            add(&p->functions, parsed_function);
-            first_arm = false;
-        } while (take(&q, "&"));
-        take(&q, ";");
+        declaration_checked(&q);
     }
+
     // A char^(...) or string^(...) cast fails with std.text's error, imported out of sight.
     bool text = q.text_cast && !(module->name && !strcmp(module->name, "std.text"));
     for (int j = 0; text && j < module->imports.n; j++) {

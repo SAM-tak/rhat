@@ -1,4 +1,5 @@
 #include "sema.h"
+#include "tooling.h"
 
 bool callable_type(Type *t)
 {
@@ -35,6 +36,9 @@ Type *callable_signature(Program *p, List *params, Type *result, bool procedure,
 
 Type *callable_declaration(Program *p, Function *f)
 {
+    if (f->invalid) {
+        tool_abort();
+    }
     List params = {0};
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
@@ -421,11 +425,16 @@ void overload_validate(Program *p, List *functions)
         Function *f = functions->v[j];
         for (int k = 0; k < j; k++) {
             Function *other = functions->v[k];
+            if (f->invalid || other->invalid) {
+                continue;
+            }
             if (f != other && !strcmp(f->name, other->name) && (f->variadic || other->variadic)) {
-                fail(f->loc, "variadic function '%s' cannot be overloaded", f->name);
+                TOOL_CHECK(p,
+                           fail(f->loc, "variadic function '%s' cannot be overloaded", f->name););
             }
             if (f != other && !strcmp(f->name, other->name) && overload_overlap(p, f, other)) {
-                fail(f->loc, "overlapping overload '%s'; duplicate function domains", f->name);
+                TOOL_CHECK(p, fail(f->loc, "overlapping overload '%s'; duplicate function domains",
+                                   f->name););
             }
         }
     }

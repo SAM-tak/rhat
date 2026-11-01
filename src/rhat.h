@@ -38,6 +38,7 @@ typedef struct {
     char *name, *alias;
     Loc loc;
     Module *target;
+    bool invalid; // Import failure already reported by the editor checker.
 } Import;
 
 typedef struct {
@@ -57,7 +58,8 @@ struct Module {
 };
 
 struct Spec {
-    Type *type; // Canonical type, cached after module name resolution.
+    bool invalid; // An editor diagnostic already explains this unavailable type.
+    Type *type;   // Canonical type, cached after module name resolution.
     bool resolved;
     Loc loc;
     char *name;
@@ -117,6 +119,7 @@ enum {
 };
 
 struct Expr {
+    bool invalid;    // A recovered syntax/name-resolution error, never executable.
     Loc name_loc;    // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec; // The type operand of fits^, or the type of an empty
                      // grow^ T[] value; never evaluated as a value.
@@ -196,6 +199,7 @@ typedef struct {
 } Param;
 
 struct Function {
+    bool invalid;        // Its signature or parameter constraints could not be checked.
     Loc declaration;     // Name token for editor navigation.
     Function *enclosing; // Lexical enclosing function, without a captured
                          // activation.
@@ -238,6 +242,7 @@ typedef struct {
 } EnumMember;
 
 struct Def {
+    bool invalid; // Its composition or storage layout could not be checked.
     Module *module;
     bool public;
     Def *group; // An error variant's errordef^, else NULL.
@@ -296,6 +301,7 @@ enum {
 };
 
 struct Type {
+    bool invalid; // Storage layout failed during editor analysis.
     char *symbol;
     int kind, id, count;
     Type *elem;
@@ -446,6 +452,7 @@ typedef struct {
 } Slot;
 
 struct Instance {
+    bool invalid; // Partial editor analysis; must never produce executable code.
     Function *fn;
     Def *self;
     List params, slots, code;

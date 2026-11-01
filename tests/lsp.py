@@ -378,6 +378,131 @@ print^(v.length())
     data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
     assert len(data) >= 400*3*5, len(data)
     print('PASS large reference index and stale semantic requests during rapid edits',flush=True)
+    # Independent diagnostics must survive the first error, while uses of a
+    # failed binding must not manufacture more errors. Unused signatures are
+    # resolved even when a method has an unavailable parameter type.
+    recovery = """def^ F2 {
+ self^{x:f32^=1.0,y:f32^=2.0}
+ broken=f^self^,other:Missing ->f32^ {0.0}
+}
+let^ cross=f^a:F2,b:F2 ->f32^ {a.x*b.y-a.y*b.x}
+let^ first=missing_one
+let^ dependent=first+1
+let^ second=missing_two
+let^ read=f^a:F2 ->f32^ {a.x}
+var^ value=F2{}
+print^(read(value))
+"""
+    client.change(path,recovery,97)
+    diagnostics=client.diagnostics(path,97)
+    assert len(diagnostics) == 3, diagnostics
+    for name in ('Missing','missing_one','missing_two'):
+        assert sum(name in d['message'] for d in diagnostics) == 1, diagnostics
+    assert request('definition','read(value)',text=recovery)['range']['start'] == at(recovery,'read=f^')
+    assert request('hover','a.x}',shift=2,text=recovery)['contents']['value'] == 'x: f32^'
+
+    def tokens(text):
+        data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+        row=column=0
+        result={}
+        for n in range(0,len(data),5):
+            delta,offset,length,kind,modifiers=data[n:n+5]
+            row+=delta
+            column=offset if delta else column+offset
+            result[(row,column)]=(length,kind)
+        return result
+
+    colored=tokens(recovery)
+    for spelling in ('F2,b:F2','F2 ->f32^'):
+        pos=at(recovery,spelling)
+        assert colored[(pos['line'],pos['character'])] == (2,1), colored
+    print('PASS multiple diagnostics, cascade suppression and unused signature coloring',flush=True)
+
+    # Recovery stays inside the failed statement/member, and resets its scope.
+    damaged="""let^ scan=p^n:i32^ {
+ let^ bad=]
+ let^ bad2=missing_inside
+ let^ good=n
+ print^(good)
+}
+scan(1)
+def^ Box {self^{x:i32^=42}
+ bad=f^n: ->i32^ {0}
+ read=f^self^ ->i32^ {self^.x}
+}
+var^ box=Box{}
+print^(box.read())
+let^ tail:i32^=42
+print^(tail)
+"""
+    client.change(path,damaged,98)
+    diagnostics=client.diagnostics(path,98)
+    assert len(diagnostics) == 3, diagnostics
+    assert request('definition','print^(good)',shift=7,text=damaged)['range']['start'] == at(damaged,'good=n')
+    assert request('definition','box.read()',shift=4,text=damaged)['range']['start'] == at(damaged,'read=f^')
+    assert request('hover','print^(tail)',shift=7,text=damaged)['contents']['value'] == 'tail: i32^'
+    print('PASS statement and member syntax recovery with later navigation',flush=True)
+
+    lexical='let^ broken="\\z"\nlet^ number=0xQQ\nlet^ tail:i32^=42\nprint^(tail)\n'
+    client.change(path,lexical,99)
+    diagnostics=client.diagnostics(path,99)
+    assert len(diagnostics) == 2, diagnostics
+    assert request('hover','print^(tail)',shift=7,text=lexical)['contents']['value'] == 'tail: i32^'
+    unfinished='let^ broken="open\nlet^ tail:i32^=42\nprint^(tail)\n'
+    client.change(path,unfinished,100)
+    assert len(client.diagnostics(path,100)) == 1
+    pos=at(unfinished,'tail:i32^')
+    assert tokens(unfinished)[(pos['line'],pos['character'])] == (4,5)
+    print('PASS lexical recovery and coloring after an unfinished quote',flush=True)
+
+    imports='import^ absent_module\nlet^ bad=absent_module.read()\nlet^ other=another_missing\nlet^ tail:i32^=42\nprint^(tail)\n'
+    client.change(path,imports,101)
+    diagnostics=client.diagnostics(path,101)
+    assert len(diagnostics) == 2, diagnostics
+    assert request('hover','print^(tail)',shift=7,text=imports)['contents']['value'] == 'tail: i32^'
+    partial='def^ Box {self^{value:i32^=42} read=f^self{ ->i32^ {self^.value}}\nlet^ tail:i32^=42\nprint^(tail)\n'
+    client.change(path,partial,102)
+    assert client.diagnostics(path,102)
+    assert request('hover','print^(tail)',shift=7,text=partial)['contents']['value'] == 'tail: i32^'
+    client.change(path,'let^ tail:i32^=42\nprint^(tail)\n',103)
+    assert client.diagnostics(path,103) == []
+    print('PASS unavailable imports, malformed inference bodies and fixing all errors',flush=True)
+
+    structural="""def^ Broken {self^{x:MissingField=1}}
+def^ Recursive {self^{x:Recursive}}
+def^ Duplicate {}
+def^ Duplicate {}
+enum^ Small:u8^ {A=256}
+let^ tail:i32^=42
+print^(tail)
+"""
+    client.change(path,structural,104)
+    diagnostics=client.diagnostics(path,104)
+    assert len(diagnostics) == 4, diagnostics
+    assert request('hover','print^(tail)',shift=7,text=structural)['contents']['value'] == 'tail: i32^'
+    many='\n'.join(f'let^ broken_{n}=missing_{n}' for n in range(125))
+    many+='\nlet^ tail:i32^=42\nprint^(tail)\n'
+    client.change(path,many,105)
+    assert len(client.diagnostics(path,105)) == 100
+    assert request('hover','print^(tail)',shift=7,text=many)['contents']['value'] == 'tail: i32^'
+    client.change(path,'let^ tail:i32^=42\nprint^(tail)\n',106)
+    assert client.diagnostics(path,106) == []
+    print('PASS damaged type definitions and bounded diagnostics with later editor information',flush=True)
+
+    broken_library="""module^ lib.partial
+public^ let^ broken=]
+public^ let^ answer:i32^=42
+public^ let^ read=f^n:Unknown ->i32^ {0}
+"""
+    client.change(path,broken_library,107)
+    diagnostics=client.diagnostics(path,107)
+    assert len(diagnostics) == 2, diagnostics
+    assert not any('executable bindings' in d['message'] for d in diagnostics), diagnostics
+    assert request('hover','answer:i32^',text=broken_library)['contents']['value'] == 'answer: i32^'
+    client.change(path,'let^ tail:i32^=42\nprint^(tail)\n',108)
+    assert client.diagnostics(path,108) == []
+    print('PASS standalone library detection after multiple diagnostics',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

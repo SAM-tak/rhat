@@ -715,7 +715,7 @@ static void binding_name(Context *c, Stmt *s)
     }
 }
 
-void statements(Context *c, List *body, bool scope)
+static void statements_unchecked(Context *c, List *body, bool scope)
 {
     int start = c->vars.n;
     if (scope) {
@@ -1256,6 +1256,80 @@ void statements(Context *c, List *body, bool scope)
     }
 }
 
+static void statement_checked(Context *c, Stmt *statement)
+{
+    static const size_t lists[] = {
+        offsetof(Context, vars),           offsetof(Context, default_stack),
+        offsetof(Context, loops),          offsetof(Context, handlers),
+        offsetof(Context, pending_owners), offsetof(Context, flow.guards),
+        offsetof(Context, inflight),       offsetof(Context, root_keys),
+        offsetof(Context, root_list)};
+    static const size_t instance_lists[] = {offsetof(Instance, params), offsetof(Instance, slots),
+                                            offsetof(Instance, code)};
+    ToolState *state = tool_save(c, sizeof(*c), lists, sizeof(lists) / sizeof(*lists));
+    ToolState *vars = tool_save_objects(&c->vars, sizeof(Var));
+    ToolState *handlers = tool_save_objects(&c->handlers, sizeof(ErrorTarget));
+    List facts = {0};
+    for (int j = 0; j < c->handlers.n; j++) {
+        ErrorTarget *target = c->handlers.v[j];
+        add(&facts, tool_save_objects(&target->facts, sizeof(NilFact)));
+    }
+    ToolState *instance = tool_save(c->in, sizeof(*c->in), instance_lists,
+                                    sizeof(instance_lists) / sizeof(*instance_lists));
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        tool_restore(state);
+        tool_restore(vars);
+        tool_restore(handlers);
+        for (int j = 0; j < facts.n; j++) {
+            tool_restore(facts.v[j]);
+        }
+        tool_restore(instance);
+        c->in->invalid = true;
+        tool_failed_binding(c->p, &c->vars, statement, c->depth, c->lexical);
+    }
+    else {
+        List one = {.v = (void **)&statement, .n = 1};
+        statements_unchecked(c, &one, false);
+    }
+    tool_leave(&recovery);
+    for (int j = 0; j < facts.n; j++) {
+        mem_free(facts.v[j]);
+    }
+    mem_free(facts.v);
+    mem_free(handlers);
+    mem_free(instance);
+    mem_free(vars);
+    mem_free(state);
+}
+
+void statements(Context *c, List *body, bool scope)
+{
+    if (!c->p->tooling) {
+        statements_unchecked(c, body, scope);
+        return;
+    }
+    int start = c->vars.n;
+    if (scope) {
+        c->depth++;
+        c->lexical++;
+    }
+    for (int j = 0; j < body->n; j++) {
+        statement_checked(c, body->v[j]);
+    }
+    if (scope) {
+        if (!c->terminated) {
+            TOOL_CHECK(
+                c->p,
+                cleanup(c, start, body->n ? ((Stmt *)body->v[body->n - 1])->loc : c->in->fn->loc););
+        }
+        c->vars.n = start;
+        c->depth--;
+        c->lexical--;
+    }
+}
+
 // The local every return^ gives as the owned result; returns of another
 // alternative of a union result do not take part.
 static void return_names(List *body, char **name, bool *valid, bool others)
@@ -1289,9 +1363,12 @@ static void return_names(List *body, char **name, bool *valid, bool others)
     }
 }
 
-Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
+static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List *actual, Loc at)
 {
     Instance *in = instance_for(p, f, self, actual, at);
+    if (in->state < 0 || (in->invalid && !in->result)) {
+        tool_abort();
+    }
     if (in->state) {
         return in;
     }
@@ -1374,7 +1451,7 @@ Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
             construct(&c, &(Expr){.kind = E_NAME, .text = "nil^", .loc = f->loc}, in->result,
                       in->result_slot);
         }
-        else if (in->result->kind != T_VOID) {
+        else if (in->result->kind != T_VOID && !in->invalid) {
             fail(f->loc, "not all paths return a value in '%s'", f->name);
         }
         cleanup(&c, 0, f->loc);
@@ -1385,77 +1462,153 @@ Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
     return in;
 }
 
+Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
+{
+    if (!p->tooling) {
+        return instantiate_unchecked(p, f, self, actual, at);
+    }
+    Instance *in = instance_for(p, f, self, actual, at);
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        in->invalid = true;
+        in->state = -1;
+        tool_leave(&recovery);
+        tool_abort();
+    }
+    Instance *result = instantiate_unchecked(p, f, self, actual, at);
+    tool_leave(&recovery);
+    return result;
+}
+
+static void signature_checked(Program *p, Function *f)
+{
+    f->invalid |= f->owner && f->owner->invalid;
+    for (int j = 0; j < f->params.n; j++) {
+        Param *param = f->params.v[j];
+        TOOL_CHECK(p, type_spec(p, param->spec););
+        f->invalid |= param->spec && param->spec->invalid;
+    }
+    TOOL_CHECK(p, type_spec(p, f->result););
+    f->invalid |= f->result && f->result->invalid;
+}
+
+static void initialize_definition(Program *p, Def *d, int j)
+{
+    for (int k = 0; k < j; k++) {
+        if (!strcmp(d->name, ((Def *)p->defs.v[k])->name)) {
+            if (p->tooling) {
+                tool_abort();
+            }
+            fail(d->loc, "duplicate def^ '%s'", d->name);
+        }
+    }
+    Type *t = mem(sizeof(*t));
+    t->kind = d->backing ? T_ENUM : d->union_specs.n ? T_UNION : T_STRUCT;
+    t->def = d;
+    if (d->backing) {
+        int base = d->backing->kind == SPEC_NAME ? numeric_kind(d->backing->name) : -1;
+        if (base < 0 || !kind_integer(base) || base == T_U128 || base == T_I128) {
+            fail(d->loc, "enum^ '%s' needs a built-in integer type up to 64 bits", d->name);
+        }
+        t->elem = type_builtin(p, base);
+        t->size = t->elem->size;
+        t->align = t->elem->align;
+        for (int k = 0; k < d->members.n; k++) {
+            EnumMember *member = d->members.v[k];
+            if (!integer_fits(member->value, t->elem->kind)) {
+                fail(d->loc, "enum^ '%s' value %s does not fit '%s'", d->name, member->value,
+                     type_name(t->elem));
+            }
+        }
+    }
+    if (p->modules.n > 1 || (d->module && d->module->name)) {
+        t->symbol =
+            fmt("%%rh_type_%s",
+                link_identity(fmt(
+                    "%s:%s", d->module && d->module->name ? d->module->name : "<entry>", d->name)));
+    }
+    t->id = p->types.n;
+    d->type = t;
+    add(&p->types, t);
+}
+
+static void check_declaration(Program *p, Function *f, Def *owner)
+{
+    if (f->invalid || (owner && (owner->invalid || owner->abstract)) || f->templ ||
+        inferred_parameter(f) || !declaration_instance_needed(p, f)) {
+        return;
+    }
+    List types = {0};
+    for (int j = 0; j < f->params.n; j++) {
+        Param *param = f->params.v[j];
+        Type *type = param->self ? type_wrap(p, T_REF, owner->type, 0) : parameter_type(p, param);
+        Type *base = type->kind == T_REF ? type->elem : type;
+        if ((!owner && base->kind == T_STRUCT && base->def->abstract) || callable_type(type)) {
+            return;
+        }
+        add(&types, type);
+    }
+    instantiate(p, f, owner, &types, f->loc);
+}
+
 void analyze(Program *p)
 {
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
-        for (int k = 0; k < j; k++) {
-            if (!strcmp(d->name, ((Def *)p->defs.v[k])->name)) {
-                fail(d->loc, "duplicate def^ '%s'", d->name);
-            }
-        }
-        Type *t = mem(sizeof(*t));
-        t->kind = d->backing ? T_ENUM : d->union_specs.n ? T_UNION : T_STRUCT;
-        t->def = d;
-        if (d->backing) {
-            int base = d->backing->kind == SPEC_NAME ? numeric_kind(d->backing->name) : -1;
-            if (base < 0 || !kind_integer(base) || base == T_U128 || base == T_I128) {
-                fail(d->loc, "enum^ '%s' needs a built-in integer type up to 64 bits", d->name);
-            }
-            t->elem = type_builtin(p, base);
-            t->size = t->elem->size;
-            t->align = t->elem->align;
-            for (int k = 0; k < d->members.n; k++) {
-                EnumMember *member = d->members.v[k];
-                if (!integer_fits(member->value, t->elem->kind)) {
-                    fail(d->loc, "enum^ '%s' value %s does not fit '%s'", d->name, member->value,
-                         type_name(t->elem));
-                }
-            }
-        }
-        if (p->modules.n > 1 || (d->module && d->module->name)) {
-            t->symbol = fmt(
-                "%%rh_type_%s",
-                link_identity(fmt(
-                    "%s:%s", d->module && d->module->name ? d->module->name : "<entry>", d->name)));
-        }
-        t->id = p->types.n;
-        d->type = t;
-        add(&p->types, t);
+        TOOL_CHECK(p, initialize_definition(p, d, j););
+        d->invalid |= !d->type;
     }
     for (int j = 0; j < p->defs.n; j++) {
-        compose(p, p->defs.v[j]);
+        TOOL_CHECK(p, compose(p, p->defs.v[j]););
     }
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
-        if (!d->opaque) {
-            layout(d->type, d->loc);
+        if (!d->invalid && !d->opaque) {
+            TOOL_CHECK(p, layout(d->type, d->loc););
         }
         if (d->lhat_value || d->lhat_data) {
-            lhat_def_validate(p, d);
+            TOOL_CHECK(p, lhat_def_validate(p, d););
         }
     }
     for (int j = 0; j < p->functions.n; j++) {
         Function *f = p->functions.v[j];
         if (lookup_def(p, f->name)) {
-            fail(f->loc, "function conflicts with def^ '%s'", f->name);
+            if (!p->tooling) {
+                fail(f->loc, "function conflicts with def^ '%s'", f->name);
+            }
+            f->invalid = true;
+        }
+        if (p->tooling) {
+            signature_checked(p, f);
         }
         if (f->external) {
-            external_validate(p, f);
+            TOOL_CHECK(p, external_validate(p, f););
         }
         if (f->exported || f->lhat_export) {
-            export_validate(p, f);
+            TOOL_CHECK(p, export_validate(p, f););
+        }
+    }
+    if (p->tooling) {
+        for (int j = 0; j < p->defs.n; j++) {
+            Def *d = p->defs.v[j];
+            for (int k = 0; k < d->own_fields.n; k++) {
+                TOOL_CHECK(p, type_spec(p, ((Field *)d->own_fields.v[k])->spec););
+            }
+            for (int k = 0; k < d->own_methods.n; k++) {
+                signature_checked(p, d->own_methods.v[k]);
+            }
         }
     }
     infer_parameters(p);
-    overload_validate(p, &p->functions);
+    TOOL_CHECK(p, overload_validate(p, &p->functions););
     for (int j = 0; j < p->defs.n; j++) {
-        overload_validate(p, &((Def *)p->defs.v[j])->methods);
+        TOOL_CHECK(p, overload_validate(p, &((Def *)p->defs.v[j])->methods););
     }
     for (int j = 0; j < p->functions.n; j++) {
         Function *f = p->functions.v[j];
         if (f->public) {
-            inferred_export(f);
+            TOOL_CHECK(p, inferred_export(f););
         }
     }
     for (int j = 0; j < p->defs.n; j++) {
@@ -1464,7 +1617,7 @@ void analyze(Program *p)
             for (int k = 0; k < d->methods.n; k++) {
                 Function *f = d->methods.v[k];
                 if (!f->priv) {
-                    inferred_export(f);
+                    TOOL_CHECK(p, inferred_export(f););
                 }
             }
         }
@@ -1474,64 +1627,34 @@ void analyze(Program *p)
         add(&arguments, parameter_type(p, p->entry->params.v[j]));
     }
     p->entry->required_result = type_builtin(p, T_VOID);
-    instantiate(p, p->entry, NULL, &arguments, p->entry->loc);
+    TOOL_CHECK(p, instantiate(p, p->entry, NULL, &arguments, p->entry->loc););
     // Abstract nominal parameters require a concrete call-site specialization.
     for (int j = 0; j < p->functions.n; j++) {
-        Function *f = p->functions.v[j];
-        if (!f->templ && !inferred_parameter(f) && declaration_instance_needed(p, f)) {
-            List types = {0};
-            bool concrete = true;
-            for (int k = 0; k < f->params.n; k++) {
-                Param *a = f->params.v[k];
-                Type *t = parameter_type(p, a);
-                Type *base = t->kind == T_REF ? t->elem : t;
-                if ((base->kind == T_STRUCT && base->def->abstract) || callable_type(base)) {
-                    concrete = false;
-                }
-                add(&types, t);
-            }
-            if (concrete) {
-                instantiate(p, f, NULL, &types, f->loc);
-            }
-        }
+        TOOL_CHECK(p, check_declaration(p, p->functions.v[j], NULL););
     }
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
-        if (d->abstract) {
-            continue;
-        }
         for (int k = 0; k < d->methods.n; k++) {
-            Function *f = d->methods.v[k];
-            if (f->templ || inferred_parameter(f) || !declaration_instance_needed(p, f)) {
-                continue;
-            }
-            List types = {0};
-            bool concrete = true;
-            for (int n = 0; n < f->params.n; n++) {
-                Param *a = f->params.v[n];
-                Type *type = a->self ? type_wrap(p, T_REF, d->type, 0) : parameter_type(p, a);
-                concrete &= !callable_type(type);
-                add(&types, type);
-            }
-            if (concrete) {
-                instantiate(p, f, d, &types, f->loc);
-            }
+            TOOL_CHECK(p, check_declaration(p, d->methods.v[k], d););
         }
     }
     for (int j = 0; j < p->functions.n; j++) {
-        inferred_unused(p, p->functions.v[j]);
+        TOOL_CHECK(p, inferred_unused(p, p->functions.v[j]););
     }
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         for (int k = 0; k < d->own_methods.n; k++) {
-            inferred_unused(p, d->own_methods.v[k]);
+            TOOL_CHECK(p, inferred_unused(p, d->own_methods.v[k]););
         }
     }
     for (int j = 0; j < p->types.n; j++) {
         Type *t = p->types.v[j];
         if (t->kind == T_UNION) {
-            layout(t, t->def->loc);
+            TOOL_CHECK(p, layout(t, t->def->loc););
         }
+    }
+    if (p->tooling) {
+        return;
     }
     // fits^ dyn^ D needs D's table for each concrete type it may find; building
     // tables lowers methods, which may convert or cast again.

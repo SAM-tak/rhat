@@ -26,6 +26,7 @@ typedef struct {
 } PathFact;
 
 struct Var {
+    bool invalid;    // A failed binding; using it abandons only the dependent statement.
     Loc declaration; // Source binding used by editor resolutions.
     char *name;
     Type *type;
@@ -110,6 +111,9 @@ typedef struct {
     List root_keys, root_list; // Roots by the source node that made them (see root).
     int result_part;           // One past the slot of the owned result part built in place.
 } Context;
+
+// Retain a failed declaration in its scope without cascading errors at its uses.
+void tool_failed_binding(Program *p, List *vars, Stmt *statement, int depth, int lexical);
 
 // Type inference and concrete-instance registry, implemented in check.c.
 

@@ -1,4 +1,5 @@
 #include "sema.h"
+#include "tooling.h"
 
 // Body requirements resolve signatures first; local call shapes fill gaps.
 Param *inferred_parameter(Function *f)
@@ -460,7 +461,7 @@ void external_validate(Program *p, Function *f)
 void inferred_unused(Program *p, Function *f)
 {
     Param *param = inferred_parameter(f);
-    if (f->templ || !param) {
+    if (f->invalid || f->templ || !param) {
         return;
     }
     for (int j = 0; j < p->instances.n; j++) {
@@ -610,6 +611,9 @@ static Type *infer_lookup(Infer *c, const char *name)
             continue;
         }
         if (!strcmp(v->name, name)) {
+            if (v->invalid) {
+                tool_abort();
+            }
             return !c->raw_name && v->narrowed ? v->narrowed : v->type;
         }
     }
@@ -1169,6 +1173,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     if (!e) {
         return type_builtin(c->p, T_VOID);
+    }
+    if (e->invalid) {
+        tool_abort();
     }
     if (e->constant_spec) {
         return type_spec(c->p, e->constant_spec);
@@ -1732,7 +1739,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
 }
 
-static void infer_statements(Infer *c, List *body, bool scoped)
+static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
 {
     int mark = c->vars.n;
     if (scoped) {
@@ -1951,6 +1958,58 @@ static void infer_statements(Infer *c, List *body, bool scoped)
     }
 }
 
+// Roll back only the failed statement, including nested scopes and flow facts.
+static void infer_statement_checked(Infer *c, Stmt *statement)
+{
+    static const size_t lists[] = {offsetof(Infer, vars), offsetof(Infer, handlers),
+                                   offsetof(Infer, loops), offsetof(Infer, initializers),
+                                   offsetof(Infer, flow.guards)};
+    ToolState *state = tool_save(c, sizeof(*c), lists, sizeof(lists) / sizeof(*lists));
+    ToolState *vars = tool_save_objects(&c->vars, sizeof(Var));
+    ToolState *handlers = tool_save_objects(&c->handlers, sizeof(ErrorTarget));
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        tool_restore(state);
+        tool_restore(vars);
+        tool_restore(handlers);
+        if (c->in) {
+            c->in->invalid = true;
+        }
+        tool_failed_binding(c->p, &c->vars, statement, 1, c->lexical);
+        if (statement->kind == S_RETURN) {
+            c->value_return = true;
+        }
+    }
+    else {
+        List one = {.v = (void **)&statement, .n = 1};
+        infer_statements_unchecked(c, &one, false);
+    }
+    tool_leave(&recovery);
+    mem_free(handlers);
+    mem_free(vars);
+    mem_free(state);
+}
+
+static void infer_statements(Infer *c, List *body, bool scoped)
+{
+    if (!c->p->tooling) {
+        infer_statements_unchecked(c, body, scoped);
+        return;
+    }
+    int mark = c->vars.n;
+    if (scoped) {
+        c->lexical++;
+    }
+    for (int j = 0; j < body->n && !c->terminated; j++) {
+        infer_statement_checked(c, body->v[j]);
+    }
+    if (scoped) {
+        c->vars.n = mark;
+        c->lexical--;
+    }
+}
+
 List first_types(Context *c, Stmt *s)
 {
     Infer infer = infer_context(c);
@@ -1998,6 +2057,46 @@ List first_types(Context *c, Stmt *s)
     return out;
 }
 
+static bool infer_instance_result(Program *p, Instance *in)
+{
+    bool changed = false;
+    Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
+    for (int k = 0; k < in->fn->params.n; k++) {
+        Param *param = in->fn->params.v[k];
+        Var *v = mem(sizeof(*v));
+        v->name = param->name;
+        v->lexical = c.lexical;
+        v->type = in->params.v[k];
+        add(&c.vars, v);
+    }
+    infer_statements(&c, &in->fn->body, false);
+    Type *result = c.returned;
+    if (c.propagated) {
+        if (result && result->kind == T_VOID) {
+            result = type_builtin(p, T_NIL);
+        }
+        else if (!result || result->kind == T_NEVER) {
+            result = c.terminated ? NULL : type_builtin(p, T_NIL);
+        }
+        result = error_join(p, result, c.propagated, in->fn->loc);
+    }
+    if (!result && !c.value_return) {
+        result = type_builtin(p, T_VOID);
+    }
+    Type *contract = in->fn->result ? type_spec(p, in->fn->result) : in->fn->required_result;
+    if (callable_type(contract) && result && !callable_accepts(contract, result)) {
+        fail(in->fn->loc, "callable result does not satisfy '%s'", type_name(contract));
+    }
+    if ((!contract || callable_type(contract)) && result && result != in->result) {
+        if (in->state) {
+            fail(in->fn->loc, "return inference changed after code generation");
+        }
+        in->result = result;
+        changed = true;
+    }
+    return changed;
+}
+
 void infer_results(Program *p)
 {
     if (p->inferred_instances == p->instances.n) {
@@ -2011,41 +2110,7 @@ void infer_results(Program *p)
         int count = p->instances.n;
         for (int j = first; j < p->instances.n; j++) {
             Instance *in = p->instances.v[j];
-            Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
-            for (int k = 0; k < in->fn->params.n; k++) {
-                Param *param = in->fn->params.v[k];
-                Var *v = mem(sizeof(*v));
-                v->name = param->name;
-                v->lexical = c.lexical;
-                v->type = in->params.v[k];
-                add(&c.vars, v);
-            }
-            infer_statements(&c, &in->fn->body, false);
-            Type *result = c.returned;
-            if (c.propagated) {
-                if (result && result->kind == T_VOID) {
-                    result = type_builtin(p, T_NIL);
-                }
-                else if (!result || result->kind == T_NEVER) {
-                    result = c.terminated ? NULL : type_builtin(p, T_NIL);
-                }
-                result = error_join(p, result, c.propagated, in->fn->loc);
-            }
-            if (!result && !c.value_return) {
-                result = type_builtin(p, T_VOID);
-            }
-            Type *contract =
-                in->fn->result ? type_spec(p, in->fn->result) : in->fn->required_result;
-            if (callable_type(contract) && result && !callable_accepts(contract, result)) {
-                fail(in->fn->loc, "callable result does not satisfy '%s'", type_name(contract));
-            }
-            if ((!contract || callable_type(contract)) && result && result != in->result) {
-                if (in->state) {
-                    fail(in->fn->loc, "return inference changed after code generation");
-                }
-                in->result = result;
-                changed = true;
-            }
+            TOOL_CHECK(p, changed |= infer_instance_result(p, in););
         }
         if (count != p->instances.n) {
             changed = true;
@@ -2087,6 +2152,9 @@ Type *expression_type(Context *c, Expr *e, Type *expected)
 
 Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
 {
+    if (f->invalid || (self && self->invalid)) {
+        tool_abort();
+    }
     for (int j = 0; j < f->instances.n; j++) {
         Instance *in = f->instances.v[j];
         if (in->self != self || in->params.n != actual->n) {
@@ -2099,6 +2167,9 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
             }
         }
         if (same) {
+            if (in->invalid && !in->result) {
+                tool_abort();
+            }
             return in;
         }
     }
@@ -2298,6 +2369,9 @@ static void body_bind(BodyCheck *c, const char *name, BodyNode *n)
 
 static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
 {
+    if (e && e->invalid) {
+        tool_abort();
+    }
     BodyNode *n = body_node(NULL);
     if (!e || c->blocked) {
         return n;
@@ -2750,7 +2824,7 @@ static void body_candidates(List *out, Type *t)
     }
 }
 
-static bool body_function(Program *p, Function *f)
+static bool body_function_unchecked(Program *p, Function *f)
 {
     if (f->templ || f->abstract) {
         return false;
@@ -2876,6 +2950,26 @@ static void body_collect_statements(List *functions, List *statements)
     }
 }
 
+static bool body_function(Program *p, Function *f)
+{
+    if (f->invalid) {
+        return false;
+    }
+    if (!p->tooling) {
+        return body_function_unchecked(p, f);
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        f->invalid = true;
+        tool_leave(&recovery);
+        return false;
+    }
+    bool changed = body_function_unchecked(p, f);
+    tool_leave(&recovery);
+    return changed;
+}
+
 void infer_parameters(Program *p)
 {
     List functions = {0};
@@ -2902,7 +2996,8 @@ void infer_parameters(Program *p)
     for (int round = 0; round < limit; round++) {
         bool changed = false;
         for (int j = 0; j < functions.n; j++) {
-            changed |= body_function(p, functions.v[j]);
+            Function *f = functions.v[j];
+            TOOL_CHECK(p, changed |= body_function(p, f););
         }
         if (!changed) {
             return;

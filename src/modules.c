@@ -35,63 +35,96 @@ static bool exists(Program *p, const char *path)
     return true;
 }
 
+static void load_dependencies(Program *p, Module *m);
+
+static void load_dependency(Program *p, Import *i)
+{
+    Module *target = NULL;
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *candidate = p->modules.v[j];
+        if (candidate->name && !strcmp(candidate->name, i->name)) {
+            target = candidate;
+        }
+    }
+    if (target && target->state == 1) {
+        fail(i->loc, "cyclic import of '%s'", i->name);
+    }
+    if (!target) {
+        char *relative = str(i->name);
+        for (char *c = relative; *c; c++) {
+            if (*c == '.') {
+                *c = '/';
+            }
+        }
+        char *path = NULL;
+        if (!strncmp(i->name, "std.", 4)) {
+            path = fmt("%s/%s.rh", p->stdlib_dir ? p->stdlib_dir : RH_STDLIB_PATH, relative);
+            if (!exists(p, path)) {
+                path = NULL;
+            }
+        }
+        else {
+            for (int j = 0; j <= p->module_paths.n && !path; j++) {
+                char *root = j < p->module_paths.n ? p->module_paths.v[j] : directory(p->path);
+                char *candidate = fmt("%s/%s.rh", root, relative);
+                if (exists(p, candidate)) {
+                    path = candidate;
+                }
+            }
+        }
+        if (!path) {
+            fail(i->loc, "cannot find module '%s'", i->name);
+        }
+        target = mem(sizeof(*target));
+        target->path = path;
+        add(&p->modules, target);
+        const char *root_path = p->path;
+        char *root_source = p->source;
+        Function *entry = p->entry;
+        // Even a failed file read leaves a safe, empty module for indexing.
+        target->entry = mem(sizeof(Function));
+        parse_file(p, path, target);
+        p->entry = entry;
+        p->path = root_path;
+        p->source = root_source;
+        if (!target->name || strcmp(target->name, i->name)) {
+            fail(i->loc, "module '%s' must declare module^ %s", path, i->name);
+        }
+        load_dependencies(p, target);
+    }
+    i->target = target;
+}
+
+static void dependency_checked(Program *p, Import *i)
+{
+    if (!p->tooling) {
+        load_dependency(p, i);
+        return;
+    }
+    const char *path = p->path;
+    char *source = p->source;
+    Function *entry = p->entry;
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        p->path = path;
+        p->source = source;
+        p->entry = entry;
+        i->invalid = true;
+        i->target = mem(sizeof(Module));
+        i->target->name = i->name;
+    }
+    else {
+        load_dependency(p, i);
+    }
+    tool_leave(&recovery);
+}
+
 static void load_dependencies(Program *p, Module *m)
 {
     m->state = 1;
     for (int n = 0; n < m->imports.n; n++) {
-        Import *i = m->imports.v[n];
-        Module *target = NULL;
-        for (int j = 0; j < p->modules.n; j++) {
-            Module *candidate = p->modules.v[j];
-            if (candidate->name && !strcmp(candidate->name, i->name)) {
-                target = candidate;
-            }
-        }
-        if (target && target->state == 1) {
-            fail(i->loc, "cyclic import of '%s'", i->name);
-        }
-        if (!target) {
-            char *relative = str(i->name);
-            for (char *c = relative; *c; c++) {
-                if (*c == '.') {
-                    *c = '/';
-                }
-            }
-            char *path = NULL;
-            if (!strncmp(i->name, "std.", 4)) {
-                path = fmt("%s/%s.rh", p->stdlib_dir ? p->stdlib_dir : RH_STDLIB_PATH, relative);
-                if (!exists(p, path)) {
-                    path = NULL;
-                }
-            }
-            else {
-                for (int j = 0; j <= p->module_paths.n && !path; j++) {
-                    char *root = j < p->module_paths.n ? p->module_paths.v[j] : directory(p->path);
-                    char *candidate = fmt("%s/%s.rh", root, relative);
-                    if (exists(p, candidate)) {
-                        path = candidate;
-                    }
-                }
-            }
-            if (!path) {
-                fail(i->loc, "cannot find module '%s'", i->name);
-            }
-            target = mem(sizeof(*target));
-            target->path = path;
-            add(&p->modules, target);
-            const char *root_path = p->path;
-            char *root_source = p->source;
-            Function *entry = p->entry;
-            parse_file(p, path, target);
-            p->entry = entry;
-            p->path = root_path;
-            p->source = root_source;
-            if (!target->name || strcmp(target->name, i->name)) {
-                fail(i->loc, "module '%s' must declare module^ %s", path, i->name);
-            }
-            load_dependencies(p, target);
-        }
-        i->target = target;
+        dependency_checked(p, m->imports.v[n]);
     }
     m->state = 2;
 }
@@ -148,6 +181,9 @@ static bool visible_declaration(Module *m, const char *name)
         Import *i = m->imports.v[j];
         const char *prefix = i->alias ? i->alias : i->name;
         size_t n = strlen(prefix);
+        if (!strncmp(name, prefix, n) && name[n] == '.' && i->invalid) {
+            tool_abort();
+        }
         if (!strncmp(name, prefix, n) && name[n] == '.' &&
             has_name(i->target, name + n + 1, true, NULL)) {
             return true;
@@ -186,6 +222,9 @@ static char *resolve(Module *m, char *name, Loc loc, Constant **constant)
         }
     }
     if (best) {
+        if (best->invalid) {
+            tool_abort();
+        }
         char *prefix = best->alias ? best->alias : best->name;
         char *member = name + strlen(prefix) + 1;
         if (!has_name(best->target, member, true, constant)) {
@@ -220,7 +259,9 @@ static char *resolve_type_name(Module *m, char *name, Loc loc)
     return resolve(m, name, loc, NULL);
 }
 
-static void resolve_spec(Module *m, Spec *s)
+static void resolve_spec(Module *m, Spec *s);
+
+static void resolve_spec_unchecked(Module *m, Spec *s)
 {
     if (!s || s->resolved) {
         return;
@@ -236,6 +277,27 @@ static void resolve_spec(Module *m, Spec *s)
             resolve_spec(m, s->params.v[j]);
         }
     }
+}
+
+static void resolve_spec(Module *m, Spec *s)
+{
+    if (!s || s->resolved) {
+        return;
+    }
+    if (!compiler_hooks) {
+        resolve_spec_unchecked(m, s);
+        return;
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        s->invalid = true;
+        s->resolved = true;
+    }
+    else {
+        resolve_spec_unchecked(m, s);
+    }
+    tool_leave(&recovery);
 }
 
 static bool local(List *names, const char *name)
@@ -404,7 +466,7 @@ static bool module_function(Module *m, const char *name)
     return false;
 }
 
-static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
+static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
 {
     if (!e) {
         return;
@@ -530,6 +592,30 @@ static void bound_names(List *names, List *body)
     }
 }
 
+static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
+{
+    if (!e || e->invalid) {
+        return;
+    }
+    if (!p->tooling) {
+        resolve_expr_unchecked(p, m, names, e);
+        return;
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        e->invalid = true;
+    }
+    else {
+        resolve_expr_unchecked(p, m, names, e);
+        e->invalid |= (e->a && e->a->invalid) || (e->b && e->b->invalid) || (e->c && e->c->invalid);
+        for (int j = 0; j < e->args.n; j++) {
+            e->invalid |= ((Expr *)e->args.v[j])->invalid;
+        }
+    }
+    tool_leave(&recovery);
+}
+
 static void resolve_body(Program *p, Module *m, List *names, List *body)
 {
     int old = names->n;
@@ -623,7 +709,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
     names->n = old;
 }
 
-static void check_names(Module *m)
+static void check_names(Program *p, Module *m)
 {
     List declared = {0};
     for (int j = 0; j < m->defs.n; j++) {
@@ -648,7 +734,7 @@ static void check_names(Module *m)
         char *name = declared.v[j];
         for (int k = 0; k < j; k++) {
             if (!strcmp(name, declared.v[k])) {
-                fail((Loc){m->path, 1, 1}, "duplicate declaration '%s'", name);
+                TOOL_CHECK(p, fail((Loc){m->path, 1, 1}, "duplicate declaration '%s'", name););
             }
         }
         for (int k = 0; k < m->imports.n; k++) {
@@ -659,7 +745,8 @@ static void check_names(Module *m)
                 *dot = 0;
             }
             if (!strcmp(root, name)) {
-                fail(i->loc, "import namespace conflicts with declaration '%s'", name);
+                TOOL_CHECK(p,
+                           fail(i->loc, "import namespace conflicts with declaration '%s'", name););
             }
         }
     }
@@ -675,14 +762,14 @@ static void check_names(Module *m)
         }
         for (int n = 0; n < bindings.n; n++) {
             if (!strcmp(bindings.v[n], root)) {
-                fail(i->loc, "binding conflicts with import namespace '%s'", root);
+                TOOL_CHECK(p, fail(i->loc, "binding conflicts with import namespace '%s'", root););
             }
         }
         for (int k = 0; k < j; k++) {
             Import *other = m->imports.v[k];
             char *b = other->alias ? other->alias : other->name;
             if (!strcmp(a, b) && strcmp(i->name, other->name)) {
-                fail(i->loc, "conflicting import alias '%s'", a);
+                TOOL_CHECK(p, fail(i->loc, "conflicting import alias '%s'", a););
             }
             {
                 size_t n = strlen(b);
@@ -693,7 +780,8 @@ static void check_names(Module *m)
                         *dot = 0;
                     }
                     if (has_name(other->target, member, true, NULL)) {
-                        fail(i->loc, "module child conflicts with export '%s'", member);
+                        TOOL_CHECK(
+                            p, fail(i->loc, "module child conflicts with export '%s'", member););
                     }
                 }
                 n = strlen(a);
@@ -704,7 +792,8 @@ static void check_names(Module *m)
                         *dot = 0;
                     }
                     if (has_name(i->target, member, true, NULL)) {
-                        fail(i->loc, "module child conflicts with export '%s'", member);
+                        TOOL_CHECK(
+                            p, fail(i->loc, "module child conflicts with export '%s'", member););
                     }
                 }
             }
@@ -714,7 +803,7 @@ static void check_names(Module *m)
 
 // The hidden parameters of the entry file's functions, and the arguments
 // every call passes for them.
-static void pass_top_bindings(Module *m)
+static void pass_top_bindings(Program *p, Module *m)
 {
     bool changed = true;
     while (changed) {
@@ -747,10 +836,11 @@ static void pass_top_bindings(Module *m)
     for (int j = 0; j < top_calls.n; j++) {
         Function *caller = ((TopCall *)top_calls.v[j])->caller;
         if (caller && caller->uses.n && (caller->owner || !module_function(m, caller->name))) {
-            fail(caller->loc,
-                 "only top-level functions can use the top-level binding '%s'; "
-                 "pass it as an argument",
-                 ((Stmt *)caller->uses.v[0])->name);
+            TOOL_CHECK(p, fail(caller->loc,
+                               "only top-level functions can use the top-level binding '%s'; "
+                               "pass it as an argument",
+                               ((Stmt *)caller->uses.v[0])->name););
+            caller->invalid = true;
         }
     }
     // Identify value references once, rather than for every captured function.
@@ -773,17 +863,24 @@ static void pass_top_bindings(Module *m)
         }
         Stmt *first = f->uses.v[0];
         if (f->owner) {
-            fail(f->loc, "a method cannot use the top-level binding '%s'; pass it as an argument",
-                 first->name);
+            TOOL_CHECK(
+                p, fail(f->loc,
+                        "a method cannot use the top-level binding '%s'; pass it as an argument",
+                        first->name););
+            f->invalid = true;
         }
         if (f->exported || f->lhat_export) {
-            fail(f->loc, "an exported function cannot use the top-level binding '%s'", first->name);
+            TOOL_CHECK(p, fail(f->loc, "an exported function cannot use the top-level binding '%s'",
+                               first->name););
+            f->invalid = true;
         }
         for (int k = 0; k < top_references.n; k++) {
             Expr *e = top_references.v[k];
             if (!strcmp(e->text, f->name)) {
-                fail(e->loc, "'%s' uses the top-level binding '%s' and cannot be a value", f->name,
-                     first->name);
+                TOOL_CHECK(p, fail(e->loc,
+                                   "'%s' uses the top-level binding '%s' and cannot be a value",
+                                   f->name, first->name););
+                e->invalid = true;
             }
         }
         // In declaration order, so that every overload lists them alike.
@@ -837,12 +934,16 @@ static void pass_top_bindings(Module *m)
                 seen += !strcmp(call->names.v[n], binding->name);
             }
             if (!seen) {
-                fail(at, "'%s' uses the top-level binding '%s', declared later at line %d",
-                     callee->name, binding->name, binding->loc.line);
+                TOOL_CHECK(
+                    p, fail(at, "'%s' uses the top-level binding '%s', declared later at line %d",
+                            callee->name, binding->name, binding->loc.line););
+                call->call->invalid = true;
             }
             if (seen > 1) {
-                fail(at, "'%s' uses the top-level binding '%s', which a local hides here",
-                     callee->name, binding->name);
+                TOOL_CHECK(p, fail(at,
+                                   "'%s' uses the top-level binding '%s', which a local hides here",
+                                   callee->name, binding->name););
+                call->call->invalid = true;
             }
             Expr *name = name_expr(binding->name, at);
             add(&args, binding->mut ? unary_expr("ref^", name) : name);
@@ -854,13 +955,30 @@ static void pass_top_bindings(Module *m)
     }
 }
 
+static char *resolve_base(Program *p, Module *m, Def *d, char *name)
+{
+    if (!p->tooling) {
+        return resolve_type_name(m, name, d->loc);
+    }
+    ToolRecovery recovery;
+    tool_enter(&recovery);
+    if (setjmp(recovery.escape)) {
+        d->invalid = true;
+        tool_leave(&recovery);
+        return name;
+    }
+    char *resolved = resolve_type_name(m, name, d->loc);
+    tool_leave(&recovery);
+    return resolved;
+}
+
 void resolve_modules(Program *p)
 {
     // Names remain local until every module's references have been resolved.
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
         List names = {0};
-        check_names(m);
+        check_names(p, m);
         top_bindings = (List){0};
         top_calls = (List){0};
         top_references = (List){0};
@@ -875,12 +993,15 @@ void resolve_modules(Program *p)
         }
         for (int k = 0; k < m->constants.n; k++) {
             Constant *c = m->constants.v[k];
-            if (!constant_expr(c->binding->a)) {
-                fail(c->binding->loc, "module constant requires scalar literal operations");
+            if (!constant_expr(c->binding->a) && !c->binding->a->invalid) {
+                TOOL_CHECK(p, fail(c->binding->loc,
+                                   "module constant requires scalar literal operations"););
+                c->binding->a->invalid = true;
             }
             resolve_spec(m, c->binding->spec);
             Function *f = mem(sizeof(*f));
             f->name = fmt("<constant:%s>", c->name);
+            f->invalid = c->binding->a->invalid;
             f->module = m;
             f->loc = c->binding->loc;
             f->result = c->binding->spec;
@@ -895,7 +1016,7 @@ void resolve_modules(Program *p)
         for (int k = 0; k < m->defs.n; k++) {
             Def *d = m->defs.v[k];
             for (int n = 0; n < d->base_names.n; n++) {
-                d->base_names.v[n] = resolve_type_name(m, d->base_names.v[n], d->loc);
+                d->base_names.v[n] = resolve_base(p, m, d, d->base_names.v[n]);
             }
             for (int n = 0; n < d->union_specs.n; n++) {
                 resolve_spec(m, d->union_specs.v[n]);
@@ -914,7 +1035,7 @@ void resolve_modules(Program *p)
         }
         resolve_body(p, m, &names, &m->entry->body);
         if (m->root) {
-            pass_top_bindings(m);
+            pass_top_bindings(p, m);
         }
     }
     for (int j = 0; j < p->modules.n; j++) {

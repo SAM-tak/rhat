@@ -246,15 +246,20 @@ static void completion_item(cJSON *out, const char *label, const char *detail, i
 static size_t skip_quoted(const char *s, size_t n)
 {
     char quote = s[n++];
+    size_t line_end = 0;
     while (s[n]) {
+        if (!line_end && (s[n] == '\n' || s[n] == '\r')) {
+            line_end = n;
+        }
         if (s[n] == '\\' && s[n + 1]) {
             n += 2;
         }
         else if (s[n++] == quote) {
-            break;
+            return n;
         }
     }
-    return n;
+    // Match lexer recovery when an unfinished quote consumes later code.
+    return line_end ? line_end : n;
 }
 
 static size_t skip_comment(const char *s, size_t n)
