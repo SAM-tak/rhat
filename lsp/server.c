@@ -1097,7 +1097,7 @@ static cJSON *initialize(Server *s, cJSON *params)
     cJSON_AddBoolToObject(tokens, "full", true);
     cJSON *info = cJSON_AddObjectToObject(out, "serverInfo");
     cJSON_AddStringToObject(info, "name", "rhat");
-    cJSON_AddStringToObject(info, "version", "0.1.0");
+    cJSON_AddStringToObject(info, "version", RH_VERSION);
     return out;
 }
 

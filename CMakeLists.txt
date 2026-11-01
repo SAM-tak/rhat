@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(rhat VERSION 0.1.0 LANGUAGES C)
+project(rhat VERSION 0.1.1 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -12,6 +12,7 @@ add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
   src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c
   lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c lsp/uri.c lsp/position.c lsp/port/thread.c)
 target_include_directories(rhat PRIVATE src lsp)
+target_compile_definitions(rhat PRIVATE RH_VERSION="${PROJECT_VERSION}")
 target_link_libraries(rhat PRIVATE rhat_json Threads::Threads)
 if(NOT WIN32)
   target_link_libraries(rhat PRIVATE m)

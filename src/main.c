@@ -122,7 +122,7 @@ int main(int argc, char **argv)
         return argc < 2 ? 2 : 0;
     }
     if (!strcmp(argv[1], "--version")) {
-        puts("rhat 0.1.0");
+        puts("rhat " RH_VERSION);
         return 0;
     }
     const char *command = argv[1];
