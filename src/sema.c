@@ -2838,6 +2838,29 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (range_type(base.type) && strcmp(e->text, "start")) {
             return range_member(c, base, e->text, e->loc);
         }
+        if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
+             base.type->kind == T_SLICE) &&
+            !strcmp(e->text, "bytes")) {
+            // a.bytes views the elements as bytes, like a whole-array slice.
+            if (!plain_data(base.type->elem)) {
+                fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
+            }
+            if (base.type->kind != T_SLICE && !base.addressable) {
+                fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
+            }
+            Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
+            out = (Value){.id = slot(c, view, false),
+                          .type = view,
+                          .deps = base.deps | (base.type->kind != T_SLICE ? base.storage : 0)};
+            Instr *i = emit(c, I_SLICE, e->loc);
+            i->dst = out.id;
+            i->a = base.id;
+            i->b = -1;
+            i->other = -1;
+            i->text = "bytes";
+            i->type = base.type;
+            return out;
+        }
         if (base.type->kind == T_STRING) {
             // s.bytes views the same bytes; string^ itself has no len.
             if (strcmp(e->text, "bytes")) {

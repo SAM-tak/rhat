@@ -1061,6 +1061,11 @@ static void instruction(Output *o, Instr *i)
             fprintf(f, "  call void @rh_text_boundary(ptr %s, i64 %s, i64 %s, i64 %s, i32 %d)\n",
                     data, length, lo, hi, i->loc.line);
         }
+        if (i->text && !strcmp(i->text, "bytes")) {
+            // The whole sequence, counted in bytes.
+            fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", ++o->tmp, b, t->elem->size);
+            b = o->tmp;
+        }
         int ptr = ++o->tmp, first = ++o->tmp, view = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %s\n", ptr,
                 t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, lo);

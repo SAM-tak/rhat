@@ -337,6 +337,8 @@ bool kind_integer(int kind);
 int numeric_kind(const char *name);
 bool kind_unsigned(int kind);
 bool kind_float(int kind);
+// Whether every bit pattern of t is a value: numbers, and arrays and structs of them.
+bool plain_data(Type *t);
 int numeric_bits(int kind);
 bool integer_fits(const char *text, int kind);
 char *float_constant(const char *text, int kind, Loc loc);

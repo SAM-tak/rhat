@@ -1443,6 +1443,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             !strcmp(e->text, "len")) {
             return type_builtin(c->p, T_I64);
         }
+        if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_SLICE) &&
+            !strcmp(e->text, "bytes")) {
+            if (!plain_data(base->elem)) {
+                fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
+            }
+            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+        }
         Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
         if (base->kind == T_STRUCT && !f) {
             Type *type = callable_group(c->p, base->def, e->text);

@@ -26,6 +26,25 @@ bool kind_integer(int k)
     return k >= T_U8 && k <= T_I128;
 }
 
+bool plain_data(Type *t)
+{
+    if (kind_integer(t->kind) || kind_float(t->kind)) {
+        return true;
+    }
+    if (t->kind == T_ARRAY) {
+        return plain_data(t->elem);
+    }
+    if (t->kind != T_STRUCT || t->def->abstract || !t->def->fields.n) {
+        return false;
+    }
+    for (int j = 0; j < t->def->fields.n; j++) {
+        if (!plain_data(((Field *)t->def->fields.v[j])->type)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool kind_unsigned(int k)
 {
     return k >= T_U8 && k <= T_U128;

@@ -315,6 +315,16 @@ let^ one,eight=literal()
 print^(one,eight[1])
 ''', '10 3 100\n2\n2\n2\n1 8\n')
 
+    positive('array_bytes', '''
+def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
+let^ ints:i32^[3]=[1,258,-1]
+var^ vs:grow^ V[]=[]
+vs.push(V{x=1.0,y=2.0})
+vs.push(V{x=3.0,y=4.0})
+let^ part=ints[1 .. 3]
+print^(ints.bytes.len,ints.bytes[4],ints.bytes[5],ints.bytes[11],vs.bytes.len,part.bytes.len,part.bytes[0])
+''', '12 2 1 255 16 8 2\n')
+
     positive('range_values', '''
 let^ xs=[10,20,30,40,50]
 let^ head=0 .. 3
@@ -758,6 +768,9 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
+        ('bytes_of_bool', 'let^ a:bool^[2]=[true^,false^]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
+        ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:(ref^ i32^)[1]=[ref^ n]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
+        ('bytes_of_temporary', 'print^([1,2].bytes.len)', 'cannot borrow a temporary'),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
         ('string_chars_owned', 'let^ n=f^ s:string^ { s.chars().len }', 'bind it'),
