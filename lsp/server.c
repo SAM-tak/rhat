@@ -538,8 +538,55 @@ static cJSON *signature_help(cJSON *index, const char *uri, const char *buffer, 
     return out;
 }
 
-static bool namespace_name(cJSON *index, const char *uri, const char *buffer, size_t start,
-                           size_t end)
+// A dense, request-local lookup preserves symbol_at's first-match and endpoint
+// precedence while semantic tokens visit every word in the source.
+static cJSON **symbol_lookup(cJSON *index, const char *uri, size_t length)
+{
+    cJSON **lookup = calloc(length + 1, sizeof(*lookup));
+    if (!lookup) {
+        abort();
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        cJSON *s;
+        cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
+            cJSON *use = cJSON_GetObjectItem(s, "use");
+            if (strcmp(text(use, "uri"), uri)) {
+                continue;
+            }
+            size_t start = (size_t)number(use, "offset");
+            size_t end = start + (size_t)number(s, "length");
+            if (pass) {
+                if (end <= length && !lookup[end]) {
+                    lookup[end] = s;
+                }
+            }
+            else {
+                for (size_t at = start; at < end && at <= length; at++) {
+                    if (!lookup[at]) {
+                        lookup[at] = s;
+                    }
+                }
+            }
+        }
+    }
+    return lookup;
+}
+
+// Token positions advance monotonically, so each byte needs decoding only once.
+static LspPosition token_position(const char *buffer, size_t length, size_t target, size_t *offset,
+                                  LspPosition *position)
+{
+    LspPosition next =
+        lsp_position_at(buffer + *offset, length - *offset, (uint32_t)(target - *offset));
+    next.character += next.line ? 0 : position->character;
+    next.line += position->line;
+    *offset = target;
+    *position = next;
+    return next;
+}
+
+static bool namespace_name(cJSON *index, cJSON **lookup, const char *uri, const char *buffer,
+                           size_t start, size_t end)
 {
     size_t root = start;
     while (root) {
@@ -564,7 +611,7 @@ static bool namespace_name(cJSON *index, const char *uri, const char *buffer, si
         root = at;
     }
     // A checked local or receiver takes precedence over an import spelling.
-    if (symbol_at(index, uri, root)) {
+    if (lookup[root]) {
         return false;
     }
     cJSON *import;
@@ -613,6 +660,9 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
     cJSON *out = cJSON_CreateObject(), *data = cJSON_AddArrayToObject(out, "data");
     int last_line = 0, last_col = 0;
     size_t length = strlen(buffer);
+    cJSON **lookup = symbol_lookup(index, uri, length);
+    size_t position_offset = 0;
+    LspPosition position = {0};
     for (size_t at = 0; at < length;) {
         size_t start = at;
         int kind = -1, modifiers = 0;
@@ -642,7 +692,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             while (buffer[at] == '^') {
                 at++;
             }
-            cJSON *s = symbol_at(index, uri, start);
+            cJSON *s = lookup[start];
             if (s && buffer[at - 1] != '^') {
                 int symbol_kind = number(s, "kind");
                 kind = symbol_kind == 23               ? 1
@@ -653,7 +703,8 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                                                        : 5;
                 modifiers = cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) ? 1 : 0;
             }
-            else if (buffer[at - 1] != '^' && namespace_name(index, uri, buffer, start, at)) {
+            else if (buffer[at - 1] != '^' &&
+                     namespace_name(index, lookup, uri, buffer, start, at)) {
                 kind = 11;
             }
         }
@@ -672,8 +723,8 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 end++;
             }
             if (end > start) {
-                LspPosition a = lsp_position_at(buffer, length, (uint32_t)start),
-                            b = lsp_position_at(buffer, length, (uint32_t)end);
+                LspPosition a = token_position(buffer, length, start, &position_offset, &position),
+                            b = token_position(buffer, length, end, &position_offset, &position);
                 int values[] = {a.line - last_line,
                                 a.line == last_line ? a.character - last_col : a.character,
                                 b.character - a.character, kind, modifiers};
@@ -686,6 +737,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             start = end < at ? end + 1 : end;
         }
     }
+    free(lookup);
     return out;
 }
 
@@ -809,6 +861,9 @@ static int worker(void *raw)
             if (current(s, job)) {
                 cJSON *indexes = cJSON_CreateArray(), *doc;
                 cJSON_ArrayForEach(doc, job->documents) {
+                    if (!current(s, job)) {
+                        break;
+                    }
                     cJSON *index = check_document(s, job, doc);
                     if (cJSON_GetObjectItem(cache, text(doc, "uri"))) {
                         cJSON_ReplaceItemInObjectCaseSensitive(cache, text(doc, "uri"),
@@ -825,6 +880,9 @@ static int worker(void *raw)
         }
         else if (cancelled(s, id)) {
             lsp_rpc_send_error(&s->out, id, -32800, "Request cancelled");
+        }
+        else if (!current(s, job)) {
+            lsp_rpc_send_error(&s->out, id, -32801, "Document changed");
         }
         else {
             cJSON *td = cJSON_GetObjectItem(params, "textDocument");

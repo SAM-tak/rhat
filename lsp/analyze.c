@@ -17,12 +17,22 @@ union Allocation {
     } link;
 };
 
+// Per-analysis source coordinates and URI, shared by every exported reference.
+typedef struct {
+    const char *path, *text, *uri;
+    size_t length, *lines;
+    int *rows, line_count;
+} Source;
+
 typedef struct {
     Allocation *head;
     jmp_buf *escape;
     Program program;
     Loc error;
     char message[4096];
+    List sources;
+    char **references;
+    size_t reference_count, reference_capacity;
 } Session;
 
 static _Thread_local Session *session;
@@ -94,10 +104,38 @@ static const char *string(const cJSON *o, const char *key)
     return cJSON_IsString(v) ? v->valuestring : "";
 }
 
-static ToolSource *source_for(Program *p, const char *path)
+static Source *source_for(Program *p, const char *path)
 {
-    for (int j = 0; j < p->sources.n; j++) {
-        ToolSource *s = p->sources.v[j];
+    while (session->sources.n < p->sources.n) {
+        ToolSource *input = p->sources.v[session->sources.n];
+        Source *source = mem(sizeof(*source));
+        source->path = input->path;
+        source->text = input->text;
+        source->length = strlen(input->text);
+        char *uri = lsp_absolute_path_to_uri(input->path);
+        source->uri = str(uri ? uri : "");
+        free(uri);
+        int count = 1;
+        for (size_t j = 0; j < source->length; j++) {
+            count += input->text[j] == '\n';
+        }
+        source->lines = mem((size_t)count * sizeof(size_t));
+        source->rows = mem((size_t)count * sizeof(int));
+        source->line_count = 1;
+        int row = 0;
+        for (size_t j = 0; j < source->length; j++) {
+            char ch = input->text[j];
+            row += ch == '\r' || (ch == '\n' && (!j || input->text[j - 1] != '\r'));
+            if (ch == '\n') {
+                int line = source->line_count++;
+                source->lines[line] = j + 1;
+                source->rows[line] = row;
+            }
+        }
+        add(&session->sources, source);
+    }
+    for (int j = 0; j < session->sources.n; j++) {
+        Source *s = session->sources.v[j];
         if (source_same_path(s->path, path)) {
             return s;
         }
@@ -105,17 +143,32 @@ static ToolSource *source_for(Program *p, const char *path)
     return NULL;
 }
 
-static size_t loc_offset(const char *text, Loc loc)
+static size_t loc_offset(Source *s, Loc loc)
 {
-    size_t at = 0;
-    for (int line = 1; line < loc.line && text[at]; at++) {
-        if (text[at] == '\n') {
-            line++;
-        }
-    }
-    for (int col = 1; col < loc.col && text[at] && text[at] != '\n'; col++) {
+    int line = loc.line > 0 ? loc.line - 1 : 0;
+    size_t at = line < s->line_count ? s->lines[line] : s->length;
+    for (int col = 1; col < loc.col && s->text[at] && s->text[at] != '\n'; col++) {
         at++;
     }
+    return at;
+}
+
+static LspPosition source_position(Source *s, size_t offset)
+{
+    int first = 0, last = s->line_count;
+    while (first + 1 < last) {
+        int middle = first + (last - first) / 2;
+        if (s->lines[middle] <= offset) {
+            first = middle;
+        }
+        else {
+            last = middle;
+        }
+    }
+    size_t start = s->lines[first];
+    LspPosition at =
+        lsp_position_at(s->text + start, s->length - start, (uint32_t)(offset - start));
+    at.line += s->rows[first];
     return at;
 }
 
@@ -130,9 +183,10 @@ static bool word_byte(unsigned char c)
     return isalnum(c) || c >= 128 || c == '_' || c == '^';
 }
 
-static size_t identifier_at(const char *text, Loc loc, const char *name)
+static size_t identifier_at(Source *source, Loc loc, const char *name)
 {
-    size_t at = loc_offset(text, loc);
+    const char *text = source->text;
+    size_t at = loc_offset(source, loc);
     size_t length = strlen(name);
     // Bindings have statement locations, while declarations and members carry
     // exact name tokens. Qualified type paths select their terminal component.
@@ -153,18 +207,16 @@ static size_t identifier_at(const char *text, Loc loc, const char *name)
 static cJSON *location(Program *p, Loc loc, const char *name)
 {
     cJSON *out = cJSON_CreateObject();
-    ToolSource *s = loc.file ? source_for(p, loc.file) : NULL;
-    char *uri = lsp_absolute_path_to_uri(loc.file ? loc.file : "");
-    cJSON_AddStringToObject(out, "uri", uri ? uri : "");
+    Source *s = loc.file ? source_for(p, loc.file) : NULL;
+    char *uri = s ? NULL : lsp_absolute_path_to_uri(loc.file ? loc.file : "");
+    cJSON_AddStringToObject(out, "uri", s ? s->uri : uri ? uri : "");
     free(uri);
-    size_t from = s ? identifier_at(s->text, loc, short_name(name)) : 0;
-    size_t length = s ? strlen(s->text) : 0;
+    size_t from = s ? identifier_at(s, loc, short_name(name)) : 0;
     cJSON_AddNumberToObject(out, "offset", (double)from);
     cJSON_AddItemToObject(
         out, "range",
-        lsp_range_json(lsp_position_at(s ? s->text : "", length, (uint32_t)from),
-                       lsp_position_at(s ? s->text : "", length,
-                                       (uint32_t)(from + strlen(short_name(name))))));
+        lsp_range_json(s ? source_position(s, from) : (LspPosition){0},
+                       s ? source_position(s, from + strlen(short_name(name))) : (LspPosition){0}));
     return out;
 }
 
@@ -243,15 +295,54 @@ static char *signature(Program *p, Function *f)
                          : "?");
 }
 
+static size_t reference_hash(const char *key)
+{
+    size_t hash = 2166136261u;
+    for (; *key; key++) {
+        hash = (hash ^ (unsigned char)*key) * 16777619u;
+    }
+    return hash;
+}
+
+static bool first_reference(char *key)
+{
+    if (session->reference_count * 2 >= session->reference_capacity) {
+        size_t old_capacity = session->reference_capacity;
+        char **old = session->references;
+        size_t capacity = old_capacity ? old_capacity * 2 : 1024;
+        session->references = mem(capacity * sizeof(char *));
+        session->reference_capacity = capacity;
+        for (size_t j = 0; j < old_capacity; j++) {
+            if (old[j]) {
+                size_t at = reference_hash(old[j]) & (capacity - 1);
+                while (session->references[at]) {
+                    at = (at + 1) & (capacity - 1);
+                }
+                session->references[at] = old[j];
+            }
+        }
+    }
+    size_t at = reference_hash(key) & (session->reference_capacity - 1);
+    while (session->references[at]) {
+        if (!strcmp(session->references[at], key)) {
+            return false;
+        }
+        at = (at + 1) & (session->reference_capacity - 1);
+    }
+    session->references[at] = key;
+    session->reference_count++;
+    return true;
+}
+
 static void emit_ref(Program *p, cJSON *array, ToolRef *r)
 {
     if (!r->declaration.file || !r->name || *short_name(r->name) == '<') {
         return;
     }
     const char *use_name = r->name;
-    ToolSource *source = source_for(p, r->use.file);
+    Source *source = source_for(p, r->use.file);
     if (r->function && source) {
-        const char *at = source->text + loc_offset(source->text, r->use);
+        const char *at = source->text + loc_offset(source, r->use);
         if (r->function->operator_member && strncmp(at, "op^", 3)) {
             size_t length = 1;
             if (!strncmp(at, "<=>", 3)) {
@@ -281,23 +372,17 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         }
     }
     cJSON *use = location(p, r->use, use_name);
-    cJSON *decl = location(p, r->declaration, r->name);
     char *key = fmt("%s:%d:%d:%s", r->declaration.file, r->declaration.line, r->declaration.col,
                     short_name(r->name));
     // Keep one checked view per source occurrence and declaration. Distinct
     // nominal declarations retain separate records at a shared occurrence.
-    cJSON *prior;
-    cJSON_ArrayForEach(prior, array) {
-        if (!strcmp(string(prior, "id"), key) &&
-            !strcmp(string(cJSON_GetObjectItem(prior, "use"), "uri"), string(use, "uri")) &&
-            cJSON_GetObjectItem(cJSON_GetObjectItem(prior, "use"), "offset")->valuedouble ==
-                cJSON_GetObjectItem(use, "offset")->valuedouble &&
-            cJSON_IsTrue(cJSON_GetObjectItem(prior, "declaration")) == r->definition) {
-            cJSON_Delete(use);
-            cJSON_Delete(decl);
-            return;
-        }
+    if (!first_reference(fmt("%zu:%s:%s:%u:%d", strlen(key), key, string(use, "uri"),
+                             (unsigned)cJSON_GetObjectItem(use, "offset")->valuedouble,
+                             r->definition))) {
+        cJSON_Delete(use);
+        return;
     }
+    cJSON *decl = location(p, r->declaration, r->name);
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(out, "id", key);
     cJSON_AddStringToObject(out, "name", short_name(r->name));

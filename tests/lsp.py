@@ -335,6 +335,49 @@ print^(v.length())
     client.change(path,self_dot.replace('self^ dot^ self^','self^ dot^ *self^'),71)
     assert client.diagnostics(path,71) == []
     print('PASS nested operator diagnostic and explicit reference operand',flush=True)
+    unicode_source = ('# 日本語🙂\r\n'
+                      'def^ Box {self^{値:i32^=42} read=f^ self^ ->i32^ {self^.値}}\r\n'
+                      'var^ 箱=Box{}\r\n'
+                      'print^("🙂",箱.値,箱.read())\r\n')
+    client.change(path,unicode_source,72)
+    assert client.diagnostics(path,72) == []
+    data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    row=column=0
+    resolved=[]
+    for n in range(0,len(data),5):
+        delta,offset,length,kind,modifiers=data[n:n+5]
+        row+=delta
+        column=offset if delta else column+offset
+        encoded=unicode_source.splitlines()[row].encode('utf-16-le')
+        resolved.append(encoded[column*2:(column+length)*2].decode('utf-16-le'))
+    assert {'Box','箱','値','read'} <= set(resolved), resolved
+    invalid=unicode_source.replace('箱.read()',']')
+    client.change(path,invalid,73)
+    diagnostics=client.diagnostics(path,73)
+    assert diagnostics[0]['range']['start'] == at(invalid,']'), diagnostics
+    client.change(path,unicode_source,74)
+    assert client.diagnostics(path,74) == []
+    print('PASS indexed source positions and streaming semantic tokens with UTF-16 and CRLF',flush=True)
+
+    # Force reference-set growth and many semantic lookups, then enqueue stale
+    # coloring requests between edits as the editor does during fast typing.
+    large='let^ anchor:i32^=42\n'
+    large+='\n'.join(f'let^ value_{n}=anchor print^(value_{n})' for n in range(400))
+    client.change(path,large,75)
+    assert client.diagnostics(path,75) == []
+    data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    assert len(data) >= 400*3*5, len(data)
+    for version in range(76,96):
+        client.change(path,large+'\nprint^(missing)\n',version)
+        client.send('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())),10000+version)
+    client.change(path,large,96)
+    assert client.diagnostics(path,96) == []
+    for version in range(76,96):
+        response=client.wait(lambda item: item.get('id') == 10000+version)
+        assert 'result' in response or response['error']['code'] == -32801, response
+    data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    assert len(data) >= 400*3*5, len(data)
+    print('PASS large reference index and stale semantic requests during rapid edits',flush=True)
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

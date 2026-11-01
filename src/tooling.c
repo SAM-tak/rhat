@@ -34,6 +34,9 @@ static bool path_equal(const char *a, const char *b)
 
 bool source_same_path(const char *a, const char *b)
 {
+    if (a == b || path_equal(a, b)) {
+        return true;
+    }
 #ifdef _WIN32
     char *x = _fullpath(NULL, a, 0), *y = _fullpath(NULL, b, 0);
     bool result = path_equal(x ? x : a, y ? y : b);
