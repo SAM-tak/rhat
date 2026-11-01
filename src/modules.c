@@ -270,8 +270,70 @@ static char *path_of(Expr *e)
 static void resolve_expr(Program *, Module *, List *, Expr *);
 static void resolve_body(Program *, Module *, List *, List *);
 
+// The entry file's functions see its top-level bindings. Each function that
+// reaches one, itself or through a call, takes it as a hidden leading
+// parameter: a var^ by reference, a let^ by value. The lifetime, shrink and
+// effect checks then treat it as any argument. Other files never see them.
+typedef struct {
+    Expr *call;
+    Function *caller; // NULL in the entry body itself.
+    List names;       // The entry body's names in scope at the call.
+} TopCall;
+
+static List top_bindings;   // S_BIND statements of the entry's top level.
+static Function *top_user;  // The function whose body is being resolved.
+static List top_calls;      // TopCall pointers.
+static List top_references; // Function names used other than as a callee.
+
+static char *hidden_name(Stmt *binding)
+{
+    return fmt("\001top_%s", binding->name);
+}
+
+static Stmt *top_binding(const char *name)
+{
+    for (int j = 0; j < top_bindings.n; j++) {
+        Stmt *s = top_bindings.v[j];
+        if (!strcmp(s->name, name)) {
+            return s;
+        }
+    }
+    return NULL;
+}
+
+static void use_binding(Function *f, Stmt *binding)
+{
+    for (int j = 0; j < f->uses.n; j++) {
+        if (f->uses.v[j] == binding) {
+            return;
+        }
+    }
+    add(&f->uses, binding);
+}
+
+static Expr *name_expr(const char *name, Loc loc)
+{
+    Expr *e = mem(sizeof(*e));
+    e->kind = E_NAME;
+    e->text = (char *)name;
+    e->loc = loc;
+    return e;
+}
+
+static Expr *unary_expr(const char *op, Expr *a)
+{
+    Expr *e = mem(sizeof(*e));
+    e->kind = E_UNARY;
+    e->text = (char *)op;
+    e->loc = a->loc;
+    e->a = a;
+    return e;
+}
+
 static void resolve_function(Program *p, Module *m, Function *f)
 {
+    Function *outer = top_user;
+    top_user = f;
     f->module = m;
     List names = {0};
     for (int j = 0; j < f->params.n; j++) {
@@ -281,6 +343,7 @@ static void resolve_function(Program *p, Module *m, Function *f)
     }
     resolve_spec(m, f->result);
     resolve_body(p, m, &names, &f->body);
+    top_user = outer;
 }
 
 static bool constant_expr(Expr *e)
@@ -331,10 +394,60 @@ static Expr *copy_expr(Expr *e)
     return r;
 }
 
+static bool module_function(Module *m, const char *name)
+{
+    for (int j = 0; j < m->functions.n; j++) {
+        if (!strcmp(((Function *)m->functions.v[j])->name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
 {
     if (!e) {
         return;
+    }
+    if (m->root && e->kind == E_NAME && !local(names, e->text)) {
+        Stmt *binding = top_user ? top_binding(e->text) : NULL;
+        if (binding) {
+            // Inside a function the binding is its hidden parameter.
+            if (top_user->owner || !module_function(m, top_user->name)) {
+                fail(e->loc,
+                     "only top-level functions can use the top-level binding '%s'; pass it "
+                     "as an argument",
+                     binding->name);
+            }
+            use_binding(top_user, binding);
+            tool_record(p, e->loc, binding->loc, binding->name, NULL, NULL, NULL, 13, false);
+            Expr *hidden = name_expr(hidden_name(binding), e->loc);
+            *e = binding->mut ? *unary_expr("*", hidden) : *hidden;
+            return;
+        }
+        if (module_function(m, e->text)) {
+            add(&top_references, e);
+        }
+    }
+    if (m->root && e->kind == E_CALL && e->a && e->a->kind == E_NAME && !local(names, e->a->text) &&
+        module_function(m, e->a->text)) {
+        TopCall *call = mem(sizeof(*call));
+        call->call = e;
+        call->caller = top_user;
+        for (int j = 0; !top_user && j < names->n; j++) {
+            add(&call->names, names->v[j]);
+        }
+        add(&top_calls, call);
+    }
+    char *root = path_of(e);
+    if (m->root && top_user && root && strchr(root, '.')) {
+        root = str(root);
+        *strchr(root, '.') = 0;
+        if (!local(names, root) && top_binding(root)) {
+            // a.b of a top-level binding a: its leaf name is rewritten below.
+            resolve_expr(p, m, names, e->a);
+            return;
+        }
     }
     if (e->kind == E_MEMBER && e->a && e->a->kind == E_NAME && numeric_kind(e->a->text) >= 0) {
         return; // i32^.parse: a member of a built-in type, which no module declares
@@ -599,6 +712,139 @@ static void check_names(Module *m)
     }
 }
 
+// The hidden parameters of the entry file's functions, and the arguments
+// every call passes for them.
+static void pass_top_bindings(Module *m)
+{
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int j = 0; j < top_calls.n; j++) {
+            TopCall *call = top_calls.v[j];
+            for (int k = 0; call->caller && k < m->functions.n; k++) {
+                Function *callee = m->functions.v[k];
+                for (int n = 0; !strcmp(callee->name, call->call->a->text) && n < callee->uses.n;
+                     n++) {
+                    int before = call->caller->uses.n;
+                    use_binding(call->caller, callee->uses.v[n]);
+                    changed |= call->caller->uses.n != before;
+                }
+            }
+        }
+        // Overloads share their hidden parameters, so a call fits any of them.
+        for (int j = 0; j < m->functions.n; j++) {
+            Function *f = m->functions.v[j];
+            for (int k = 0; k < m->functions.n; k++) {
+                Function *g = m->functions.v[k];
+                for (int n = 0; g != f && !strcmp(f->name, g->name) && n < g->uses.n; n++) {
+                    int before = f->uses.n;
+                    use_binding(f, g->uses.v[n]);
+                    changed |= f->uses.n != before;
+                }
+            }
+        }
+    }
+    for (int j = 0; j < top_calls.n; j++) {
+        Function *caller = ((TopCall *)top_calls.v[j])->caller;
+        if (caller && caller->uses.n && (caller->owner || !module_function(m, caller->name))) {
+            fail(caller->loc,
+                 "only top-level functions can use the top-level binding '%s'; "
+                 "pass it as an argument",
+                 ((Stmt *)caller->uses.v[0])->name);
+        }
+    }
+    for (int j = 0; j < m->functions.n; j++) {
+        Function *f = m->functions.v[j];
+        if (!f->uses.n) {
+            continue;
+        }
+        Stmt *first = f->uses.v[0];
+        if (f->owner) {
+            fail(f->loc, "a method cannot use the top-level binding '%s'; pass it as an argument",
+                 first->name);
+        }
+        if (f->exported || f->lhat_export) {
+            fail(f->loc, "an exported function cannot use the top-level binding '%s'", first->name);
+        }
+        for (int k = 0; k < top_references.n; k++) {
+            Expr *e = top_references.v[k];
+            bool callee = false;
+            for (int n = 0; n < top_calls.n; n++) {
+                callee |= ((TopCall *)top_calls.v[n])->call->a == e;
+            }
+            if (!callee && !strcmp(e->text, f->name)) {
+                fail(e->loc, "'%s' uses the top-level binding '%s' and cannot be a value", f->name,
+                     first->name);
+            }
+        }
+        // In declaration order, so that every overload lists them alike.
+        List params = {0};
+        for (int k = 0; k < top_bindings.n; k++) {
+            Stmt *binding = top_bindings.v[k];
+            for (int n = 0; n < f->uses.n; n++) {
+                if (f->uses.v[n] != binding) {
+                    continue;
+                }
+                Param *a = mem(sizeof(*a));
+                a->loc = binding->loc;
+                a->name = hidden_name(binding);
+                a->spec = binding->spec;
+                if (binding->mut && binding->spec) {
+                    a->spec = mem(sizeof(*a->spec));
+                    *a->spec = (Spec){.kind = SPEC_REF, .loc = binding->loc, .elem = binding->spec};
+                }
+                add(&params, a);
+            }
+        }
+        for (int k = 0; k < f->params.n; k++) {
+            add(&params, f->params.v[k]);
+        }
+        f->params = params;
+    }
+    for (int j = 0; j < top_calls.n; j++) {
+        TopCall *call = top_calls.v[j];
+        Function *callee = NULL;
+        for (int k = 0; !callee && k < m->functions.n; k++) {
+            Function *f = m->functions.v[k];
+            callee = !strcmp(f->name, call->call->a->text) && f->uses.n ? f : NULL;
+        }
+        if (!callee) {
+            continue;
+        }
+        List args = {0};
+        for (int k = 0; k < callee->params.n; k++) {
+            Param *a = callee->params.v[k];
+            if (strncmp(a->name, "\001top_", 5)) {
+                break;
+            }
+            Stmt *binding = top_binding(a->name + 5);
+            Loc at = call->call->loc;
+            if (call->caller) {
+                add(&args, name_expr(a->name, at));
+                continue;
+            }
+            int seen = 0;
+            for (int n = 0; n < call->names.n; n++) {
+                seen += !strcmp(call->names.v[n], binding->name);
+            }
+            if (!seen) {
+                fail(at, "'%s' uses the top-level binding '%s', declared later at line %d",
+                     callee->name, binding->name, binding->loc.line);
+            }
+            if (seen > 1) {
+                fail(at, "'%s' uses the top-level binding '%s', which a local hides here",
+                     callee->name, binding->name);
+            }
+            Expr *name = name_expr(binding->name, at);
+            add(&args, binding->mut ? unary_expr("ref^", name) : name);
+        }
+        for (int k = 0; k < call->call->args.n; k++) {
+            add(&args, call->call->args.v[k]);
+        }
+        call->call->args = args;
+    }
+}
+
 void resolve_modules(Program *p)
 {
     // Names remain local until every module's references have been resolved.
@@ -606,6 +852,18 @@ void resolve_modules(Program *p)
         Module *m = p->modules.v[j];
         List names = {0};
         check_names(m);
+        top_bindings = (List){0};
+        top_calls = (List){0};
+        top_references = (List){0};
+        for (int k = 0; m->root && k < m->entry->body.n; k++) {
+            Stmt *s = m->entry->body.v[k];
+            if (s->kind == S_BIND) {
+                add(&top_bindings, s);
+            }
+            for (int n = 0; s->kind == S_BIND_MANY && n < s->body.n; n++) {
+                add(&top_bindings, s->body.v[n]);
+            }
+        }
         for (int k = 0; k < m->constants.n; k++) {
             Constant *c = m->constants.v[k];
             if (!constant_expr(c->binding->a)) {
@@ -646,6 +904,9 @@ void resolve_modules(Program *p)
             resolve_function(p, m, m->functions.v[k]);
         }
         resolve_body(p, m, &names, &m->entry->body);
+        if (m->root) {
+            pass_top_bindings(m);
+        }
     }
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];

@@ -216,6 +216,7 @@ struct Function {
     bool lhat_export;                               // exportL^: registered as an L^ host function.
     bool variadic; // The last parameter "..." collects trailing arguments as a
                    // slice.
+    List uses;     // Top-level bindings of the entry file the body reaches (Stmt *).
 };
 
 struct Field {

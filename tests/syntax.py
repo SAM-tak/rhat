@@ -336,6 +336,30 @@ let^ missing=fs.read("no_such_dir/no_such.tmp",ref^ got)
 for^ missing { when^ fits^ fs.Error.OpenFailed: print^("open failed") other^: print^("other") }
 ''', 'true\n7 104 108\n150000 7\ntrue false false\nopen failed\n')
 
+    positive('top_level_bindings', '''
+def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
+var^ points:grow^ V[] = []
+var^ count:i64^ = 0
+let^ scale:f32^ = 2.0
+let^ add = p^ x:f32^ {
+    points.push(V{x=x * scale, y=1.0})
+    count += 1
+}
+let^ total = f^ -> f32^ {
+    var^ sum:f32^ = 0.0
+    for^ i from^ 0 to^ points.len - 1 { sum += points[i].x }
+    return^ sum
+}
+let^ twice = p^ x:f32^ { add(x) add(x + 1.0) }
+let^ shadow = f^ count:i64^ -> i64^ { return^ count * 10 }
+add(1.0)
+twice(3.0)
+print^(count, points.len, total(), shadow(4))
+var^ late:i64^ = 7
+let^ read_late = f^ -> i64^ { return^ late }
+print^(read_late())
+''', '3 3 16.0 40\n7\n')
+
     positive('bounded_arrays', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
 def^ World {
@@ -820,6 +844,13 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('bytes_of_temporary', 'print^([1,2].bytes.len)', 'cannot borrow a temporary'),
         ('bounded_literal_too_long', 'let^ a:i32^[..2]=[1,2,3]', 'holds at most 2 elements'),
         ('bounded_owned_elements', 'var^ a:(grow^ i32^[])[..2]=[]', 'nonempty fixed-size'),
+        ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),
+        ('top_level_hidden', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\ndo^{ var^ n:i64^ = 5\nshow() }', "which a local hides here"),
+        ('top_level_value', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\nlet^ g = show', "cannot be a value"),
+        ('top_level_method', 'var^ n:i64^ = 1\ndef^ A { self^{ x:i64^ = 0 }\nget = f^ self^ -> i64^ { return^ n } }\nprint^(A{}.get())', "only top-level functions can use"),
+        ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot mutate borrowed storage"),
+        ('top_level_shrink', 'var^ q:flex^ i64^[] = [1, 2]\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
+        ('top_level_narrowing', 'var^ t:i64^ | nil^ = 1\nlet^ reset = p^ { t := nil^ }\nif^ t? {\nreset()\nprint^(t + 1) }', "not defined for 'i64^ | nil^'"),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
         ('string_chars_owned', 'let^ n=f^ s:string^ { s.chars().len }', 'bind it'),
