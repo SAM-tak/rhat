@@ -336,6 +336,12 @@ let^ missing=fs.read("no_such_dir/no_such.tmp",ref^ got)
 for^ missing { when^ fits^ fs.Error.OpenFailed: print^("open failed") other^: print^("other") }
 ''', 'true\n7 104 108\n150000 7\ntrue false false\nopen failed\n')
 
+    positive('literal_left_operand', '''
+let^ n:i64^ = 5
+let^ x:f32^ = 1.5
+print^(4 + n, 4 + n * 8 <= 100, 4.0 + x, -2 + n, 2 - n)
+''', '9 true 5.5 3 -3\n')
+
     positive('top_level_bindings', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
 var^ points:grow^ V[] = []

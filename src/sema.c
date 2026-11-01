@@ -3052,10 +3052,17 @@ Value expression(Context *c, Expr *e, Type *expected)
         bool literal_left =
             e->a->kind == E_INT || e->a->kind == E_FLOAT ||
             (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT);
-        Type *left_hint =
-            !logic && literal_left
-                ? operator_hint(p, e->text, expression_type(c, e->b, NULL), true, e->a)
-                : NULL;
+        Type *right_type = !logic && literal_left ? expression_type(c, e->b, NULL) : NULL;
+        Type *left_hint = right_type ? operator_hint(p, e->text, right_type, true, e->a) : NULL;
+        // 4 + n takes n's numeric type, as n + 4 does; 40 + 2 keeps the expected one.
+        bool literal_right = e->b->kind == E_INT || e->b->kind == E_FLOAT ||
+                             (e->b->kind == E_UNARY && !strcmp(e->b->text, "-") &&
+                              (e->b->a->kind == E_INT || e->b->a->kind == E_FLOAT));
+        if (!left_hint && right_type && !shift && !literal_right &&
+            ((e->a->kind == E_FLOAT && kind_float(right_type->kind)) ||
+             (e->a->kind != E_FLOAT && kind_integer(right_type->kind)))) {
+            left_hint = right_type;
+        }
         Value a = comparison && nil_rhs && e->a->kind == E_NAME
                       ? place_expression(c, e->a)
                       : expression(c, e->a,
