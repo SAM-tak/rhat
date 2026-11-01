@@ -747,3 +747,92 @@ int64_t rh_text_format(unsigned char *out, int64_t cap, const void *value, int64
     }
     return rh_integer_text((char *)out, value, bits, form == 1);
 }
+
+// std.fs names a file by UTF-8 path bytes without a NUL. The system form of
+// one, malloc'd, or NULL for a path that has a NUL or is not UTF-8. Windows
+// takes paths as UTF-16 so that any name opens.
+#if defined(_WIN32)
+typedef wchar_t RhPathChar;
+#else
+typedef char RhPathChar;
+#endif
+static RhPathChar *rh_fs_path(const uint8_t *path, int64_t length)
+{
+    if (length <= 0 || length > INT32_MAX || memchr(path, 0, (size_t)length)) {
+        return NULL;
+    }
+#if defined(_WIN32)
+    int units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)path, (int)length,
+                                    NULL, 0);
+    wchar_t *name = units > 0 ? malloc(((size_t)units + 1) * sizeof(wchar_t)) : NULL;
+    if (name && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)path, (int)length,
+                                    name, units) != units) {
+        free(name);
+        return NULL;
+    }
+#else
+    int64_t units = length;
+    char *name = malloc((size_t)length + 1);
+    if (name) {
+        memcpy(name, path, (size_t)length);
+    }
+#endif
+    if (name) {
+        name[units] = 0;
+    }
+    return name;
+}
+
+// Opens a file with a C mode such as "rb": the FILE pointer as an integer, or
+// 0 when it did not open.
+int64_t rh_fs_open(const uint8_t *path, int64_t length, const char *mode)
+{
+    RhPathChar *name = rh_fs_path(path, length);
+    FILE *file = NULL;
+#if defined(_WIN32)
+    wchar_t wide_mode[8] = {0};
+    for (int j = 0; j < 7 && mode[j]; j++) {
+        wide_mode[j] = (wchar_t)mode[j];
+    }
+    if (name && _wfopen_s(&file, name, wide_mode)) {
+        file = NULL;
+    }
+#else
+    file = name ? fopen(name, mode) : NULL;
+#endif
+    free(name);
+    return (int64_t)(intptr_t)file;
+}
+
+// Reads up to capacity bytes: the count, or -1 on a read error.
+int64_t rh_fs_read(int64_t file, uint8_t *buffer, int64_t capacity)
+{
+    FILE *f = (FILE *)(intptr_t)file;
+    size_t n = fread(buffer, 1, (size_t)capacity, f);
+    return n < (size_t)capacity && ferror(f) ? -1 : (int64_t)n;
+}
+
+// Whether all of data was written.
+bool rh_fs_write(int64_t file, const uint8_t *data, int64_t length)
+{
+    return fwrite(data, 1, (size_t)length, (FILE *)(intptr_t)file) == (size_t)length;
+}
+
+// Whether the file closed cleanly, flushing what was written.
+bool rh_fs_close(int64_t file)
+{
+    return fclose((FILE *)(intptr_t)file) == 0;
+}
+
+// Whether the file was removed.
+bool rh_fs_remove(const uint8_t *path, int64_t length)
+{
+    RhPathChar *name = rh_fs_path(path, length);
+#if defined(_WIN32)
+    bool removed = name && _wremove(name) == 0;
+#else
+    bool removed = name && remove(name) == 0;
+#endif
+    free(name);
+    return removed;
+}

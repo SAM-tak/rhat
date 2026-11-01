@@ -315,6 +315,27 @@ let^ one,eight=literal()
 print^(one,eight[1])
 ''', '10 3 100\n2\n2\n2\n1 8\n')
 
+    positive('fs_roundtrip', '''
+let^ fs=import^ std.fs
+let^ data:u8^[5]=[104,101,108,108,111]
+let^ path="fs_往復.tmp"
+fs.write(path,data[..])
+fs.append(path,data[1 .. 3])
+print^(fs.exists(path))
+var^ got:grow^ u8^[]=[]
+fs.read(path,ref^ got)
+print^(got.len,got[0],got[6])
+var^ big:grow^ u8^[]=[]
+for^ 1 to^ 150000 { big.push(7) }
+fs.write(path,big[..])
+var^ back:grow^ u8^[]=[]
+fs.read(path,ref^ back)
+print^(back.len,back[149999])
+print^(fs.delete(path),fs.exists(path),fs.delete(path))
+let^ missing=fs.read("no_such_dir/no_such.tmp",ref^ got)
+for^ missing { when^ fits^ fs.Error.OpenFailed: print^("open failed") other^: print^("other") }
+''', 'true\n7 104 108\n150000 7\ntrue false false\nopen failed\n')
+
     positive('array_bytes', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
 let^ ints:i32^[3]=[1,258,-1]

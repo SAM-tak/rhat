@@ -180,6 +180,7 @@ print^(value.a, value.b, value.c)
 - **エラー**: `errordef^` のエラー値（付随フィールド・生成位置・`message()`）、`try^` による伝播、
   遅延代替の `catch^`、型付き・既定の `catch^` 節。[エラー値](docs/errors.md)。
 - **複数の返り値**: `-> (A, B)`、分解束縛 `let^ a, b = f()`。エラーや `nil^` との合併も使えます。[複数の返り値](docs/results.md)。
+- **ファイル入出力**: `std.fs` で全体の読み書き。[std.fs](docs/fs.md)。
 - **可変長引数**: `...:T` と `expr...`、コマンド引数。[可変長引数](docs/variadic.md)。
 - **関数とテンプレート**:
   - 返り値の型推論、無注釈引数の呼び出し形ごとの具体化、`let^ name = template^ f^ ...`。
