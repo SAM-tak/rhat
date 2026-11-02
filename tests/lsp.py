@@ -647,6 +647,23 @@ print^(value.add(value.copy()).x)
         assert request('hover','damage:i64^',text=source)['contents']['value'] == 'damage: i64^'
     print('PASS pending numeric call results keep contextual literal widths',flush=True)
 
+    conditional_result = ('let^front_sector=f^x:i64^ {x}\n'
+                          'let^back_sector=f^x:i64^ {if^x<0:-1 el^:x;}\n'
+                          'let^neighbor=f^sector:i64^ {\n'
+                          'let^a=front_sector(1) let^b=back_sector(2)\n'
+                          'let^value=if^a=sector:b el^b=sector:a el^:-1;\n'
+                          'return^value\n}\n'
+                          'print^(back_sector(0),neighbor(1))\n')
+    for version,source in [(129,conditional_result),
+                           (130,conditional_result.replace('f^x:i64^ {','f^x:i64^ ->i64^ {'))]:
+        client.change(path,source,version)
+        assert client.diagnostics(path,version) == []
+        for name in ('front_sector=f^', 'back_sector=f^'):
+            hover=request('hover',name,text=source)['contents']['value']
+            assert hover.endswith('-> i64^'), hover
+        assert request('hover','value=if^',text=source)['contents']['value'] == 'value: i64^'
+    print('PASS pending conditional branches keep inferred numeric result widths',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

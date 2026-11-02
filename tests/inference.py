@@ -37,6 +37,28 @@ print^(state)
     positive('pending_numeric_result_context', pending_numeric, '23\n15\n2\n')
     positive('pending_numeric_result_without_binding_annotation',
              pending_numeric.replace('damage:i64^=', 'damage='), '23\n15\n2\n')
+    # Seed back_sector first so front_sector is still pending at the join.
+    conditional_result = '''let^front_sector=f^x:i64^ {x}
+let^back_sector=f^x:i64^ {if^x<0:-1 el^:x;}
+let^neighbor=f^sector:i64^ {
+ let^a=front_sector(1)
+ let^b=back_sector(2)
+ let^value=if^a=sector:b el^b=sector:a el^:-1;
+ return^value
+}
+print^(back_sector(0))
+print^(neighbor(1),neighbor(2),neighbor(3))
+'''
+    positive('pending_conditional_result_context', conditional_result, '0\n2 1 -1\n')
+    positive('pending_conditional_result_reverse_context', conditional_result.replace(
+        'if^a=sector:b el^b=sector:a el^:-1;',
+        'if^a=sector:(if^b=sector:a el^:-1;) el^:b;'), '0\n-1 2 2\n')
+    negative('conditional_context_keeps_typed_operand_width', '''
+let^choose=f^flag:bool^,small:i32^,large:i64^ {
+ if^flag:(if^flag:small el^:-1;) el^:large;
+}
+print^(choose(true^,1,2))
+''', 'inferred types disagree')
     positive('nested_literal_numeric_context', '''
 let^whole:i64^=5*(1+2)
 let^real:f32^=5.0*(1.0+2.0)

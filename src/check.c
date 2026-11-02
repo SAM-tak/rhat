@@ -1661,17 +1661,29 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             restore_facts(&c->vars, facts);
             return type;
         }
-        refine_condition(c->p, &c->vars, &c->flow, e->a, true);
-        Type *a = infer_expr(c, e->b, expected);
-        bool ended = c->terminated;
-        c->terminated = false;
-        List after_yes = save_facts(&c->vars);
-        rewind_facts(&c->vars, facts);
-        refine_condition(c->p, &c->vars, &c->flow, e->a, false);
-        Type *b = infer_expr(c, e->c, expected);
-        c->terminated &= ended;
-        merge_facts(&c->vars, facts, after_yes);
-        return join_types(c->p, a, e->b, b, e->c, e->loc);
+        Type *hint = expected;
+        for (int pass = 0;; pass++) {
+            refine_condition(c->p, &c->vars, &c->flow, e->a, true);
+            Type *a = infer_expr(c, e->b, hint);
+            bool ended = c->terminated;
+            c->terminated = false;
+            List after_yes = save_facts(&c->vars);
+            rewind_facts(&c->vars, facts);
+            refine_condition(c->p, &c->vars, &c->flow, e->a, false);
+            Type *b = infer_expr(c, e->c, hint ? hint : numeric(a) ? a : NULL);
+            c->terminated &= ended;
+            // A nested conditional can provisionally take a pending call's
+            // literal fallback width. Let either sibling supply numeric context
+            // before joining; already typed operands keep their own types.
+            if (!pass && !expected && numeric(a) && numeric(b) && a != b) {
+                hint = b;
+                rewind_facts(&c->vars, facts);
+                c->terminated = false;
+                continue;
+            }
+            merge_facts(&c->vars, facts, after_yes);
+            return join_types(c->p, a, e->b, b, e->c, e->loc);
+        }
     }
     case E_BIN: {
         bool logic = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
