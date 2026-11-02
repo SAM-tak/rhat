@@ -334,6 +334,7 @@ print^(v.length())
     assert "operator 'dot^'" in diagnostic['message'], diagnostic
     assert "'ref^ F2' and 'ref^ F2'" in diagnostic['message'], diagnostic
     assert diagnostic['range']['start'] == at(self_dot,'dot^ self^'), diagnostic
+    assert diagnostic['range']['end'] == at(self_dot,'dot^ self^',shift=4), diagnostic
     client.change(path,self_dot.replace('self^ dot^ self^','self^ dot^ *self^'),71)
     assert client.diagnostics(path,71) == []
     print('PASS nested operator diagnostic and explicit reference operand',flush=True)
@@ -591,6 +592,36 @@ print^(value.add(value.copy()).x)
     client.change(path,self_type,113)
     assert client.diagnostics(path,113) == []
     print('PASS lexical Self types, navigation, coloring and scope recovery',flush=True)
+    # Diagnostics must not use symbol-name searching or zero-width ranges.
+    # Repeat the same spelling and place non-BMP text before it to exercise
+    # source token widths independently of UTF-16 editor coordinates.
+    position_cases = [
+        ('def^ F2 {self^{x:f32^=0.0} '
+         'op^+ = f^self^, o:ref^Self^ -> Self^ '
+         '{F2{x=self^.x + b.x}}}\n', 'b.x', 'b', 'qualified name'),
+        ('def^ Box {self^{値:i32^=42}}\n'
+         'let^ read=f^箱:Box ->i32^ {let^ label="🙂" let^ 値=箱.値 return^箱.missing}\n',
+         'missing', 'missing', 'field'),
+        ('def^ Box {self^{値:i32^=42}}\n'
+         'let^ read=f^箱:Box ->i32^ {let^ label="🙂" let^ 値=箱.値 return^箱.missing()}\n',
+         'missing', 'missing', 'method'),
+        ('let^ read=f^ ->i32^ {let^ label="🙂" return^`missing name`}\n',
+         '`missing name`', '`missing name`', 'unknown'),
+        ('print^("🙂",])\n', ']', ']', 'expression'),
+        ('print^("🙂",1 == 2)\n', '==', '==', 'C-style'),
+    ]
+    for version, (source, needle, spelling, message) in enumerate(
+            [(source.replace('\n', newline), needle, spelling, message)
+             for newline in ('\n', '\r\n')
+             for source, needle, spelling, message in position_cases], 114):
+        client.change(path,source,version)
+        diagnostics=client.diagnostics(path,version)
+        assert len(diagnostics) == 1, diagnostics
+        diagnostic=diagnostics[0]
+        assert message in diagnostic['message'], diagnostic
+        assert diagnostic['range'] == dict(start=at(source,needle),
+                                           end=at(source,needle,shift=len(spelling))), diagnostic
+    print('PASS exact diagnostic token ranges with repeated names, UTF-16 and CRLF',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601

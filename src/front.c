@@ -565,6 +565,7 @@ static void lex_step(Parser *p, Lexer *l)
             t->kind = TOK_FORMAT;
             t->text = slice(format, (size_t)(l->s - format));
         }
+        t->loc.length = (int)(l->s - start);
         for (; start < l->s; start++) {
             l->line += *start == '\n';
             l->col = *start == '\n' ? 1 : l->col + 1;
@@ -818,6 +819,7 @@ static void lex_step(Parser *p, Lexer *l)
         (!strncmp(start, "**", 2) || !strncmp(start, "//", 2) || !strncmp(start, "::", 2))) {
         l->s++;
     }
+    t->loc.length = (int)(l->s - start);
     if (!t->text) {
         t->text = slice(start, (size_t)(l->s - start));
     }

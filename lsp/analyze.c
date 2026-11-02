@@ -232,12 +232,25 @@ static cJSON *location(Program *p, Loc loc, const char *name)
     char *uri = s ? NULL : lsp_absolute_path_to_uri(loc.file ? loc.file : "");
     cJSON_AddStringToObject(out, "uri", s ? s->uri : uri ? uri : "");
     free(uri);
-    size_t from = s ? identifier_at(s, loc, short_name(name)) : 0;
+    // Diagnostics retain the compiler's exact span. Identifier relocation is
+    // only for symbol records whose locations may precede their declarations.
+    size_t from = s ? name ? identifier_at(s, loc, short_name(name)) : loc_offset(s, loc) : 0;
+    size_t length = name ? strlen(short_name(name)) : loc.length > 0 ? (size_t)loc.length : 0;
+    if (s && !name && !length && from < s->length && s->text[from] != '\r' &&
+        s->text[from] != '\n') {
+        // Lexer failures may precede a complete token. Select one scalar,
+        // without splitting a UTF-8 sequence or moving to another token.
+        length = 1;
+        while (from + length < s->length &&
+               ((unsigned char)s->text[from + length] & 0xc0) == 0x80) {
+            length++;
+        }
+    }
+    size_t end = s && length > s->length - from ? s->length : from + length;
     cJSON_AddNumberToObject(out, "offset", (double)from);
-    cJSON_AddItemToObject(
-        out, "range",
-        lsp_range_json(s ? source_position(s, from) : (LspPosition){0},
-                       s ? source_position(s, from + strlen(short_name(name))) : (LspPosition){0}));
+    cJSON_AddItemToObject(out, "range",
+                          lsp_range_json(s ? source_position(s, from) : (LspPosition){0},
+                                         s ? source_position(s, end) : (LspPosition){0}));
     return out;
 }
 
@@ -593,7 +606,7 @@ static cJSON *export_index(Session *s)
     cJSON *errors = cJSON_AddArrayToObject(out, "diagnostics");
     for (int j = 0; j < s->diagnostics.n; j++) {
         Diagnostic *d = s->diagnostics.v[j];
-        cJSON *e = location(p, d->loc, "");
+        cJSON *e = location(p, d->loc, NULL);
         cJSON_AddStringToObject(e, "message", d->message);
         cJSON_AddItemToArray(errors, e);
     }

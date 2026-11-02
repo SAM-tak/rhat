@@ -840,7 +840,8 @@ static Type *infer_call(Infer *c, Expr *e)
             candidates = overload_candidates(c->p, self, target->text, e->args.n + 1);
             f = candidates.n ? candidates.v[0] : method(self, target->text);
             if (!f) {
-                fail(e->loc, "'%s' has no method '%s'", self->name, target->text);
+                fail(target->name_loc.file ? target->name_loc : e->loc, "'%s' has no method '%s'",
+                     self->name, target->text);
             }
             add(&actual, type_wrap(c->p, T_REF, base, 0));
         }
@@ -1439,14 +1440,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         if (base && base->kind == T_STRING) {
             if (strcmp(e->text, "bytes")) {
-                text_bytes_only(base, e->text, e->loc);
+                text_bytes_only(base, e->text, e->name_loc.file ? e->name_loc : e->loc);
             }
             return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
         }
         if (range_type(base) && strcmp(e->text, "start")) {
             Type *whole = type_builtin(c->p, T_I64);
             if (strcmp(e->text, "end") && strcmp(e->text, "len")) {
-                fail(e->loc, "range^ has start, end, len and contains(i)");
+                fail(e->name_loc.file ? e->name_loc : e->loc,
+                     "range^ has start, end, len and contains(i)");
             }
             return !strcmp(e->text, "len")
                        ? whole
@@ -1474,7 +1476,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             if (type) {
                 return type;
             }
-            fail(e->loc, "'%s' has no field '%s'", base->def->name, e->text);
+            fail(e->name_loc.file ? e->name_loc : e->loc, "'%s' has no field '%s'", base->def->name,
+                 e->text);
         }
         if (f && c->raw_place != e) {
             Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};

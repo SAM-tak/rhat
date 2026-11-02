@@ -21,6 +21,7 @@ void add(List *a, void *v);
 typedef struct {
     const char *file;
     int line, col;
+    int length; // Source spelling in UTF-8 bytes; zero for a point location.
 } Loc;
 
 _Noreturn void fail(Loc l, const char *s, ...);

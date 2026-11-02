@@ -1518,7 +1518,8 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         }
     }
     if (index < 0) {
-        fail(e->loc, "'%s' has no method '%s'", iface->name, e->a->text);
+        fail(e->a->name_loc.file ? e->a->name_loc : e->loc, "'%s' has no method '%s'", iface->name,
+             e->a->text);
     }
     Function *f = iface->methods.v[index];
     access_check(c, f->priv, f->owner, e->loc, f->name);
@@ -1856,7 +1857,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             f = method(self, target->text);
         }
         if (!f) {
-            fail(e->loc, "'%s' has no method '%s'", self->name, target->text);
+            fail(target->name_loc.file ? target->name_loc : e->loc, "'%s' has no method '%s'",
+                 self->name, target->text);
         }
         access_check(c, f->priv, f->owner, e->loc, f->name);
         if (base.guarded_copy && (f->procedure || f->mutable_self)) {
@@ -3027,7 +3029,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             }
         }
         if (!f) {
-            fail(e->loc, "'%s' has no field '%s'", base.type->def->name, e->text);
+            fail(e->name_loc.file ? e->name_loc : e->loc, "'%s' has no field '%s'",
+                 base.type->def->name, e->text);
         }
         Value result = field_value(c, base, f, e->loc);
         Var *root = NULL;
