@@ -161,19 +161,19 @@ let^ value=read(-1) catch^ panic^ it^
 ## 所有値を含む合併
 
 伸長配列のような所有値も合併の選択肢にできます。失敗しうる処理が所有値を返すとき、
-出力の受け先として `ref^ grow^ T[]` を渡す必要はありません。
+出力の受け先として `ref^ T[grow^]` を渡す必要はありません。
 
 ```rhat
 errordef^ IoError { Missing }
-let^ read = p^ path:string^ -> grow^ u8^[] | IoError.Missing {
+let^ read = p^ path:string^ -> u8^[grow^] | IoError.Missing {
     if^ !exists(path) { return^ IoError.Missing{} }
-    var^ bytes:grow^ u8^[] = []
+    var^ bytes:u8^[grow^] = []
     ...
     return^ bytes
 }
 var^ data = try^ read("a.txt")       # 呼び出し元へ伝播
-let^ text = read("b.txt") catch^ grow^[0]
-let^ found = lookup(key) ?? grow^[]   # -> grow^ T[] | nil^ の場合
+let^ text = read("b.txt") catch^ [grow^ 0]
+let^ found = lookup(key) ?? [grow^ ]   # -> T[grow^] | nil^ の場合
 ```
 
 - 合併は固定長の値で、所有値の選択肢はその記述子を中身に持ちます。データは合併を持つ束縛のデータスタックにあり、

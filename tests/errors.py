@@ -199,21 +199,21 @@ catch^:
 ''', 'true\n1\n')
 
     positive('error_owned_cleanup', prefix+'''
-def^ Bag {self^{items:grow^ i32^[]}}
+def^ Bag {self^{items:i32^[grow^]}}
 repeat^ 3 {
  do^{
-  var^ before:grow^ i32^[]=[1,2]
+  var^ before:i32^[grow^]=[1,2]
   var^ pending=Bag{items=[3,try^ read(0)]}
   print^(pending.items.len,before.len)
  catch^:
-  var^ after:grow^ i32^[]=[7]
+  var^ after:i32^[grow^]=[7]
   print^(after[0])
  }
 }
 ''', '7\n7\n7\n')
 
     positive('error_owned_result_retry', prefix+'''
-def^ Bag {self^{tag:i32^,items:grow^ i32^[]}}
+def^ Bag {self^{tag:i32^,items:i32^[grow^]}}
 let^ build=f^ ->Bag {
  return^ Bag{tag=1,items=[1,try^ read(0)]}
 catch^:
@@ -324,7 +324,7 @@ void rh_runtime_shutdown(void) {
         assert 'invoke ' not in ll and 'landingpad ' not in ll
 
     positive('error_repeated_cleanup', prefix+'''
-def^ Bag {self^{items:grow^ i32^[]}}
+def^ Bag {self^{items:i32^[grow^]}}
 let^ build=p^ ->Bag {
  return^ Bag{items=[1,2,try^ read(0)]}
 catch^:
@@ -332,8 +332,8 @@ catch^:
 }
 repeat^ 10000 {
  do^{
-  var^ a:grow^ i32^[]=[1,2]
-  var^ b:grow^ i32^[]=[3,try^ read(0)]
+  var^ a:i32^[grow^]=[1,2]
+  var^ b:i32^[grow^]=[3,try^ read(0)]
  catch^:
   var^ c=build()
   assert^(c.items[0]=7)

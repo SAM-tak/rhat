@@ -69,7 +69,7 @@ let^ a, b = find(n) ?? (0, "none")      # -> (i64^, string^) | nil^ の場合
   （`if^ !(v fits^ Error.Zero) { let^ q, r = v }`）。`fits^` の右辺に `(A, B)` は書けません。
 - 返り値の型を省略した関数でも、`return^ a, b` とエラーの `return^` から合併を推論します。
 - 所有値を含む複数の返り値も合併にできます（[所有値を含む合併](errors.md#所有値を含む合併)）。
-  `catch^ (0, grow^[])` のような代替値や、`let^ n, xs = try^ f()` も使えます。
+  `catch^ (0, [grow^ ])` のような代替値や、`let^ n, xs = try^ f()` も使えます。
 
 ## 境界
 

@@ -7,7 +7,7 @@ public^errordef^Error { Invalid, OutOfRange }
 # Owned UTF-8 text built by appending. Every way in keeps its bytes UTF-8,
 # so text() views them as a string^. tostring() builds one.
 public^def^Builder {
-    self^{ private^bytes:grow^u8^[] = [] }
+    self^{ private^bytes:u8^[grow^] = [] }
     append = p^self^, s:string^{ self^.bytes.append(s) }
     append_char = p^self^, c:char^{
         let^n = u32^(c)

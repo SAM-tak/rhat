@@ -181,7 +181,7 @@ print^(value.a, value.b, value.c)
   - `bool^`、符号なし整数 `u8^`〜`u128^`、符号付き整数 `i8^`〜`i128^`、浮動小数点 `f8^` / `f16^` / `f32^` / `f64^`
     （`f8^` は E4M3FN、他は IEEE）、文字 `char^`、UTF-8 の `string^`。
     組み込み型の末尾の `^` は必須で、通常の `bool` や `u8` はユーザー定義名として使えます。
-  - 固定長配列 `T[N]`、伸長配列 `grow^ T[]`、伸長と縮小ができる `flex^ T[]`、借用スライス `T[:]`、参照 `ref^ T`。
+  - 固定長配列 `T[N]`、伸長配列 `T[grow^]`、伸長と縮小ができる `T[flex^]`、借用スライス `T[slice^]`、参照 `ref^ T`。
     [配列](DesignDocuments/arrays.md)、[範囲 `range^`](DesignDocuments/ranges.md)、[文字列と文字](DesignDocuments/strings.md)。
 - **公称型と合成**: `def^ Name : Base1, Base2` の順序付き合成、`self^{ ... }` のフィールド、
   `abstract^`、デフォルト実装、`override^`、`private^` の宣言元に基づくアクセス検査。

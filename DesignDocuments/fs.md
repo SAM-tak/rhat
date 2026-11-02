@@ -6,7 +6,7 @@
 ```rhat
 let^ fs = import^ std.fs
 
-var^ wad:grow^ u8^[] = []
+var^ wad:u8^[grow^] = []
 let^ loaded = fs.read("freedoom1-e1m1.wad", ref^ wad)       # 全体を wad の末尾に追加
 for^ loaded { when^ fits^ fs.Error: print^("cannot read") other^: print^(wad.len) }
 
@@ -16,10 +16,10 @@ fs.append("log.bin", wad[0 .. 4])                            # 末尾に追加�
 
 ## 関数
 
-- `read(path:string^, out:ref^ grow^ u8^[]) -> nil^ | Error.OpenFailed | Error.ReadFailed`:
+- `read(path:string^, out:ref^ u8^[grow^]) -> nil^ | Error.OpenFailed | Error.ReadFailed`:
   ファイル全体を `out` の末尾へ追加します。失敗したときは途中まで入っていることがあります。
-- `write(path, data:u8^[:]) -> nil^ | Error.OpenFailed | Error.WriteFailed`: 作成または置換します。
-- `append(path, data:u8^[:])`: 末尾へ追加します。戻り値は `write` と同じです。
+- `write(path, data:u8^[slice^]) -> nil^ | Error.OpenFailed | Error.WriteFailed`: 作成または置換します。
+- `append(path, data:u8^[slice^])`: 末尾へ追加します。戻り値は `write` と同じです。
 - `exists(path) -> bool^`: 読み取りで開けるか。
 - `delete(path) -> bool^`: 削除できたか。
 

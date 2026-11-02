@@ -295,14 +295,18 @@ static char *spec_text(Spec *s)
                                                                                        : "ref^ %s",
                    spec_text(s->elem));
     }
-    bool wrap = s->elem->kind == SPEC_REF || s->elem->kind == SPEC_UNION ||
-                s->elem->kind == SPEC_INTERSECTION;
-    return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", s->kind == SPEC_GROW ? "grow^ " : "",
-               spec_text(s->elem),
-               s->kind == SPEC_GROW      ? ""
-               : s->kind == SPEC_SLICE   ? ":"
-               : s->kind == SPEC_BOUNDED ? fmt("..%d", s->count)
-                                         : fmt("%d", s->count));
+    Spec *elem = s->elem;
+    char *refs = "";
+    while (elem->kind == SPEC_REF) {
+        refs = fmt("%sref^ ", refs);
+        elem = elem->elem;
+    }
+    char *kind = s->kind == SPEC_SLICE     ? "slice^"
+                 : s->kind == SPEC_GROW    ? (s->count ? "flex^" : "grow^")
+                 : s->kind == SPEC_BOUNDED ? fmt("max^%d", s->count)
+                                           : fmt("%d", s->count);
+    bool wrap = elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION;
+    return fmt(wrap ? "(%s)[%s%s]" : "%s[%s%s]", spec_text(elem), refs, kind);
 }
 
 static char *signature(Program *p, Function *f)

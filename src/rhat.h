@@ -124,7 +124,7 @@ struct Expr {
     bool invalid;    // A recovered syntax/name-resolution error, never executable.
     Loc name_loc;    // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec; // The type operand of fits^, or the type of an empty
-                     // grow^ T[] value; never evaluated as a value.
+                     // typed array value; never evaluated as a value.
     Spec *constant_spec;
     bool optional;        // This postfix link starts a nil-propagating guard.
     bool tuple;           // return^ a, b: a record of the multiple result type.

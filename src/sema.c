@@ -2429,7 +2429,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return out;
     }
     if (e->kind == E_ARRAY) {
-        bool grow = e->text != NULL; // grow^/flex^ [...] or grow^/flex^ T[]
+        bool grow = e->text != NULL; // Explicit [grow^ ...] or [flex^ ...] literal.
         int flex = grow && !strcmp(e->text, "flex^");
         if (e->test_spec) {
             Type *named = type_spec(c->p, e->test_spec);

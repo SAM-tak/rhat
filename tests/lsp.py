@@ -719,12 +719,12 @@ print^(value.add(value.copy()).x)
     assert client.diagnostics(path,136) == []
     print('PASS Unicode operator aliases, navigation and exact diagnostic ranges',flush=True)
 
-    captures = ('var^pictures=grow^i32^[]\n'
+    captures = ('var^pictures=i32^[grow^]\n'
                 'let^new_picture=p^ {pictures.push(1)}\n'
                 'let^bad=missing_capture_initializer\n'
                 'new_picture()\n')
     for version,source in [(137,captures),
-                           (138,captures.replace('grow^i32^[]','missing_capture_value')),
+                           (138,captures.replace('i32^[grow^]','missing_capture_value')),
                            (139,captures+'let^unused=p^x {print^(pictures.len,x)}\n')]:
         client.change(path,source,version)
         diagnostics=client.diagnostics(path,version)
@@ -746,29 +746,42 @@ print^(value.add(value.copy()).x)
     print('PASS hidden capture inference cascade suppression and independent parameter diagnostics',flush=True)
 
     annotated_binding = ('let^bad=missing_before_message\n'
-                         'var^message:u8^[..160]=missing_message_initializer\n'
+                         'var^message:u8^[max^160]=missing_message_initializer\n'
                          'let^clear_message=p^ {message.clear()}\n'
                          'clear_message()\n')
     client.change(path,annotated_binding,143)
     diagnostics=client.diagnostics(path,143)
     assert len(diagnostics) == 2, diagnostics
     hover=request('hover','message:u8^',text=annotated_binding)['contents']['value']
-    assert hover == 'message: u8^[..160]', hover
+    assert hover == 'message: u8^[max^160]', hover
     for version,source,expected in [
             (144,annotated_binding.replace('missing_message_initializer','[]'),1),
-            (145,annotated_binding.replace('u8^[..160]','i64^'),3),
-            (146,annotated_binding.replace('u8^[..160]','MissingMessageType'),2)]:
+            (145,annotated_binding.replace('u8^[max^160]','i64^'),3),
+            (146,annotated_binding.replace('u8^[max^160]','MissingMessageType'),2)]:
         client.change(path,source,version)
         diagnostics=client.diagnostics(path,version)
         assert len(diagnostics) == expected, diagnostics
         hover=request('hover','message:',text=source)['contents']['value']
         assert hover == ('message: i64^' if version == 145 else
-                         'message: ?' if version == 146 else 'message: u8^[..160]'), hover
+                         'message: ?' if version == 146 else 'message: u8^[max^160]'), hover
     repaired_binding=annotated_binding.replace('let^bad=missing_before_message\n','').replace('missing_message_initializer','[]')
     client.change(path,repaired_binding,147)
     assert client.diagnostics(path,147) == []
-    assert request('hover','message:u8^',text=repaired_binding)['contents']['value'] == 'message: u8^[..160]'
+    assert request('hover','message:u8^',text=repaired_binding)['contents']['value'] == 'message: u8^[max^160]'
     print('PASS resolved variable annotations survive initializer errors and recover after edits',flush=True)
+
+    attributes=('def^Node {self^{n:i32^=7}}\nvar^n=Node{}\n'
+                'var^refs:Node[ref^max^10]=[ref^n]\n'
+                'let^view:Node[ref^slice^]=refs[..]\n'
+                'let^borrow:ref^Node[ref^max^10]=ref^refs\n'
+                'print^(view[0].n,borrow.len)\n')
+    client.change(path,attributes,148)
+    assert client.diagnostics(path,148) == []
+    for needle,detail in [('refs:Node','refs: Node[ref^ max^10]'),
+                          ('view:Node','view: Node[ref^ slice^]'),
+                          ('borrow:ref^','borrow: ref^ Node[ref^ max^10]')]:
+        assert request('hover',needle,text=attributes)['contents']['value'] == detail
+    print('PASS array attributes and element references in source and hover',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601

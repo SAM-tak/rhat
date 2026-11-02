@@ -28,7 +28,7 @@ def^ Circle : Shape {
         assert 'dyn.call' in rir and 'dyn.make' in rir, rir
         assert ll.count('= linkonce_odr constant [3 x ptr]') == 2, ll
 
-    positive('dyn_mixed_array', shapes + '''let^ total = f^ shapes:(ref^ dyn^ Shape)[:] -> f64^ {
+    positive('dyn_mixed_array', shapes + '''let^ total = f^ shapes:(ref^ dyn^ Shape)[slice^] -> f64^ {
   var^ sum:f64^ = 0.0
   for^ var^ i:i64^ = 0 while^ i < shapes.len next^ i += 1 { sum += shapes[i].area() }
   return^ sum
@@ -113,7 +113,7 @@ print^(g(ref^ k), g(ref^ k))
     negative('dyn_recursion_holding_owned', '''def^ W { abstract^ go:p^ self^, n:i64^; }
 def^ A : W {
   self^{ z:i32^ = 0 }
-  go = p^ self^, n:i64^ { var^ buf:grow^ i64^[] = []  buf.push(n)  let^ me:ref^ dyn^ W = self^  if^ n > 0 { me.go(n - 1) } }
+  go = p^ self^, n:i64^ { var^ buf:i64^[grow^] = []  buf.push(n)  let^ me:ref^ dyn^ W = self^  if^ n > 0 { me.go(n - 1) } }
 }
 var^ a = A{}
 a.go(2)''', "holds local owned value 'buf'")

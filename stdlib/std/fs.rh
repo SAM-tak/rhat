@@ -3,21 +3,21 @@ module^std.fs
 # Whole-file reads and writes. Paths are UTF-8; the runtime opens them as the
 # system needs (UTF-16 on Windows).
 
-externC^rh_fs_open:f^path:u8^[:], length:i64^, mode:string^ -> i64^;
-externC^rh_fs_read:f^file:i64^, buffer:u8^[:], capacity:i64^ -> i64^;
-externC^rh_fs_write:f^file:i64^, data:u8^[:], length:i64^ -> bool^;
+externC^rh_fs_open:f^path:u8^[slice^], length:i64^, mode:string^ -> i64^;
+externC^rh_fs_read:f^file:i64^, buffer:u8^[slice^], capacity:i64^ -> i64^;
+externC^rh_fs_write:f^file:i64^, data:u8^[slice^], length:i64^ -> bool^;
 externC^rh_fs_close:f^file:i64^ -> bool^;
-externC^rh_fs_remove:f^path:u8^[:], length:i64^ -> bool^;
+externC^rh_fs_remove:f^path:u8^[slice^], length:i64^ -> bool^;
 
 public^errordef^Error { OpenFailed, ReadFailed, WriteFailed }
 
 let^chunk_size:i64^ = 65536
 
 # Appends the whole file to out. On failure out may hold part of it.
-public^let^read = p^path:string^, out:ref^grow^u8^[] {
+public^let^read = p^path:string^, out:ref^u8^[grow^] {
     let^file = rh_fs_open(path.bytes, path.bytes.len, "rb")
     if^file = 0 { return^Error.OpenFailed{} }
-    var^buffer = grow^u8^[]
+    var^buffer = u8^[grow^]
     for^1 to^ chunk_size { buffer.push(0) }
     var^n = chunk_size
     repeat^while^n = chunk_size {
@@ -29,7 +29,7 @@ public^let^read = p^path:string^, out:ref^grow^u8^[] {
     return^nil^
 }
 
-let^write_with = p^path:string^, data:u8^[:], mode:string^{
+let^write_with = p^path:string^, data:u8^[slice^], mode:string^{
     let^file = rh_fs_open(path.bytes, path.bytes.len, mode)
     if^file = 0 { return^Error.OpenFailed{} }
     let^written = rh_fs_write(file, data, data.len)
@@ -38,10 +38,10 @@ let^write_with = p^path:string^, data:u8^[:], mode:string^{
 }
 
 # Creates the file or replaces its contents.
-public^let^write = p^path:string^, data:u8^[:] { return^write_with(path, data, "wb") }
+public^let^write = p^path:string^, data:u8^[slice^] { return^write_with(path, data, "wb") }
 
 # Adds to the end of the file, creating it if it is not there.
-public^let^append = p^path:string^, data:u8^[:] { return^write_with(path, data, "ab") }
+public^let^append = p^path:string^, data:u8^[slice^] { return^write_with(path, data, "ab") }
 
 # Whether a file can be opened for reading.
 public^let^exists = p^path:string^{

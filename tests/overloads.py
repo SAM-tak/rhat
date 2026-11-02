@@ -27,7 +27,7 @@ print^("× ⋅ ≦ ≤ ≧ ≥ ≠",`×`)
 '''
     positive('overload_contextual_numeric_literals', numeric_overloads+'''
 let^text="hello"
-var^message:grow^u8^[]=[]
+var^message:u8^[grow^]=[]
 message.append(text.bytes[0 .. min(text.bytes.len,160)])
 let^alias=min
 let^wide:i64^=200
@@ -295,15 +295,15 @@ print^(v.n)
 
     positive('operator_owned_result_destination', '''def^ Packet {
  self^{n:i32^=2}
- op^:: =f^ self^,rhs:i32^ ->grow^ i32^[] {
-  var^ result:grow^ i32^[]=[self^.n,rhs]
+ op^:: =f^ self^,rhs:i32^ ->i32^[grow^] {
+  var^ result:i32^[grow^]=[self^.n,rhs]
   return^ result
  }
 }
 var^ packet=Packet{}
 var^ items=packet::3
 print^(items.len,items[0],items[1])
-let^ build=f^ n:i32^ ->grow^ i32^[] {
+let^ build=f^ n:i32^ ->i32^[grow^] {
  var^ local=Packet{n=n}
  return^ local::4
 }

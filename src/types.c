@@ -292,7 +292,7 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         return s->foreign ? type_wrap(p, T_CFUNC, t, 0) : t;
     }
     if (s->kind == SPEC_ARRAY && !s->count) {
-        fail(s->loc, "an array type without a length needs grow^, as in grow^ T[]");
+        fail(s->loc, "an array type without a length needs a kind, as in T[grow^]");
     }
     if (s->kind == SPEC_DYN) {
         fail(s->loc, "dyn^ is a reference; write ref^ dyn^ T");
@@ -397,20 +397,17 @@ char *type_name(Type *t)
     if (t->kind == T_DYN) {
         return fmt("ref^ dyn^ %s", type_name(t->elem));
     }
-    if (t->kind == T_SLICE) {
-        return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[:]" : "%s[:]",
-                   type_name(t->elem));
+    Type *elem = t->elem;
+    char *refs = "";
+    while (elem->kind == T_REF) {
+        refs = fmt("%sref^ ", refs);
+        elem = elem->elem;
     }
-    if (t->kind == T_GROW) {
-        return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "%s (%s)[]" : "%s %s[]",
-                   t->count ? "flex^" : "grow^", type_name(t->elem));
-    }
-    if (t->kind == T_BOUNDED) {
-        return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[..%d]" : "%s[..%d]",
-                   type_name(t->elem), t->count);
-    }
-    return fmt((t->elem->kind == T_REF || t->elem->kind == T_UNION) ? "(%s)[%d]" : "%s[%d]",
-               type_name(t->elem), t->count);
+    char *kind = t->kind == T_SLICE     ? "slice^"
+                 : t->kind == T_GROW    ? (t->count ? "flex^" : "grow^")
+                 : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
+                                        : fmt("%d", t->count);
+    return fmt(elem->kind == T_UNION ? "(%s)[%s%s]" : "%s[%s%s]", type_name(elem), refs, kind);
 }
 
 bool derives(Def *d, Def *b)
