@@ -633,6 +633,20 @@ print^(value.add(value.copy()).x)
     assert definition['range']['start'] == at(borrowed,'op^+'), definition
     print('PASS automatically borrowed operator operands, result hover and navigation',flush=True)
 
+    numeric_result = ('let^random_int=p^limit:i64^ {return^limit-1}\n'
+                      'let^run=p^weapon:i64^ {\n'
+                      'let^damage:i64^=if^weapon=1:12+random_int(12) el^:5*(1+random_int(3));\n'
+                      'print^(damage)\n}\nrun(1) run(2)\n')
+    for version,source in [(127,numeric_result),
+                           (128,numeric_result.replace('p^limit:i64^ {','p^limit:i64^ ->i64^ {'))]:
+        client.change(path,source,version)
+        diagnostics=client.diagnostics(path,version)
+        assert diagnostics == [], diagnostics
+        hover=request('hover','random_int=p^',text=source)['contents']['value']
+        assert hover.endswith('-> i64^'), hover
+        assert request('hover','damage:i64^',text=source)['contents']['value'] == 'damage: i64^'
+    print('PASS pending numeric call results keep contextual literal widths',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

@@ -1681,6 +1681,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             e->a->kind == E_INT || e->a->kind == E_FLOAT ||
             (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT);
         Type *right_type = !logic && literal_left ? infer_expr(c, e->b, NULL) : NULL;
+        // Numeric lookahead must not fix contextual literals at their default
+        // widths, especially while a nested call's result is still pending.
+        if (numeric(expected) && numeric(right_type)) {
+            right_type = NULL;
+        }
         Type *left_hint = operator_hint(c->p, e->text, right_type, true, e->a);
         Type *a = infer_expr(c, e->a,
                              left_hint             ? left_hint

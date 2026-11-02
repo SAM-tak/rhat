@@ -22,6 +22,35 @@ write(ref^ mutable)
 print^(mutable)
 ''', '42\n43\n')
 
+    pending_numeric = '''var^state:u64^=0
+let^random_int=p^limit:i64^ {
+ state+=1
+ return^limit-1
+}
+let^run=p^weapon:i64^ {
+ let^damage:i64^=if^weapon=1:12+random_int(12) el^:5*(1+random_int(3));
+ print^(damage)
+}
+run(1) run(2)
+print^(state)
+'''
+    positive('pending_numeric_result_context', pending_numeric, '23\n15\n2\n')
+    positive('pending_numeric_result_without_binding_annotation',
+             pending_numeric.replace('damage:i64^=', 'damage='), '23\n15\n2\n')
+    positive('nested_literal_numeric_context', '''
+let^whole:i64^=5*(1+2)
+let^real:f32^=5.0*(1.0+2.0)
+def^V {op^+ =f^left:i32^,self^ ->i64^ {i64^(left)+1}}
+let^v=V{}
+let^from_operator:i64^=1+v
+print^(whole,real,from_operator)
+''', '15 15.0 2\n')
+    negative('numeric_context_keeps_typed_operand_width', '''
+let^n:i32^=2
+let^bad:i64^=5*(1+n)
+print^(bad)
+''', 'binary operands have different types')
+
     positive('inference_identity', '''
 let^ id=f^ x {x}
 print^(id(42),id(i64^(43)),id("hello"),id("hello").bytes.len)

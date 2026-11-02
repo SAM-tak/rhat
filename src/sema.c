@@ -3176,6 +3176,10 @@ Value expression(Context *c, Expr *e, Type *expected)
             e->a->kind == E_INT || e->a->kind == E_FLOAT ||
             (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT);
         Type *right_type = !logic && literal_left ? expression_type(c, e->b, NULL) : NULL;
+        if (expected && (kind_integer(expected->kind) || kind_float(expected->kind)) &&
+            right_type && (kind_integer(right_type->kind) || kind_float(right_type->kind))) {
+            right_type = NULL;
+        }
         Type *left_hint = right_type ? operator_hint(p, e->text, right_type, true, e->a) : NULL;
         // 4 + n takes n's numeric type, as n + 4 does; 40 + 2 keeps the expected one.
         bool literal_right = e->b->kind == E_INT || e->b->kind == E_FLOAT ||
