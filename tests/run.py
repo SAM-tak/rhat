@@ -55,18 +55,42 @@ def scalar_check_ir(ir, ll):
     assert "@rh_division_fail" in ll
     assert "division_ok_" in ll
 
+
+def function_llvm(ir, ll, name):
+    match = re.search(r"(?m)^function (\w+) " + re.escape(name) + r" ", ir)
+    assert match, name
+    body = re.search(r"(?ms)^define internal [^\n]* @" + match[1] + r"\(.*?^}", ll)
+    assert body, name
+    return body[0]
+
+
+division_widths = (8,16,32,64,128)
+
+
+def division_widths_ir(ir, ll):
+    for bits in division_widths:
+        for name, opcode in (("divide", "sdiv"), ("remain", "srem")):
+            body = function_llvm(ir, ll, f"{name}{bits}")
+            scalar_check_ir(ir, body)
+            assert f"{opcode} i{bits} " in body, (name, bits)
+
+
 positive("division_single_evaluation", '''
 let^ denominator=p^ counter:ref^ i32^ -> i32^ { *counter:=*counter+1; return^ 97 }
 var^ counter:i32^=0
 print^(1234 % denominator(ref^ counter),counter)
 ''', "70 1\n", scalar_check_ir)
-for bits in (8,16,32,64,128):
+division_sources, division_outputs = [], []
+for bits in division_widths:
     low=-(1 << (bits-1)); high=(1 << (bits-1))-1
-    positive("direct_signed_division_"+str(bits), f'''
-let^ divide=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a/b }}
-let^ remain=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a%b }}
-print^(divide({low},2),remain({low},3),divide({high},-1),remain(-7,3))
-''', f"{low//2} {-((-low)%3)} {-high} -1\n", scalar_check_ir)
+    division_sources.append(f'''
+let^ divide{bits}=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a/b }}
+let^ remain{bits}=f^ a:i{bits}^, b:i{bits}^ -> i{bits}^ {{ return^ a%b }}
+print^(divide{bits}({low},2),remain{bits}({low},3),divide{bits}({high},-1),remain{bits}(-7,3))
+''')
+    division_outputs.append(f"{low//2} {-((-low)%3)} {-high} -1\n")
+positive("direct_signed_division_widths", "".join(division_sources),
+         "".join(division_outputs), division_widths_ir)
 for op,label in (("/","division"),("%","remainder")):
     runtime_failure("direct_dynamic_"+label+"_overflow", f'''
 let^ calculate=f^ a:i128^, b:i128^ -> i128^ {{ return^ a {op} b }}
@@ -83,8 +107,20 @@ def direct_index_ir(ir, ll):
     assert "icmp ult" in ll and "@rh_index_fail" in ll
 
 
-for kind in ("i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128"):
-    positive("direct_index_" + kind, f'''
+index_kinds = ("i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128")
+
+
+def index_widths_ir(ir, ll):
+    direct_index_ir(ir, ll)
+    for kind in index_kinds:
+        direct_index_ir(ir, function_llvm(ir, ll, f"check_index_{kind}"))
+
+
+index_sources = []
+for kind in index_kinds:
+    # Each procedure owns its fixtures, so cases share neither names nor arrays.
+    index_sources.append(f'''
+let^ check_index_{kind}=p^ {{
 var^ fixed:i32^[2]=[10,20]
 var^ grow:grow^ i32^[]=[30,40]
 let^ view=grow[.. 2]
@@ -93,7 +129,11 @@ let^ index:{kind}^=1
 fixed[index]:=21
 grow[index]:=41
 print^(fixed[index],grow[index],view[index],text.bytes[index])
-''', "21 41 41 98\n", direct_index_ir)
+}}
+check_index_{kind}()
+''')
+positive("direct_index_widths", "".join(index_sources),
+         "21 41 41 98\n" * len(index_kinds), index_widths_ir)
 
 for name,setup,access in (
     ("grow", "var^ a:grow^ i32^[]=[1,2]", "a[i]"),
