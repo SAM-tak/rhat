@@ -11,9 +11,9 @@ on:
     branches: [main]
     # Nothing the build or the suite reads. examples/ and stdlib/ stay: tests
     # and the compiler load from them.
-    paths-ignore: ['**.md', 'docs/**', 'media/**', 'bench/**', 'LICENSE']
+    paths-ignore: ['**.md', 'docs/**', 'DesignDocuments/**', 'media/**', 'bench/**', 'LICENSE']
   pull_request:
-    paths-ignore: ['**.md', 'docs/**', 'media/**', 'bench/**', 'LICENSE']
+    paths-ignore: ['**.md', 'docs/**', 'DesignDocuments/**', 'media/**', 'bench/**', 'LICENSE']
 
 # A newer push on the same branch supersedes the run before it.
 concurrency:

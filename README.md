@@ -175,14 +175,14 @@ print^(value.a, value.b, value.c)
 
 ## 言語の範囲
 
-詳しい規則・検査・制約は [docs/design.md](docs/design.md)、L^ の構文との対応は [docs/syntax.md](docs/syntax.md) にあります。
+詳しい規則・検査・制約は [DesignDocuments/design.md](DesignDocuments/design.md)、L^ の構文との対応は [DesignDocuments/syntax.md](DesignDocuments/syntax.md) にあります。
 
 - **型**:
   - `bool^`、符号なし整数 `u8^`〜`u128^`、符号付き整数 `i8^`〜`i128^`、浮動小数点 `f8^` / `f16^` / `f32^` / `f64^`
     （`f8^` は E4M3FN、他は IEEE）、文字 `char^`、UTF-8 の `string^`。
     組み込み型の末尾の `^` は必須で、通常の `bool` や `u8` はユーザー定義名として使えます。
   - 固定長配列 `T[N]`、伸長配列 `grow^ T[]`、伸長と縮小ができる `flex^ T[]`、借用スライス `T[:]`、参照 `ref^ T`。
-    [配列](docs/arrays.md)、[範囲 `range^`](docs/ranges.md)、[文字列と文字](docs/strings.md)。
+    [配列](DesignDocuments/arrays.md)、[範囲 `range^`](DesignDocuments/ranges.md)、[文字列と文字](DesignDocuments/strings.md)。
 - **公称型と合成**: `def^ Name : Base1, Base2` の順序付き合成、`self^{ ... }` のフィールド、
   `abstract^`、デフォルト実装、`override^`、`private^` の宣言元に基づくアクセス検査。
   通常の型付き引数は、同じ公称型または明示的な合成先の実型を受け取ります。
@@ -192,21 +192,21 @@ print^(value.a, value.b, value.c)
     タグと最大ペイロードをインライン配置します。
   - `value fits^ Type` と `when^ fits^ Type:` による適合判定と、両側の型の絞り込み。
   - `?` / `?.` / `?[]` / `??` / `?:=` などのニル伝播。
-  - [`fits^`](docs/fits.md)、[合併型とニル伝播](docs/nil.md)。
+  - [`fits^`](DesignDocuments/fits.md)、[合併型とニル伝播](DesignDocuments/nil.md)。
 - **列挙体**: `enum^ Mode : u8^ { Idle, Walk, Dash = 10 }`。C 互換の整数で、`=` / `!=` で比べ、`print^` はメンバ名を表示します。
-  [列挙体](docs/enums.md)。
+  [列挙体](DesignDocuments/enums.md)。
 - **パターンマッチ**: `for^ value { when^ 1,2: ... when^ 3 to^ 5: ... other^: ... }` と式形。
-  `other^` を省く式形のマッチは、`bool^`・`enum^`・合併型のすべての値を腕で尽くさなければなりません。文形は網羅を検査しません（[網羅](docs/syntax.md#パターンマッチの網羅)）。
+  `other^` を省く式形のマッチは、`bool^`・`enum^`・合併型のすべての値を腕で尽くさなければなりません。文形は網羅を検査しません（[網羅](DesignDocuments/syntax.md#パターンマッチの網羅)）。
 - **エラー**: `errordef^` のエラー値（付随フィールド・生成位置・`message()`）、`try^` による伝播、
-  遅延代替の `catch^`、型付き・既定の `catch^` 節。[エラー値](docs/errors.md)。
-- **複数の返り値**: `-> (A, B)`、分解束縛 `let^ a, b = f()`。エラーや `nil^` との合併も使えます。[複数の返り値](docs/results.md)。
-- **ファイル入出力**: `std.fs` で全体の読み書き。[std.fs](docs/fs.md)。
-- **可変長引数**: `...:T` と `expr...`、コマンド引数。[可変長引数](docs/variadic.md)。
+  遅延代替の `catch^`、型付き・既定の `catch^` 節。[エラー値](DesignDocuments/errors.md)。
+- **複数の返り値**: `-> (A, B)`、分解束縛 `let^ a, b = f()`。エラーや `nil^` との合併も使えます。[複数の返り値](DesignDocuments/results.md)。
+- **ファイル入出力**: `std.fs` で全体の読み書き。[std.fs](DesignDocuments/fs.md)。
+- **可変長引数**: `...:T` と `expr...`、コマンド引数。[可変長引数](DesignDocuments/variadic.md)。
 - **関数とテンプレート**:
   - 返り値の型推論、無注釈引数の呼び出し形ごとの具体化、`let^ name = template^ f^ ...`。
   - キャプチャなしの無名関数、`this^` / `this^^` による再帰。
-  - 型によるオーバーロード、交差型 `&`、`op^` による演算子定義（[オーバーロード](docs/overloads.md)）。
-  - 動的ディスパッチ `ref^ dyn^ D`（[動的ディスパッチ](docs/dyn.md)）。
+  - 型によるオーバーロード、交差型 `&`、`op^` による演算子定義（[オーバーロード](DesignDocuments/overloads.md)）。
+  - 動的ディスパッチ `ref^ dyn^ D`（[動的ディスパッチ](DesignDocuments/dyn.md)）。
 - **文と制御構造**: `let^` / `var^`、`:=` と複合代入、並列代入、`if^` / `elseif^` / `else^`、
   `for^` / `repeat^` と `prolog^` 〜 `epilog^` の各節、`break^` / `next^` と多段脱出。
 - **数値**: 型の一致を要求する算術・比較、`bitand^` / `bitor^` / `bitxor^` / `bitshift^` / `bitnot^`、
@@ -214,11 +214,11 @@ print^(value.a, value.b, value.c)
   範囲外・NaN などは実行時に診断します。
 - **文字列**: UTF-8 の保証、`char^`、補間 `$"...{x}..."`、`std.text.Builder`。
 - **C との連携**: `externC^` で C の関数を呼び、`exportC^` で R^ の関数を C に公開し、`exportL^` で L^ に公開します。
-  [C 連携](docs/ffi.md)。
+  [C 連携](DesignDocuments/ffi.md)。
 - **モジュール**: `module^ lib.example`、`public^`、`import^`。標準ライブラリは `std.random`・`std.math`・`std.text`・`std.sys`。
   ビルドは全依存ソースを検査した後、モジュール別にオブジェクトを生成し、
   既定の `<出力先ディレクトリ>/.rhat-cache` で再利用します。
-  [分割コンパイル](docs/separate_compilation.md)、[モジュールと分割コンパイル](docs/design.md#モジュールと分割コンパイル)。
+  [分割コンパイル](DesignDocuments/separate_compilation.md)、[モジュールと分割コンパイル](DesignDocuments/design.md#モジュールと分割コンパイル)。
 - **診断**: ファイル・行・列を含むコンパイル診断と、行番号付きの実行時検査。
 
 ```rhat
@@ -260,19 +260,22 @@ C 標準ライブラリの入出力内部まで動的確保を禁止する frees
 言語サーバーは `rhat lsp` です。別の実行ファイルはありません。
 エディターの LSP クライアントから `rhat lsp --stdio` を起動すると、
 診断・ホバー・定義移動・参照検索・補完・シグネチャヘルプ・文書シンボル・semantic tokens を利用できます。
-未保存の編集と import 依存も検査します。[設定・実装範囲](docs/lsp.md)。
+未保存の編集と import 依存も検査します。[設定・実装範囲](DesignDocuments/lsp.md)。
 
 ビルドのたびに `rhat` は `.rhat-ls/` にもコピーされます。エディターにはこのコピーを起動させると、
 サーバーの実行中でもビルドできます。VS Code 拡張は `rhat-vscode-extension` にあります。
 
-## 文書
+## 設計文書
 
-- [設計](docs/design.md): 処理の流れ、型・合成・領域と寿命・数値・モジュール・エラー・検証。
-- [構文対応](docs/syntax.md): L^ の構文との対応と、採用しなかったもの。
-- [配列](docs/arrays.md)・[範囲](docs/ranges.md)・[文字列](docs/strings.md)・[可変長引数](docs/variadic.md)。
-- [fits^](docs/fits.md)・[ニル伝播](docs/nil.md)・[エラー](docs/errors.md)・[複数の返り値](docs/results.md)・[列挙体](docs/enums.md)。
-- [オーバーロード](docs/overloads.md)・[動的ディスパッチ](docs/dyn.md)。
-- [C 連携](docs/ffi.md)・[分割コンパイル](docs/separate_compilation.md)・[言語サーバー](docs/lsp.md)。
+[DesignDocuments/](DesignDocuments/) に、設計理由・実装方針・検討中の仕様をまとめています。
+将来のユーザー向けマニュアル・リファレンスは `docs/` に置き、設計文書と分けます。
+
+- [設計](DesignDocuments/design.md): 処理の流れ、型・合成・領域と寿命・数値・モジュール・エラー・検証。
+- [構文対応](DesignDocuments/syntax.md): L^ の構文との対応と、採用しなかったもの。
+- [配列](DesignDocuments/arrays.md)・[範囲](DesignDocuments/ranges.md)・[文字列](DesignDocuments/strings.md)・[可変長引数](DesignDocuments/variadic.md)。
+- [fits^](DesignDocuments/fits.md)・[ニル伝播](DesignDocuments/nil.md)・[エラー](DesignDocuments/errors.md)・[複数の返り値](DesignDocuments/results.md)・[列挙体](DesignDocuments/enums.md)。
+- [オーバーロード](DesignDocuments/overloads.md)・[動的ディスパッチ](DesignDocuments/dyn.md)。
+- [C 連携](DesignDocuments/ffi.md)・[分割コンパイル](DesignDocuments/separate_compilation.md)・[言語サーバー](DesignDocuments/lsp.md)。
 
 Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は
 [bench/README.md](bench/README.md) にあります。現在は `bintrees`・`sum`・`blur`・`particles`・`tree`・`graph`・`push`・`lru`・`scene`・`strlist`・`words`・`respond`・`records`・`interp`・`sexp`・`calc` の全16種を移植しています。
