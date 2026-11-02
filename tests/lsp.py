@@ -783,6 +783,26 @@ print^(value.add(value.copy()).x)
         assert request('hover',needle,text=attributes)['contents']['value'] == detail
     print('PASS array attributes and element references in source and hover',flush=True)
 
+    sized=('def^Node {self^{n:i32^=7}}\nvar^node=Node{}\n'
+           'var^refs=Node[ref^](2,ref^node)\n'
+           'var^values=i32^[](3,7)\n'
+           'let^copy=i32^[](values[..])\n'
+           'let^read=f^xs:ref^i32^[] {xs.len}\n'
+           'print^(read(ref^values),refs[0].n,copy[0])\n')
+    client.change(path,sized,149)
+    assert client.diagnostics(path,149) == []
+    for needle,detail in [('refs=Node','refs: Node[ref^]'),('values=i32^','values: i32^[]'),
+                          ('copy=i32^','copy: i32^[]')]:
+        assert request('hover',needle,text=sized)['contents']['value'] == detail
+    broken_sized=sized+'values.push(1)\n'
+    client.change(path,broken_sized,150)
+    diagnostics=client.diagnostics(path,150)
+    assert len(diagnostics) == 1 and 'fixed length after construction' in diagnostics[0]['message'], diagnostics
+    assert request('hover','values=i32^',text=broken_sized)['contents']['value'] == 'values: i32^[]'
+    client.change(path,sized,151)
+    assert client.diagnostics(path,151) == []
+    print('PASS runtime-sized owning array construction, signatures and diagnostic recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

@@ -297,16 +297,19 @@ static char *spec_text(Spec *s)
     }
     Spec *elem = s->elem;
     char *refs = "";
-    while (elem->kind == SPEC_REF) {
-        refs = fmt("%sref^ ", refs);
+    while (elem->kind == SPEC_REF && elem->elem->kind != SPEC_DYN) {
+        refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
     char *kind = s->kind == SPEC_SLICE     ? "slice^"
                  : s->kind == SPEC_GROW    ? (s->count ? "flex^" : "grow^")
                  : s->kind == SPEC_BOUNDED ? fmt("max^%d", s->count)
-                                           : fmt("%d", s->count);
-    bool wrap = elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION;
-    return fmt(wrap ? "(%s)[%s%s]" : "%s[%s%s]", spec_text(elem), refs, kind);
+                 : s->count                ? fmt("%d", s->count)
+                                           : "";
+    bool wrap =
+        elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION || elem->kind == SPEC_REF;
+    return fmt(wrap ? "(%s)[%s%s%s]" : "%s[%s%s%s]", spec_text(elem), refs,
+               *refs && *kind ? " " : "", kind);
 }
 
 static char *signature(Program *p, Function *f)

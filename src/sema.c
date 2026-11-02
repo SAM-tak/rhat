@@ -1372,12 +1372,12 @@ static Type *flex_elements(Type *t)
         t = t->elem;
     }
     if (t->kind == T_GROW) {
-        return t->count ? t->elem : NULL;
+        return t->count == ARRAY_FLEX ? t->elem : NULL;
     }
     if (t->kind == T_STRUCT) {
         for (int j = 0; j < t->def->fields.n; j++) {
             Type *field = ((Field *)t->def->fields.v[j])->type;
-            if (field->kind == T_GROW && field->count) {
+            if (field->kind == T_GROW && field->count == ARRAY_FLEX) {
                 return field->elem;
             }
         }
@@ -1744,8 +1744,15 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             return abrupt(c);
         }
         Value base = deref(c, receiver, e->loc);
+        if (base.type->kind == T_GROW && base.type->count == ARRAY_SIZED &&
+            (!strcmp(target->text, "push") || !strcmp(target->text, "pop") ||
+             !strcmp(target->text, "append") || !strcmp(target->text, "clear") ||
+             !strcmp(target->text, "truncate"))) {
+            fail(e->loc, "'%s' has a fixed length after construction; %s is not allowed",
+                 type_name(base.type), target->text);
+        }
         bool growable = base.type->kind == T_GROW || base.type->kind == T_BOUNDED;
-        bool flex = base.type->kind == T_GROW && base.type->count;
+        bool flex = base.type->kind == T_GROW && base.type->count == ARRAY_FLEX;
         if (growable && !strcmp(target->text, "truncate")) {
             if (e->args.n != 1) {
                 fail(e->loc, "truncate expects one new length");
@@ -2066,6 +2073,66 @@ Type *union_literal_hint(Type *t, Expr *e)
         }
     }
     return hint;
+}
+
+// Construct a new owner, copying only its elements' reference dependencies.
+static Value sized_array(Context *c, Expr *e, Type *t, int dst)
+{
+    layout(t, e->loc);
+    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+    Value count = {0}, source = {0};
+    bool repeat = e->args.n == 2;
+    if (repeat) {
+        count = snapshot(c, expression(c, e->args.v[0], type_builtin(c->p, T_I64)), e->loc);
+        if (dead(count)) {
+            return count;
+        }
+        if (count.type->kind != T_I64) {
+            fail(e->loc, "array length must be i64^");
+        }
+        source = snapshot(c, expression(c, e->args.v[1], t->elem), e->loc);
+        if (!dead(source) && source.type != t->elem) {
+            fail(e->loc, "array initial value must be '%s'", type_name(t->elem));
+        }
+    }
+    else {
+        source = deref(c, expression(c, e->args.v[0], NULL), e->loc);
+        if (!dead(source)) {
+            Type *s = source.type;
+            if ((s->kind != T_ARRAY && s->kind != T_GROW && s->kind != T_BOUNDED &&
+                 s->kind != T_SLICE) ||
+                s->elem != t->elem) {
+                fail(e->loc, "array construction needs an array or slice of '%s'",
+                     type_name(t->elem));
+            }
+            Value view = value(c, type_wrap(c->p, T_SLICE, t->elem, 0));
+            view.deps = source.deps;
+            Instr *slice = emit(c, I_SLICE, e->loc);
+            slice->dst = view.id;
+            slice->a = source.id;
+            slice->b = slice->other = -1;
+            slice->type = s;
+            source = view;
+        }
+    }
+    if (dead(source)) {
+        return source;
+    }
+    out.deps = t->elem->refs ? source.deps : (Roots){0};
+    Instr *region = emit(c, I_REGION, e->loc);
+    region->dst = out.id;
+    region->type = t;
+    Instr *fill = emit(c, repeat ? I_FILL : I_APPEND, e->loc);
+    fill->type = t;
+    fill->b = source.id;
+    if (repeat) {
+        fill->dst = out.id;
+        fill->a = count.id;
+    }
+    else {
+        fill->a = out.id;
+    }
+    return out;
 }
 
 Value construct(Context *c, Expr *e, Type *t, int dst)
@@ -2429,7 +2496,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return out;
     }
     if (e->kind == E_ARRAY) {
-        bool grow = e->text != NULL; // Explicit [grow^ ...] or [flex^ ...] literal.
+        bool grow = e->text && (!strcmp(e->text, "grow^") || !strcmp(e->text, "flex^"));
         int flex = grow && !strcmp(e->text, "flex^");
         if (e->test_spec) {
             Type *named = type_spec(c->p, e->test_spec);
@@ -2437,6 +2504,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
             }
             t = named;
+            if (t->kind == T_GROW && t->count == ARRAY_SIZED && e->text) {
+                return sized_array(c, e, t, dst);
+            }
         }
         if (grow && t && (t->kind != T_GROW || t->count != flex)) {
             fail(e->loc, "%s array literal cannot initialize '%s'", e->text, type_name(t));
@@ -2486,7 +2556,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (t->kind == T_GROW) {
             layout(t->elem, e->loc);
             if (t->elem->owned || !t->elem->size) {
-                fail(e->loc, "growable elements must be nonempty fixed-size values");
+                fail(e->loc, "owning array elements must be nonempty fixed-size values");
             }
             Instr *a = emit(c, I_REGION, e->loc);
             a->dst = out.id;

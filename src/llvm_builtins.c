@@ -2,12 +2,16 @@
 
 // These are LLVM definitions, never C runtime entry points. Always-inline
 // helpers keep the emitter small while exposing their work to the optimizer.
-static void append_helper(FILE *f, bool literal)
+static void append_helper(FILE *f, int mode)
 {
+    bool literal = mode == 1, repeat = mode == 2;
     fprintf(f,
             "define internal void @rh_append_%s(ptr %%a, ptr %%src, i64 %%n%s, "
             "i32 %%line) alwaysinline {\nentry:\n",
-            literal ? "literal" : "view", literal ? "" : ", i64 %size");
+            repeat    ? "repeat"
+            : literal ? "literal"
+                      : "view",
+            literal ? "" : ", i64 %size");
     if (literal) {
         fputs("  %size = add i64 0, 1\n", f);
     }
@@ -36,12 +40,27 @@ static void append_helper(FILE *f, bool literal)
           "  br i1 %empty, label %done, label %copy\n"
           "copy:\n",
           f);
-    fprintf(f,
-            "  call void @llvm.%s.p0.p0.i64(ptr %%dst, ptr %%src, i64 "
-            "%%copybytes, i1 false), !tbaa !4\n",
-            literal ? "memcpy" : "memmove");
-    fputs("  br label %done\n"
-          "done:\n"
+    if (repeat) {
+        fputs(
+            "  br label %fill\n"
+            "fill:\n"
+            "  %index = phi i64 [0, %copy], [%next, %fill]\n"
+            "  %offset = mul i64 %index, %size\n"
+            "  %element = getelementptr i8, ptr %dst, i64 %offset\n"
+            "  call void @llvm.memcpy.p0.p0.i64(ptr %element, ptr %src, i64 %size, i1 false), !tbaa !4\n"
+            "  %next = add i64 %index, 1\n"
+            "  %more = icmp ult i64 %next, %n\n"
+            "  br i1 %more, label %fill, label %done\n",
+            f);
+    }
+    else {
+        fprintf(f,
+                "  call void @llvm.%s.p0.p0.i64(ptr %%dst, ptr %%src, i64 "
+                "%%copybytes, i1 false), !tbaa !4\n",
+                literal ? "memcpy" : "memmove");
+        fputs("  br label %done\n", f);
+    }
+    fputs("done:\n"
           "  %newlen = add i64 %len, %n\n"
           "  %endbytes = add i64 %off, %copybytes\n"
           "  %end = getelementptr i8, ptr %data, i64 %endbytes\n"
@@ -207,6 +226,7 @@ void emit_llvm_builtins(FILE *f)
     flex_release(f);
     append_helper(f, true);
     append_helper(f, false);
+    append_helper(f, 2);
     fp8_decode(f);
     fp8_encode(f, false);
     fp8_encode(f, true);

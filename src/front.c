@@ -1065,6 +1065,37 @@ static Spec *spec_intersection(Parser *p)
     return s;
 }
 
+// A numeric subscript before an array-kind bracket denotes an element array type.
+static Spec *array_element_spec(Parser *p, Expr *e)
+{
+    Spec *s = mem(sizeof(*s));
+    s->loc = e->loc;
+    if (e->kind == E_INDEX && !e->optional && e->b->kind == E_INT) {
+        s->kind = SPEC_ARRAY;
+        s->elem = array_element_spec(p, e->a);
+        errno = 0;
+        long count = strtol(e->b->text, NULL, 10);
+        if (errno || count <= 0 || count > 1000000) {
+            fail(e->loc, "array length out of range (1..1000000)");
+        }
+        s->count = (int)count;
+        return s;
+    }
+    s->kind = SPEC_NAME;
+    s->name = expression_path(e);
+    if (!s->name) {
+        fail(e->loc, "an array constructor needs an element type");
+    }
+    int depth = self_type_depth(s->name);
+    if (depth) {
+        if (depth != 1 || !p->type_owner) {
+            fail(e->loc, "'%s' is outside the enclosing type definition", s->name);
+        }
+        s->self_type = p->type_owner;
+    }
+    return s;
+}
+
 // s and the alternatives after it.
 static Spec *union_tail(Parser *p, Spec *s)
 {
@@ -1335,7 +1366,7 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p)
 {
     Token *t = next(p);
-    if (t->kind == TOK_WORD && self_type_depth(t->text)) {
+    if (t->kind == TOK_WORD && self_type_depth(t->text) && !is(p, "[")) {
         fail(t->loc, "'%s' names a type, not a value", t->text);
     }
     if (t->kind == TOK_INVALID) {
@@ -1526,6 +1557,15 @@ static Expr *primary(Parser *p)
             Expr *n = node(E_CALL, e->loc);
             n->a = e;
             entries(p, n, ")", false);
+            if (e->kind == E_ARRAY && e->test_spec) {
+                if (e->text || e->test_spec->kind != SPEC_ARRAY || e->test_spec->count ||
+                    (n->args.n != 1 && n->args.n != 2)) {
+                    fail(e->loc, "T[] construction expects a source or a length and initial value");
+                }
+                e->text = n->args.n == 1 ? "copy" : "repeat";
+                e->args = n->args;
+                continue;
+            }
             e = n;
         }
         else if (is(p, "[") && p->at + 1 < p->tokens.n &&
@@ -1535,12 +1575,7 @@ static Expr *primary(Parser *p)
                   !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "max^") ||
                   !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "slice^") ||
                   reference_depth(((Token *)p->tokens.v[p->at + 1])->text))) {
-            char *name = expression_path(e);
-            if (!name) {
-                fail(e->loc, "an array constructor needs an element type");
-            }
-            Spec *base = mem(sizeof(*base));
-            *base = (Spec){.kind = SPEC_NAME, .loc = e->loc, .name = name};
+            Spec *base = array_element_spec(p, e);
             Expr *array = node(E_ARRAY, e->loc);
             array->test_spec = array_spec(p, base);
             e = array;

@@ -1429,7 +1429,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     case E_ARRAY: {
         if (e->test_spec) {
-            return type_spec(c->p, e->test_spec);
+            Type *type = type_spec(c->p, e->test_spec);
+            for (int j = 0; j < e->args.n; j++) {
+                Type *hint = e->args.n == 2 ? (j ? type->elem : type_builtin(c->p, T_I64)) : NULL;
+                infer_expr(c, e->args.v[j], hint);
+            }
+            return c->terminated ? type_builtin(c->p, T_NEVER) : type;
         }
         if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW ||
                          expected->kind == T_BOUNDED)) {
@@ -2728,10 +2733,18 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         n->type = want;
         break;
     case E_ARRAY:
-        for (int j = 0; j < e->args.n; j++) {
-            add(&n->children, body_expr(c, e->args.v[j], want ? want->elem : NULL));
-        }
         n->type = e->test_spec ? type_spec(c->p, e->test_spec) : want;
+        if (e->test_spec && e->text) {
+            for (int j = 0; j < e->args.n; j++) {
+                Type *hint =
+                    e->args.n == 2 ? (j ? n->type->elem : type_builtin(c->p, T_I64)) : NULL;
+                body_expr(c, e->args.v[j], hint);
+            }
+            break;
+        }
+        for (int j = 0; j < e->args.n; j++) {
+            add(&n->children, body_expr(c, e->args.v[j], n->type ? n->type->elem : NULL));
+        }
         break;
     case E_IF:
         body_expr(c, e->a, type_builtin(c->p, T_BOOL));

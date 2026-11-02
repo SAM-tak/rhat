@@ -290,7 +290,7 @@ enum {
     T_STRUCT,
     T_REF,
     T_ARRAY,
-    T_GROW,
+    T_GROW, // An owning runtime-sized array; count selects ARRAY_GROW/FLEX/SIZED.
     T_SLICE,
     T_UNION,
     T_NEVER,        // Compiler-only type for an expression with no normal value path.
@@ -300,8 +300,11 @@ enum {
                     // elem's def.
     T_CFUNC,        // externC^ f^ ...;: a C function pointer with elem's signature.
     T_ENUM,         // enum^: a closed set of named integer constants laid out as elem.
-    T_BOUNDED       // T[..N]: up to count elems inline after an i64 length; owns nothing.
+    T_BOUNDED       // T[max^N]: up to count elems inline after an i64 length; owns nothing.
 };
+
+// Owning array length policies; ARRAY_SIZED fixes length after construction.
+enum { ARRAY_GROW, ARRAY_FLEX, ARRAY_SIZED };
 
 struct Type {
     bool invalid; // Storage layout failed during editor analysis.
@@ -413,8 +416,9 @@ enum {
     I_HELPER,    // dst (i64^, or none when -1) = runtime function text applied to args: a
                  // string^ or slice passes its data and length, an i64^ itself, and the
                  // source line goes last.
-    I_SITE       // dst = the static record of where an error is built: its source, line,
+    I_SITE,      // dst = the static record of where an error is built: its source, line,
                  // column and message; text is the source (length bytes), a NUL, the message.
+    I_FILL       // Fill owning array dst with a copies of element b during construction.
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };

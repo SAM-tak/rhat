@@ -644,7 +644,7 @@ static int bounded_length(Output *o, Type *t, int slot)
 
 static void flex_release(Output *o, Instr *i, const char *length)
 {
-    if (i->type->kind != T_GROW || !i->type->count) {
+    if (i->type->kind != T_GROW || i->type->count != ARRAY_FLEX) {
         return;
     }
     int desc = load(o, i->a), data = ++o->tmp, stack = ++o->tmp, bytes = ++o->tmp;
@@ -1082,6 +1082,12 @@ static void instruction(Output *o, Instr *i)
         flex_release(o, i, fmt("%%t%d", a));
         break;
     }
+    case I_FILL:
+        a = load(o, i->a);
+        fprintf(f,
+                "  call void @rh_append_repeat(ptr %%p%d, ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n",
+                i->dst, i->b, a, t->elem->size, i->loc.line);
+        break;
     case I_APPEND:
         for (int k = 1; k < o->in->code.n; k++) {
             if (o->in->code.v[k] != i) {
@@ -2036,7 +2042,8 @@ void dump_ir(Program *p, const char *path)
                            "union.place",
                            "char.check",
                            "runtime.helper",
-                           "error.site"};
+                           "error.site",
+                           "array.fill"};
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size, d->type->align,

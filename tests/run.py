@@ -481,7 +481,7 @@ let^ empty=g[3 to^ 2]
 let^ text:string^|nil^="hello"
 print^(g.len,tail.len,tail[0],all.len,closed.len,closed[2],empty.len,(text?.bytes[1 to^ 3])?.len??0)
 """, "5 2 40 5 3 40 0 3\n")
-negative("grow_unsized_type", "var^ a:i32^[]=[]", "needs a kind")
+negative("legacy_grow_prefix", "var^ a:grow^ i32^[]=[]", "expected '='")
 negative("grow_literal_fixed_target", "var^ a:i32^[2]=[grow^ 1,2]", "cannot initialize")
 negative("grow_literal_empty", "var^ a=[grow^ ]", "needs a type annotation")
 positive("grow_typed_empty_value", """

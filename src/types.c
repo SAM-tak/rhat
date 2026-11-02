@@ -292,7 +292,7 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         return s->foreign ? type_wrap(p, T_CFUNC, t, 0) : t;
     }
     if (s->kind == SPEC_ARRAY && !s->count) {
-        fail(s->loc, "an array type without a length needs a kind, as in T[grow^]");
+        return type_wrap(p, T_GROW, type_spec(p, s->elem), ARRAY_SIZED);
     }
     if (s->kind == SPEC_DYN) {
         fail(s->loc, "dyn^ is a reference; write ref^ dyn^ T");
@@ -400,14 +400,17 @@ char *type_name(Type *t)
     Type *elem = t->elem;
     char *refs = "";
     while (elem->kind == T_REF) {
-        refs = fmt("%sref^ ", refs);
+        refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
     char *kind = t->kind == T_SLICE     ? "slice^"
-                 : t->kind == T_GROW    ? (t->count ? "flex^" : "grow^")
+                 : t->kind == T_GROW    ? (t->count == ARRAY_SIZED ? ""
+                                           : t->count              ? "flex^"
+                                                                   : "grow^")
                  : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
                                         : fmt("%d", t->count);
-    return fmt(elem->kind == T_UNION ? "(%s)[%s%s]" : "%s[%s%s]", type_name(elem), refs, kind);
+    return fmt(elem->kind == T_UNION || elem->kind == T_DYN ? "(%s)[%s%s%s]" : "%s[%s%s%s]",
+               type_name(elem), refs, *refs && *kind ? " " : "", kind);
 }
 
 bool derives(Def *d, Def *b)
@@ -944,7 +947,7 @@ static void layout_unchecked(Type *t, Loc l)
     if (t->kind == T_GROW) {
         layout(t->elem, l);
         if (t->elem->owned || !t->elem->size) {
-            fail(l, "growable elements must be nonempty fixed-size values");
+            fail(l, "owning array elements must be nonempty fixed-size values");
         }
         t->refs = t->elem->refs;
         return;

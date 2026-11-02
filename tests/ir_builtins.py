@@ -108,7 +108,7 @@ print^(x+y,f64^(x),i32^(3.5))
     # Exercise the actual emitted append helper with lengths that safe R^
     # source cannot fabricate. This verifies the pre-copy overflow checks.
     helpers=re.findall(r'(?ms)^define internal void @rh_append_.*?^}',llvm)
-    assert len(helpers)==2
+    assert len(helpers)==3
     exported_helpers=work/'append_boundary_helpers.ll'
     metadata='\n'.join(line for line in llvm.splitlines() if re.match(r'^!\d+ = ',line))
     exported_helpers.write_text('%RhStack = type {ptr,ptr,ptr,ptr}\n'
@@ -125,6 +125,7 @@ typedef struct {unsigned char *base,*top,*limit,*committed;} Stack;
 typedef struct {unsigned char *data;uint64_t len;Stack *stack;} Array;
 void rh_append_view(Array *,const void *,uint64_t,uint64_t,int32_t);
 void rh_append_literal(Array *,const void *,uint64_t,int32_t);
+void rh_append_repeat(Array *,const void *,uint64_t,uint64_t,int32_t);
 int main(int argc,char **argv) {
   unsigned char storage[32]={0},seed[8]={1,2,3,4,5,6,7,8};
   Stack s={storage,storage,storage+32,storage+32};Array a={storage,0,&s};
@@ -133,6 +134,8 @@ int main(int argc,char **argv) {
     if(!strcmp(argv[1],"size")) rh_append_view(&a,seed,1,UINT64_MAX,7);
     if(!strcmp(argv[1],"len")) {a.len=UINT64_MAX;rh_append_view(&a,0,0,1,7);}
     if(!strcmp(argv[1],"partial")) rh_append_view(&a,seed,11,3,7);
+    if(!strcmp(argv[1],"repeat_count")) rh_append_repeat(&a,seed,UINT64_MAX,1,7);
+    if(!strcmp(argv[1],"repeat_size")) rh_append_repeat(&a,seed,1,UINT64_MAX,7);
     return 2;
   }
   rh_append_view(&a,seed,8,1,7);assert(a.len==8 && s.top==storage+8);
@@ -142,7 +145,12 @@ int main(int argc,char **argv) {
   assert(a.len==6 && storage[5]==6 && s.top==storage+8);
   rh_append_view(&a,0,0,1,7);assert(a.len==6 && s.top==storage+8);
   rh_append_literal(&a,"abc",3,7);assert(a.len==9 && s.top==storage+9);
-  assert(!memcmp(storage+6,"abc",3));return 0;
+  assert(!memcmp(storage+6,"abc",3));
+  a.len=0;s.top=storage;
+  rh_append_repeat(&a,0,0,2,7);assert(a.len==0 && s.top==storage);
+  rh_append_repeat(&a,seed,4,2,7);assert(a.len==4 && s.top==storage+8);
+  for(int i=0;i<4;i++) assert(storage[i*2]==1 && storage[i*2+1]==2);
+  return 0;
 }
 ''')
     for opt in suite.opts:
@@ -150,7 +158,7 @@ int main(int argc,char **argv) {
         run([clang,'-std=c11','-Wno-override-module',opt,str(c),str(exported_helpers),
              str(repo/'runtime/rhat_runtime.c'),'-o',str(exe)])
         run([str(exe)])
-        for mode in ('count','size','len','partial'):
+        for mode in ('count','size','len','partial','repeat_count','repeat_size'):
             result=run([str(exe),mode],1)
             assert 'at line 7: data stack overflow' in result.stderr,result.stderr
     suite.mark('emitted_append_overflow_overlap_and_empty_source')
