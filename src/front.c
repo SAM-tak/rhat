@@ -936,47 +936,62 @@ static int self_type_depth(const char *text)
     return text[4 + count] ? 0 : (int)count;
 }
 
-static Spec *array_spec(Parser *p, Spec *s)
+// Parse the shared type/literal bracket header, leaving its terminator unread.
+static Spec *array_header(Parser *p, Spec *elem, int *references)
+{
+    int refs = reference_depth(tok(p)->text);
+    if (references) {
+        *references = refs;
+    }
+    if (refs) {
+        Token *token = next(p);
+        while (elem && refs--) {
+            Spec *ref = mem(sizeof(*ref));
+            *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = elem};
+            elem = ref;
+        }
+    }
+    Spec *w = mem(sizeof(*w));
+    w->loc = elem ? elem->loc : tok(p)->loc;
+    w->elem = elem;
+    if (is(p, "]") || is(p, ";")) {
+        w->kind = SPEC_ARRAY;
+    }
+    else if (take(p, "slice^")) {
+        w->kind = SPEC_SLICE;
+    }
+    else if (is(p, "grow^") || is(p, "flex^")) {
+        w->kind = SPEC_GROW;
+        w->count = !strcmp(next(p)->text, "flex^");
+    }
+    else {
+        bool bounded = take(p, "max^");
+        Token *n = next(p);
+        if (n->kind != TOK_INT) {
+            fail(n->loc, "expected an array length, grow^, flex^, slice^ or max^");
+        }
+        errno = 0;
+        long k = strtol(n->text, NULL, 10);
+        if (errno || k <= 0 || k > 1000000) {
+            fail(n->loc, "array length out of range (1..1000000)");
+        }
+        w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
+        w->count = (int)k;
+    }
+    return w;
+}
+
+static Spec *array_spec(Parser *p, Spec *s, Expr *literal)
 {
     while (take(p, "[")) {
-        int refs = reference_depth(tok(p)->text);
-        if (refs) {
-            Token *token = next(p);
-            while (refs--) {
-                Spec *ref = mem(sizeof(*ref));
-                *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = s};
-                s = ref;
-            }
-        }
-        Spec *w = mem(sizeof(*w));
-        w->loc = s->loc;
-        w->elem = s;
-        if (is(p, "]")) {
-            w->kind = SPEC_ARRAY;
-        }
-        else if (take(p, "slice^")) {
-            w->kind = SPEC_SLICE;
-        }
-        else if (is(p, "grow^") || is(p, "flex^")) {
-            w->kind = SPEC_GROW;
-            w->count = !strcmp(next(p)->text, "flex^");
-        }
-        else {
-            bool bounded = take(p, "max^");
-            Token *n = next(p);
-            if (n->kind != TOK_INT) {
-                fail(n->loc, "expected an array length, grow^, flex^, slice^ or max^");
-            }
-            errno = 0;
-            long k = strtol(n->text, NULL, 10);
-            if (errno || k <= 0 || k > 1000000) {
-                fail(n->loc, "array length out of range (1..1000000)");
-            }
-            w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
-            w->count = (int)k;
+        int refs = 0;
+        s = array_header(p, s, &refs);
+        if (literal && is(p, ";")) {
+            literal->array_literal = s;
+            literal->array_refs = refs;
+            return s;
         }
         need(p, "]");
-        s = w;
     }
     return s;
 }
@@ -1047,7 +1062,7 @@ static Spec *spec_part(Parser *p)
             s->name = qualified_word(p);
         }
     }
-    s = array_spec(p, s);
+    s = array_spec(p, s, NULL);
     return s;
 }
 
@@ -1477,8 +1492,17 @@ static Expr *primary(Parser *p)
     }
     else if (!strcmp(t->text, "[")) {
         e = node(E_ARRAY, t->loc);
-        if (is(p, "grow^") || is(p, "flex^")) {
-            e->text = next(p)->text;
+        bool attributed =
+            is(p, "grow^") || is(p, "flex^") || is(p, "max^") || is(p, "slice^") || is(p, ";");
+        if (reference_depth(tok(p)->text) && p->at + 1 < p->tokens.n) {
+            Token *after = p->tokens.v[p->at + 1];
+            attributed |= !strcmp(after->text, ";") || !strcmp(after->text, "grow^") ||
+                          !strcmp(after->text, "flex^") || !strcmp(after->text, "max^") ||
+                          !strcmp(after->text, "slice^") || after->kind == TOK_INT;
+        }
+        if (attributed) {
+            e->array_literal = array_header(p, NULL, &e->array_refs);
+            need(p, ";");
         }
         entries(p, e, "]", false);
     }
@@ -1570,6 +1594,7 @@ static Expr *primary(Parser *p)
         }
         else if (is(p, "[") && p->at + 1 < p->tokens.n &&
                  (!strcmp(((Token *)p->tokens.v[p->at + 1])->text, "]") ||
+                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, ";") ||
                   !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "grow^") ||
                   !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "flex^") ||
                   !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "max^") ||
@@ -1577,7 +1602,12 @@ static Expr *primary(Parser *p)
                   reference_depth(((Token *)p->tokens.v[p->at + 1])->text))) {
             Spec *base = array_element_spec(p, e);
             Expr *array = node(E_ARRAY, e->loc);
-            array->test_spec = array_spec(p, base);
+            array->test_spec = array_spec(p, base, array);
+            if (array->array_literal) {
+                array->test_spec = NULL;
+                need(p, ";");
+                entries(p, array, "]", false);
+            }
             e = array;
         }
         else if (take(p, "[") || take(p, "?[")) {

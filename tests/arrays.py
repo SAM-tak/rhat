@@ -5,6 +5,91 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    positive('literal_attributes_inferred_and_typed', '''
+var^a=[max^10;0,1,2,3]
+var^b=u32^[max^10;0,1,2,3]
+var^c=[grow^;1,2]
+var^d=i64^[flex^;7,8]
+let^e=u32^[;10,11]
+a.push(4) b.push(4) c.push(3) d.pop()
+print^(a.len,b[4],c[2],d.len,e[1])
+''', '5 4 3 1 11\n')
+    positive('literal_reference_auto_borrow', '''
+def^B {self^{n:i32^}}
+var^a:B[4]=[B{n=0},B{n=1},B{n=2},B{n=3}]
+let^refs=[ref^;a[0],a[1],a[2],a[3]]
+let^typed=B[ref^;a[0],a[1],ref^a[2],ref^a[3]]
+var^bounded=B[ref^max^10;a[0],a[1]]
+var^growing=[ref^grow^;a[2],ref^a[3]]
+var^flexing=B[ref^flex^;a[1]]
+a[0].n:=42
+bounded.push(ref^a[2]) growing.push(ref^a[0]) flexing.pop()
+print^(refs[0].n,typed[0].n,typed[3].n,bounded.len,growing[2].n,flexing.len)
+''', '42 42 3 3 42 0\n')
+    positive('literal_references_are_not_borrowed_twice', '''
+var^a:i32^[2]=[7,8]
+let^r=ref^a[0]
+let^refs=[ref^;r,ref^a[1]]
+let^typed=i32^[ref^;r,ref^a[1]]
+print^(*refs[0],*refs[1],*typed[0])
+''', '7 8 7\n')
+    positive('literal_dynamic_references_are_not_borrowed_twice', '''
+def^Shape {abstract^value:f^self^ ->i32^;}
+def^B:Shape {self^{} value=f^self^ ->i32^ {7}}
+var^b=B{}
+let^view:ref^dyn^Shape=ref^b
+let^refs=[ref^;view]
+print^(refs[0].value())
+''', '7\n')
+    positive('literal_empty_and_contextual', '''
+var^a:i64^[max^10]=[max^10;]
+var^b=u32^[grow^;]
+var^c:i64^[grow^]=[grow^;0,1]
+var^x:i32^=42
+let^refs:i32^[ref^2]=[ref^;x,x]
+b.push(7) a.push(9)
+print^(a[0],b[0],c[1],*refs[1])
+''', '9 7 1 42\n')
+    positive('literal_borrow_once_and_lifetime', '''
+let^index=p^calls:ref^i64^ {*calls+=1 return^i64^(0)}
+var^calls:i64^=0
+var^a:i32^[1]=[7]
+let^refs=[ref^;a[index(ref^calls)],ref^a[index(ref^calls)]]
+print^(calls,*refs[0],*refs[1])
+''', '2 7 7\n')
+    positive('literal_nominal_and_nested_elements', '''
+def^B {self^{n:i64^}}
+let^records=B[max^10;{n=7},{n=8}]
+let^nested=i32^[2][max^3;[1,2],[3,4]]
+print^(records[1].n,nested[1][0])
+''', '8 3\n')
+    positive('literal_borrowed_parameter_return', '''
+let^borrow=f^a:ref^i32^[2] {[ref^;a[0],a[1]]}
+var^a:i32^[2]=[7,8]
+let^refs=borrow(ref^a)
+print^(*refs[0],*refs[1])
+''', '7 8\n')
+    for name,source,error in [
+        ('missing_separator','let^a=[grow^ 1,2]', "expected ';'"),
+        ('typed_missing_separator','let^a=i32^[max^10 1,2]', "expected ']'"),
+        ('invalid_order','let^a=[grow^ref^;1]', "expected ';'"),
+        ('over_capacity','let^a=[max^2;1,2,3]', 'holds at most 2'),
+        ('borrow_literal','let^a=[ref^max^10;0,1,2]', 'cannot borrow a temporary'),
+        ('borrow_temporary','def^B {} let^a=B[ref^;B{}]', 'cannot borrow a temporary'),
+        ('borrow_let','let^x=1 let^a=[ref^;x]', 'requires var^'),
+        ('borrow_escape','let^bad=f^ {var^x=1 return^[ref^;x]} let^r=bad()', 'cannot return a reference'),
+        ('borrow_scope','var^x=1 var^refs:i32^[ref^max^3]=[] do^{var^local=2 refs:=[ref^max^3;local]}', 'outlive'),
+        ('wrong_kind','let^a:i32^[grow^]=[max^3;1,2]', 'cannot initialize'),
+        ('wrong_type','var^x:i64^=7 let^a=i32^[ref^;x]', 'type'),
+        ('empty_untyped','let^a=[max^10;]', 'needs a type annotation'),
+        ('empty_fixed','let^a=i32^[ref^;]', 'needs at least one element'),
+        ('slice_literal','let^a=i32^[slice^;1,2]', 'slice borrows existing storage'),
+        ('borrow_prevents_shrink','var^a:i32^[flex^]=[1,2] let^refs=[ref^;a[0]] a.clear()',
+         "while 'refs' may refer into it"),
+        ('borrow_earlier_element','let^take=p^a:ref^i32^[flex^] {a.pop() return^i32^(0)} var^a:i32^[flex^]=[1,2] let^refs=[ref^;a[0],take(ref^a)]',
+         'earlier operand may refer into it'),
+    ]:
+        negative('literal_'+name,source,error)
     positive('sized_repeat_and_elements', '''
 let^make=f^n {i64^[](n,7)}
 var^a=make(3)

@@ -2135,6 +2135,19 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     return out;
 }
 
+// Explicit ref^ attributes borrow stable places, leaving existing references unchanged.
+static Value array_element(Context *c, Expr *array, Expr *element, Type *expected)
+{
+    if (array->array_refs) {
+        Type *actual = expression_type(c, element, NULL);
+        if (actual && actual->kind != T_REF && actual->kind != T_DYN) {
+            Expr borrow = {.kind = E_UNARY, .loc = element->loc, .text = "ref^", .a = element};
+            return expression(c, &borrow, expected);
+        }
+    }
+    return expression(c, element, expected);
+}
+
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
     if (e->invalid) {
@@ -2496,8 +2509,6 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return out;
     }
     if (e->kind == E_ARRAY) {
-        bool grow = e->text && (!strcmp(e->text, "grow^") || !strcmp(e->text, "flex^"));
-        int flex = grow && !strcmp(e->text, "flex^");
         if (e->test_spec) {
             Type *named = type_spec(c->p, e->test_spec);
             if (t && t != named) {
@@ -2508,39 +2519,24 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 return sized_array(c, e, t, dst);
             }
         }
-        if (grow && t && (t->kind != T_GROW || t->count != flex)) {
-            fail(e->loc, "%s array literal cannot initialize '%s'", e->text, type_name(t));
-        }
+        Type *shape = array_literal_type(c->p, e, t, NULL);
         Value first = {0};
-        if (!t) {
+        if (!shape) {
             if (!e->args.n) {
                 fail(e->loc, "empty array needs a type annotation");
             }
-            first = expression(c, e->args.v[0], NULL);
-        }
-        if (!t && grow) {
-            t = type_wrap(c->p, T_GROW, first.type, flex);
-        }
-        if (!t) {
-            t = type_wrap(c->p, T_ARRAY, first.type, e->args.n);
-            layout(t, e->loc); // Re-evaluation of inference expressions is avoided
-                               // below.
-            Value out = value(c, t);
-            for (int j = 0; j < e->args.n; j++) {
-                Value v = j ? expression(c, e->args.v[j], t->elem) : first;
-                Value d = {0};
-                d.type = t->elem;
-                d.id = slot(c, d.type, true);
-                Instr *ix = emit(c, I_INDEX, e->loc);
-                ix->dst = d.id;
-                ix->a = out.id;
-                ix->type = t;
-                ix->label = j;
-                ix->b = -1;
-                out.deps = roots_union(out.deps, copy_to(c, d, v, e->loc, true).deps);
+            first = array_element(c, e, e->args.v[0], NULL);
+            if (dead(first)) {
+                return first;
             }
-            return out;
+            shape = array_literal_type(c->p, e, t, first.type);
         }
+        if (t && t != shape) {
+            fail(e->loc, "array literal of '%s' cannot initialize '%s'", type_name(shape),
+                 type_name(t));
+        }
+        t = shape;
+        layout(t, e->loc);
         if (t->kind != T_ARRAY && t->kind != T_GROW && t->kind != T_BOUNDED) {
             fail(e->loc, "array literal requires array type");
         }
@@ -2573,7 +2569,11 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         add(&c->inflight, &out);
         for (int j = 0; j < e->args.n; j++) {
             if (t->kind == T_GROW || t->kind == T_BOUNDED) {
-                Value v = j || !first.type ? expression(c, e->args.v[j], t->elem) : first;
+                Value v = j || !first.type ? array_element(c, e, e->args.v[j], t->elem) : first;
+                if (dead(v)) {
+                    c->inflight.n = inflight;
+                    return v;
+                }
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");
                 }
@@ -2591,7 +2591,16 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 ix->type = t;
                 ix->b = -1;
                 ix->label = j;
-                Value v = construct(c, e->args.v[j], t->elem, d);
+                Value v;
+                if ((!j && first.type) || e->array_refs) {
+                    Value source =
+                        !j && first.type ? first : array_element(c, e, e->args.v[j], t->elem);
+                    Value target = {.id = d, .type = t->elem};
+                    v = copy_to(c, target, source, e->loc, true);
+                }
+                else {
+                    v = construct(c, e->args.v[j], t->elem, d);
+                }
                 if (c->terminated) {
                     c->inflight.n = inflight;
                     return abrupt(c);

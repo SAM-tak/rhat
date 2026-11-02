@@ -326,25 +326,25 @@ let^ use=f^ n:i64^ ->i64^ | E.Bad {
  return^ ys[0]+ys[2]
 }
 print^(use(3) catch^ -1,use(-1) catch^ -1)
-var^ a=make(4) catch^ [grow^ 0]
-let^ b=make(-1) catch^ [grow^ 7,7]
+var^ a=make(4) catch^ [grow^; 0]
+let^ b=make(-1) catch^ [grow^; 7,7]
 a.push(1)
 print^(a.len,a[2],b.len,b[0])
-let^ literal=f^ n:i64^ { if^ n<0 { return^ E.Bad{} } return^ [grow^ n,n] }
+let^ literal=f^ n:i64^ { if^ n<0 { return^ E.Bad{} } return^ [grow^; n,n] }
 let^ again=f^ n:i64^ ->i64^[grow^] | E.Bad { return^ make(n) }
-let^ x=literal(5) catch^ [grow^ 0]
-let^ z=again(8) catch^ [grow^ 0]
+let^ x=literal(5) catch^ [grow^; 0]
+let^ z=again(8) catch^ [grow^; 0]
 print^(x.len,z[1])
-let^ find=f^ n:i64^ ->i64^[grow^] | nil^ { if^ n=0 { return^ nil^ } return^ [grow^ n] }
-let^ p=find(2) ?? [grow^ 0,0]
-let^ q=find(0) ?? [grow^ 0,0]
+let^ find=f^ n:i64^ ->i64^[grow^] | nil^ { if^ n=0 { return^ nil^ } return^ [grow^; n] }
+let^ p=find(2) ?? [grow^; 0,0]
+let^ q=find(0) ?? [grow^; 0,0]
 print^(p.len,q.len)
 var^ v=make(2)
 if^ !(v fits^ E.Bad) { print^(v.len,v[1]) }
 if^ v fits^ i64^[grow^] { v.push(5) }
 if^ v fits^ i64^[grow^] { print^(v.len) }
 var^ total:i64^=0
-repeat^ 100000 { let^ t=make(1) catch^ [grow^ 0] total+=t[1] }
+repeat^ 100000 { let^ t=make(1) catch^ [grow^; 0] total+=t[1] }
 print^(total)
 def^ A { self^{ data:u8^[grow^]=[] } }
 def^ B {}
@@ -358,13 +358,13 @@ let^ count=f^ n:i64^ ->(i64^,i64^[grow^]) | E.Bad {
  xs.push(n) xs.push(n*10)
  return^ n*2,xs
 }
-let^ k,ys=count(3) catch^ (0,[grow^ 0])
-let^ j,zs=count(-1) catch^ (0,[grow^ 5])
+let^ k,ys=count(3) catch^ (0,[grow^; 0])
+let^ j,zs=count(-1) catch^ (0,[grow^; 5])
 let^ g=f^ ->i64^ | E.Bad { var^ m,ws=try^ count(2) ws.push(1) return^ m+ws.len }
 print^(k,ys.len,ys[1],j,zs[0],g() catch^ -1)
 let^ forward=f^ n:i64^ ->i64^[grow^] | E.Bad { return^ try^ make(n) }
-let^ settle=f^ n:i64^ ->i64^[grow^] { return^ make(n) catch^ [grow^ 0] }
-let^ f3=forward(3) catch^ [grow^ 9]
+let^ settle=f^ n:i64^ ->i64^[grow^] { return^ make(n) catch^ [grow^; 0] }
+let^ f3=forward(3) catch^ [grow^; 9]
 let^ s1=settle(-1)
 let^ s6=settle(6)
 print^(f3[1],s1.len,s6[1])
@@ -376,7 +376,7 @@ let^ count=f^ n:i64^ ->(i64^,i64^[grow^]) {
  xs.push(n) xs.push(n+1)
  return^ n*2,xs
 }
-let^ literal=f^ ->(i64^,i64^[grow^]) { return^ 1,[grow^ 7,8] }
+let^ literal=f^ ->(i64^,i64^[grow^]) { return^ 1,[grow^; 7,8] }
 var^ k,ys=count(5)
 ys.push(100)
 print^(k,ys.len,ys[2])
@@ -950,11 +950,11 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values go only where'),
         ('results_tuple_value', 'let^ t=(1,2)', 'need a name each'),
         ('results_union_bare', 'errordef^ E { Bad }\nlet^ f=f^ ->(i32^,i32^) | E.Bad {return^ 1,2}\nlet^ a,b=f()', 'take them out with try^'),
-        ('owned_union_copy', 'errordef^ E { Bad }\nlet^ m=f^ ->i32^[grow^] | E.Bad {return^ [grow^ 1]}\nlet^ v=m()\nif^ !(v fits^ E.Bad) { let^ w=v }', 'cannot be copied'),
+        ('owned_union_copy', 'errordef^ E { Bad }\nlet^ m=f^ ->i32^[grow^] | E.Bad {return^ [grow^; 1]}\nlet^ v=m()\nif^ !(v fits^ E.Bad) { let^ w=v }', 'cannot be copied'),
         ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
         ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
         ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),
-        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ [grow^ 1],[grow^ 2]}', 'final field'),
+        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ [grow^; 1],[grow^; 2]}', 'final field'),
         ('results_owned_moved', 'let^ f=f^ ->(i32^,i32^[grow^]) {\nvar^ a:i32^[grow^]=[]\nvar^ b:i32^[grow^]=[]\nif^ true^ {return^ 1,a}\nreturn^ 2,b\n}\nlet^ n,x=f()', 'cannot be copied'),
         ('duplicate_first', 'repeat^ 1 {first^: let^ x=1 let^ x=2 main^:}', 'duplicate binding'),
         ('prolog_self_jump', 'repeat^ 1 {prolog^: break^ main^:}', 'own loop'),

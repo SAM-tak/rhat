@@ -472,7 +472,7 @@ bytes.append("world".bytes[1 .. 4])
 print^(bytes.len,bytes[5],"hello".bytes[4],"abc".bytes[3 .. 3].len)
 """, "2 20 30 42 30\n8 111 111 0\n")
 positive("grow_literal_and_range_slices", """
-var^ g=[grow^ 10,20,30,40]
+var^ g=[grow^; 10,20,30,40]
 g.push(50)
 let^ tail=g[3 ..]
 let^ all=g[..]
@@ -482,8 +482,8 @@ let^ text:string^|nil^="hello"
 print^(g.len,tail.len,tail[0],all.len,closed.len,closed[2],empty.len,(text?.bytes[1 to^ 3])?.len??0)
 """, "5 2 40 5 3 40 0 3\n")
 negative("legacy_grow_prefix", "var^ a:grow^ i32^[]=[]", "expected '='")
-negative("grow_literal_fixed_target", "var^ a:i32^[2]=[grow^ 1,2]", "cannot initialize")
-negative("grow_literal_empty", "var^ a=[grow^ ]", "needs a type annotation")
+negative("grow_literal_fixed_target", "var^ a:i32^[2]=[grow^; 1,2]", "cannot initialize")
+negative("grow_literal_empty", "var^ a=[grow^; ]", "needs a type annotation")
 positive("grow_typed_empty_value", """
 var^ a:i64^[grow^]=[]
 var^ b=i64^[grow^]
@@ -509,7 +509,7 @@ var^ nested:i32^[2][grow^]=[[1,2]]
 print^(view[0].n,all.len,growing[0].n,nested[0][1])
 """, "7 1 7 2\n")
 negative("grow_typed_empty_sized", "var^ a=i64^[grow^ flex^]", "expected ']'")
-negative("slice_inclusive_open", "var^ a=[grow^ 1,2]; let^ v=a[1 to^]", "needs both bounds")
+negative("slice_inclusive_open", "var^ a=[grow^; 1,2]; let^ v=a[1 to^]", "needs both bounds")
 positive("slice_nested_return", """
 let^ sub=f^ a:i32^[slice^] {
     let^ local=a[1 .. 3]

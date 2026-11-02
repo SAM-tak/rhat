@@ -413,6 +413,52 @@ char *type_name(Type *t)
                type_name(elem), refs, *refs && *kind ? " " : "", kind);
 }
 
+Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
+{
+    Spec *attrs = e->array_literal;
+    if (!attrs) {
+        return expected ? expected : first ? type_wrap(p, T_ARRAY, first, e->args.n) : NULL;
+    }
+    if (attrs->kind == SPEC_SLICE) {
+        fail(e->loc, "a slice borrows existing storage; use array[start .. end]");
+    }
+    bool contextual = expected && (expected->kind == T_ARRAY || expected->kind == T_BOUNDED ||
+                                   expected->kind == T_GROW);
+    Type *elem = attrs->elem  ? type_spec(p, attrs->elem)
+                 : first      ? first
+                 : contextual ? expected->elem
+                              : NULL;
+    if (!elem) {
+        return NULL;
+    }
+    if (e->array_refs && !attrs->elem) {
+        if (elem->kind != T_REF && elem->kind != T_DYN) {
+            elem = type_wrap(p, T_REF, elem, 0);
+        }
+        Type *base = elem;
+        for (int j = 0; j < e->array_refs; j++) {
+            if (base->kind != T_REF && base->kind != T_DYN) {
+                fail(e->loc,
+                     "ref^ array attributes require reference elements of the specified depth");
+            }
+            base = base->elem;
+        }
+    }
+    int count = attrs->count;
+    if (attrs->kind == SPEC_ARRAY && !count) {
+        count = e->args.n;
+        if (!count) {
+            fail(e->loc,
+                 "a fixed array literal needs at least one element; use T[] for an empty owner");
+        }
+    }
+    return type_wrap(p,
+                     attrs->kind == SPEC_GROW      ? T_GROW
+                     : attrs->kind == SPEC_BOUNDED ? T_BOUNDED
+                                                   : T_ARRAY,
+                     elem, count);
+}
+
 bool derives(Def *d, Def *b)
 {
     if (d == b) {

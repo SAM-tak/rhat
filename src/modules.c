@@ -549,6 +549,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     if (e->test_spec) {
         resolve_spec(m, e->test_spec);
     }
+    resolve_spec(m, e->array_literal);
     if (e->kind == E_FUNCTION) {
         resolve_function(p, m, e->function);
         return;

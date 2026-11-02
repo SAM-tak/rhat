@@ -201,7 +201,7 @@ LLVM の範囲外変換に到達して poison を生成することはありま�
 def^ Num { self^{ value:i32^ } }
 def^ Pair { self^{ left:u32^, right:u32^ } }
 def^ Expr = Num | Pair
-var^ values=[grow^ Num{value=42},Pair{left=1,right=2}]
+var^ values=[grow^; Num{value=42},Pair{left=1,right=2}]
 let^ value=values[0]
 if^ value fits^ Num { print^(value.value) }
 ```

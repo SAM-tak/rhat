@@ -38,7 +38,7 @@ for^ var^ round:i64^ = 0 while^ round < 2 next^ round += 1 {
 ''', '4000000 3999999\n10 9 9\n4000000 3999999\n10 9 9\ntrimmed 1, kept at most 4 MiB 1\n', extra=('--runtime', wrapper))
 
     positive('flex_operations', '''
-var^ lit = [flex^ 1, 2, 3]
+var^ lit = [flex^; 1, 2, 3]
 lit.push(4)
 print^(lit.len, lit.pop(), lit.pop(), lit.len)
 var^ empty = i32^[flex^]
@@ -52,13 +52,13 @@ b.items.push(5)
 let^ other = ref^ b.n
 print^(b.items.pop(), *other)
 var^ x:i64^ = 7
-var^ rs:i64^[ref^ flex^] = [flex^ ref^ x]
+var^ rs:i64^[ref^ flex^] = [flex^; ref^ x]
 let^ got = rs.pop()
 rs.clear()
 print^(*got)
 ''', '4 4 3 2\n7 4 6\n5 0\n7\n')
 
-    prelude = '''var^ q:i64^[flex^] = [flex^ 1, 2, 3]
+    prelude = '''var^ q:i64^[flex^] = [flex^; 1, 2, 3]
 let^ drop = p^ x:ref^ i64^[flex^] { x.pop() }
 let^ look = p^ x:ref^ i64^[flex^] { print^(x.len) }
 let^ outer = p^ x:ref^ i64^[flex^] { drop(x) }
@@ -83,7 +83,7 @@ print^(*r)
          "while 'r' may refer into it"),
         ('flex_dyn', 'def^ S { abstract^ size:f^ self^ -> i64^; }\ndef^ T : S { self^{ xs:i64^[flex^] = [] } size = f^ self^ -> i64^ { self^.xs.len } }\nvar^ t = T{}\nlet^ s:ref^ dyn^ S = ref^ t',
          'cannot be used through dyn^'),
-        ('flex_grow_literal', 'var^ g:i64^[flex^] = [grow^ 1]', "grow^ array literal cannot initialize 'i64^[flex^]'"),
+        ('flex_grow_literal', 'var^ g:i64^[flex^] = [grow^; 1]', "array literal of 'i64^[grow^]' cannot initialize 'i64^[flex^]'"),
     ]:
         negative(name, prelude + text, diagnostic)
     suite.finish()

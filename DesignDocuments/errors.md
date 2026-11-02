@@ -172,8 +172,8 @@ let^ read = p^ path:string^ -> u8^[grow^] | IoError.Missing {
     return^ bytes
 }
 var^ data = try^ read("a.txt")       # 呼び出し元へ伝播
-let^ text = read("b.txt") catch^ [grow^ 0]
-let^ found = lookup(key) ?? [grow^ ]   # -> T[grow^] | nil^ の場合
+let^ text = read("b.txt") catch^ [grow^; 0]
+let^ found = lookup(key) ?? [grow^; ]   # -> T[grow^] | nil^ の場合
 ```
 
 - 合併は固定長の値で、所有値の選択肢はその記述子を中身に持ちます。データは合併を持つ束縛のデータスタックにあり、

@@ -1436,26 +1436,17 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             }
             return c->terminated ? type_builtin(c->p, T_NEVER) : type;
         }
-        if (expected && (expected->kind == T_ARRAY || expected->kind == T_GROW ||
-                         expected->kind == T_BOUNDED)) {
-            for (int j = 0; j < e->args.n; j++) {
-                infer_expr(c, e->args.v[j], expected->elem);
+        Type *type = array_literal_type(c->p, e, expected, NULL);
+        for (int j = 0; j < e->args.n; j++) {
+            Type *actual = infer_expr(c, e->args.v[j], type && !e->array_refs ? type->elem : NULL);
+            if (actual && e->array_refs && actual->kind != T_REF && actual->kind != T_DYN) {
+                actual = type_wrap(c->p, T_REF, actual, 0);
             }
-            if (c->terminated) {
-                return type_builtin(c->p, T_NEVER);
+            if (!type && actual) {
+                type = array_literal_type(c->p, e, expected, actual);
             }
-            return expected;
         }
-        Type *elem = e->args.n ? infer_expr(c, e->args.v[0], NULL) : NULL;
-        for (int j = 1; j < e->args.n; j++) {
-            infer_expr(c, e->args.v[j], elem);
-        }
-        if (c->terminated) {
-            return type_builtin(c->p, T_NEVER);
-        }
-        return !elem     ? NULL
-               : e->text ? type_wrap(c->p, T_GROW, elem, !strcmp(e->text, "flex^"))
-                         : type_wrap(c->p, T_ARRAY, elem, e->args.n);
+        return c->terminated ? type_builtin(c->p, T_NEVER) : type;
     }
     case E_MEMBER: {
         Type *base = infer_expr(c, e->a, NULL);
@@ -2733,7 +2724,8 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         n->type = want;
         break;
     case E_ARRAY:
-        n->type = e->test_spec ? type_spec(c->p, e->test_spec) : want;
+        n->type =
+            e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, want, NULL);
         if (e->test_spec && e->text) {
             for (int j = 0; j < e->args.n; j++) {
                 Type *hint =
@@ -2743,7 +2735,18 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             break;
         }
         for (int j = 0; j < e->args.n; j++) {
-            add(&n->children, body_expr(c, e->args.v[j], n->type ? n->type->elem : NULL));
+            Type *hint = n->type && !e->array_refs ? n->type->elem : NULL;
+            BodyNode *child = body_expr(c, e->args.v[j], hint);
+            Type *actual = child->type;
+            if (e->array_refs && actual && actual->kind != T_REF && actual->kind != T_DYN) {
+                actual = type_wrap(c->p, T_REF, actual, 0);
+            }
+            if (!n->type && actual) {
+                n->type = array_literal_type(c->p, e, want, actual);
+            }
+            if (!e->array_refs) {
+                add(&n->children, child);
+            }
         }
         break;
     case E_IF:

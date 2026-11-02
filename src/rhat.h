@@ -126,6 +126,8 @@ struct Expr {
     Spec *test_spec; // The type operand of fits^, or the type of an empty
                      // typed array value; never evaluated as a value.
     Spec *constant_spec;
+    Spec *array_literal;  // Explicit bracket attributes; elem is NULL when inferred.
+    int array_refs;       // Explicit ref^ depth, enabling stable-place borrowing.
     bool optional;        // This postfix link starts a nil-propagating guard.
     bool tuple;           // return^ a, b: a record of the multiple result type.
     bool spread;          // A trailing ... forwards this sequence to a variadic
@@ -350,6 +352,8 @@ void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
+// Resolve a literal's bracket attributes from its annotation, context or first element.
+Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first);
 char *type_name(Type *t);
 const char *builtin_name(int kind);
 bool kind_integer(int kind);

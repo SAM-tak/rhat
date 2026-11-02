@@ -803,6 +803,27 @@ print^(value.add(value.copy()).x)
     assert client.diagnostics(path,151) == []
     print('PASS runtime-sized owning array construction, signatures and diagnostic recovery',flush=True)
 
+    literals=('def^B {self^{n:i32^=7}}\nvar^a:B[2]=[B{},B{}]\n'
+              'let^refs=[ref^;a[0],ref^a[1]]\n'
+              'let^typed=B[ref^;a[0],a[1]]\n'
+              'var^bounded=[ref^max^10;a[0]]\n'
+              'var^numbers=u32^[max^10;0,1,2,3]\n'
+              'print^(refs[0].n,typed[1].n,bounded.len,numbers[3])\n')
+    client.change(path,literals,152)
+    assert client.diagnostics(path,152) == []
+    for needle,detail in [('refs=[','refs: B[ref^ 2]'),('typed=B','typed: B[ref^ 2]'),
+                          ('bounded=[','bounded: B[ref^ max^10]'),('numbers=u32^','numbers: u32^[max^10]')]:
+        assert request('hover',needle,text=literals)['contents']['value'] == detail
+    assert request('definition','B[ref^;',text=literals)['range']['start'] == at(literals,'B {')
+    broken_literal=literals+'let^bad=[ref^;42]\n'
+    client.change(path,broken_literal,153)
+    diagnostics=client.diagnostics(path,153)
+    assert len(diagnostics) == 1 and 'cannot borrow a temporary' in diagnostics[0]['message'], diagnostics
+    assert request('hover','refs=[',text=broken_literal)['contents']['value'] == 'refs: B[ref^ 2]'
+    client.change(path,literals,154)
+    assert client.diagnostics(path,154) == []
+    print('PASS array literal attributes, automatic element borrowing and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
