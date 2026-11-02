@@ -112,6 +112,11 @@ def high_water(name, text, expected, output, append_only=False):
     R^ references alone cannot reveal a lowered top: pages stay committed.
     The runtime assertions deliberately observe the hidden storage invariant.
     """
+    if not suite.selected(name):
+        return
+    if args.checks_only:
+        positive(name, text, output)
+        return
     wrapper = work / (name + "_runtime.c")
     expected_c = ",".join(map(str, expected))
     wrapper.write_text(f'''
@@ -913,25 +918,26 @@ for bits in (8,16,32,64,128):
         runtime_failure(f"inline_float_upper_{typ[:-1]}",f'print^({typ}({literal(upper)}))',"floating value out of integer range")
         if not unsigned:
             runtime_failure(f"inline_float_lower_{typ[:-1]}",f'print^({typ}({literal(math.nextafter(lower,-math.inf))}))',"floating value out of integer range")
-if os.name == "nt":
-    for opt in suite.opts:
-        exe = work / ("runtime_regions_" + opt[1:] + ".exe")
-        run([args.clang, "-std=c11", opt, str(repo / "tests/runtime_regions.c"), "-o", str(exe)])
-        assert run([str(exe)]).stdout == "data stacks verified\n"
-        for mode, diagnostic in (("commit-failure", "data stack commit failed"),
-                                 ("page-failure", "page size query failed"),
-                                 ("capacity", "data stack overflow"),
-                                 ("append-capacity", "data stack overflow"),
-                                 ("element-capacity", "data stack overflow"),
-                                 ("truncate-growth", "truncate length out of bounds"),
-                                 ("guard", "data stack overflow")):
-            assert diagnostic in run([str(exe), mode], 1).stderr
-        small = work / ("runtime_small_stack_" + opt[1:] + ".exe")
-        run([args.clang, "-std=c11", opt, "-DRH_STACK_BYTES=65536",
-             str(repo / "tests/runtime_regions.c"), "-o", str(small)])
-        assert run([str(small), "small-limit"]).stdout == "small reservation verified\n"
-        assert "data stack overflow" in run([str(small), "guard"], 1).stderr
-    suite.mark("windows_page_commit_calls_and_failures")
+if suite.selected("windows_page_commit_calls_and_failures") and not args.checks_only:
+    if os.name == "nt":
+        for opt in suite.opts:
+            exe = work / ("runtime_regions_" + opt[1:] + ".exe")
+            run([args.clang, "-std=c11", opt, str(repo / "tests/runtime_regions.c"), "-o", str(exe)])
+            assert run([str(exe)]).stdout == "data stacks verified\n"
+            for mode, diagnostic in (("commit-failure", "data stack commit failed"),
+                                     ("page-failure", "page size query failed"),
+                                     ("capacity", "data stack overflow"),
+                                     ("append-capacity", "data stack overflow"),
+                                     ("element-capacity", "data stack overflow"),
+                                     ("truncate-growth", "truncate length out of bounds"),
+                                     ("guard", "data stack overflow")):
+                assert diagnostic in run([str(exe), mode], 1).stderr
+            small = work / ("runtime_small_stack_" + opt[1:] + ".exe")
+            run([args.clang, "-std=c11", opt, "-DRH_STACK_BYTES=65536",
+                 str(repo / "tests/runtime_regions.c"), "-o", str(small)])
+            assert run([str(small), "small-limit"]).stdout == "small reservation verified\n"
+            assert "data stack overflow" in run([str(small), "guard"], 1).stderr
+        suite.mark("windows_page_commit_calls_and_failures")
 
 positive("page_crossing_elements", """
 def^ Triple { self^{ a:u8^=1,b:u8^=2,c:u8^=3 } }
@@ -1089,105 +1095,106 @@ negative("f128_pending", "let^ n:f128^=1.0", "f128^ is pending")
 # all four operations over every pair of the 256 encodings, including zeros,
 # subnormals and NaNs. The oracle enumerates values instead of using the
 # emitted IR's exponent/shift/guard-bit algorithm.
-def fp8_value(code):
-    exponent, fraction = (code >> 3) & 15, code & 7
-    value = (fraction / 512 if exponent == 0 else
-             math.ldexp(1 + fraction / 8, exponent - 7))
-    if exponent == 15 and fraction == 7:
-        value = math.nan
-    return -value if code & 128 else value
+if suite.selected("fp8_exhaustive_262144_operations") and not args.checks_only:
+    def fp8_value(code):
+        exponent, fraction = (code >> 3) & 15, code & 7
+        value = (fraction / 512 if exponent == 0 else
+                 math.ldexp(1 + fraction / 8, exponent - 7))
+        if exponent == 15 and fraction == 7:
+            value = math.nan
+        return -value if code & 128 else value
 
 
-fp8_values = [fp8_value(n) for n in range(256)]
-fp8_positive = fp8_values[:127]
+    fp8_values = [fp8_value(n) for n in range(256)]
+    fp8_positive = fp8_values[:127]
 
 
-def fp8_nearest(value):
-    if not math.isfinite(value) or abs(value) > 464:
-        return 127
-    sign = 128 if math.copysign(1, value) < 0 else 0
-    value = abs(value)
-    hi = bisect.bisect_left(fp8_positive, value)
-    if hi == 0:
-        code = 0
-    elif hi == 127:
-        code = 126
-    else:
-        lo = hi - 1
-        dl, dh = value - fp8_positive[lo], fp8_positive[hi] - value
-        code = lo if dl < dh or (dl == dh and lo % 2 == 0) else hi
-    return sign | code
+    def fp8_nearest(value):
+        if not math.isfinite(value) or abs(value) > 464:
+            return 127
+        sign = 128 if math.copysign(1, value) < 0 else 0
+        value = abs(value)
+        hi = bisect.bisect_left(fp8_positive, value)
+        if hi == 0:
+            code = 0
+        elif hi == 127:
+            code = 126
+        else:
+            lo = hi - 1
+            dl, dh = value - fp8_positive[lo], fp8_positive[hi] - value
+            code = lo if dl < dh or (dl == dh and lo % 2 == 0) else hi
+        return sign | code
 
 
-midpoints = [(a+b)/2 for a, b in zip(fp8_positive, fp8_positive[1:])] + [464.0]
-cast_values = [0.0, -0.0, math.inf, -math.inf, math.nan]
-for middle in midpoints:
-    for x in (math.nextafter(middle, -math.inf), middle, math.nextafter(middle, math.inf)):
-        cast_values.extend((x, -x))
-cast_bits = [struct.unpack("<Q", struct.pack("<d", x))[0] for x in cast_values]
-cast_expected = [fp8_nearest(x) for x in cast_values]
+    midpoints = [(a+b)/2 for a, b in zip(fp8_positive, fp8_positive[1:])] + [464.0]
+    cast_values = [0.0, -0.0, math.inf, -math.inf, math.nan]
+    for middle in midpoints:
+        for x in (math.nextafter(middle, -math.inf), middle, math.nextafter(middle, math.inf)):
+            cast_values.extend((x, -x))
+    cast_bits = [struct.unpack("<Q", struct.pack("<d", x))[0] for x in cast_values]
+    cast_expected = [fp8_nearest(x) for x in cast_values]
 
-expected = []
-for operation in range(4):
-    for a in fp8_values:
-        for b in fp8_values:
-            value = (a + b if operation == 0 else a - b if operation == 1 else
-                     a * b if operation == 2 else a / b if b != 0 else math.nan)
-            expected.append(fp8_nearest(value))
-decode_bits = [struct.unpack("<I", struct.pack("<f", value))[0] for value in fp8_values]
-c_path = work / "fp8_exhaustive.c"
-c_path.write_text("""
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-float rh_f8_decode(uint8_t);
-uint8_t rh_f8_encode(float);
-uint8_t rh_f8_encode_f64(double);
-static const uint32_t decoded[256]={""" + ",".join(map(str, decode_bits)) + "};\n"
-    "static const unsigned char expected[]={" + ",".join(map(str, expected)) + "};\n"
-    "static const uint64_t cast_bits[]={" + ",".join(f"UINT64_C({x})" for x in cast_bits) + "};\n"
-    "static const unsigned char cast_expected[]={" + ",".join(map(str, cast_expected)) + "};\n" + """
-int main(void) {
-    for (unsigned j=0;j<sizeof(cast_expected);j++) {
-        double value;
-        memcpy(&value,&cast_bits[j],8);
-        unsigned actual=rh_f8_encode_f64(value),want=cast_expected[j];
-        if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
-            fprintf(stderr,"FP8 cast mismatch j=%u actual=%u expected=%u",j,actual,want);
-            return 1;
+    expected = []
+    for operation in range(4):
+        for a in fp8_values:
+            for b in fp8_values:
+                value = (a + b if operation == 0 else a - b if operation == 1 else
+                         a * b if operation == 2 else a / b if b != 0 else math.nan)
+                expected.append(fp8_nearest(value))
+    decode_bits = [struct.unpack("<I", struct.pack("<f", value))[0] for value in fp8_values]
+    c_path = work / "fp8_exhaustive.c"
+    c_path.write_text("""
+    #include <stdint.h>
+    #include <stdio.h>
+    #include <string.h>
+    float rh_f8_decode(uint8_t);
+    uint8_t rh_f8_encode(float);
+    uint8_t rh_f8_encode_f64(double);
+    static const uint32_t decoded[256]={""" + ",".join(map(str, decode_bits)) + "};\n"
+        "static const unsigned char expected[]={" + ",".join(map(str, expected)) + "};\n"
+        "static const uint64_t cast_bits[]={" + ",".join(f"UINT64_C({x})" for x in cast_bits) + "};\n"
+        "static const unsigned char cast_expected[]={" + ",".join(map(str, cast_expected)) + "};\n" + """
+    int main(void) {
+        for (unsigned j=0;j<sizeof(cast_expected);j++) {
+            double value;
+            memcpy(&value,&cast_bits[j],8);
+            unsigned actual=rh_f8_encode_f64(value),want=cast_expected[j];
+            if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
+                fprintf(stderr,"FP8 cast mismatch j=%u actual=%u expected=%u",j,actual,want);
+                return 1;
+            }
         }
-    }
-    for (unsigned a=0;a<256;a++) {
-        float value=rh_f8_decode((uint8_t)a);
-        uint32_t bits;
-        memcpy(&bits,&value,4);
-        if (bits!=decoded[a]) return 1;
-    }
-    for (unsigned op=0;op<4;op++) for (unsigned a=0;a<256;a++) for (unsigned b=0;b<256;b++) {
-        volatile float x=rh_f8_decode((uint8_t)a),y=rh_f8_decode((uint8_t)b);
-        float result=op==0?x+y:op==1?x-y:op==2?x*y:x/y;
-        unsigned actual=rh_f8_encode(result), want=expected[op*65536+a*256+b];
-        if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
-            fprintf(stderr,"FP8 mismatch op=%u a=%u b=%u actual=%u expected=%u",op,a,b,actual,want);
-            return 1;
+        for (unsigned a=0;a<256;a++) {
+            float value=rh_f8_decode((uint8_t)a);
+            uint32_t bits;
+            memcpy(&bits,&value,4);
+            if (bits!=decoded[a]) return 1;
         }
+        for (unsigned op=0;op<4;op++) for (unsigned a=0;a<256;a++) for (unsigned b=0;b<256;b++) {
+            volatile float x=rh_f8_decode((uint8_t)a),y=rh_f8_decode((uint8_t)b);
+            float result=op==0?x+y:op==1?x-y:op==2?x*y:x/y;
+            unsigned actual=rh_f8_encode(result), want=expected[op*65536+a*256+b];
+            if ((want&127)==127 ? (actual&127)!=127 : actual!=want) {
+                fprintf(stderr,"FP8 mismatch op=%u a=%u b=%u actual=%u expected=%u",op,a,b,actual,want);
+                return 1;
+            }
+        }
+        return 0;
     }
-    return 0;
-}
-""", encoding="utf-8")
-fp8_source = source("fp8_codec_module", "print^(f8^(1.5))")
-fp8_module = work / "fp8_codec_module.ll"
-run([compiler,"emit",str(fp8_source),"-o",str(fp8_module)])
-codec = fp8_module.read_text()
-functions = re.findall(r"(?ms)^define internal (?:float|i8) @rh_f8_.*?^}", codec)
-assert len(functions)==3
-fp8_external = work / "fp8_codec_external.ll"
-fp8_external.write_text("\n".join(f.replace("define internal ","define ",1) for f in functions)+"\n")
-for opt in suite.opts:
-    exe = work / ("fp8_exhaustive_" + opt[1:] + ".exe")
-    run([args.clang, "-std=c11", opt, str(c_path), str(fp8_external), "-Wno-override-module", "-o", str(exe)])
-    run([str(exe)])
-suite.mark("fp8_exhaustive_262144_operations")
+    """, encoding="utf-8")
+    fp8_source = source("fp8_codec_module", "print^(f8^(1.5))")
+    fp8_module = work / "fp8_codec_module.ll"
+    run([compiler,"emit",str(fp8_source),"-o",str(fp8_module)])
+    codec = fp8_module.read_text()
+    functions = re.findall(r"(?ms)^define internal (?:float|i8) @rh_f8_.*?^}", codec)
+    assert len(functions)==3
+    fp8_external = work / "fp8_codec_external.ll"
+    fp8_external.write_text("\n".join(f.replace("define internal ","define ",1) for f in functions)+"\n")
+    for opt in suite.opts:
+        exe = work / ("fp8_exhaustive_" + opt[1:] + ".exe")
+        run([args.clang, "-std=c11", opt, str(c_path), str(fp8_external), "-Wno-override-module", "-o", str(exe)])
+        run([str(exe)])
+    suite.mark("fp8_exhaustive_262144_operations")
 
 # Keep the new ports executable at both optimization levels in the main suite.
 sys.path.insert(0, str(repo / "bench"))
@@ -1201,40 +1208,41 @@ def benchmark_source(workload, n):
 
 
 from artifacts import Executables, overwritten_rhat_rows
-registry=Executables()
-fixture=work/"binary-identity-fixture.exe"
-fixture.write_bytes(b"original Rhat artifact")
-registry.add(fixture)
-try:
+if suite.selected("benchmark_executable_identity_and_collision_detection"):
+    registry=Executables()
+    fixture=work/"binary-identity-fixture.exe"
+    fixture.write_bytes(b"original Rhat artifact")
     registry.add(fixture)
-except RuntimeError as error:
-    assert "duplicate benchmark executable path" in str(error)
-else:
-    raise AssertionError("duplicate benchmark artifact was accepted")
-fixture.write_bytes(b"replacement Rust artifact")
-called=[]
-try:
-    registry.measure(fixture,lambda path: called.append(path))
-except RuntimeError as error:
-    assert "changed after build" in str(error)
-else:
-    raise AssertionError("replaced benchmark artifact was executed")
-assert not called
-fixture.write_bytes(b"original Rhat artifact")
-def change_during_run(path):
-    path.write_bytes(b"replacement during execution")
-    return {"output":"same checksum"}
-try:
-    registry.measure(fixture,change_during_run)
-except RuntimeError as error:
-    assert "changed during execution" in str(error)
-else:
-    raise AssertionError("artifact replacement during a run was accepted")
-old_run={"builds":[["rhat.exe","build","push_small.rh","-o","push_small.exe"],
-                   ["rustc.exe","push_small.rs","-o","push_small.exe"]],
-         "rows":[{"workload":"push","size":"small","language":"rhat"}]}
-assert overwritten_rhat_rows(old_run)=={("push","small")}
-suite.mark("benchmark_executable_identity_and_collision_detection")
+    try:
+        registry.add(fixture)
+    except RuntimeError as error:
+        assert "duplicate benchmark executable path" in str(error)
+    else:
+        raise AssertionError("duplicate benchmark artifact was accepted")
+    fixture.write_bytes(b"replacement Rust artifact")
+    called=[]
+    try:
+        registry.measure(fixture,lambda path: called.append(path))
+    except RuntimeError as error:
+        assert "changed after build" in str(error)
+    else:
+        raise AssertionError("replaced benchmark artifact was executed")
+    assert not called
+    fixture.write_bytes(b"original Rhat artifact")
+    def change_during_run(path):
+        path.write_bytes(b"replacement during execution")
+        return {"output":"same checksum"}
+    try:
+        registry.measure(fixture,change_during_run)
+    except RuntimeError as error:
+        assert "changed during execution" in str(error)
+    else:
+        raise AssertionError("artifact replacement during a run was accepted")
+    old_run={"builds":[["rhat.exe","build","push_small.rh","-o","push_small.exe"],
+                       ["rustc.exe","push_small.rs","-o","push_small.exe"]],
+             "rows":[{"workload":"push","size":"small","language":"rhat"}]}
+    assert overwritten_rhat_rows(old_run)=={("push","small")}
+    suite.mark("benchmark_executable_identity_and_collision_detection")
 
 for workload, spec in WORKLOADS.items():
     text = benchmark_source(workload, spec["smoke"])
@@ -1249,8 +1257,16 @@ for name, relative, n, expected in (
     assert hits==1
     positive("bench_"+name,text,expected+"\n")
 for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17)), ("lru", (8, 16, 64, 128)), ("scene", (0, 1, 2, 5)), ("strlist", (0, 1, 17)), ("words", (0, 1, 17)), ("respond", (0, 1, 17)), ("records", (0, 1, 17)), ("interp", (0, 1, 2, 5)), ("sexp", (0, 1, 3)), ("calc", (0, 1, 17))):
-    for n in sizes:
-        positive(f"bench_{workload}_{n}", benchmark_source(workload, n), workload_oracle(workload, n) + "\n")
+    # Compile the workload once; exercise every boundary size with a parameter.
+    # Separate smoke cases above still cover a top-level constant input.
+    text = benchmark_source(workload, 0)
+    match = re.search(r"(?m)^let\^\s*(\w+):i64\^=.*?# BENCH_N[^\n]*\n", text)
+    assert match, workload
+    text = (text[:match.start()] + f"let^ bench_case=p^ {match[1]}:i64^ {{\n" +
+            text[match.end():] + "\n}\n" +
+            "\n".join(f"bench_case({n})" for n in sizes))
+    positive(f"bench_{workload}_edges", text,
+             "".join(workload_oracle(workload, n) + "\n" for n in sizes))
 calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^ n:i64^",1)[0]
 positive("calc_errors_and_precedence",calc_helpers+"""
 let^ check=p^ text:string^, pool:ref^ grow^ Expr[] {
@@ -1527,16 +1543,17 @@ print^(length(i64^(42)),length(i32^(9)))
 """, "42 9\n")
 # Stack reports must include transitive callees and count exclusive branches
 # once, while overlapping owners reserve separate indices.
-path=source("static_stack_report", """
-let^ leaf=f^ -> i32^ { var^ a:grow^ i32^[]=[1]; return^ a[0] }
-var^ x:grow^ i32^[]=[2]
-if^ true^ { var^ a:grow^ i32^[]=[3]; print^(leaf()) el^: var^ b:grow^ i32^[]=[4]; print^(leaf()) }
-print^(x[0])
-""")
-report=run([compiler,"check",str(path),"--stacks"]).stdout
-assert report.startswith("data stacks: 3;"), report
-assert "2 own, 3 with callees" in report, report
-suite.mark("static_stack_report")
+if suite.selected("static_stack_report"):
+    path=source("static_stack_report", """
+    let^ leaf=f^ -> i32^ { var^ a:grow^ i32^[]=[1]; return^ a[0] }
+    var^ x:grow^ i32^[]=[2]
+    if^ true^ { var^ a:grow^ i32^[]=[3]; print^(leaf()) el^: var^ b:grow^ i32^[]=[4]; print^(leaf()) }
+    print^(x[0])
+    """)
+    report=run([compiler,"check",str(path),"--stacks"]).stdout
+    assert report.startswith("data stacks: 3;"), report
+    assert "2 own, 3 with callees" in report, report
+    suite.mark("static_stack_report")
 positive("recursive_borrow", """
 let^ retain=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     if^ n=0 { return^ p }
@@ -1798,42 +1815,46 @@ runtime_failure("division", 'print^(1 / 0)', "invalid integer division")
 runtime_failure("division_overflow", 'let^ low:i32^=-2147483648; print^(low / -1)', "invalid integer division")
 runtime_failure("assertion", 'assert^(false^)', "assertion failed")
 runtime_failure("grow_bounds", 'var^ a:grow^ i32^[]=[]; print^(a[0])', "out of bounds")
-path = source("preserve_input", '')
-before = path.read_bytes()
-run([compiler, "emit", str(path), "-o", str(path)], 1)
-assert path.read_bytes() == before
-suite.mark("preserve_input")
+if suite.selected("preserve_input"):
+    path = source("preserve_input", '')
+    before = path.read_bytes()
+    run([compiler, "emit", str(path), "-o", str(path)], 1)
+    assert path.read_bytes() == before
+    suite.mark("preserve_input")
 
-# Reproduce a new terminal: no RHAT_CLANG and no Clang directory on PATH.
-clean_env = dict(os.environ)
-clean_env.pop("RHAT_CLANG", None)
-clang_dir = pathlib.Path(args.clang).resolve().parent
-clean_env["PATH"] = os.pathsep.join(
-    part for part in clean_env.get("PATH", "").split(os.pathsep)
-    if part and pathlib.Path(part).resolve() != clang_dir
-)
-path = source("driver_default", "print^(42)")
-exe = work / "driver_default.exe"
-for _ in range(2):
-    run([compiler, "build", str(path), "-o", str(exe), "-O2"], env=clean_env)
-    assert run([str(exe)]).stdout == "42\n"
-suite.mark("default_clang_and_rebuild")
+if not args.checks_only and (suite.selected("default_clang_and_rebuild") or suite.selected("clang_override_precedence_and_diagnostic")):
+    # Reproduce a new terminal: no RHAT_CLANG and no Clang directory on PATH.
+    clean_env = dict(os.environ)
+    clean_env.pop("RHAT_CLANG", None)
+    clang_dir = pathlib.Path(args.clang).resolve().parent
+    clean_env["PATH"] = os.pathsep.join(
+        part for part in clean_env.get("PATH", "").split(os.pathsep)
+        if part and pathlib.Path(part).resolve() != clang_dir
+    )
+    path = source("driver_default", "print^(42)")
+    exe = work / "driver_default.exe"
+    if suite.selected("default_clang_and_rebuild"):
+        for _ in range(2):
+            run([compiler, "build", str(path), "-o", str(exe), "-O2"], env=clean_env)
+            assert run([str(exe)]).stdout == "42\n"
+        suite.mark("default_clang_and_rebuild")
 
-bad_env = dict(clean_env)
-missing_clang = str(work / "does-not-exist-clang.exe")
-bad_env["RHAT_CLANG"] = missing_clang
-pathlib.Path(str(exe) + ".ll").unlink(missing_ok=True)
-result = run([compiler, "build", str(path), "-o", str(exe)], 1, env=bad_env)
-assert "does-not-exist-clang.exe" in result.stderr, result.stderr
-assert "LLVM IR retained at" not in result.stderr, result.stderr
-assert not pathlib.Path(str(exe) + ".ll").exists()
-kept = work / "driver_default.kept.ll"
-result = run([compiler, "build", str(path), "-o", str(exe), "--emit-llvm", str(kept)], 1, env=bad_env)
-assert f"LLVM IR retained at {kept}" in result.stderr, result.stderr
-assert kept.exists()
-run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang], env=bad_env)
-assert run([str(exe)]).stdout == "42\n"
-suite.mark("clang_override_precedence_and_diagnostic")
+    if suite.selected("clang_override_precedence_and_diagnostic"):
+        bad_env = dict(clean_env)
+        missing_clang = str(work / "does-not-exist-clang.exe")
+        bad_env["RHAT_CLANG"] = missing_clang
+        pathlib.Path(str(exe) + ".ll").unlink(missing_ok=True)
+        result = run([compiler, "build", str(path), "-o", str(exe)], 1, env=bad_env)
+        assert "does-not-exist-clang.exe" in result.stderr, result.stderr
+        assert "LLVM IR retained at" not in result.stderr, result.stderr
+        assert not pathlib.Path(str(exe) + ".ll").exists()
+        kept = work / "driver_default.kept.ll"
+        result = run([compiler, "build", str(path), "-o", str(exe), "--emit-llvm", str(kept)], 1, env=bad_env)
+        assert f"LLVM IR retained at {kept}" in result.stderr, result.stderr
+        assert kept.exists()
+        run([compiler, "build", str(path), "-o", str(exe), "--clang", args.clang], env=bad_env)
+        assert run([str(exe)]).stdout == "42\n"
+        suite.mark("clang_override_precedence_and_diagnostic")
 def direct_scalar_abi(ir, ll):
     assert "define internal void @rh_fn_0" in ll
     for typ in ("i1", "i8", "i16", "i32", "i64", "i128", "half", "float", "double"):

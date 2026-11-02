@@ -77,6 +77,25 @@ rhat build examples/layout.rh -o build/layout.exe -O2
 テストは既定で実行ファイルを `-O2` だけでビルドします。`-O0` も確かめるには CMake に `-DRHAT_TEST_ALL_OPTS=ON` を渡します。
 各テストスイートは全コアで並列に動くため、`ctest` に `-j` は付けません。
 
+ビルド後に integration の型チェック中心の検証だけを行うには、次を使います。
+`-Test` の追加は不要で、両方指定した場合もこちらが優先されます。
+
+```powershell
+.\scripts\build.ps1 -Test-ChecksOnly
+```
+
+局所修正では `ctest --test-dir build -C Release -R '^(inference|lsp)$' --output-on-failure`
+のように関連スイートを選びます。integration のケースも、開発シェルで次のように絞れます。
+
+```powershell
+python tests/run.py --compiler build/Release/rhat.exe --clang "$env:RHAT_CLANG" --work build/tests --filter '^numeric_' --timings
+```
+
+`--checks-only` は正常系も `rhat check` で検査し、ネイティブビルド・実行結果・IR の検査を省きます。
+局所修正ではこれと関連スイートを使い、仕上げに全スイートを実行します。
+`--timings` は実時間と外部コマンドの回数・累積時間を表示します（並列実行のため累積時間は実時間を超えます）。
+ベンチマークの境界値は `--filter '_edges$'` で選択でき、各ワークロードを一度ビルドして複数サイズを検証します。
+
 ビルド時に見つけた Clang のパスを実行ファイルに記録するので、別のターミナルでもそのまま使えます。
 Clang の選択順は `--clang`、`RHAT_CLANG`、ビルド時に検出したパスです。
 ビルド時に見つからなかった場合は PATH の `clang` を利用します。

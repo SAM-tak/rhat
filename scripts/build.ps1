@@ -2,7 +2,8 @@
 param(
     [Alias('Config')][ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [switch]$Release,
-    [switch]$Test
+    [switch]$Test,
+    [Alias('Test-ChecksOnly')][switch]$TestChecksOnly
 )
 $ErrorActionPreference = 'Stop'
 if ($Release) { $Configuration = 'Release' }
@@ -14,7 +15,15 @@ $buildPath = Join-Path $repoRoot 'build'
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 & cmake --build $buildPath --config $Configuration
 if ($LASTEXITCODE -ne 0) { throw 'Compiler build failed.' }
-if ($Test) {
+if ($TestChecksOnly) {
+    $compilerPath = Join-Path $buildPath "$Configuration/rhat.exe"
+    if (-not (Test-Path -LiteralPath $compilerPath)) {
+        $compilerPath = Join-Path $buildPath 'rhat.exe'
+    }
+    & python "$repoRoot/tests/run.py" --compiler $compilerPath --clang $clangPath `
+        --work "$buildPath/tests" --checks-only --timings
+    if ($LASTEXITCODE -ne 0) { throw 'Integration checks failed.' }
+} elseif ($Test) {
     & ctest --test-dir $buildPath -C $Configuration --output-on-failure
     if ($LASTEXITCODE -ne 0) { throw 'Integration tests failed.' }
 }

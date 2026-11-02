@@ -46,6 +46,11 @@ print^(held[3])
                     'var^ a:grow^ i32^[]=[1]; a.truncate(-9223372036854775808)',
                     'line 1: truncate length out of bounds')
 
+    if suite.args.checks_only or not (
+            suite.selected('minimal_runtime_boundary_and_inlined_helpers') or
+            suite.selected('emitted_append_overflow_overlap_and_empty_source')):
+        return
+
     path=source('runtime_boundary', '''
 var^ a:grow^ i32^[]=[1,2,3]
 let^ v=a[1 .. 3]
@@ -60,41 +65,45 @@ print^(x+y,f64^(x),i32^(3.5))
     raw=work/'runtime_boundary.ll'
     run([compiler,'emit',str(path),'-o',str(raw)])
     llvm=raw.read_text()
-    runtime=(repo/'runtime/rhat_runtime.c').read_text()
-    exported=set(re.findall(r'(?m)^(?:_Noreturn )?(?:void|int64_t) (rh_\w+)\(',runtime))
-    # Functions the standard library declares itself are not IR builtins.
-    for module in (repo/'stdlib').rglob('*.rh'):
-        exported-=set(re.findall(r'externC\^\s*(rh_\w+)',module.read_text(encoding='utf-8')))
-    declared=set(re.findall(r'(?m)^declare [^\n]*?@(rh_\w+)\(',llvm))
-    assert exported==declared,(exported-declared,declared-exported)
-    obsolete=('rh_bounds','rh_array_at','rh_array_write','rh_array_append','rh_array_pop',
-              'rh_array_clear','rh_array_truncate','rh_make_slice','rh_view_at',
-              'rh_union_tag','rh_union_fail','rh_assert','rh_print_i64','rh_check_division',
-              'rh_index_integer','rh_check_float_cast','rh_div_i32','rh_div_i64',
-              'rh_div_u8','rh_rem_i32','rh_rem_i64','rh_rem_u8')
-    for name in obsolete:
-        assert not re.search(r'\b'+name+r'\s*\(',runtime),name
-        assert '@'+name+'(' not in llvm,name
-    assert 'rh_f8_' not in runtime
-    for name in declared:
-        if name.endswith('_fail') or name=='rh_stack_overflow':
-            assert re.search(r'^declare[^\n]*@'+name+r'\([^\n]*\) cold noreturn$',llvm,re.M)
-    for opt in suite.opts:
-        optimized=work/('runtime_boundary_'+opt[1:]+'.ll')
-        run([clang,'-Wno-override-module',opt,'-S','-emit-llvm',str(raw),'-o',str(optimized)])
-        text=optimized.read_text()
-        definitions=set(re.findall(r'^define[^\n]*?@(rh_\w+)\(',text,re.M))
-        external_calls=set(re.findall(r'\bcall\b[^\n]*?@(rh_\w+)\(',text))-definitions
-        assert external_calls<=declared,external_calls-declared
-        assert not re.search(r'\bcall\b[^\n]*?@rh_(?:f8_|append_)',text)
-        for match in re.finditer(r'\bcall\b[^\n]*?@(rh_\w+)\([^\n]*\)[^\n]*\n',text):
-            if match.group(1).endswith('_fail') or match.group(1)=='rh_stack_overflow':
-                assert text[match.end():].lstrip().startswith('unreachable'),match.group(0)
-        exe=work/('runtime_boundary_'+opt[1:]+'.exe')
-        run([clang,'-Wno-override-module','-std=c11',opt,str(raw),
-             str(repo/'runtime/rhat_runtime.c'),'-o',str(exe)])
-        assert run([str(exe)]).stdout=='4 2\n3.5 1.5 3\n'
-    suite.mark('minimal_runtime_boundary_and_inlined_helpers')
+    if suite.selected('minimal_runtime_boundary_and_inlined_helpers'):
+        runtime=(repo/'runtime/rhat_runtime.c').read_text()
+        exported=set(re.findall(r'(?m)^(?:_Noreturn )?(?:void|int64_t) (rh_\w+)\(',runtime))
+        # Functions the standard library declares itself are not IR builtins.
+        for module in (repo/'stdlib').rglob('*.rh'):
+            exported-=set(re.findall(r'externC\^\s*(rh_\w+)',module.read_text(encoding='utf-8')))
+        declared=set(re.findall(r'(?m)^declare [^\n]*?@(rh_\w+)\(',llvm))
+        assert exported==declared,(exported-declared,declared-exported)
+        obsolete=('rh_bounds','rh_array_at','rh_array_write','rh_array_append','rh_array_pop',
+                  'rh_array_clear','rh_array_truncate','rh_make_slice','rh_view_at',
+                  'rh_union_tag','rh_union_fail','rh_assert','rh_print_i64','rh_check_division',
+                  'rh_index_integer','rh_check_float_cast','rh_div_i32','rh_div_i64',
+                  'rh_div_u8','rh_rem_i32','rh_rem_i64','rh_rem_u8')
+        for name in obsolete:
+            assert not re.search(r'\b'+name+r'\s*\(',runtime),name
+            assert '@'+name+'(' not in llvm,name
+        assert 'rh_f8_' not in runtime
+        for name in declared:
+            if name.endswith('_fail') or name=='rh_stack_overflow':
+                assert re.search(r'^declare[^\n]*@'+name+r'\([^\n]*\) cold noreturn$',llvm,re.M)
+        for opt in suite.opts:
+            optimized=work/('runtime_boundary_'+opt[1:]+'.ll')
+            run([clang,'-Wno-override-module',opt,'-S','-emit-llvm',str(raw),'-o',str(optimized)])
+            text=optimized.read_text()
+            definitions=set(re.findall(r'^define[^\n]*?@(rh_\w+)\(',text,re.M))
+            external_calls=set(re.findall(r'\bcall\b[^\n]*?@(rh_\w+)\(',text))-definitions
+            assert external_calls<=declared,external_calls-declared
+            assert not re.search(r'\bcall\b[^\n]*?@rh_(?:f8_|append_)',text)
+            for match in re.finditer(r'\bcall\b[^\n]*?@(rh_\w+)\([^\n]*\)[^\n]*\n',text):
+                if match.group(1).endswith('_fail') or match.group(1)=='rh_stack_overflow':
+                    assert text[match.end():].lstrip().startswith('unreachable'),match.group(0)
+            exe=work/('runtime_boundary_'+opt[1:]+'.exe')
+            run([clang,'-Wno-override-module','-std=c11',opt,str(raw),
+                 str(repo/'runtime/rhat_runtime.c'),'-o',str(exe)])
+            assert run([str(exe)]).stdout=='4 2\n3.5 1.5 3\n'
+        suite.mark('minimal_runtime_boundary_and_inlined_helpers')
+
+    if not suite.selected('emitted_append_overflow_overlap_and_empty_source'):
+        return
 
     # Exercise the actual emitted append helper with lengths that safe R^
     # source cannot fabricate. This verifies the pre-copy overflow checks.

@@ -62,6 +62,9 @@ def exercise(suite):
     cases.append(('affine_matrix', matrix, expected, True, None))
     def check(name, text, output, versioned, error):
         path = source(name, text)
+        if suite.args.checks_only:
+            run([compiler, 'check', str(path)])
+            return
         for opt in suite.opts:
             exe = work / f'{name}_{opt[1:]}.exe'
             rir = exe.with_suffix('.rir')

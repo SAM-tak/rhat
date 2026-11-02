@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import traceback
 
 
@@ -24,6 +25,7 @@ class Suite:
         parser.add_argument('--jobs', type=int, default=os.cpu_count() or 1)
         parser.add_argument('--checks-only', action='store_true', help='Skip native builds')
         parser.add_argument('--all-opts', action='store_true', help='Also build cases at -O0')
+        parser.add_argument('--timings', action='store_true', help='Report cumulative subprocess times')
         self.args = parser.parse_args()
         self.opts = ('-O0', '-O2') if self.args.all_opts else ('-O2',)
         self.label = label
@@ -37,10 +39,21 @@ class Suite:
         self.lock = threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=max(1, self.args.jobs))
         self.pending = []
+        self.started = time.perf_counter()
+        self.timings = {}
 
     def run(self, command, success=True, env=None, timeout=90):
-        p = subprocess.run(list(map(str, command)), capture_output=True, text=True,
-                           timeout=timeout, env=env)
+        command = list(map(str, command))
+        started = time.perf_counter()
+        try:
+            p = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
+        finally:
+            if self.args.timings:
+                stage = ('rhat ' + command[1] if command[0] == self.compiler else
+                         'clang' if command[0] == self.clang else 'executable')
+                with self.lock:
+                    count, elapsed = self.timings.get(stage, (0, 0))
+                    self.timings[stage] = count + 1, elapsed + time.perf_counter() - started
         assert (p.returncode == 0) == success, (command, p.returncode, p.stdout, p.stderr)
         return p
 
@@ -77,23 +90,25 @@ class Suite:
             self.passed += 1
             print('PASS', name, flush=True)
 
-    def build(self, name, opt, extra=()):
+    def build(self, name, opt, extra=(), inspect=False):
         """Build one case at one optimization level; return (exe, rir)."""
         path = self.work / (name + '.rh')
         exe = self.work / (name + opt + '.exe')
         rir = exe.with_suffix('.rir')
+        dumps = ['--dump-ir', rir, '--emit-llvm', str(exe) + '.ll'] if inspect else []
         self.run([self.compiler, 'build', path, '-o', exe, '--clang', self.clang, opt,
-                  '--dump-ir', rir, '--emit-llvm', str(exe) + '.ll', *extra])
+                  *dumps, *extra])
         return exe, rir
 
     def positive(self, name, text, expected, inspect=None, failure=False, extra=()):
         """Build at each level in opts, run, and compare stdout (or stderr on failure)."""
         if self.args.checks_only:
+            self.case(name, lambda: self.run([self.compiler, 'check', self.source(name, text)]))
             return
         def body():
             self.source(name, text)
             for opt in self.opts:
-                exe, rir = self.build(name, opt, extra)
+                exe, rir = self.build(name, opt, extra, inspect=inspect is not None)
                 if inspect:
                     inspect(rir.read_text(), Path(str(exe) + '.ll').read_text())
                 p = self.run([exe], not failure)
@@ -120,6 +135,11 @@ class Suite:
         self.pool.shutdown()
         for name, trace in self.failures:
             print(f'--- {name}\n{trace}', file=sys.stderr, flush=True)
-        print(f'{self.passed} {self.label} cases passed, {len(self.failures)} failed; '
-              f'executable cases checked at {" and ".join(self.opts)}.', flush=True)
+        coverage = ('native builds skipped' if self.args.checks_only else
+                    f'executable cases checked at {" and ".join(self.opts)}')
+        print(f'{self.passed} {self.label} cases passed, {len(self.failures)} failed; {coverage}; '
+              f'{time.perf_counter() - self.started:.2f}s elapsed.', flush=True)
+        if self.args.timings:
+            for stage, (count, elapsed) in sorted(self.timings.items()):
+                print(f'  {stage}: {count} commands, {elapsed:.2f}s cumulative', flush=True)
         sys.exit(1 if self.failures else 0)
