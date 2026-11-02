@@ -203,8 +203,27 @@ static char *compile(const char *input, const char *identity, const char *name, 
     if (!source_hash) {
         fail((Loc){input, 1, 1}, "cannot read compilation input");
     }
-    char *key = link_identity(
-        fmt("rhat-objects-v2:%s:%s:%s:host-x86-64:c11:compiler-rt", identity, opt, source_hash));
+    List args = {0};
+    add(&args, (char *)clang);
+    add(&args, "-Wno-override-module");
+    add(&args, "-std=c11");
+    add(&args, (char *)opt);
+#if defined(_WIN32)
+    add(&args, "-mno-incremental-linker-compatible");
+#endif
+    if (crt_dll) {
+        add(&args, "-fms-runtime-lib=dll");
+    }
+    add(&args, "-c");
+    // Only the native compiler's input and command affect this object. Rhat's
+    // executable may change while emitting identical IR or C shims. Keep every
+    // compilation option above this key; input/output paths follow it below.
+    char *recipe = fmt("rhat-objects-v3:%s:%s", identity, source_hash);
+    for (int j = 1; j < args.n; j++) {
+        const char *option = args.v[j];
+        recipe = fmt("%s:%zu:%s", recipe, strlen(option), option);
+    }
+    char *key = link_identity(recipe);
     char *object = fmt("%s/%s.obj", cache, key), *stamp = fmt("%s/%s.sha256", cache, key);
     FILE *f = reuse ? fopen(stamp, "rb") : NULL;
     if (f) {
@@ -225,18 +244,6 @@ static char *compile(const char *input, const char *identity, const char *name, 
     char *temporary = fmt("%s/%s.%d.tmp.obj", cache, key, (int)pid());
     // COFF objects embed a timestamp unless told otherwise. Deterministic
     // objects let parallel builds publish identical cache entries.
-    List args = {0};
-    add(&args, (char *)clang);
-    add(&args, "-Wno-override-module");
-    add(&args, "-std=c11");
-    add(&args, (char *)opt);
-#if defined(_WIN32)
-    add(&args, "-mno-incremental-linker-compatible");
-#endif
-    if (crt_dll) {
-        add(&args, "-fms-runtime-lib=dll");
-    }
-    add(&args, "-c");
     add(&args, (char *)input);
     add(&args, "-o");
     add(&args, temporary);
@@ -283,16 +290,12 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         cache = fmt("%s/.rhat-cache", directory(out));
     }
     mkdirs(cache);
-    char *compiler_hash = digest_file(executable(compiler));
-    char *clang_path = executable(clang), *clang_hash = file_stamp(clang_path);
-    if (!clang_hash) {
+    char *clang_path = executable(clang), *clang_stamp = file_stamp(clang_path);
+    if (!clang_stamp) {
         errno = ENOENT;
         return -1;
     }
-    if (!compiler_hash) {
-        fail((Loc){clang, 1, 1}, "cannot identify compiler executable for object cache");
-    }
-    char *identity = fmt("%s:%s:%s", compiler_hash, clang_path, clang_hash);
+    char *identity = fmt("%s:%s", clang_path, clang_stamp);
     const char *environment[] = {"INCLUDE", "CPATH", "C_INCLUDE_PATH", "SDKROOT"};
     for (size_t j = 0; j < sizeof(environment) / sizeof(*environment); j++) {
         const char *value = getenv(environment[j]);

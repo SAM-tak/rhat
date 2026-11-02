@@ -283,6 +283,25 @@ public^ let^ fill=p^ a:ref^ grow^ i32^[], n:i32^ {
     if imports_built:
         imports_built.result()
     assert run([exe]).stdout == run([root/'main-O2.exe']).stdout
+    # A rebuilt frontend can emit identical native inputs. Alter executable
+    # bytes without changing its behavior to reproduce that cache boundary.
+    rebuilt = work/'rebuilt-rhat.exe'
+    shutil.copy2(compiler, rebuilt)
+    with rebuilt.open('ab') as stream:
+        stream.write(b'\nRhat frontend rebuild cache regression\n')
+    assert hashlib.sha256(rebuilt.read_bytes()).digest() != hashlib.sha256(Path(compiler).read_bytes()).digest()
+    log = run([rebuilt, *command[1:]]).stderr
+    assert 'compile:' not in log and 'cache hit: lib.example' in log, log
+    assert objects == {p.name: (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest()) for p in cache.glob('*.obj')}
+    assert run([exe]).stdout == run([root/'main-O2.exe']).stdout
+    if os.name == 'nt':
+        # The same IR compiled for another CRT mode needs distinct objects.
+        dll_command = [*command, '--crt-dll']
+        log = run(dll_command).stderr
+        assert 'compile: <entry>' in log and 'compile: lib.example' in log, log
+        assert 'compile:' not in run(dll_command).stderr
+        assert run([exe]).stdout == run([root/'main-O2.exe']).stdout
+        assert 'compile:' not in run(command).stderr
     private_change = (root/'lib/example.rh').read_text().replace('{ 99 }', '{ 100 }')
     (root/'lib/example.rh').write_text(private_change)
     log = run(command).stderr
