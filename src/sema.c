@@ -2600,7 +2600,22 @@ Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
     Expr invoke = {.kind = E_CALL, .loc = loc, .a = &target};
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
-        add(&invoke.args, saved_value(param->self ? ref : f->right_receiver ? a : b, loc));
+        Value arg = param->self ? ref : f->right_receiver ? a : b;
+        Type *adapted =
+            param->self ? arg.type : operator_argument(c->p, parameter_type(c->p, param), arg.type);
+        if (adapted != arg.type) {
+            Value borrowed = value(c, adapted);
+            Instr *i = emit(c, I_ADDR, loc);
+            i->dst = borrowed.id;
+            i->a = arg.id;
+            i->type = adapted;
+            borrowed.deps = roots_union(arg.storage, arg.deps);
+            if (!arg.addressable || (arg.var && !arg.var->mut)) {
+                borrowed.deps = roots_union(borrowed.deps, root(c, origin, c->depth + 1, false));
+            }
+            arg = borrowed;
+        }
+        add(&invoke.args, saved_value(arg, loc));
     }
     int destination = c->operator_target == origin ? c->operator_destination : -1;
     Value result = call(c, &invoke, NULL, destination);
@@ -3232,7 +3247,9 @@ Value expression(Context *c, Expr *e, Type *expected)
                       ? place_expression(c, e->b)
                       : expression(c, e->b,
                                    operand_hint ? operand_hint
-                                   : shift || nil_rhs || (comparison && a.type->kind == T_UNION)
+                                   : shift || nil_rhs || a.type->kind == T_STRUCT ||
+                                           a.type->kind == T_REF ||
+                                           (comparison && a.type->kind == T_UNION)
                                        ? NULL
                                        : a.type);
         if (dead(b)) {

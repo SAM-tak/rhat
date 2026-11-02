@@ -623,6 +623,16 @@ print^(value.add(value.copy()).x)
                                            end=at(source,needle,shift=len(spelling))), diagnostic
     print('PASS exact diagnostic token ranges with repeated names, UTF-16 and CRLF',flush=True)
 
+    borrowed = ('def^ V {self^{n:i32^=0} '
+                'op^+ =f^self^,other:ref^Self^ {V{n=self^.n+other.n}}}\n'
+                'let^a=V{n=3}\nlet^b=V{n=4}\nlet^c=a+b\nprint^(c.n)\n')
+    client.change(path,borrowed,126)
+    assert client.diagnostics(path,126) == []
+    assert request('hover','c=a+b',text=borrowed)['contents']['value'] == 'c: V'
+    definition=request('definition','a+b',shift=1,text=borrowed)
+    assert definition['range']['start'] == at(borrowed,'op^+'), definition
+    print('PASS automatically borrowed operator operands, result hover and navigation',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

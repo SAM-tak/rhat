@@ -356,7 +356,8 @@ Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, b
             Param *a = f->params.v[k];
             Type *t = actual->v[k], *want = parameter_type(p, a);
             if (!a->self && t && want) {
-                match = parameter_accepts(want, t);
+                match =
+                    parameter_accepts(want, f->operator_member ? operator_argument(p, want, t) : t);
             }
         }
         if (match) {
@@ -411,9 +412,16 @@ bool overload_overlap(Program *p, Function *a, Function *b)
     }
     for (int j = 0; j < a->params.n; j++) {
         Param *x = a->params.v[j], *y = b->params.v[j];
-        if (!x->self && !y->self &&
-            !domains_overlap(p, parameter_type(p, x), parameter_type(p, y))) {
-            return false;
+        if (!x->self && !y->self) {
+            Type *xt = parameter_type(p, x), *yt = parameter_type(p, y);
+            bool overlap = domains_overlap(p, xt, yt);
+            if (a->operator_member && b->operator_member) {
+                xt = xt && xt->kind == T_REF ? xt->elem : xt;
+                yt = yt && yt->kind == T_REF ? yt->elem : yt;
+            }
+            if (!overlap && !domains_overlap(p, xt, yt)) {
+                return false;
+            }
         }
     }
     return true;
@@ -492,7 +500,14 @@ Type *operator_hint(Program *p, const char *op, Type *receiver, bool right, Expr
             add(&filtered, f);
         }
     }
-    return overload_hint(p, &filtered, right ? 0 : 1, arg);
+    Type *hint = overload_hint(p, &filtered, right ? 0 : 1, arg);
+    if (hint && hint->kind == T_REF) {
+        return arg && (arg->kind == E_RECORD || arg->kind == E_ARRAY || arg->kind == E_INT ||
+                       arg->kind == E_FLOAT)
+                   ? hint->elem
+                   : NULL;
+    }
+    return hint;
 }
 
 Function *operator_select(Program *p, const char *op, Type *a, Type *b, Loc loc)
@@ -521,7 +536,18 @@ Type *operator_result(Program *p, Function *f, Type *a, Type *b, Loc loc)
     List actual = {0};
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
-        add(&actual, param->self ? type_wrap(p, T_REF, base, 0) : f->right_receiver ? a : b);
+        add(&actual, param->self ? type_wrap(p, T_REF, base, 0)
+                                 : operator_argument(p, parameter_type(p, param),
+                                                     f->right_receiver ? a : b));
     }
     return instance_for(p, f, base->def, &actual, loc)->result;
+}
+
+Type *operator_argument(Program *p, Type *want, Type *actual)
+{
+    if (want && actual && want->kind == T_REF && actual->kind != T_REF &&
+        parameter_accepts(want->elem, actual)) {
+        return type_wrap(p, T_REF, actual, 0);
+    }
+    return actual;
 }

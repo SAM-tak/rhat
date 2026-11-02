@@ -188,6 +188,9 @@ Type *operator_hint(Program *p, const char *op, Type *receiver, bool right, Expr
 // Infer the result of a selected operator with its explicit receiver.
 Type *operator_result(Program *p, Function *f, Type *a, Type *b, Loc loc);
 
+// Borrow a by-value operand for a pure operator's reference parameter.
+Type *operator_argument(Program *p, Type *want, Type *actual);
+
 // Split a postfix chain without separating a method from its call.
 Expr *chain_parts(Expr *e, List *steps);
 

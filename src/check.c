@@ -892,6 +892,11 @@ static Type *infer_call(Infer *c, Expr *e)
     for (int j = offset; j < actual.n && j < f->params.n; j++) {
         Param *param = f->params.v[j];
         Type *want = parameter_type(c->p, param), *t = actual.v[j];
+        if (param->spec && t && want && !parameter_accepts(want, t)) {
+            // Wait for provisional argument types instead of specializing a
+            // typed callee with a numeric guess for a pending operator result.
+            return f->result ? type_spec(c->p, f->result) : f->required_result;
+        }
         if (param->spec && t && want &&
             (sum_accepts(want, t) || c_function_arm(want, t) ||
              (want->kind == T_DYN && parameter_accepts(want, t)))) {
@@ -1698,9 +1703,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         bool against_union = comparison && a && a->kind == T_UNION;
         Type *b = right_type ? right_type
                              : infer_expr(c, e->b,
-                                          hint                                             ? hint
-                                          : !strcmp(e->text, "bitshift^") || against_union ? NULL
-                                                                                           : a);
+                                          hint ? hint
+                                          : !strcmp(e->text, "bitshift^") || against_union ||
+                                                  (a && (a->kind == T_STRUCT || a->kind == T_REF))
+                                              ? NULL
+                                              : a);
         if (b && b->kind == T_NEVER && !logic) {
             return b;
         }
@@ -1719,6 +1726,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         // A failed nominal dispatch has no arithmetic fallback. Propagating an
         // operand's type here would blame an enclosing call for this operator.
+        if ((!a || !b) && ((a && (a->kind == T_STRUCT || a->kind == T_REF)) ||
+                           (b && (b->kind == T_STRUCT || b->kind == T_REF)) ||
+                           (expected && (expected->kind == T_STRUCT || expected->kind == T_REF)))) {
+            return NULL;
+        }
         if (!logic && a && b &&
             !(comparison &&
               (a->kind == T_NIL || b->kind == T_NIL || a->kind == T_UNION || b->kind == T_UNION)) &&

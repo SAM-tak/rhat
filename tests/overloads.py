@@ -8,6 +8,89 @@ def main():
     run, positive, negative = suite.run, suite.positive, suite.negative
     work = suite.work
 
+    vector = '''let^ math=import^std.math
+def^ F2 {
+ self^{x:f32^=0.0,y:f32^=0.0}
+ op^+ =f^self^,other:ref^Self^ {F2{x=self^.x+other.x,y=self^.y+other.y}}
+ op^- =f^self^,other:ref^Self^ {F2{x=self^.x-other.x,y=self^.y-other.y}}
+ op^* =f^self^,scale:f32^ {F2{x=self^.x*scale,y=self^.y*scale}}
+ op^cross^ =f^self^,other:ref^Self^ {self^.x*other.y-self^.y*other.x}
+ op^dot^ =f^self^,other:ref^Self^ {self^.x*other.x+self^.y*other.y}
+ length=f^self^ {math.sqrt(self^dot^self^)}
+}
+'''
+    positive('operator_auto_borrow_vectors', vector+'''
+let^a=F2{x=4.0,y=5.0}
+let^b=F2{x=1.0,y=1.0}
+var^source=a
+let^read=ref^source
+let^items=[a,b]
+let^make=f^ {F2{x=1.0,y=1.0}}
+print^((a-b).length(),(a+b).x,(a*2.0).y)
+print^(a dot^ b,read dot^ b,a dot^ read,read dot^ read,a cross^ b)
+print^((F2{x=4.0,y=5.0}-make()).length(),(items[0]-items[1]).length())
+print^((a cross^(a-b)) <= 0.0)
+let^accept=f^v:F2 {v.length()}
+let^move=f^v:F2 {accept((v-make())*2.0)}
+print^(move(a))
+''', '5.0 5.0 10.0\n9.0 9.0 41.0 41.0 -1.0\n5.0 5.0\nfalse\n10.0\n')
+
+    positive('operator_auto_borrow_order_and_right_receiver', '''
+def^ L {self^{n:i32^=0}}
+def^ R {
+ self^{n:i32^=0}
+ op^+ =f^left:ref^L,self^ {left.n+self^.n}
+ op^<=> =f^self^,other:ref^Self^ {self^.n-other.n}
+}
+let^left=p^calls:ref^i32^ ->L {*calls+=1 return^L{n=*calls}}
+let^right=p^calls:ref^i32^ ->R {*calls+=1 return^R{n=*calls}}
+var^calls=0
+print^(left(ref^calls)+right(ref^calls),calls)
+print^(right(ref^calls)<right(ref^calls)<right(ref^calls),calls)
+print^(right(ref^calls)>right(ref^calls)>right(ref^calls),calls)
+''', '3 2\ntrue 5\nfalse 7\n')
+
+    negative('operator_borrow_overlap', '''def^ V {
+ self^{n:i32^=0}
+ op^+ =f^self^,other:Self^ {self^.n+other.n}
+ overload^ op^+ =f^self^,other:ref^Self^ {self^.n+other.n}
+}
+''', 'overlapping overload')
+    negative('operator_borrow_temporary_escape', '''def^ V {
+ self^{n:i32^=0}
+ op^:: =f^self^,other:ref^Self^ ->ref^Self^ {other}
+}
+let^v=V{}
+let^escape=v::V{}
+print^(escape.n)
+''', 'reference would outlive')
+    negative('operator_borrow_let_escape', '''def^ V {
+ self^{n:i32^=0}
+ op^:: =f^self^,other:ref^Self^ ->ref^Self^ {other}
+}
+var^a=V{}
+let^b=V{}
+let^escape=a::b
+print^(escape.n)
+''', 'reference would outlive')
+    negative('operator_borrow_mutation', '''def^ V {
+ self^{n:i32^=0}
+ op^+ =f^self^,other:ref^Self^ ->i32^ {other.n:=1 return^self^.n}
+}
+var^a=V{}
+var^b=V{}
+print^(a+b)
+''', 'f^ cannot mutate borrowed storage')
+    negative('operator_borrow_mutable_method', '''def^ V {
+ self^{n:i32^=0}
+ change=f^mutable^self^ {self^.n+=1}
+ op^+ =f^self^,other:ref^Self^ ->i32^ {other.change() return^self^.n}
+}
+var^a=V{}
+var^b=V{}
+print^(a+b)
+''', 'f^ cannot mutate borrowed storage')
+
     positive('overload_types_and_effects', '''
 let^ choose=f^ x:i32^ ->i32^ {x+1}
 & f^ x:i64^ ->string^ {"wide"}
