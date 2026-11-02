@@ -242,7 +242,9 @@ void tool_failed_binding(Program *p, List *vars, Stmt *s, int depth, int lexical
     v->depth = depth;
     v->lexical = lexical;
     add(vars, v);
-    tool_record(p, s->loc, s->loc, s->name, NULL, NULL, NULL, 13, true);
+    // An invalid initializer does not invalidate an already resolved annotation.
+    Type *annotated = s->spec && s->spec->resolved ? s->spec->type : NULL;
+    tool_record(p, s->loc, s->loc, s->name, annotated, NULL, NULL, 13, true);
 }
 
 void forget_roots(List *vars, Roots roots, bool all)
@@ -1252,7 +1254,7 @@ void check_callable(Program *p, Type *want, Type *actual, Loc loc)
         return;
     }
     List candidates = callable_candidates(actual, want->params.n);
-    Function *f = overload_select(p, &candidates, &want->params, loc, true);
+    Function *f = overload_select(p, &candidates, &want->params, NULL, 0, loc, true);
     Type *signature = callable_declaration(p, f);
     if (f->mutable_self) {
         fail(loc, "a mutable^ method cannot satisfy a pure callable contract");
@@ -1296,7 +1298,7 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
         Type *hint = overload_hint(c->p, candidates, j + (receiver != NULL), e->args.v[j]);
         add(&actual, expression_type(c, e->args.v[j], hint));
     }
-    return overload_select(c->p, candidates, &actual, e->loc, true);
+    return overload_select(c->p, candidates, &actual, e, receiver != NULL, e->loc, true);
 }
 
 // Whether a value of type part could be stored inside a value of type whole.

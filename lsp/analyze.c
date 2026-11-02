@@ -209,6 +209,10 @@ static size_t identifier_at(Source *source, Loc loc, const char *name)
     const char *text = source->text;
     size_t at = loc_offset(source, loc);
     size_t length = strlen(name);
+    // Exact compiler token spans also cover Unicode operators adjacent to names.
+    if (loc.length > 0 && (size_t)loc.length == length && !strncmp(text + at, name, length)) {
+        return at;
+    }
     // Bindings have statement locations, while declarations and members carry
     // exact name tokens. Qualified type paths select their terminal component.
     for (size_t n = at; text[n] && n < at + 512; n++) {
@@ -218,7 +222,8 @@ static size_t identifier_at(Source *source, Loc loc, const char *name)
         // A name token may follow a hat directly, as in let^name.
         if (!strncmp(text + n, name, length) &&
             (n == 0 || n == at || !word_byte((unsigned char)text[n - 1])) &&
-            !word_byte((unsigned char)text[n + length])) {
+            (!word_byte((unsigned char)text[n + length]) ||
+             unicode_operator(text + n + length, NULL))) {
             return n;
         }
     }
@@ -406,6 +411,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         const char *at = source->text + loc_offset(source, r->use);
         if (r->function->operator_member && strncmp(at, "op^", 3)) {
             size_t length = 1;
+            unicode_operator(at, &length);
             if (!strncmp(at, "<=>", 3)) {
                 length = 3;
             }

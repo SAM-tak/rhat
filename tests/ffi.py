@@ -39,7 +39,7 @@ print^(2)
 let^ root = externC^ sqrtf:f^ x:f32^ ->f32^;
 & externC^ sqrt:f^ x:f64^ ->f64^;
 externC^ sqrt:f^ x:f64^ ->f64^;
-print^(root(f32^(2.25)), root(6.25), sqrt(16.0))
+print^(root(f32^(2.25)), root(f64^(6.25)), sqrt(16.0))
 ''', '1.5 2.5 4.0\n')
 
     if os.name == 'nt':

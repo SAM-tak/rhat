@@ -184,7 +184,7 @@ static double narrow_value(unsigned bits, int kind)
                     : ldexp((double)(bits & mask), 1 - bias - mantissa);
 }
 
-char *float_constant(const char *text, int kind, Loc loc)
+static char *encode_float(const char *text, int kind)
 {
     if (kind == T_F8 || kind == T_F16 || kind == T_F32) {
         bool negative = *text == '-';
@@ -219,7 +219,7 @@ char *float_constant(const char *text, int kind, Loc loc)
         unsigned bits = low + (cmp > 0 || (cmp == 0 && (low & 1)));
         mem_free(d.digits);
         if (bits > maximum) {
-            fail(loc, "floating literal does not fit '%s'", builtin_name(kind));
+            return NULL;
         }
         if (negative) {
             bits |= kind == T_F8 ? 128u : kind == T_F16 ? 32768u : UINT32_C(0x80000000);
@@ -236,9 +236,23 @@ char *float_constant(const char *text, int kind, Loc loc)
     }
     double value = strtod(text, NULL);
     if (!isfinite(value)) {
-        fail(loc, "floating literal does not fit '%s'", builtin_name(kind));
+        return NULL;
     }
     uint64_t bits;
     memcpy(&bits, &value, sizeof(bits));
     return fmt("0x%016llX", (unsigned long long)bits);
+}
+
+bool float_fits(const char *text, int kind)
+{
+    return encode_float(text, kind) != NULL;
+}
+
+char *float_constant(const char *text, int kind, Loc loc)
+{
+    char *constant = encode_float(text, kind);
+    if (!constant) {
+        fail(loc, "floating literal does not fit '%s'", builtin_name(kind));
+    }
+    return constant;
 }

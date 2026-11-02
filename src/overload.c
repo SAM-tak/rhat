@@ -343,7 +343,46 @@ Type *overload_hint(Program *p, List *candidates, int index, Expr *arg)
     return hint;
 }
 
-Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, bool strict)
+// A typed constant or cast is already a value, even when its AST contains a
+// literal. Only unspecialized numeric syntax can take a candidate's type.
+static bool literal_argument(Program *p, Type *want, Expr *arg, Type **actual)
+{
+    if (!arg || arg->constant_spec || !want) {
+        return true;
+    }
+    Expr *number = arg;
+    bool negative = arg->kind == E_UNARY && !strcmp(arg->text, "-");
+    if (negative) {
+        number = arg->a;
+    }
+    if (number->constant_spec || (number->kind != E_INT && number->kind != E_FLOAT)) {
+        return true;
+    }
+    Type *hint = want->kind == T_UNION ? union_literal_hint(want, arg) : want;
+    if (!hint) {
+        hint = type_builtin(p, number->kind == E_INT ? T_I32 : T_F64);
+        if (!parameter_accepts(want, hint)) {
+            return false;
+        }
+    }
+    const char *text = negative ? fmt("-%s", number->text) : number->text;
+    bool fits = kind_float(hint->kind)                              ? float_fits(text, hint->kind)
+                : kind_integer(hint->kind) && number->kind == E_INT ? integer_fits(text, hint->kind)
+                                                                    : false;
+    if (fits) {
+        *actual = hint;
+    }
+    return fits;
+}
+
+static Expr *call_argument(Expr *call, Function *f, int offset, int index)
+{
+    int arg = index - (offset && !f->right_receiver ? offset : 0);
+    return call && arg >= 0 && arg < call->args.n ? call->args.v[arg] : NULL;
+}
+
+Function *overload_select(Program *p, List *candidates, List *actual, Expr *call, int offset,
+                          Loc loc, bool strict)
 {
     Function *found = NULL;
     for (int j = 0; j < candidates->n; j++) {
@@ -355,7 +394,10 @@ Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, b
         for (int k = 0; k < actual->n && match; k++) {
             Param *a = f->params.v[k];
             Type *t = actual->v[k], *want = parameter_type(p, a);
-            if (!a->self && t && want) {
+            if (!a->self && !literal_argument(p, want, call_argument(call, f, offset, k), &t)) {
+                match = false;
+            }
+            else if (!a->self && t && want) {
                 match =
                     parameter_accepts(want, f->operator_member ? operator_argument(p, want, t) : t);
             }
@@ -373,6 +415,15 @@ Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, b
     if (!found && strict) {
         fail(loc, "no matching overload%s%s", candidates->n ? " for '" : "",
              candidates->n ? fmt("%s'", ((Function *)candidates->v[0])->name) : "");
+    }
+    for (int k = 0; found && k < actual->n; k++) {
+        Param *param = found->params.v[k];
+        Type *t = actual->v[k];
+        if (!param->self) {
+            literal_argument(p, parameter_type(p, param), call_argument(call, found, offset, k),
+                             &t);
+            actual->v[k] = t;
+        }
     }
     return found;
 }
@@ -473,7 +524,7 @@ static Function *operator_on(Program *p, Type *receiver, Type *other, const char
     if (!right && other) {
         add(&actual, other);
     }
-    return overload_select(p, &filtered, &actual, loc, false);
+    return overload_select(p, &filtered, &actual, NULL, 0, loc, false);
 }
 
 Type *operator_hint(Program *p, const char *op, Type *receiver, bool right, Expr *arg)

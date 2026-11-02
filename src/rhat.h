@@ -197,6 +197,7 @@ typedef struct {
     char *name;
     Spec *spec;
     bool self;
+    Stmt *capture;  // Original top-level binding for a compiler-generated parameter.
     Type *inferred; // Body-derived constraint, independent of call sites.
 } Param;
 
@@ -351,12 +352,16 @@ const char *builtin_name(int kind);
 bool kind_integer(int kind);
 // The number type named name, such as i32^ or f64^, or -1.
 int numeric_kind(const char *name);
+// Canonical spelling of a Unicode operator, or NULL. On a match, set its byte length if given.
+const char *unicode_operator(const char *text, size_t *length);
 bool kind_unsigned(int kind);
 bool kind_float(int kind);
 // Whether every bit pattern of t is a value: numbers, and arrays and structs of them.
 bool plain_data(Type *t);
 int numeric_bits(int kind);
 bool integer_fits(const char *text, int kind);
+// Whether a decimal literal rounds to a finite value of the floating type.
+bool float_fits(const char *text, int kind);
 char *float_constant(const char *text, int kind, Loc loc);
 bool derives(Def *d, Def *base);
 

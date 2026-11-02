@@ -247,6 +247,10 @@ print^((f^ x {typed(x)})(41))
     negative('body_nominal_not_guessed', 'def^ A {self^{value:i32^}} let^ read=f^ x {x.value}', 'without a call shape')
 
     negative('inference_unused', 'let^ unused=f^ x {x}', 'without a call shape')
+    negative('inference_unused_capture', 'var^ pictures=grow^i32^[] let^ read=p^ {print^(pictures.len)}',
+             "cannot infer captured binding 'pictures' of 'read'")
+    negative('inference_unused_capture_parameter', 'var^ pictures=grow^i32^[] let^ read=p^ x {print^(pictures.len,x)}',
+             "cannot infer parameter 'x' of 'read'")
     negative('inference_unused_method', 'def^ A {read=f^ self^,x {x}}', 'without a call shape')
     negative('inference_missing_member', 'def^ A {} let^ read=f^ x {x.value} print^(read(A{}))', 'has no field')
     negative('inference_missing_method', 'def^ A {} let^ read=f^ x {x.read()} print^(read(A{}))', 'has no method')

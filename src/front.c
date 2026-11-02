@@ -530,6 +530,25 @@ typedef struct {
     bool text;
 } Lexer;
 
+const char *unicode_operator(const char *text, size_t *length)
+{
+    static const char *const operators[][2] = {{"≤", "<="},  {"≦", "<="}, {"≥", ">="},
+                                               {"≧", ">="},  {"≠", "!="}, {"×", "cross^"},
+                                               {"⋅", "dot^"}};
+    if ((unsigned char)*text >= 128) {
+        for (size_t j = 0; j < sizeof(operators) / sizeof(*operators); j++) {
+            size_t width = strlen(operators[j][0]);
+            if (!strncmp(text, operators[j][0], width)) {
+                if (length) {
+                    *length = width;
+                }
+                return operators[j][1];
+            }
+        }
+    }
+    return NULL;
+}
+
 static void lex_step(Parser *p, Lexer *l)
 {
     if (l->text || (l->level && !l->nest[l->level] && (*l->s == '}' || *l->s == ':'))) {
@@ -621,16 +640,11 @@ static void lex_step(Parser *p, Lexer *l)
     Token *t = mem(sizeof(*t));
     t->loc = (Loc){p->p->path, l->line, l->col};
     const char *start = l->s;
-    const char *operators[] = {"≤", "≦", "≥", "≧", "≠"};
-    int unicode = -1;
-    for (int j = 0; j < 5; j++) {
-        if (!strncmp(l->s, operators[j], strlen(operators[j]))) {
-            unicode = j;
-        }
-    }
-    if (unicode >= 0) {
-        l->s += strlen(operators[unicode]);
-        t->text = unicode < 2 ? "<=" : unicode < 4 ? ">=" : "!=";
+    size_t unicode_length;
+    const char *unicode = unicode_operator(l->s, &unicode_length);
+    if (unicode) {
+        l->s += unicode_length;
+        t->text = (char *)unicode;
         t->kind = '=';
     }
     else if (l->s[0] == '$' && l->s[1] == '"') {
@@ -692,13 +706,7 @@ static void lex_step(Parser *p, Lexer *l)
     }
     else if (isalpha((unsigned char)*l->s) || *l->s == '_' || (unsigned char)*l->s >= 128) {
         while (isalnum((unsigned char)*l->s) || *l->s == '_' || (unsigned char)*l->s >= 128) {
-            bool symbol = false;
-            for (int j = 0; j < 5; j++) {
-                if (!strncmp(l->s, operators[j], strlen(operators[j]))) {
-                    symbol = true;
-                }
-            }
-            if (symbol) {
+            if (unicode_operator(l->s, NULL)) {
                 break;
             }
             l->s++;

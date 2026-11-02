@@ -672,6 +672,11 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         size_t start = at;
         int kind = -1, modifiers = 0;
         unsigned char c = (unsigned char)buffer[at];
+        size_t operator_length;
+        if (unicode_operator(buffer + at, &operator_length)) {
+            at += operator_length;
+            continue;
+        }
         if (isspace(c)) {
             at++;
             continue;
@@ -684,13 +689,15 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         }
         else if (isdigit(c)) {
             at++;
-            while (identifier((unsigned char)buffer[at]) || buffer[at] == '.') {
+            while (!unicode_operator(buffer + at, NULL) &&
+                   (identifier((unsigned char)buffer[at]) || buffer[at] == '.')) {
                 at++;
             }
         }
         else if (identifier(c)) {
             at++;
-            while (buffer[at] != '^' && identifier((unsigned char)buffer[at])) {
+            while (buffer[at] != '^' && identifier((unsigned char)buffer[at]) &&
+                   !unicode_operator(buffer + at, NULL)) {
                 at++;
             }
             // A hat terminates the word; the next name may start immediately.

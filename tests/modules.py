@@ -219,11 +219,11 @@ print^(integer,floating)
 '''}, '9223372036854775807 1.25\n')
     negative('reserved_std_module', {'main.rh': 'module^ std.forged'}, 'reserved')
     positive('std_math_intrinsics', {'main.rh': '''let^ m = import^ std.math
-print^(m.sqrt(2.0), m.sqrt(f32^(6.25)), m.sin(m.pi/2.0), m.atan2(1.0, 1.0)*4.0 = m.pi, m.pow(2.0, 10.0))
-print^(m.floor(-1.5), m.ceil(-1.5), m.trunc(-1.5), m.round(2.5), m.abs(-3.0), m.copysign(2.0, -0.0), m.fma(2.0, 3.0, 1.0))
-print^(m.log(m.e), m.log2(8.0), m.log10(1000.0), m.exp2(f32^(3.0)), m.tanh(0.0), m.cosh(0.0), m.tau = 2.0*m.pi)
+print^(m.sqrt(f64^(2.0)), m.sqrt(f32^(6.25)), m.sin(m.pi/2.0), m.atan2(f64^(1.0), 1.0)*4.0 = m.pi, m.pow(f64^(2.0), 10.0))
+print^(m.floor(f64^(-1.5)), m.ceil(f64^(-1.5)), m.trunc(f64^(-1.5)), m.round(f64^(2.5)), m.abs(f64^(-3.0)), m.copysign(f64^(2.0), -0.0), m.fma(f64^(2.0), 3.0, 1.0))
+print^(m.log(m.e), m.log2(f64^(8.0)), m.log10(f64^(1000.0)), m.exp2(f32^(3.0)), m.tanh(f64^(0.0)), m.cosh(f64^(0.0)), m.tau = 2.0*m.pi)
 let^ inf = 1.0/0.0
-print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(1.0), m.isfinite(1.0), m.isfinite(inf), m.isnan(f32^(1.0)))
+print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(f64^(1.0)), m.isfinite(f64^(1.0)), m.isfinite(inf), m.isnan(f32^(1.0)))
 '''}, '1.4142135623730951 2.5 1.0 true 1024.0\n-2.0 -1.0 -1.0 3.0 3.0 -2.0 7.0\n1.0 3.0 3.0 8.0 0.0 1.0 true\n'
           'true true true false true false false\n')
     positive('number_parse', {'main.rh': '''let^ t = import^ std.text

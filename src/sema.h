@@ -157,7 +157,9 @@ List overload_candidates(Program *p, Def *owner, const char *name, int arity);
 // Find the common contextual type without choosing an overload arm.
 Type *overload_hint(Program *p, List *candidates, int index, Expr *arg);
 // Select the sole compatible arm; unresolved inference may return NULL.
-Function *overload_select(Program *p, List *candidates, List *actual, Loc loc, bool strict);
+// call supplies contextual literals; offset counts implicit receiver arguments.
+Function *overload_select(Program *p, List *candidates, List *actual, Expr *call, int offset,
+                          Loc loc, bool strict);
 // Whether two declarations admit any common call, ignoring return types.
 bool overload_overlap(Program *p, Function *a, Function *b);
 // Reject overlapping declarations in one callable group.

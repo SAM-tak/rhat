@@ -8,6 +8,68 @@ def main():
     run, positive, negative = suite.run, suite.positive, suite.negative
     work = suite.work
 
+    positive('unicode_operator_aliases', '''def^V {
+ self^{x:i32^=0,y:i32^=0}
+ op^× =f^self^,other:ref^Self^ {self^.x*other.y-self^.y*other.x}
+ op^⋅ =f^self^,other:ref^Self^ {self^.x*other.x+self^.y*other.y}
+}
+let^左=V{x=3,y=4}
+let^右=V{x=1,y=2}
+print^(左×右,左 cross^右,左⋅右,左 dot^右,2*(左⋅右)+1)
+let^一=1 let^二=2
+print^(一≦二,一≤二,二≧一,二≥一,一≠二,一=/二)
+let^`×`=7
+print^("× ⋅ ≦ ≤ ≧ ≥ ≠",`×`)
+''', '2 2 11 11 23\ntrue true true true true true\n× ⋅ ≦ ≤ ≧ ≥ ≠ 7\n')
+
+    numeric_overloads = '''let^min=f^a:f32^,b:f32^ {if^a<b:a el^:b;}
+& f^a:i64^,b:i64^ {if^a<b:a el^:b;}
+'''
+    positive('overload_contextual_numeric_literals', numeric_overloads+'''
+let^text="hello"
+var^message:grow^u8^[]=[]
+message.append(text.bytes[0 .. min(text.bytes.len,160)])
+let^alias=min
+let^wide:i64^=200
+let^real:f32^=200.0
+print^(message.len,min(160,wide),alias(wide,160),min(real,160),min(160,real))
+print^(min(wide,-160),min(-160,wide),min(wide,-9223372036854775808))
+let^forward=f^n:i64^ {min(160,n)}
+print^(forward(200))
+let^tick=p^calls:ref^i64^ { *calls+=1 return^i64^(200) }
+var^calls:i64^=0
+print^(min(tick(ref^calls),160),calls)
+let^pick=f^n:i8^ {"small"} & f^n:i64^ {"wide"}
+let^signed=f^n:u64^ {"unsigned"} & f^n:i64^ {"signed"}
+let^float_pick=f^n:f8^ {"f8"} & f^n:f16^ {"f16"} & f^n:f32^ {"f32"}
+let^large=f^n:f32^ {"f32"} & f^n:f64^ {"f64"}
+print^(pick(128),pick(-129),signed(-1),float_pick(65520.0),large(4e38))
+''', '5 160 160 160.0 160.0\n-160 -160 -9223372036854775808\n160\n160 1\nwide wide signed f32 f64\n')
+    positive('overload_contextual_method_literals', '''def^Choice {
+ pick=f^self^,a:f32^,b:f32^ {if^a<b:a el^:b;}
+ overload^pick=f^self^,a:i64^,b:i64^ {if^a<b:a el^:b;}
+}
+var^choice=Choice{}
+let^wide:i64^=200
+let^real:f32^=200.0
+let^unbound=choice.pick
+print^(choice.pick(wide,160),choice.pick(160,wide),choice.pick(real,160))
+print^(unbound(ref^choice,160,wide))
+''', '160 160 160.0\n160\n')
+    for name, call, diagnostic in [
+        ('both_literals', 'min(1,2)', 'ambiguous overload'),
+        ('typed_width', 'min(i64^(1),i32^(2))', 'no matching overload'),
+        ('bound_literal', 'min(i64^(1),small)', 'no matching overload'),
+        ('integer_overflow', 'min(i64^(1),9223372036854775808)', 'no matching overload'),
+        ('float_overflow', 'min(f32^(1.0),4e38)', 'no matching overload'),
+    ]:
+        negative('overload_numeric_'+name,
+                 numeric_overloads+'let^small=2\nprint^('+call+')', diagnostic)
+    negative('overload_numeric_no_return_ranking', numeric_overloads+
+             'let^result:i64^=min(1,2)\nprint^(result)', 'ambiguous overload')
+    negative('overload_numeric_literal_width_ambiguity',
+             'let^pick=f^n:i8^ {1} & f^n:i64^ {2}\nprint^(pick(127))', 'ambiguous overload')
+
     vector = '''let^ math=import^std.math
 def^ F2 {
  self^{x:f32^=0.0,y:f32^=0.0}
@@ -99,7 +161,7 @@ let^ choose=f^ x:i32^ ->i32^ {x+1}
 & f^ x:i32^,y:i32^ ->i32^ {x+y}
 let^ forward=f^ x:string^ {choose(x)}
 var^ wide:i64^=1
-print^(choose(2),choose(wide),forward("s"),choose(3,4))
+print^(choose(i32^(2)),choose(wide),forward("s"),choose(3,4))
 choose(true^)
 ''', '3 wide 42 7\ntrue\n')
 
@@ -263,12 +325,17 @@ public^ let^ choose=f^ n:i32^ ->i32^ {n+1}
 & f^ n:string^ ->i32^ {40}
 public^ let^ inc=f^ n:i32^ ->i32^ {n+1}
 public^ let^ twice=f^ n:i32^ ->i32^ {n*2}
+public^ let^ small:i32^=2
 public^ let^ apply=f^ cb:f^i32^->i32^;,n ->i32^ {cb(n)}
 ''',encoding='utf-8')
     positive('overload_modules', '''import^ lib.calls
 print^(lib.calls.choose(2),lib.calls.choose("s"))
 print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
 ''', '3 40\n3 4\n')
+    for value in ('lib.calls.small', '-lib.calls.small'):
+        negative('overload_typed_constant_'+('negative' if value.startswith('-') else 'positive'),
+                 numeric_overloads+'import^lib.calls\nprint^(min(i64^(1),'+value+'))',
+                 'no matching overload')
 
     for name, text, diagnostic in [
         ('reopened_by_arity', 'let^ f=f^ x:i32^ {x} let^ f=f^ x:i32^,y:i32^ {x+y}', 'already declared'),

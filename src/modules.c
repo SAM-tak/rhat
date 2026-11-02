@@ -894,6 +894,7 @@ static void pass_top_bindings(Program *p, Module *m)
                 Param *a = mem(sizeof(*a));
                 a->loc = binding->loc;
                 a->name = hidden_name(binding);
+                a->capture = binding;
                 a->spec = binding->spec;
                 if (binding->mut && binding->spec) {
                     a->spec = mem(sizeof(*a->spec));

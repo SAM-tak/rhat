@@ -464,11 +464,32 @@ void inferred_unused(Program *p, Function *f)
     if (f->invalid || f->templ || !param) {
         return;
     }
+    // Captures precede written parameters, but are not annotations the user omitted.
+    for (int j = 0; j < f->params.n; j++) {
+        Param *candidate = f->params.v[j];
+        if (!candidate->capture && !candidate->self && !candidate->spec && !candidate->inferred) {
+            param = candidate;
+            break;
+        }
+    }
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
         if (in->fn == f && in->state == 2) {
             return;
         }
+    }
+    if (param->capture) {
+        // Failed entry analysis can prevent the capture's call shape from existing.
+        for (int j = 0; j < p->entry->instances.n; j++) {
+            Instance *in = p->entry->instances.v[j];
+            if (in->invalid) {
+                return;
+            }
+        }
+        fail(f->declaration,
+             "cannot infer captured binding '%s' of '%s' without a call shape; "
+             "add a type annotation to the binding or call the function",
+             param->capture->name, f->name);
     }
     fail(param->loc,
          "cannot infer parameter '%s' of '%s' without a call shape; "
@@ -880,10 +901,10 @@ static Type *infer_call(Infer *c, Expr *e)
         add(&actual, right_self);
     }
     if (candidates.n > 1) {
-        f = overload_select(c->p, &candidates, &actual, e->loc, false);
+        f = overload_select(c->p, &candidates, &actual, e, offset, e->loc, false);
         if (!f) {
             if (known) {
-                overload_select(c->p, &candidates, &actual, e->loc, true);
+                overload_select(c->p, &candidates, &actual, e, offset, e->loc, true);
             }
             return NULL;
         }
@@ -2657,7 +2678,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             }
         }
         if (candidates.n > 1) {
-            f = overload_select(c->p, &candidates, &actual, e->loc, false);
+            f = overload_select(c->p, &candidates, &actual, e, offset, e->loc, false);
             for (int j = 0; f && j < arguments.n; j++) {
                 body_require(c, arguments.v[j], parameter_type(c->p, f->params.v[j + offset]),
                              UINT64_MAX);

@@ -664,6 +664,112 @@ print^(value.add(value.copy()).x)
         assert request('hover','value=if^',text=source)['contents']['value'] == 'value: i64^'
     print('PASS pending conditional branches keep inferred numeric result widths',flush=True)
 
+    literal_overloads = ('let^min=f^a:f32^,b:f32^ {if^a<b:a el^:b;}\n'
+                         '& f^a:i64^,b:i64^ {if^a<b:a el^:b;}\n'
+                         'let^text="hello"\n'
+                         'let^limit=min(text.bytes.len,160)\n'
+                         'let^reverse=min(160,text.bytes.len)\n'
+                         'print^(limit,reverse)\n')
+    client.change(path,literal_overloads,131)
+    assert client.diagnostics(path,131) == []
+    for name in ('limit=min', 'reverse=min'):
+        hover=request('hover',name,text=literal_overloads)['contents']['value']
+        assert hover.endswith(': i64^'), hover
+    client.change(path,literal_overloads+'print^(min(1,2))\n',132)
+    diagnostics=client.diagnostics(path,132)
+    assert len(diagnostics) == 1 and 'ambiguous overload' in diagnostics[0]['message'], diagnostics
+    client.change(path,literal_overloads,133)
+    assert client.diagnostics(path,133) == []
+    print('PASS candidate-specific numeric literals, result hover and ambiguity recovery',flush=True)
+
+    unicode_operators = ('def^V {self^{n:i32^=2}\n'
+                         'op^× =f^self^,other:ref^Self^ {self^.n-other.n}\n'
+                         'op^⋅ =f^self^,other:ref^Self^ {self^.n*other.n}}\n'
+                         'def^Holder {self^{delta:V=V{}}}\n'
+                         'let^左=V{} let^右=V{n=3} let^box=Holder{}\n'
+                         'print^("🙂",左×右,左⋅右,左 × 右,左 ⋅ 右,左.n≦右.n,box.delta×(左))\n')
+    client.change(path,unicode_operators,134)
+    assert client.diagnostics(path,134) == []
+    for symbol in ('×', '⋅'):
+        definition=request('definition','左'+symbol+'右',shift=1,text=unicode_operators)
+        assert definition['range']['start'] == at(unicode_operators,'op^'+symbol), definition
+    data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    row=column=0
+    colored={}
+    for n in range(0,len(data),5):
+        delta,offset,length,kind,modifiers=data[n:n+5]
+        row+=delta
+        column=offset if delta else column+offset
+        line=unicode_operators.splitlines()[row].encode('utf-16-le')
+        spelling=line[column*2:(column+length)*2].decode('utf-16-le')
+        assert not any(symbol in spelling for symbol in '×⋅≦≤≧≥≠'), spelling
+        colored[row,column]=spelling
+    for needle,shift,name in [('左×右',0,'左'),('左×右',2,'右'),
+                              ('左⋅右',0,'左'),('左⋅右',2,'右'),
+                              ('box.delta×',4,'delta')]:
+        pos=at(unicode_operators,needle,shift=shift)
+        assert colored.get((pos['line'],pos['character'])) == name, (name,colored)
+    bad_operator=unicode_operators+'let^bad=左×1\n'
+    client.change(path,bad_operator,135)
+    diagnostics=client.diagnostics(path,135)
+    assert len(diagnostics) == 1 and 'cross^' in diagnostics[0]['message'], diagnostics
+    assert diagnostics[0]['range'] == dict(start=at(bad_operator,'×1'),
+                                          end=at(bad_operator,'×1',shift=1)), diagnostics
+    client.change(path,unicode_operators,136)
+    assert client.diagnostics(path,136) == []
+    print('PASS Unicode operator aliases, navigation and exact diagnostic ranges',flush=True)
+
+    captures = ('var^pictures=grow^i32^[]\n'
+                'let^new_picture=p^ {pictures.push(1)}\n'
+                'let^bad=missing_capture_initializer\n'
+                'new_picture()\n')
+    for version,source in [(137,captures),
+                           (138,captures.replace('grow^i32^[]','missing_capture_value')),
+                           (139,captures+'let^unused=p^x {print^(pictures.len,x)}\n')]:
+        client.change(path,source,version)
+        diagnostics=client.diagnostics(path,version)
+        expected=2 if version in (138,139) else 1
+        assert len(diagnostics) == expected, diagnostics
+        assert all('\x01' not in d['message'] and 'top_pictures' not in d['message'] for d in diagnostics), diagnostics
+        if version == 139:
+            assert any("cannot infer parameter 'x' of 'unused'" in d['message'] for d in diagnostics), diagnostics
+    clean_captures=captures.replace('let^bad=missing_capture_initializer\n','')
+    client.change(path,clean_captures,140)
+    assert client.diagnostics(path,140) == []
+    unused_capture=clean_captures.replace('new_picture()\n','')
+    client.change(path,unused_capture,141)
+    diagnostics=client.diagnostics(path,141)
+    assert len(diagnostics) == 1 and "cannot infer captured binding 'pictures' of 'new_picture'" in diagnostics[0]['message'], diagnostics
+    assert diagnostics[0]['range']['start'] == at(unused_capture,'new_picture=p^'), diagnostics
+    client.change(path,clean_captures,142)
+    assert client.diagnostics(path,142) == []
+    print('PASS hidden capture inference cascade suppression and independent parameter diagnostics',flush=True)
+
+    annotated_binding = ('let^bad=missing_before_message\n'
+                         'var^message:u8^[..160]=missing_message_initializer\n'
+                         'let^clear_message=p^ {message.clear()}\n'
+                         'clear_message()\n')
+    client.change(path,annotated_binding,143)
+    diagnostics=client.diagnostics(path,143)
+    assert len(diagnostics) == 2, diagnostics
+    hover=request('hover','message:u8^',text=annotated_binding)['contents']['value']
+    assert hover == 'message: u8^[..160]', hover
+    for version,source,expected in [
+            (144,annotated_binding.replace('missing_message_initializer','[]'),1),
+            (145,annotated_binding.replace('u8^[..160]','i64^'),3),
+            (146,annotated_binding.replace('u8^[..160]','MissingMessageType'),2)]:
+        client.change(path,source,version)
+        diagnostics=client.diagnostics(path,version)
+        assert len(diagnostics) == expected, diagnostics
+        hover=request('hover','message:',text=source)['contents']['value']
+        assert hover == ('message: i64^' if version == 145 else
+                         'message: ?' if version == 146 else 'message: u8^[..160]'), hover
+    repaired_binding=annotated_binding.replace('let^bad=missing_before_message\n','').replace('missing_message_initializer','[]')
+    client.change(path,repaired_binding,147)
+    assert client.diagnostics(path,147) == []
+    assert request('hover','message:u8^',text=repaired_binding)['contents']['value'] == 'message: u8^[..160]'
+    print('PASS resolved variable annotations survive initializer errors and recover after edits',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
