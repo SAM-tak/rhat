@@ -6,12 +6,8 @@ externC^nextafter:f^x:f64^, toward:f64^ -> f64^;
 externC^rh_random_seed:f^state:ref^u64^ -> i64^;
 
 public^errordef^Error { InvalidState, InvalidArgument, SeedUnavailable }
-public^def^LoadResult = nil^ | Error.InvalidState
-public^def^IntResult = i64^ | Error.InvalidArgument
-public^def^RealResult = f64^ | Error.InvalidArgument
-public^def^NewResult = Random | Error.SeedUnavailable
 
-let^seeded = f^seed:i64^ -> u64^{
+let^seeded = f^seed:i64^{
     let^mixed = u64^(seed) bitxor^11400714819323198485
     if^ mixed = 0 { return^ 2685821657736338717 }
     return^ mixed
@@ -20,23 +16,21 @@ let^seeded = f^seed:i64^ -> u64^{
 public^def^Random {
     self^{ private^state:u64^ = 2685821657736338717 }
 
-    private^raw = f^mutable^self^ -> u64^{
+    private^raw = f^mutable^self^{
         self^.state := self^.state bitxor^ (self^.state bitshift^ -12)
         self^.state := self^.state bitxor^ (self^.state bitshift^ 25)
         self^.state := self^.state bitxor^ (self^.state bitshift^ -27)
         return^ self^.state * 2685821657736338717
     }
     reseed = p^self^, seed:i64^{ self^.state := seeded(seed) }
-    save = f^self^-> i64^{ i64^(self^.state) }
-    load = f^mutable^self^, state:i64^ -> LoadResult {
+    save = f^self^{ i64^(self^.state) }
+    load = f^mutable^self^, state:i64^{
         if^state = 0 { return^Error.InvalidState{} }
         self^.state := u64^(state)
         return^nil^
     }
-    next = f^mutable^self^ -> f64^ {
-        return^f64^(self^.raw() bitshift^ -11) / 9007199254740992.0
-    }
-    rangeint = f^mutable^self^, lo:i64^, hi:i64^ -> IntResult {
+    next = f^mutable^self^ -> f64^ { f64^(self^.raw() bitshift^ -11) / 9007199254740992.0 }
+    rangeint = f^mutable^self^, lo:i64^, hi:i64^{
         if^hi < lo { return^ Error.InvalidArgument{} }
         if^hi = lo { return^ lo }
         let^span = u64^(hi) - u64^(lo) + 1
@@ -48,7 +42,7 @@ public^def^Random {
         }
         return^i64^(u64^(lo) + bits)
     }
-    uniform = f^mutable^self^, lo:f64^, hi:f64^-> RealResult {
+    uniform = f^mutable^self^, lo:f64^, hi:f64^{
         if^!math.isfinite(lo) or^!math.isfinite(hi) or^hi < lo {
             return^Error.InvalidArgument{}
         }
@@ -60,7 +54,7 @@ public^def^Random {
         if^v < lo { v := lo }
         return^v
     }
-    normal = f^mutable^self^, mean:f64^, deviation:f64^-> RealResult {
+    normal = f^mutable^self^, mean:f64^, deviation:f64^{
         if^!math.isfinite(mean) or^!math.isfinite(deviation) or^deviation < 0.0 {
             return^ Error.InvalidArgument{}
         }
@@ -71,14 +65,16 @@ public^def^Random {
     }
 }
 
-public^let^new = f^seed:i64^-> Random {
+public^let^new = f^seed:i64^{
     var^r = Random.new()
     r.load(i64^(seeded(seed)))
     return^r
 }
-& f^-> NewResult {
+& f^{
     var^state:u64^= 0
-    if^rh_random_seed(ref^ state) = 0 { return^Error.SeedUnavailable{} }
+    if^rh_random_seed(ref^ state) = 0 {
+        return^Error.SeedUnavailable{}
+    }
     if^state = 0 { state := seeded(0) }
     var^r = Random.new()
     r.load(i64^(state))
@@ -86,7 +82,7 @@ public^let^new = f^seed:i64^-> Random {
 }
 
 # The original benchmark sequence, deliberately distinct from Random's stream.
-public^let^xorshift64 = f^state:u64^-> u64^{
+public^let^xorshift64 = f^state:u64^{
     var^r = state bitxor^(state bitshift^13)
     r := r bitxor^(r bitshift^ -7)
     return^r bitxor^(r bitshift^ 17)
