@@ -1,183 +1,187 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/calc.goose, Apache-2.0.
 # Nominal AST/result unions; u32 indices; explicit errors; reusable text/node regions.
-def^ Num { self^{ value:i64^ } }
-def^ Neg { self^{ of:u32^ } }
-def^ Paren { self^{ of:u32^ } }
-def^ Bin { self^{ op:u8^, l:u32^, r:u32^ } }
-def^ Expr = Num | Neg | Paren | Bin
-def^ Parsed { self^{ index:u32^ } }
-def^ Failure { self^{ code:i32^ } }
-def^ ParseResult = Parsed | Failure
-def^ Ok { self^{ value:u64^ } }
-def^ EvalResult = Ok | Failure
-def^ Cursor { self^{ pos:i64^=0 } }
-def^ Stats { self^{ chars:i64^=0, nodes:i64^=0, ok:i64^=0, sum:u64^=0, errors:i64^[5] } }
+def^Num { self^{ value:i64^} }
+def^Neg { self^{ of:u32^} }
+def^Paren { self^{ of:u32^} }
+def^Bin { self^{ op:u8^, l:u32^, r:u32^} }
+def^Expr = Num | Neg | Paren | Bin
+def^Parsed { self^{ index:u32^} }
+def^Failure { self^{ code:i32^} }
+def^ParseResult = Parsed | Failure
+def^Ok { self^{ value:u64^} }
+def^EvalResult = Ok | Failure
+def^Cursor { self^{ pos:i64^= 0 } }
+def^Stats { self^{ chars:i64^= 0, nodes:i64^= 0, ok:i64^= 0, sum:u64^= 0, errors:i64^[5] } }
 
-let^ emit_num=p^ text:ref^ u8^[grow^], value:u64^ {
-    if^ value >= 10 { text.push(u8^(value/10)+48) }
-    text.push(u8^(value % 10)+48)
+let^emit_num = p^text:ref^u8^[grow^], value:u64^{
+    if^value >= 10 { text.push(u8^(value / 10) + 48) }
+    text.push(u8^(value % 10) + 48)
 }
-let^ gen=p^ text:ref^ u8^[grow^], depth:i64^, seed:u64^ -> u64^ {
-    var^ r=std.random.xorshift64(seed)
-    let^ k=r % 8
-    if^ depth = 0 or^ k = 0 { emit_num(text,1+(r bitshift^ -8) % 99); return^ r }
-    if^ k = 1 { text.push(45); return^ this^(text,depth-1,r) }
-    if^ k = 2 {
+let^gen = p^text:ref^u8^[grow^], depth:i64^, seed:u64^-> u64^{
+    var^r = std.random.xorshift64(seed)
+    let^k = r % 8
+    if^depth = 0 or^k = 0 { emit_num(text, 1 + (r bitshift^-8) % 99); return^r }
+    if^k = 1 { text.push(45); return^this^(text, depth - 1, r) }
+    if^k = 2 {
         text.push(40)
-        r := this^(text,depth-1,r)
+        r := this^(text, depth - 1, r)
         text.push(41)
-        return^ r
+        return^r
     }
-    r := this^(text,depth-1,r)
-    let^ op=(r bitshift^ -16) % 4
+    r := this^(text, depth - 1, r)
+    let^op = (r bitshift^-16) % 4
     text.push(32)
-    if^ op = 0 { text.push(43) else^: if^ op = 1 { text.push(45) else^: if^ op = 2 { text.push(42) else^: text.push(47) } } }
+    if^op = 0 {
+        text.push(43) else^: if^op = 1 {
+            text.push(45) else^: if^op = 2 { text.push(42) else^: text.push(47) }
+        }
+    }
     text.push(32)
-    return^ this^(text,depth-1,std.random.xorshift64(r))
+    return^this^(text, depth - 1, std.random.xorshift64(r))
 }
-let^ corrupt=p^ text:ref^ u8^[grow^], seed:u64^ {
-    let^ kind=seed % 16
-    if^ kind = 0 {
-        var^ i=text.len
-        repeat^ while^ i > 0 {
-            i := i-1
-            if^ text[i] = 41 { text[i] := 32; return^ }
+let^corrupt = p^text:ref^u8^[grow^], seed:u64^{
+    let^kind = seed % 16
+    if^kind = 0 {
+        var^i = text.len
+        repeat^while^i > 0 {
+            i -= 1
+            if^text[i] = 41 { text[i] := 32; return^}
         }
         text[0] := 35
         return^
     }
-    if^ kind = 1 { text[(seed bitshift^ -8) % u64^(text.len)] := 35; return^ }
-    if^ kind = 2 { text.truncate(text.len/2); return^ }
-    if^ kind = 3 { text.append(" / 0") }
+    if^kind = 1 { text[(seed bitshift^-8) % u64^(text.len)] := 35; return^}
+    if^kind = 2 { text.truncate(text.len / 2); return^}
+    if^kind = 3 { text.append(" / 0") }
 }
-let^ skip=p^ text:u8^[slice^], c:ref^ Cursor {
-    repeat^ while^ c.pos < text.len and^ text[c.pos] = 32 { c.pos := c.pos+1 }
+let^skip = p^text:u8^[slice^], c:ref^Cursor {
+    repeat^while^c.pos < text.len and^text[c.pos] = 32 { c.pos := c.pos + 1 }
 }
-let^ parse_factor=p^ text:u8^[slice^], c:ref^ Cursor, pool:ref^ Expr[grow^] -> ParseResult {
-    skip(text,c)
-    if^ c.pos >= text.len { return^ Failure{code=1} }
-    let^ ch=text[c.pos]
-    if^ ch >= 48 and^ ch <= 57 {
-        var^ value:i64^=0
-        repeat^ while^ c.pos < text.len and^ text[c.pos] >= 48 and^ text[c.pos] <= 57 {
-            value := value*10+i64^(text[c.pos])-48
-            c.pos := c.pos+1
+let^parse_factor = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+    skip(text, c)
+    if^c.pos >= text.len { return^Failure{code = 1} }
+    let^ch = text[c.pos]
+    if^ch >= 48 and^ch <= 57 {
+        var^value:i64^= 0
+        repeat^while^c.pos < text.len and^text[c.pos] >= 48 and^text[c.pos] <= 57 {
+            value := value * 10 + i64^(text[c.pos]) - 48
+            c.pos += 1
         }
-        pool.push(Num{value=value})
-        return^ Parsed{index=u32^(pool.len-1)}
+        pool.push(Num{value = value})
+        return^Parsed{ index = u32^(pool.len - 1) }
     }
-    if^ ch = 45 {
-        c.pos := c.pos+1
-        let^ child=this^(text,c,pool)
-        if^ child fits^ Failure { return^ child }
-        pool.push(Neg{of=child.index})
-        return^ Parsed{index=u32^(pool.len-1)}
+    if^ch = 45 {
+        c.pos += 1
+        let^child = this^(text, c, pool)
+        if^child fits^Failure { return^child }
+        pool.push(Neg{of = child.index})
+        return^Parsed{index = u32^(pool.len - 1)}
     }
-    if^ ch != 40 { return^ Failure{code=3} }
-    c.pos := c.pos+1
-    let^ inside=parse_expr(text,c,pool)
-    if^ inside fits^ Failure { return^ inside }
-    skip(text,c)
-    if^ c.pos >= text.len or^ text[c.pos] != 41 { return^ Failure{code=2} }
-    c.pos := c.pos+1
-    pool.push(Paren{of=inside.index})
-    return^ Parsed{index=u32^(pool.len-1)}
+    if^ch != 40 { return^Failure{code = 3} }
+    c.pos += 1
+    let^inside = parse_expr(text, c, pool)
+    if^inside fits^Failure { return^inside }
+    skip(text, c)
+    if^c.pos >= text.len or^text[c.pos] != 41 { return^Failure{code = 2} }
+    c.pos += 1
+    pool.push(Paren{of = inside.index})
+    return^Parsed{index = u32^(pool.len - 1)}
 }
-let^ parse_term=p^ text:u8^[slice^], c:ref^ Cursor, pool:ref^ Expr[grow^] -> ParseResult {
-    let^ lhs=parse_factor(text,c,pool)
-    if^ lhs fits^ Failure { return^ lhs }
-    var^ left=lhs.index
-    repeat^ while^ true^ {
-        skip(text,c)
-        if^ c.pos >= text.len { return^ Parsed{index=left} }
-        let^ op=text[c.pos]
-        if^ op != 42 and^ op != 47 { return^ Parsed{index=left} }
-        c.pos := c.pos+1
-        let^ rhs=parse_factor(text,c,pool)
-        if^ rhs fits^ Failure { return^ rhs }
-        pool.push(Bin{op=op,l=left,r=rhs.index})
-        left := u32^(pool.len-1)
+let^parse_term = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+    let^lhs = parse_factor(text, c, pool)
+    if^lhs fits^Failure { return^lhs }
+    var^left = lhs.index
+    repeat^while^true^{
+        skip(text, c)
+        if^c.pos >= text.len { return^Parsed{ index = left } }
+        let^op = text[c.pos]
+        if^op != 42 and^op != 47 { return^Parsed{ index = left } }
+        c.pos += 1
+        let^rhs = parse_factor(text, c, pool)
+        if^rhs fits^Failure { return^rhs }
+        pool.push(Bin{ op = op, l = left, r = rhs.index })
+        left := u32^(pool.len - 1)
     }
-    return^ Parsed{index=left}
+    return^Parsed{index = left}
 }
-let^ parse_expr=p^ text:u8^[slice^], c:ref^ Cursor, pool:ref^ Expr[grow^] -> ParseResult {
-    let^ lhs=parse_term(text,c,pool)
-    if^ lhs fits^ Failure { return^ lhs }
-    var^ left=lhs.index
-    repeat^ while^ true^ {
-        skip(text,c)
-        if^ c.pos >= text.len { return^ Parsed{index=left} }
-        let^ op=text[c.pos]
-        if^ op != 43 and^ op != 45 { return^ Parsed{index=left} }
-        c.pos := c.pos+1
-        let^ rhs=parse_term(text,c,pool)
-        if^ rhs fits^ Failure { return^ rhs }
-        pool.push(Bin{op=op,l=left,r=rhs.index})
-        left := u32^(pool.len-1)
+let^parse_expr = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+    let^lhs = parse_term(text, c, pool)
+    if^lhs fits^Failure { return^lhs }
+    var^left = lhs.index
+    repeat^while^true^{
+        skip(text, c)
+        if^c.pos >= text.len { return^Parsed{index = left} }
+        let^op = text[c.pos]
+        if^op != 43 and^op != 45 { return^Parsed{index = left} }
+        c.pos := c.pos + 1
+        let^rhs = parse_term(text, c, pool)
+        if^rhs fits^Failure { return^rhs }
+        pool.push(Bin{op = op, l = left, r = rhs.index})
+        left := u32^(pool.len - 1)
     }
-    return^ Parsed{index=left}
+    return^Parsed{index = left}
 }
-let^ eval=f^ pool:ref^ Expr[grow^], index:u32^ -> EvalResult {
-    let^ node=pool[index]
-    if^ node fits^ Num { return^ Ok{value=u64^(node.value)} }
-    if^ node fits^ Neg {
-        let^ result=this^(pool,node.of)
-        if^ result fits^ Failure { return^ result }
-        return^ Ok{value=0-result.value}
+let^eval = f^pool:ref^Expr[grow^], index:u32^-> EvalResult {
+    let^node = pool[index]
+    if^node fits^Num { return^Ok{value = u64^(node.value)} }
+    if^node fits^Neg {
+        let^result = this^(pool, node.of)
+        if^result fits^Failure { return^result }
+        return^Ok{value = 0 - result.value}
     }
-    if^ node fits^ Paren { return^ this^(pool,node.of) }
-    let^ bin=node
-    let^ left=this^(pool,bin.l)
-    if^ left fits^ Failure { return^ left }
-    let^ right=this^(pool,bin.r)
-    if^ right fits^ Failure { return^ right }
-    let^ a=left.value
-    let^ b=right.value
-    if^ bin.op = 43 { return^ Ok{value=a+b} }
-    if^ bin.op = 45 { return^ Ok{value=a-b} }
-    if^ bin.op = 42 { return^ Ok{value=a*b} }
-    if^ b = 0 { return^ Failure{code=4} }
-    return^ Ok{value=a/b}
+    if^node fits^Paren { return^this^(pool, node.of) }
+    let^bin = node
+    let^left = this^(pool, bin.l)
+    if^left fits^Failure { return^left }
+    let^right = this^(pool, bin.r)
+    if^right fits^Failure { return^right }
+    let^a = left.value
+    let^b = right.value
+    if^bin.op = 43 { return^Ok{value = a + b} }
+    if^bin.op = 45 { return^Ok{value = a - b} }
+    if^bin.op = 42 { return^Ok{value = a * b} }
+    if^b = 0 { return^Failure{code = 4} }
+    return^Ok{value = a / b}
 }
-let^ run=p^ text:u8^[slice^], pool:ref^ Expr[grow^] -> EvalResult {
-    var^ c=Cursor{}
-    let^ parsed=parse_expr(text,ref^ c,pool)
-    if^ parsed fits^ Failure { return^ parsed }
-    skip(text,ref^ c)
-    if^ c.pos != text.len { return^ Failure{code=3} }
-    return^ eval(pool,parsed.index)
+let^run = p^text:u8^[slice^], pool:ref^Expr[grow^] -> EvalResult {
+    var^c = Cursor{}
+    let^parsed = parse_expr(text, ref^c, pool)
+    if^parsed fits^Failure { return^parsed }
+    skip(text, ref^c)
+    if^c.pos != text.len { return^Failure{code = 3} }
+    return^eval(pool, parsed.index)
 }
-let^ n:i64^=100000 # BENCH_N
-var^ text:u8^[grow^]=[]
-var^ pool:Expr[grow^]=[]
-var^ seed:u64^=12345
-var^ stats=Stats{}
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 100000 # BENCH_N
+var^text:u8^[grow^] = []
+var^pool:Expr[grow^] = []
+var^seed:u64^= 12345
+var^stats = Stats{}
+var^i:i64^= 0
+repeat^while^i < n {
     seed := std.random.xorshift64(seed)
     text.clear()
-    let^ depth=i64^(seed % 4)+3
-    let^ s=gen(ref^ text,depth,seed bitshift^ -8)
-    corrupt(ref^ text,s)
-    stats.chars := stats.chars+text.len
+    let^depth = i64^(seed % 4) + 3
+    let^s = gen(ref^text, depth, seed bitshift^-8)
+    corrupt(ref^text, s)
+    stats.chars := stats.chars + text.len
     pool.clear()
-    let^ result=run(text[..],ref^ pool)
-    stats.nodes := stats.nodes+pool.len
-    if^ result fits^ Ok {
-        stats.ok := stats.ok+1
-        stats.sum := stats.sum*31+result.value
+    let^result = run(text[..], ref^pool)
+    stats.nodes := stats.nodes + pool.len
+    if^result fits^Ok {
+        stats.ok := stats.ok + 1
+        stats.sum := stats.sum * 31 + result.value
     else^:
-        let^ error=result.code
-        stats.errors[error] := stats.errors[error]+1
+        let^error = result.code
+        stats.errors[error] := stats.errors[error] + 1
     }
-    i := i+1
+    i := i + 1
 }
-print^(stats.chars)
-print^(stats.nodes)
-print^(stats.ok)
-print^(stats.errors[1])
-print^(stats.errors[2])
-print^(stats.errors[3])
-print^(stats.errors[4])
-print^(stats.sum)
+print^stats.chars
+print^stats.nodes
+print^stats.ok
+print^stats.errors[1]
+print^stats.errors[2]
+print^stats.errors[3]
+print^stats.errors[4]
+print^stats.sum

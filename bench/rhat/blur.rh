@@ -1,44 +1,44 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/blur.goose, Apache-2.0.
 # Flat scalar buffers; borders retain their initial values in each buffer.
 
-let^ blur = p^ src:ref^ u8^[grow^], dst:ref^ u8^[grow^], w:i64^ {
-    var^ y:i64^=1
-    repeat^ while^ y < w-1 {
-        var^ x:i64^=1
-        repeat^ while^ x < w-1 {
-            let^ i=y*w+x
-            let^ s = i32^(src[i-w-1]) + i32^(src[i-w])*2 + i32^(src[i-w+1])
-                   + i32^(src[i-1])*2 + i32^(src[i])*4 + i32^(src[i+1])*2
-                   + i32^(src[i+w-1]) + i32^(src[i+w])*2 + i32^(src[i+w+1])
-            dst[i] := u8^(s bitshift^ -4)
-            x := x+1
+let^blur = p^src:ref^u8^[grow^], dst:ref^u8^[grow^], w:i64^{
+    var^y:i64^= 1
+    repeat^while^y < w - 1 {
+        var^x:i64^= 1
+        repeat^while^x < w - 1 {
+            let^i = y * w + x
+            let^s = i32^(src[i - w - 1]) + i32^(src[i - w]) * 2 + i32^(src[i - w + 1])
+                + i32^(src[i - 1]) * 2 + i32^(src[i]) * 4 + i32^(src[i + 1]) * 2
+                + i32^(src[i + w - 1]) + i32^(src[i + w]) * 2 + i32^(src[i + w + 1])
+            dst[i] := u8^(s bitshift^-4)
+            x := x + 1
         }
-        y := y+1
+        y := y + 1
     }
 }
-let^ w:i64^=1024 # BENCH_N
-var^ a:u8^[grow^]=[]
-var^ b:u8^[grow^]=[]
-var^ r:u64^=12345
-var^ i:i64^=0
-repeat^ while^ i < w*w {
+let^w:i64^= 1024 # BENCH_N
+var^a:u8^[grow^] = []
+var^b:u8^[grow^] = []
+var^r:u64^= 12345
+var^i:i64^= 0
+repeat^while^i < w * w {
     r := std.random.xorshift64(r)
     a.push(u8^(r % 256))
     b.push(0)
-    i := i+1
+    i := i + 1
 }
-var^ pass:i32^=0
-repeat^ while^ pass < 8 {
-    blur(ref^ a,ref^ b,w)
-    blur(ref^ b,ref^ a,w)
-    pass := pass+1
+var^pass:i32^= 0
+repeat^while^pass < 8 {
+    blur(ref^a, ref^b, w)
+    blur(ref^b, ref^a, w)
+    pass += 1
 }
-var^ total:i64^=0
+var^total:i64^= 0
 i := 0
-repeat^ while^ i < a.len {
-    total := total+i64^(a[i])
-    i := i+1
+repeat^while^i < a.len {
+    total += i64^(a[i])
+    i += 1
 }
 print^(w)
 print^(total)

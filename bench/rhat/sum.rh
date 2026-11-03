@@ -1,24 +1,24 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/sum.goose, Apache-2.0.
 
-let^ n:i64^=1000000 # BENCH_N
-var^ data:i32^[grow^]=[]
-var^ r:u64^=12345
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 1000000 # BENCH_N
+var^data:i32^[grow^] = []
+var^r:u64^= 12345
+var^i:i64^= 0
+repeat^while^i < n {
     r := std.random.xorshift64(r)
     data.push(i32^(r % 1000))
-    i := i+1
+    i := i + 1
 }
-var^ total:i64^=0
-var^ pass:i64^=0
-repeat^ while^ pass < 8 {
+var^total:i64^= 0
+var^pass:i64^= 0
+repeat^while^pass < 8 {
     i := 0
-    repeat^ while^ i < n {
-        total := total + (i64^(data[i]) bitxor^ pass)
-        i := i+1
+    repeat^while^i < n {
+        total := total + (i64^(data[i]) bitxor^pass)
+        i := i + 1
     }
-    pass := pass+1
+    pass := pass + 1
 }
 print^(data.len)
 print^(total)

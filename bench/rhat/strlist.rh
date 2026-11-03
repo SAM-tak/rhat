@@ -1,56 +1,56 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/strlist.goose, Apache-2.0.
 # Owned packed words: one-byte varint length followed by copied word bytes.
 # All generated lengths are 3..20, so the original varint occupies one byte.
 # This is an R^ library representation over an owned byte region, not a new
 # general variable-size array type. The original text and copied list coexist.
-def^ WordList { self^{ count:i64^=0, data:u8^[grow^] } }
+def^WordList { self^{ count:i64^= 0, data:u8^[grow^] } }
 
-let^ split=p^ text:u8^[slice^] -> WordList {
-    var^ out=WordList{}
-    var^ i:i64^=0
-    repeat^ while^ i < text.len {
-        let^ start=i
-        repeat^ while^ i < text.len and^ text[i] != 32 { i := i+1 }
-        let^ len=i-start
-        if^ len > 0 {
+let^split = p^text:u8^[slice^] -> WordList {
+    var^out = WordList{}
+    var^i:i64^= 0
+    repeat^while^i < text.len {
+        let^start = i
+        repeat^while^i < text.len and^text[i] != 32 { i := i + 1 }
+        let^len = i - start
+        if^len > 0 {
             assert^(len <= 127)
             out.data.push(u8^(len))
-            out.data.append(text[start .. start+len])
-            out.count := out.count+1
+            out.data.append(text[start .. start + len])
+            out.count := out.count + 1
         }
-        repeat^ while^ i < text.len and^ text[i] = 32 { i := i+1 }
+        repeat^while^i < text.len and^text[i] = 32 { i := i + 1 }
     }
-    return^ out
+    return^out
 }
-let^ n:i64^=200000 # BENCH_N
-var^ text:u8^[grow^]=[]
-var^ r:u64^=12345
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 200000 # BENCH_N
+var^text:u8^[grow^] = []
+var^r:u64^= 12345
+var^i:i64^= 0
+repeat^while^i < n {
     r := std.random.xorshift64(r)
-    let^ len=3+i64^(r % 18)
-    var^ j:i64^=0
-    repeat^ while^ j < len {
+    let^len = 3 + i64^(r % 18)
+    var^j:i64^= 0
+    repeat^while^j < len {
         r := std.random.xorshift64(r)
-        text.push(u8^(r % 26)+97)
-        j := j+1
+        text.push(u8^(r % 26) + 97)
+        j := j + 1
     }
     text.push(32)
-    i := i+1
+    i := i + 1
 }
-var^ words=split(text[..])
-var^ total:i64^=0
-var^ pass:i32^=0
-repeat^ while^ pass < 4 {
-    var^ at:i64^=0
-    repeat^ while^ at < words.data.len {
-        let^ len=i64^(words.data[at])
-        total := total+len+i64^(words.data[at+1])+i64^(words.data[at+len])
-        at := at+len+1
+var^words = split(text[..])
+var^total:i64^= 0
+var^pass:i32^= 0
+repeat^while^pass < 4 {
+    var^at:i64^= 0
+    repeat^while^at < words.data.len {
+        let^len = i64^(words.data[at])
+        total := total + len + i64^(words.data[at + 1]) + i64^(words.data[at + len])
+        at := at + len + 1
     }
     assert^(at = words.data.len)
-    pass := pass+1
+    pass := pass + 1
 }
 print^(words.count)
 print^(total)

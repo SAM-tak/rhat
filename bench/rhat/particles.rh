@@ -1,45 +1,45 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/particles.goose, Apache-2.0.
 # Scalar AoS variant; six binary32 fields, 24 bytes per particle.
-def^ Particle {
-    self^{ x:f32^, y:f32^, z:f32^, vx:f32^, vy:f32^, vz:f32^ }
+def^Particle {
+    self^{ x:f32^, y:f32^, z:f32^, vx:f32^, vy:f32^, vz:f32^}
 }
 
-let^ n:i64^=100000 # BENCH_N
-var^ ps:Particle[grow^]=[]
-var^ r:u64^=12345
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 100000 # BENCH_N
+var^ps:Particle[grow^] = []
+var^r:u64^= 12345
+var^i:i64^= 0
+repeat^while^i < n {
     r := std.random.xorshift64(r)
     ps.push(Particle{
-        x=f32^(r % 1024),
-        y=f32^((r bitshift^ -12) % 1024),
-        z=f32^((r bitshift^ -24) % 1024),
-        vx=f32^(i64^((r bitshift^ -36) % 256)-128)/16.0,
-        vy=f32^(i64^((r bitshift^ -44) % 256)-128)/16.0,
-        vz=f32^(i64^((r bitshift^ -52) % 256)-128)/16.0
+        x = f32^(r % 1024),
+        y = f32^((r bitshift^-12) % 1024),
+        z = f32^((r bitshift^-24) % 1024),
+        vx = f32^(i64^((r bitshift^-36) % 256) - 128) / 16.0,
+        vy = f32^(i64^((r bitshift^-44) % 256) - 128) / 16.0,
+        vz = f32^(i64^((r bitshift^-52) % 256) - 128) / 16.0
     })
-    i := i+1
+    i := i + 1
 }
-var^ step:i32^=0
-repeat^ while^ step < 200 {
+var^step:i32^= 0
+repeat^while^step < 200 {
     i := 0
-    repeat^ while^ i < n {
-        let^ p=ref^ ps[i]
+    repeat^while^i < n {
+        let^p = ref^ps[i]
         p.vy := p.vy - 0.0625
         p.x := p.x + p.vx
         p.y := p.y + p.vy
         p.z := p.z + p.vz
-        if^ p.y < 0.0 { p.y := -p.y; p.vy := -(p.vy*0.5) }
-        i := i+1
+        if^p.y < 0.0 { p.y := -p.y; p.vy := - (p.vy * 0.5) }
+        i := i + 1
     }
-    step := step+1
+    step := step + 1
 }
-var^ total:i64^=0
+var^total:i64^= 0
 i := 0
-repeat^ while^ i < n {
-    total := total+i64^(ps[i].x*16.0)+i64^(ps[i].y*16.0)+i64^(ps[i].z*16.0)
-    i := i+1
+repeat^while^i < n {
+    total := total + i64^(ps[i].x * 16.0) + i64^(ps[i].y * 16.0) + i64^(ps[i].z * 16.0)
+    i := i + 1
 }
-print^(n)
-print^(total)
+print^n
+print^total

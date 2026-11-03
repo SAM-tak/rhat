@@ -1,34 +1,32 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/push.goose, Apache-2.0.
 # Marks are real Item references, retained across subsequent pushes.
-def^ Item { self^{ key:i32^, val:i32^ } }
+def^Item { self^{ key:i32^, val:i32^} }
 
-
-
-let^ n:i64^=1000000 # BENCH_N
-var^ items:Item[grow^]=[]
-var^ marks:Item[ref^ grow^]=[]
-var^ r:u64^=12345
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 1000000 # BENCH_N
+var^items:Item[grow^] = []
+var^marks:Item[ref^grow^] = []
+var^r:u64^= 12345
+var^i:i64^= 0
+repeat^while^i < n {
     r := std.random.xorshift64(r)
-    let^ element=items.push(Item{ key=i32^(r % 1000000), val=i32^(i % 97) })
-    if^ i % 64 = 0 { marks.push(element) }
-    i := i+1
+    let^element = items.push(Item{ key = i32^(r % 1000000), val = i32^(i % 97) })
+    if^i % 64 = 0 { marks.push(element) }
+    i := i + 1
 }
-var^ total:i64^=0
+var^total:i64^= 0
 i := 0
-repeat^ while^ i < items.len {
-    total := total+i64^(items[i].key)
-    i := i+1
+repeat^while^i < items.len {
+    total := total + i64^(items[i].key)
+    i := i + 1
 }
-var^ marked_total:i64^=0
+var^marked_total:i64^= 0
 i := 0
-repeat^ while^ i < marks.len {
-    marked_total := marked_total+i64^(marks[i].val)
-    i := i+1
+repeat^while^i < marks.len {
+    marked_total := marked_total + i64^(marks[i].val)
+    i := i + 1
 }
-print^(items.len)
-print^(marks.len)
-print^(total)
-print^(marked_total)
+print^items.len
+print^marks.len
+print^total
+print^marked_total

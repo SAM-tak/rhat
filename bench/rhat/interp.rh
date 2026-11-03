@@ -1,50 +1,50 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/interp.goose, Apache-2.0.
 # Native nominal sum, 12-byte nodes with u32 children, as in C++/Rust arenas.
-def^ Num { self^{ v:i32^ } }
-def^ Add { self^{ l:u32^, r:u32^ } }
-def^ Mul { self^{ l:u32^, r:u32^ } }
-def^ Neg { self^{ of:u32^ } }
-def^ Expr = Num | Add | Mul | Neg
+def^Num { self^{ v:i32^} }
+def^Add { self^{ l:u32^, r:u32^} }
+def^Mul { self^{ l:u32^, r:u32^} }
+def^Neg { self^{ of:u32^} }
+def^Expr = Num | Add | Mul | Neg
 
-let^ make=p^ pool:ref^ Expr[grow^], depth:i64^, seed:u64^ -> u32^ {
-    let^ s=std.random.xorshift64(seed)
-    if^ depth = 0 {
-        pool.push(Num{v=i32^(s % 1000)})
-        return^ u32^(pool.len-1)
+let^make = p^pool:ref^Expr[grow^], depth:i64^, seed:u64^-> u32^{
+    let^s = std.random.xorshift64(seed)
+    if^depth = 0 {
+        pool.push(Num{v = i32^(s % 1000)})
+        return^u32^(pool.len - 1)
     }
-    let^ k=s % 8
-    if^ k < 1 {
-        let^ a=this^(pool,depth-1,s)
-        pool.push(Neg{of=a})
-        return^ u32^(pool.len-1)
+    let^k = s % 8
+    if^k < 1 {
+        let^a = this^(pool, depth - 1, s)
+        pool.push(Neg{of = a})
+        return^u32^(pool.len - 1)
     }
-    let^ a=this^(pool,depth-1,s)
-    let^ b=this^(pool,depth-1,std.random.xorshift64(s))
-    if^ k < 5 { pool.push(Add{l=a,r=b}) else^: pool.push(Mul{l=a,r=b}) }
-    return^ u32^(pool.len-1)
+    let^a = this^(pool, depth - 1, s)
+    let^b = this^(pool, depth - 1, std.random.xorshift64(s))
+    if^k < 5 { pool.push(Add{l = a, r = b}) else^: pool.push(Mul{l = a, r = b}) }
+    return^u32^(pool.len - 1)
 }
-let^ eval=f^ pool:ref^ Expr[grow^], index:u32^, pass:i64^ -> i64^ {
-    let^ node=pool[index]
-    if^ node fits^ Num { return^ (i64^(node.v)+pass) % 1000003 }
-    if^ node fits^ Add {
-        let^ a=node
-        return^ (this^(pool,a.l,pass)+this^(pool,a.r,pass)) % 1000003
+let^eval = f^pool:ref^Expr[grow^], index:u32^, pass:i64^-> i64^{
+    let^node = pool[index]
+    if^node fits^Num { return^(i64^(node.v) + pass) % 1000003 }
+    if^node fits^Add {
+        let^a = node
+        return^(this^(pool, a.l, pass) + this^(pool, a.r, pass)) % 1000003
     }
-    if^ node fits^ Mul {
-        let^ m=node
-        return^ (this^(pool,m.l,pass)*this^(pool,m.r,pass)) % 1000003
+    if^node fits^Mul {
+        let^m = node
+        return^(this^(pool, m.l, pass) * this^(pool, m.r, pass)) % 1000003
     }
-    return^ (1000003-this^(pool,node.of,pass)) % 1000003
+    return^(1000003 - this^(pool, node.of, pass)) % 1000003
 }
-let^ depth:i64^=16 # BENCH_N
-var^ pool:Expr[grow^]=[]
-let^ root=make(ref^ pool,depth,12345)
-var^ total:i64^=0
-var^ pass:i64^=0
-repeat^ while^ pass < 8 {
-    total := (total+eval(ref^ pool,root,pass)) % 1000003
-    pass := pass+1
+let^depth:i64^= 16 # BENCH_N
+var^pool:Expr[grow^] = []
+let^root = make(ref^pool, depth, 12345)
+var^total:i64^= 0
+var^pass:i64^= 0
+repeat^while^pass < 8 {
+    total := (total + eval(ref^pool, root, pass)) % 1000003
+    pass := pass + 1
 }
-print^(pool.len)
-print^(total)
+print^pool.len
+print^total

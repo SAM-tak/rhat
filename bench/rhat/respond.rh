@@ -1,96 +1,96 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/respond_stream.goose, Apache-2.0.
 # Original streaming variant; reusable output buffer matches C++/Rust experts.
-def^ Digits { self^{ data:u8^[24] } }
-def^ Result { self^{ hash:u64^, bytes:i64^ } }
+def^Digits { self^{ data:u8^[24] } }
+def^Result { self^{ hash:u64^, bytes:i64^} }
 
-let^ emit_int=p^ out:ref^ u8^[grow^], value:u64^ {
-    if^ value = 0 { out.push(48); return^ }
-    var^ d=value
-    var^ tmp=Digits{}
-    var^ count:i64^=0
-    repeat^ while^ d > 0 {
-        tmp.data[count] := u8^(d % 10)+48
-        count := count+1
-        d := d/10
+let^emit_int = p^out:ref^u8^[grow^], value:u64^{
+    if^value = 0 { out.push(48); return^}
+    var^d = value
+    var^tmp = Digits{}
+    var^count:i64^= 0
+    repeat^while^d > 0 {
+        tmp.data[count] := u8^(d % 10) + 48
+        count := count + 1
+        d := d / 10
     }
-    repeat^ while^ count > 0 { count := count-1; out.push(tmp.data[count]) }
+    repeat^while^count > 0 { count := count - 1; out.push(tmp.data[count]) }
 }
-let^ emit_name=p^ out:ref^ u8^[grow^], seed:u64^ {
-    var^ r=std.random.xorshift64(seed)
-    let^ n=i64^(r % 8)+3
-    let^ odd=(r bitshift^ -8) % 8 = 0
+let^emit_name = p^out:ref^u8^[grow^], seed:u64^{
+    var^r = std.random.xorshift64(seed)
+    let^n = i64^(r % 8) + 3
+    let^odd = (r bitshift^-8) % 8 = 0
     out.push(34)
-    var^ i:i64^=0
-    repeat^ while^ i < n {
+    var^i:i64^= 0
+    repeat^while^i < n {
         r := std.random.xorshift64(r)
-        if^ odd and^ i = 1 {
+        if^odd and^i = 1 {
             out.push(92)
-            out.push(if^ r % 2 = 0: 34 el^: 92;)
-        else^: out.push(u8^(r % 26)+97) }
-        i := i+1
+            out.push(if^r % 2 = 0: 34 el^: 92;)
+        else^: out.push(u8^(r % 26) + 97) }
+        i := i + 1
     }
     out.push(34)
 }
-let^ emit_sku=p^ out:ref^ u8^[grow^], seed:u64^ {
-    var^ r=std.random.xorshift64(seed)
+let^emit_sku = p^out:ref^u8^[grow^], seed:u64^{
+    var^r = std.random.xorshift64(seed)
     out.push(34)
-    out.push(u8^(r % 26)+65)
-    out.push(u8^((r bitshift^ -8) % 26)+65)
-    var^ i:i32^=0
-    repeat^ while^ i < 4 { r := std.random.xorshift64(r); out.push(u8^(r % 10)+48); i := i+1 }
+    out.push(u8^(r % 26) + 65)
+    out.push(u8^((r bitshift^-8) % 26) + 65)
+    var^i:i32^= 0
+    repeat^while^i < 4 { r := std.random.xorshift64(r); out.push(u8^(r % 10) + 48); i := i + 1 }
     out.push(34)
 }
-let^ hash=f^ bytes:u8^[slice^] -> u64^ {
-    var^ h:u64^=14695981039346656037
-    var^ i:i64^=0
-    repeat^ while^ i < bytes.len { h := (h bitxor^ u64^(bytes[i]))*1099511628211; i := i+1 }
-    return^ h
+let^hash = f^bytes:u8^[slice^] -> u64^{
+    var^h:u64^= 14695981039346656037
+    var^i:i64^= 0
+    repeat^while^i < bytes.len { h := (h bitxor^u64^(bytes[i])) * 1099511628211; i := i + 1 }
+    return^h
 }
-let^ handle=p^ out:ref^ u8^[grow^], seed:u64^ -> Result {
-    let^ r0=std.random.xorshift64(seed)
-    let^ n=i64^(r0 % 8)+1
+let^handle = p^out:ref^u8^[grow^], seed:u64^-> Result {
+    let^r0 = std.random.xorshift64(seed)
+    let^n = i64^(r0 % 8) + 1
     out.clear()
     out.append("{\"id\":")
-    emit_int(out,(r0 bitshift^ -4) % 1000000)
+    emit_int(out, (r0 bitshift^-4) % 1000000)
     out.append(",\"user\":")
-    emit_name(out,r0 bitshift^ -8)
+    emit_name(out, r0 bitshift^-8)
     out.append(",\"items\":[")
-    var^ total:u64^=0
-    var^ r=r0 bitshift^ -16
-    var^ i:i64^=0
-    repeat^ while^ i < n {
+    var^total:u64^= 0
+    var^r = r0 bitshift^-16
+    var^i:i64^= 0
+    repeat^while^i < n {
         r := std.random.xorshift64(r)
-        if^ i > 0 { out.push(44) }
-        let^ qty=1+(r bitshift^ -8) % 5
-        let^ price=100+(r bitshift^ -16) % 99900
+        if^i > 0 { out.push(44) }
+        let^qty = 1 + (r bitshift^-8) % 5
+        let^price = 100 + (r bitshift^-16) % 99900
         out.append("{\"sku\":")
-        emit_sku(out,r)
+        emit_sku(out, r)
         out.append(",\"qty\":")
-        emit_int(out,qty)
+        emit_int(out, qty)
         out.append(",\"price\":")
-        emit_int(out,price)
+        emit_int(out, price)
         out.push(125)
-        total := total+qty*price
-        i := i+1
+        total := total + qty * price
+        i := i + 1
     }
     out.append("],\"total\":")
-    emit_int(out,total)
+    emit_int(out, total)
     out.push(125)
-    return^ Result{hash=hash(out[..]),bytes=out.len}
+    return^Result{hash = hash(out[..]), bytes = out.len}
 }
-let^ n:i64^=100000 # BENCH_N
-var^ out:u8^[grow^]=[]
-var^ seed:u64^=12345
-var^ h:u64^=0
-var^ bytes:i64^=0
-var^ i:i64^=0
-repeat^ while^ i < n {
+let^n:i64^= 100000 # BENCH_N
+var^out:u8^[grow^] = []
+var^seed:u64^= 12345
+var^h:u64^= 0
+var^bytes:i64^= 0
+var^i:i64^= 0
+repeat^while^i < n {
     seed := std.random.xorshift64(seed)
-    let^ result=handle(ref^ out,seed)
-    h := h bitxor^ (result.hash*31+u64^(i))
-    bytes := bytes+result.bytes
-    i := i+1
+    let^result = handle(ref^out, seed)
+    h := h bitxor^(result.hash * 31 + u64^(i))
+    bytes := bytes + result.bytes
+    i := i + 1
 }
 print^(n)
 print^(bytes)

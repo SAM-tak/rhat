@@ -1319,7 +1319,7 @@ for workload, sizes in (("tree", (0, 1)), ("graph", (1, 2, 17)), ("lru", (8, 16,
             "\n".join(f"bench_case({n})" for n in sizes))
     positive(f"bench_{workload}_edges", text,
              "".join(workload_oracle(workload, n) + "\n" for n in sizes))
-calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^ n:i64^",1)[0]
+calc_helpers=(repo/"bench/rhat/calc.rh").read_text().split("let^n:i64^",1)[0]
 positive("calc_errors_and_precedence",calc_helpers+"""
 let^ check=p^ text:string^, pool:ref^ Expr[grow^] {
     pool.clear()
@@ -1348,7 +1348,7 @@ let^ failed=run("1+(2*".bytes[.. 5],ref^ pool)
 assert^(failed fits^ Failure)
 print^(failed.code,pool.len)
 """, "-1\n-1\n-2\n-3\n-3\n-1\n-4\n18446744073709551615\n7\n9\n2\n18446744073709551612\n3\n-1\n-3\n4294967296\n1 2\n")
-sexp_helpers=(repo/"bench/rhat/sexp.rh").read_text().split("let^ n:i64^",1)[0]
+sexp_helpers=(repo/"bench/rhat/sexp.rh").read_text().split("let^n:i64^",1)[0]
 positive("sexp_copies_symbols_and_errors",sexp_helpers+"""
 var^ text:u8^[grow^]=[]
 text.append("(abc 4294967296 ()) ")
@@ -1363,7 +1363,7 @@ roots.clear()
 print^(parse_all("(".bytes[.. 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
 print^(parse_all(")".bytes[.. 1],ref^ pool,ref^ symbols,ref^ roots),roots.len)
 """, "0\n4 1 4294967398\n8 0\n5 0\n")
-packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^ n:i64^",1)[0]
+packed_word_helpers=(repo/"bench/rhat/strlist.rh").read_text().split("let^n:i64^",1)[0]
 positive("packed_words_own_copies", packed_word_helpers+"""
 var^ text:u8^[grow^]=[]
 text.append(" a  bc ")
@@ -1372,7 +1372,7 @@ text.clear()
 text.append("xxxxxxx")
 print^(words.count,words.data.len,words.data[0],words.data[1],words.data[2],words.data[3],words.data[4])
 """, "2 5 1 97 2 98 99\n")
-response_helpers=(repo/"bench/rhat/respond.rh").read_text().split("let^ n:i64^",1)[0]
+response_helpers=(repo/"bench/rhat/respond.rh").read_text().split("let^n:i64^",1)[0]
 positive("response_integer_format", response_helpers+"""
 var^ out:u8^[grow^]=[]
 emit_int(ref^ out,0)

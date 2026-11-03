@@ -1,39 +1,37 @@
-import^ std.random
+import^std.random
 # Port of aardappel/goose bench/goose/tree.goose, Apache-2.0.
 # 12-byte fixed nodes; u32 indices, index zero is the null sentinel.
-def^ Node { self^{ v:i32^, l:u32^, r:u32^ } }
+def^Node { self^{ v:i32^, l:u32^, r:u32^} }
 
-
-
-let^ make = p^ pool:ref^ Node[grow^], depth:i64^, seed:u64^ -> u32^ {
-    var^ l:u32^=0
-    var^ r:u32^=0
-    if^ depth > 0 {
-        l := this^(pool,depth-1,std.random.xorshift64(seed))
-        r := this^(pool,depth-1,std.random.xorshift64(seed+1))
+let^make = p^pool:ref^Node[grow^], depth:i64^, seed:u64^-> u32^{
+    var^l:u32^= 0
+    var^r:u32^= 0
+    if^depth > 0 {
+        l := this^(pool, depth - 1, std.random.xorshift64(seed))
+        r := this^(pool, depth - 1, std.random.xorshift64(seed + 1))
     }
-    pool.push(Node{ v=i32^(seed % 1000), l=l, r=r })
-    return^ u32^(pool.len-1)
+    pool.push(Node{ v = i32^(seed % 1000), l = l, r = r })
+    return^u32^(pool.len - 1)
 }
 
-let^ sum_tree = f^ pool:ref^ Node[grow^], index:u32^, pass:i64^ -> i64^ {
-    let^ node=pool[index]
-    var^ total=i64^(node.v) bitxor^ pass
-    if^ node.l != 0 { total := total+this^(pool,node.l,pass) }
-    if^ node.r != 0 { total := total+this^(pool,node.r,pass) }
-    return^ total
+let^sum_tree = f^pool:ref^Node[grow^], index:u32^, pass:i64^-> i64^{
+    let^node = pool[index]
+    var^total = i64^(node.v) bitxor^pass
+    if^node.l != 0 { total := total + this^(pool, node.l, pass) }
+    if^node.r != 0 { total := total + this^(pool, node.r, pass) }
+    return^total
 }
 
-let^ depth:i64^=16 # BENCH_N
-var^ pool:Node[grow^]=[]
-pool.push(Node{ v=0, l=0, r=0 })
-let^ root=make(ref^ pool,depth,12345)
-let^ count=pool.len-1
-var^ total:i64^=0
-var^ pass:i64^=0
-repeat^ while^ pass < 8 {
-    total := total+sum_tree(ref^ pool,root,pass)
-    pass := pass+1
+let^depth:i64^= 16 # BENCH_N
+var^pool:Node[grow^] = []
+pool.push(Node{ v = 0, l = 0, r = 0 })
+let^root = make(ref^pool, depth, 12345)
+let^count = pool.len - 1
+var^total:i64^= 0
+var^pass:i64^= 0
+repeat^while^pass < 8 {
+    total := total + sum_tree(ref^pool, root, pass)
+    pass := pass + 1
 }
 print^(count)
 print^(total)
