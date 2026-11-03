@@ -95,11 +95,11 @@ print^(*refs[0],*refs[1])
     ]:
         negative('literal_'+name,source,error)
     positive('sized_repeat_and_elements', '''
-let^make=f^n {i64^[](n,7)}
+let^make=f^n {i64^[]{7 repeat^ n}}
 var^a=make(3)
 a[1]:=42
 var^empty:i64^[]={}
-let^zero=i64^[](0,9)
+let^zero=i64^[]{9 repeat^ 0}
 print^(a.len,a[0],a[1],a[2],empty.len,zero.len,a.bytes.len)
 ''', '3 7 42 7 0 0 24\n')
     positive('sized_copy_sources', '''
@@ -126,7 +126,7 @@ print^(read(ref^a),a[1])
     positive('sized_reference_elements', '''
 def^Node {self^{value:i32^=1}}
 var^n=Node{}
-let^make=f^n:ref^Node {Node[ref^](2,n)}
+let^make=f^n:ref^Node {Node[ref^]{n repeat^ 2}}
 var^a=make(ref^n)
 let^b=Node[ref^](a)
 n.value:=42
@@ -136,10 +136,33 @@ print^(a[0].value,b[1].value,a.len)
 let^count=p^calls:ref^i64^ {*calls+=1 return^i64^(3)}
 let^initial=p^calls:ref^i64^ {*calls+=10 return^*calls}
 var^calls:i64^=0
-let^a=i64^[](count(ref^calls),initial(ref^calls))
-let^b=i64^[](0,initial(ref^calls))
+let^a=i64^[]{initial(ref^calls) repeat^ count(ref^calls)}
+let^b=i64^[]{initial(ref^calls) repeat^ 0}
 print^(calls,a.len,a[0],a[2],b.len)
-''', '21 3 11 11 0\n')
+''', '21 3 10 10 0\n')
+    positive('sized_contextual_forms', '''
+let^n:i64^=3
+let^a:i32^[]={7 repeat^ n}
+var^g:i64^[grow^]={0 repeat^ n}
+var^f=i64^[flex^]{1 repeat^ 2}
+let^c:i32^[]={a...}
+let^d=i32^[]{a[1 ..]...}
+var^e:i64^[grow^]={g...}
+var^m:i32^[max^]={max^ 4}
+var^k=i32^[max^]{max^n}
+g.push(5) e.push(6) m.push(1) k.push(2)
+print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
+''', '7 4 2 7 2 4 1 2\n')
+    for name,source,error in [
+        ('untyped','let^a={0 repeat^ 3}', 'array construction needs a type'),
+        ('fixed','let^a:i32^[3]={0 repeat^ 3}', 'build owning arrays'),
+        ('capped','var^a:i32^[max^]={1 repeat^ 2}', 'build owning arrays'),
+        ('capacity_owner','let^a:i32^[]={max^ 3}', 'builds a T[max^]'),
+        ('pair','let^a=i32^[](3,0)', 'write T[]{value repeat^ n}'),
+        ('mixed','let^a:i32^[]={1, 2 repeat^ 3}', "expected '}'"),
+        ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'array or slice'),
+    ]:
+        negative('form_'+name,source,error)
     positive('sized_empty_typed_value', '''
 var^a=i32^[]{}
 var^b:i32^[]={1,2}
@@ -147,43 +170,43 @@ print^(a.len,b.len,b[1])
 ''', '0 2 2\n')
     positive('sized_struct_and_fixed_elements', '''
 def^Pair {self^{a:i64^,b:i64^}}
-let^pairs=Pair[](2,Pair{a=7,b=8})
+let^pairs=Pair[]{Pair{a=7,b=8} repeat^ 2}
 var^source:i64^[2][2]={{1,2},{3,4}}
 let^arrays=i64^[2][](source)
 print^(pairs[1].a,pairs[1].b,arrays[1][0])
 ''', '7 8 3\n')
     positive('sized_self_elements', '''
 def^Node {self^{n:i32^=7}
- copies=f^self^ {Self^[](2,*self^)}
+ copies=f^self^ {Self^[]{*self^ repeat^ 2}}
 }
 var^node=Node{}
 let^copies=node.copies()
 print^(copies.len,copies[1].n)
 ''', '2 7\n')
     for method,args in [('push','1'),('pop',''),('clear',''),('truncate','0'),('append','a[..]')]:
-        negative('sized_forbid_'+method, f'var^a=i32^[](2,1) a.{method}({args})',
+        negative('sized_forbid_'+method, f'var^a=i32^[]{{1 repeat^ 2}} a.{method}({args})',
                  'fixed length after construction')
-    negative('sized_forbid_reassign','var^a=i32^[](2,1) a:=i32^[](3,2)',
+    negative('sized_forbid_reassign','var^a=i32^[]{1 repeat^ 2} a:=i32^[]{2 repeat^ 3}',
              'owned values cannot be reassigned')
-    negative('sized_forbid_implicit_copy','let^a=i32^[](2,1) let^b=a',
+    negative('sized_forbid_implicit_copy','let^a=i32^[]{1 repeat^ 2} let^b=a',
              'owned')
-    negative('sized_forbid_by_value','let^read=f^a:i32^[] {a.len} let^a=i32^[](2,1) print^(read(a))',
+    negative('sized_forbid_by_value','let^read=f^a:i32^[] {a.len} let^a=i32^[]{1 repeat^ 2} print^(read(a))',
              'reference')
     negative('sized_forbid_owned_elements','let^a=i32^[grow^][]{}',
              'nonempty fixed-size')
     negative('sized_wrong_element','let^a=i32^[]({"x"})', 'array or slice')
     negative('sized_wrong_source','let^a=i32^[](42)', 'array or slice')
-    negative('sized_wrong_count','let^n:i32^=2 let^a=i32^[](n,1)', 'array length must be i64^')
-    negative('sized_wrong_initial','let^a=i32^[](2,"x")', "initial value must be 'i32^'")
+    negative('sized_wrong_count','let^n:i32^=2 let^a=i32^[]{1 repeat^ n}', 'array length must be i64^')
+    negative('sized_wrong_initial','let^a=i32^[]{"x" repeat^ 2}', "initial value must be 'i32^'")
     negative('sized_constructor_arity','let^a=i32^[](1,2,3)', 'construction expects')
-    negative('sized_no_grow_conversion','let^a:i32^[grow^]=i32^[](2,1)', 'cannot initialize')
-    negative('sized_reference_escape','let^bad=f^ {var^x=1 return^i32^[ref^](2,ref^x)} let^a=bad()',
+    negative('sized_no_grow_conversion','let^a:i32^[grow^]=i32^[]{1 repeat^ 2}', 'cannot initialize')
+    negative('sized_reference_escape','let^bad=f^ {var^x=1 return^i32^[ref^]{ref^x repeat^ 2}} let^a=bad()',
              'cannot return a reference')
     negative('sized_copy_reference_escape','let^bad=f^ {var^x=1 let^a:i32^[ref^1]={ref^x} return^i32^[ref^](a)} let^b=bad()',
              'cannot return a reference')
-    suite.runtime_failure('sized_negative_count','let^a=i32^[](-1,0)', 'data stack')
-    suite.runtime_failure('sized_overflow_count','let^a=i64^[](9223372036854775807,0)', 'data stack')
-    suite.runtime_failure('sized_bounds','let^a=i32^[](2,7) print^(a[2])', 'out of bounds')
+    suite.runtime_failure('sized_negative_count','let^a=i32^[]{0 repeat^ -1}', 'data stack')
+    suite.runtime_failure('sized_overflow_count','let^a=i64^[]{0 repeat^ 9223372036854775807}', 'data stack')
+    suite.runtime_failure('sized_bounds','let^a=i32^[]{7 repeat^ 2} print^(a[2])', 'out of bounds')
     positive('capped_operations', '''
 var^a=i32^[max^](4)
 let^src={7,8}
@@ -213,7 +236,7 @@ for^ k from^ 1 to^ 1000 {
 }
 print^(w.xs.len,w.xs[1],q.len,q[0],copy[0],total)
 ''', '2 9 1 3 3 1000\n')
-    negative('capped_literal', 'var^a:i32^[max^]={1,2}', 'is built with i32^[max^](capacity)')
+    negative('capped_literal', 'var^a:i32^[max^]={1,2}', 'is built with {max^ capacity}')
     negative('capped_empty_value', 'let^a=i32^[max^]{}', 'is built with')
     negative('capped_wrong_capacity', 'let^n:i32^=2 let^a=i32^[max^](n)',
              'array capacity must be i64^')

@@ -1442,14 +1442,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return type;
     }
     case E_ARRAY: {
-        if (e->test_spec) {
-            Type *type = type_spec(c->p, e->test_spec);
+        if (e->text) {
+            Type *type = e->test_spec ? type_spec(c->p, e->test_spec)
+                                      : array_literal_type(c->p, e, expected, NULL);
             for (int j = 0; j < e->args.n; j++) {
-                Type *hint = j ? type->elem
-                             : e->args.n == 2 || type->count == ARRAY_CAPPED
-                                 ? type_builtin(c->p, T_I64)
-                                 : NULL;
-                infer_expr(c, e->args.v[j], hint);
+                infer_expr(c, e->args.v[j], array_form_hint(c->p, e, type, j));
             }
             return c->terminated ? type_builtin(c->p, T_NEVER) : type;
         }
@@ -2748,13 +2745,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_ARRAY:
         n->type =
             e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, want, NULL);
-        if (e->test_spec && e->text) {
+        if (e->text) {
             for (int j = 0; j < e->args.n; j++) {
-                Type *hint = j ? n->type->elem
-                             : e->args.n == 2 || n->type->count == ARRAY_CAPPED
-                                 ? type_builtin(c->p, T_I64)
-                                 : NULL;
-                body_expr(c, e->args.v[j], hint);
+                body_expr(c, e->args.v[j], array_form_hint(c->p, e, n->type, j));
             }
             break;
         }

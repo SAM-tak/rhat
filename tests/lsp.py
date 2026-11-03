@@ -784,8 +784,8 @@ print^(value.add(value.copy()).x)
     print('PASS array attributes and element references in source and hover',flush=True)
 
     sized=('def^Node {self^{n:i32^=7}}\nvar^node=Node{}\n'
-           'var^refs=Node[ref^](2,ref^node)\n'
-           'var^values=i32^[](3,7)\n'
+           'var^refs=Node[ref^]{ref^node repeat^ 2}\n'
+           'var^values=i32^[]{7 repeat^ 3}\n'
            'let^copy=i32^[](values[..])\n'
            'let^read=f^xs:ref^i32^[] {xs.len}\n'
            'print^(read(ref^values),refs[0].n,copy[0])\n')

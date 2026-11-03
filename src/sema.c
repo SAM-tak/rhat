@@ -2106,15 +2106,35 @@ Type *union_literal_hint(Type *t, Expr *e)
     return hint;
 }
 
-// Construct a new owner, copying only its elements' reference dependencies.
+// Construct a new owner from {v repeat^ n}, a copied {source...} or a
+// {max^ capacity}, copying only its elements' reference dependencies.
 static Value sized_array(Context *c, Expr *e, Type *t, int dst)
 {
+    bool reserve = !strcmp(e->text, "reserve"), repeat = !strcmp(e->text, "repeat");
+    if (!t) {
+        fail(e->loc, "array construction needs a type; write T[...]{...} or annotate the binding");
+    }
+    if (t->kind != T_GROW || reserve != (t->count == ARRAY_CAPPED)) {
+        fail(e->loc,
+             reserve
+                 ? "{max^ capacity} builds a T[max^], not '%s'"
+                 : "repeat^ and source... build owning arrays such as T[] and T[grow^], not '%s'",
+             type_name(t));
+    }
     layout(t, e->loc);
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     Value count = {0}, source = {0};
-    bool reserve = t->count == ARRAY_CAPPED, repeat = e->args.n == 2;
+    if (repeat) {
+        source = snapshot(c, expression(c, e->args.v[0], t->elem), e->loc);
+        if (dead(source)) {
+            return source;
+        }
+        if (source.type != t->elem) {
+            fail(e->loc, "array initial value must be '%s'", type_name(t->elem));
+        }
+    }
     if (repeat || reserve) {
-        count = snapshot(c, expression(c, e->args.v[0], type_builtin(c->p, T_I64)), e->loc);
+        count = snapshot(c, expression(c, e->args.v[repeat], type_builtin(c->p, T_I64)), e->loc);
         if (dead(count)) {
             return count;
         }
@@ -2125,13 +2145,7 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     if (reserve) {
         source = count;
     }
-    else if (repeat) {
-        source = snapshot(c, expression(c, e->args.v[1], t->elem), e->loc);
-        if (!dead(source) && source.type != t->elem) {
-            fail(e->loc, "array initial value must be '%s'", type_name(t->elem));
-        }
-    }
-    else {
+    else if (!repeat) {
         source = deref(c, expression(c, e->args.v[0], NULL), e->loc);
         if (!dead(source)) {
             Type *s = source.type;
@@ -2169,6 +2183,17 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
         fill->a = out.id;
     }
     return out;
+}
+
+Type *array_form_hint(Program *p, Expr *e, Type *t, int index)
+{
+    if (!strcmp(e->text, "copy")) {
+        return NULL;
+    }
+    if (!strcmp(e->text, "repeat") && !index) {
+        return t ? t->elem : NULL;
+    }
+    return type_builtin(p, T_I64);
 }
 
 // Explicit ref^ attributes borrow stable places, leaving existing references unchanged.
@@ -2569,18 +2594,16 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return out;
     }
     if (e->kind == E_ARRAY) {
-        if (e->test_spec) {
-            Type *named = type_spec(c->p, e->test_spec);
-            if (t && t != named) {
+        if (e->text) {
+            Type *named =
+                e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, t, NULL);
+            if (t && named && t != named) {
                 fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
             }
-            t = named;
-            if (t->kind == T_GROW && t->count >= ARRAY_SIZED && e->text) {
-                return sized_array(c, e, t, dst);
-            }
+            return sized_array(c, e, named, dst);
         }
         if (t && t->kind == T_GROW && t->count == ARRAY_CAPPED) {
-            fail(e->loc, "'%s' is built with %s(capacity)", type_name(t), type_name(t));
+            fail(e->loc, "'%s' is built with {max^ capacity}", type_name(t));
         }
         Type *shape = array_literal_type(c->p, e, t, NULL);
         Value first = {0};

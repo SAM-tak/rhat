@@ -311,6 +311,9 @@ bool sum_accepts(Type *to, Type *from);
 
 // Resolve the lexical declaration selected by this^ and its outer forms.
 Function *this_function(Program *p, Instance *in, Expr *target);
+// The expected type of argument index of an array construction form (e->text
+// is repeat, copy or reserve) building t, or NULL when it takes any.
+Type *array_form_hint(Program *p, Expr *e, Type *t, int index);
 // Turn {} into an empty array literal where t, the expected type, is an array.
 void empty_array_braces(Expr *e, Type *t);
 // The def^ whose static member a Type.name call target names, or NULL.

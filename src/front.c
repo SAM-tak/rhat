@@ -1534,6 +1534,35 @@ static void entries(Parser *p, Expr *e, const char *end, bool named)
     p->header = header;
 }
 
+// The contents of an array literal after its '{': elements, or the only
+// element v repeat^ n, a copied source..., or a max^ capacity.
+static void array_entries(Parser *p, Expr *e)
+{
+    bool header = p->header;
+    p->header = false;
+    if (take(p, "max^")) {
+        e->text = "reserve";
+        add(&e->args, expr(p, 0));
+    }
+    else if (!is(p, "}")) {
+        add(&e->args, expr(p, 0));
+        if (take(p, "repeat^")) {
+            e->text = "repeat";
+            add(&e->args, expr(p, 0));
+        }
+        else if (take(p, "...")) {
+            e->text = "copy";
+        }
+        else {
+            while (take(p, ",") && !is(p, "}")) {
+                add(&e->args, expr(p, 0));
+            }
+        }
+    }
+    need(p, "}");
+    p->header = header;
+}
+
 static bool branch_word(Parser *p)
 {
     const char *words[] = {"elseif^", "elsif^", "elif^", "ei^", "else^", "el^"};
@@ -1709,7 +1738,12 @@ static Expr *primary(Parser *p)
         bool named = is(p, "}") || (tok(p)->kind == TOK_WORD && p->at + 1 < p->tokens.n &&
                                     !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "="));
         e = node(named ? E_RECORD : E_ARRAY, t->loc);
-        entries(p, e, "}", named);
+        if (named) {
+            entries(p, e, "}", true);
+        }
+        else {
+            array_entries(p, e);
+        }
     }
     else if (reference_depth(t->text) || !strcmp(t->text, "-") || !strcmp(t->text, "!") ||
              !strcmp(t->text, "*") || !strcmp(t->text, "**") || !strcmp(t->text, "bitnot^") ||
@@ -1809,11 +1843,11 @@ static Expr *primary(Parser *p)
                 if (capped && (e->text || n->args.n != 1)) {
                     fail(e->loc, "T[max^] construction expects a capacity");
                 }
-                if (!capped && (e->text || s->kind != SPEC_ARRAY || s->count ||
-                                (n->args.n != 1 && n->args.n != 2))) {
-                    fail(e->loc, "T[] construction expects a source or a length and initial value");
+                if (!capped && (e->text || s->kind != SPEC_ARRAY || s->count || n->args.n != 1)) {
+                    fail(e->loc, "T[] construction expects a source; write T[]{value repeat^ n} "
+                                 "to repeat a value");
                 }
-                e->text = capped ? "reserve" : n->args.n == 1 ? "copy" : "repeat";
+                e->text = capped ? "reserve" : "copy";
                 e->args = n->args;
                 continue;
             }
@@ -1827,7 +1861,7 @@ static Expr *primary(Parser *p)
             if (take(p, "{")) {
                 array->array_literal = s;
                 array->array_refs = refs;
-                entries(p, array, "}", false);
+                array_entries(p, array);
             }
             else if (is(p, "(")) {
                 array->test_spec = s;
