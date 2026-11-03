@@ -193,7 +193,7 @@ def main():
         path.write_bytes((suite.repo / 'bench/rhat/graph.rh').read_bytes())
         suite.run([suite.compiler, 'format', path])
         text = path.read_text(encoding='utf-8')
-        assert '    *tail := *tail + 1' in text, text
+        assert '    *tail += 1' in text, text
         suite.run([suite.compiler, 'format-check', path])
     suite.case('graph_example_dereference_spacing', graph_example)
 
