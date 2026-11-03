@@ -3,6 +3,7 @@
 #endif
 #include "rhat.h"
 #include "server.h"
+#include "format.h"
 #include <errno.h>
 #if defined(_WIN32)
 #include <process.h>
@@ -105,7 +106,7 @@ static bool same_path(const char *a, const char *b)
 static void usage(void)
 {
     puts(
-        "R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat emit SOURCE -o "
+        "R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat format SOURCE\n       rhat format-check SOURCE\n       rhat emit SOURCE -o "
         "OUTPUT.ll [--dump-ir OUTPUT.rir]\n       rhat build SOURCE -o OUTPUT "
         "[--clang PATH] [--runtime PATH] [-O0|-O2] [--emit-llvm OUTPUT.ll]\n       rhat lsp [--stdio] [--stdlib DIR]\n       rhat run SOURCE "
         "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
@@ -126,6 +127,13 @@ int main(int argc, char **argv)
         return 0;
     }
     const char *command = argv[1];
+    if (!strcmp(command, "format") || !strcmp(command, "format-check")) {
+        if (argc != 3) {
+            usage();
+            return 2;
+        }
+        return rhat_format_file(argv[2], !strcmp(command, "format-check"));
+    }
     if (!strcmp(command, "lsp")) {
         const char *stdlib = NULL;
         for (int j = 2; j < argc; j++) {

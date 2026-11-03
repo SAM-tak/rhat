@@ -351,8 +351,9 @@ struct Type {
 };
 
 struct Program {
-    bool library_root; // Check a standalone module using library rules.
-    bool tooling;      // Retain source and checked resolutions for editor clients.
+    struct FormatSyntax *format; // Optional parser trace for the source formatter.
+    bool library_root;           // Check a standalone module using library rules.
+    bool tooling;                // Retain source and checked resolutions for editor clients.
     List sources, overlays, resolutions; // ToolSource and ToolRef records.
     List modules, module_paths;
     Module *emitting;

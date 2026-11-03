@@ -1,5 +1,6 @@
 #include "rhat.h"
 #include "tooling.h"
+#include "format.h"
 #include <ctype.h>
 #include <errno.h>
 
@@ -94,6 +95,7 @@ typedef struct {
     Loc loc;
     int kind;
     size_t length;
+    uint32_t offset;
 } Token;
 
 // The width of the UTF-8 encoded scalar value at s within n bytes, with
@@ -143,6 +145,55 @@ typedef struct {
     bool header;
     bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
 } Parser;
+
+static void format_span(Parser *p, int first, int kind, bool block, bool row)
+{
+    if (!p->p->format || p->at <= first) {
+        return;
+    }
+    Token *a = p->tokens.v[first], *b = p->tokens.v[p->at - 1];
+    FormatSpan *s = mem(sizeof(*s));
+    *s = (FormatSpan){first, p->at, kind, a->offset, b->offset + (uint32_t)b->loc.length,
+                      block, row};
+    add(&p->p->format->spans, s);
+}
+
+static void format_tokens(Parser *p)
+{
+    if (!p->p->format) {
+        return;
+    }
+    for (int j = 0; j < p->tokens.n; j++) {
+        Token *t = p->tokens.v[j];
+        if (t->kind == TOK_EOF) {
+            break;
+        }
+        FormatToken *out = mem(sizeof(*out));
+        out->text = t->text;
+        out->offset = t->offset;
+        out->length = (uint32_t)t->loc.length;
+        out->kind = t->kind == TOK_WORD                           ? FORMAT_WORD
+                    : t->kind == TOK_SCOPE                        ? FORMAT_SCOPE
+                    : t->kind >= TOK_INT && t->kind <= TOK_QUOTED ? FORMAT_LITERAL
+                                                                  : FORMAT_OP;
+        out->hat =
+            t->kind == TOK_WORD && out->length && p->p->source[t->offset + out->length - 1] == '^';
+        if (t->kind == TOK_INTERP) {
+            int depth = 1;
+            while (++j < p->tokens.n) {
+                Token *end = p->tokens.v[j];
+                depth += end->kind == TOK_INTERP;
+                depth -= end->kind == TOK_INTERP_END;
+                if (!depth) {
+                    out->length = end->offset + (uint32_t)end->loc.length - out->offset;
+                    break;
+                }
+            }
+            out->kind = FORMAT_LITERAL;
+        }
+        add(&p->p->format->tokens, out);
+    }
+}
 
 static Token *tok(Parser *p)
 {
@@ -588,6 +639,7 @@ static void lex_step(Parser *p, Lexer *l)
             t->text = slice(format, (size_t)(l->s - format));
         }
         t->loc.length = (int)(l->s - start);
+        t->offset = (uint32_t)(start - p->p->source);
         for (; start < l->s; start++) {
             l->line += *start == '\n';
             l->col = *start == '\n' ? 1 : l->col + 1;
@@ -831,6 +883,7 @@ static void lex_step(Parser *p, Lexer *l)
         l->s++;
     }
     t->loc.length = (int)(l->s - start);
+    t->offset = (uint32_t)(start - p->p->source);
     if (!t->text) {
         t->text = slice(start, (size_t)(l->s - start));
     }
@@ -1469,6 +1522,7 @@ static Expr *named(char *name, Loc loc);
 
 static Expr *primary(Parser *p)
 {
+    int first = p->at;
     Token *t = next(p);
     if (t->kind == TOK_INVALID) {
         tool_abort();
@@ -1757,6 +1811,7 @@ static Expr *primary(Parser *p)
             break;
         }
     }
+    format_span(p, first, 100 + e->kind, false, false);
     return e;
 }
 
@@ -2753,7 +2808,17 @@ static Stmt *stmt_unchecked(Parser *p)
 static Stmt *stmt(Parser *p)
 {
     if (!p->p->tooling) {
-        return stmt_unchecked(p);
+        if (!p->p->format) {
+            return stmt_unchecked(p);
+        }
+        int first = p->at;
+        Stmt *out = stmt_unchecked(p);
+        Token *head = p->tokens.v[first];
+        bool row = !strcmp(head->text, "for^") && first + 1 < p->at &&
+                   (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
+                    !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^"));
+        format_span(p, first, 2000 + out->kind, false, row);
+        return out;
     }
     int start = p->at, depth = p->scope_depth;
     bool header = p->header;
@@ -2793,6 +2858,7 @@ static Stmt *stmt(Parser *p)
 
 static void block(Parser *p, List *out)
 {
+    int first = p->at;
     need(p, "{");
     p->scope_depth++;
     while (!is(p, "}") && !catch_head(p)) {
@@ -2810,10 +2876,12 @@ static void block(Parser *p, List *out)
         need(p, "}");
     }
     p->scope_depth--;
+    format_span(p, first, 4000, true, false);
 }
 
 static Function *function(Parser *p, char *name, Def *owner, bool abstr)
 {
+    int first = p->at;
     Function *f = mem(sizeof(*f));
     f->loc = tok(p)->loc;
     f->enclosing = p->enclosing;
@@ -2904,6 +2972,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
             }
         }
     }
+    format_span(p, first, 1000, false, false);
     return f;
 }
 
@@ -3457,7 +3526,9 @@ static void declaration(Parser *q)
 static void declaration_checked(Parser *q)
 {
     if (!q->p->tooling) {
+        int first = q->at;
         declaration(q);
+        format_span(q, first, 3000, false, false);
         return;
     }
     int start = q->at, defs = q->p->defs.n, depth = q->scope_depth;
@@ -3526,6 +3597,7 @@ void parse_file(Program *p, const char *path, Module *module)
     q.p = p;
     q.module = module;
     lex(&q);
+    format_tokens(&q);
     for (int j = 0; j + 1 < q.tokens.n; j++) {
         Token *a = q.tokens.v[j], *b = q.tokens.v[j + 1];
         if (!strcmp(a->text, "def^") || !strcmp(a->text, "struct^")) {

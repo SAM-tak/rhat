@@ -4,6 +4,7 @@
 #include "rpc.h"
 #include "tooling.h"
 #include "uri.h"
+#include "format.h"
 #include <ctype.h>
 #include <limits.h>
 
@@ -120,6 +121,40 @@ static cJSON *hover(cJSON *symbol)
     cJSON_AddItemToObject(out, "range",
                           copy(cJSON_GetObjectItem(cJSON_GetObjectItem(symbol, "use"), "range")));
     return out;
+}
+
+static cJSON *format_document(cJSON *doc, cJSON *params)
+{
+    RhatFormatOptions options;
+    rhat_format_defaults(&options);
+    cJSON *asked = cJSON_GetObjectItem(params, "options");
+    int tab_size = number(asked, "tabSize");
+    if (tab_size > 0 && tab_size < 1000) {
+        options.indent_size = options.tab_width = (uint32_t)tab_size;
+    }
+    cJSON *spaces = cJSON_GetObjectItem(asked, "insertSpaces");
+    if (cJSON_IsBool(spaces)) {
+        options.indent_with_tabs = cJSON_IsFalse(spaces);
+    }
+    rhat_format_read_editorconfig(text(doc, "path"), &options);
+    const char *source = text(doc, "text");
+    size_t size = strlen(source), length = 0;
+    char *formatted = NULL;
+    RhatFormatStatus status = rhat_format(source, size, &options, &formatted, &length);
+    cJSON *edits = NULL;
+    if (status == RHAT_FORMAT_OK) {
+        edits = cJSON_CreateArray();
+        if (size != length || memcmp(source, formatted, size)) {
+            cJSON *edit = cJSON_CreateObject();
+            cJSON_AddItemToObject(
+                edit, "range",
+                lsp_range_json((LspPosition){0, 0}, lsp_position_at(source, size, (uint32_t)size)));
+            cJSON_AddStringToObject(edit, "newText", formatted);
+            cJSON_AddItemToArray(edits, edit);
+        }
+    }
+    free(formatted);
+    return edits;
 }
 
 static cJSON *references(cJSON *index, cJSON *symbol, const char *uri, bool include_declarations,
@@ -907,7 +942,10 @@ static int worker(void *raw)
             cJSON *td = cJSON_GetObjectItem(params, "textDocument");
             cJSON *doc = document(job->documents, text(td, "uri"));
             cJSON *result = NULL;
-            if (doc || !strcmp(method, "workspace/symbol")) {
+            if (doc && !strcmp(method, "textDocument/formatting")) {
+                result = format_document(doc, params);
+            }
+            else if (doc || !strcmp(method, "workspace/symbol")) {
                 cJSON *index = doc ? cJSON_GetObjectItem(cache, text(doc, "uri")) : NULL;
                 if (doc && !index) {
                     index = check_document(s, job, doc);
@@ -1079,6 +1117,7 @@ static cJSON *initialize(Server *s, cJSON *params)
     }
     cJSON *out = cJSON_CreateObject(), *caps = cJSON_AddObjectToObject(out, "capabilities");
     cJSON_AddStringToObject(caps, "positionEncoding", "utf-16");
+    cJSON_AddBoolToObject(caps, "documentFormattingProvider", true);
     cJSON *sync = cJSON_AddObjectToObject(caps, "textDocumentSync");
     cJSON_AddBoolToObject(sync, "openClose", true);
     cJSON_AddNumberToObject(sync, "change", 2);
@@ -1189,6 +1228,7 @@ int rhat_lsp_run(const char *stdlib)
     char *body;
     size_t length;
     const char *methods[] = {"textDocument/hover",
+                             "textDocument/formatting",
                              "textDocument/definition",
                              "textDocument/references",
                              "textDocument/documentHighlight",
@@ -1266,7 +1306,7 @@ int rhat_lsp_run(const char *stdlib)
         }
         else {
             bool handled = false;
-            for (int j = 0; j < 9; j++) {
+            for (size_t j = 0; j < sizeof(methods) / sizeof(*methods); j++) {
                 if (!strcmp(method, methods[j])) {
                     enqueue(&s, message);
                     handled = true;

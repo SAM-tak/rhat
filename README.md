@@ -131,6 +131,7 @@ rhat lsp --stdio
 - `build` / `run`: 実行ファイルを作ります（`run` は続けて実行します）。`.ll` は残しません。
   `--emit-llvm PATH` を付けたときだけ、単一の LLVM IR を `PATH` に書きます。
 - `lsp`: 言語サーバーです（[言語サーバー](#言語サーバー)）。
+- `format` / `format-check`: ソースの整形と、書き換えない整形チェックです。LSP の全文整形と同じエンジン・EditorConfig を使います（[整形](DesignDocuments/formatting.md)）。
 - 共通: `--dump-ir PATH` は R^ 中間表現と配置を出力します。
   `--clang PATH` / `RHAT_CLANG` は Clang、`--runtime PATH` / `RHAT_RUNTIME` はランタイムの指定です。
   通常の開発ビルドはソースツリーのランタイムを使用します。配布時はランタイムも同梱してください。
