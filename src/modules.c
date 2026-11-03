@@ -1349,9 +1349,11 @@ static void resolve_definition(Program *p, Def *d)
     for (int j = 0; j < d->own_fields.n; j++) {
         Field *f = d->own_fields.v[j];
         resolve_spec(m, f->spec);
-        Function scope = {.owner = d, .name = "<field-default>"};
+        // Recorded top-level calls keep their caller beyond this loop.
+        Function *scope = mem(sizeof(*scope));
+        *scope = (Function){.owner = d, .name = "<field-default>", .loc = f->loc};
         Function *outer = top_user;
-        top_user = &scope;
+        top_user = scope;
         resolve_expr(p, m, &names, f->init);
         top_user = outer;
     }
