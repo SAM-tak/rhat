@@ -29,7 +29,9 @@ let^gen = p^text:ref^u8^[grow^], depth:i64^, seed:u64^-> u64^{
     var^r = std.random.xorshift64(seed)
     if^depth = 0 or^r % 4 = 0 {
         if^(r bitshift^-8) % 2 = 0 {
-            emit_sym(text, r) else^: emit_num(text, (r bitshift^-16) % 100000)
+            emit_sym(text, r)
+        else^:
+            emit_num(text, (r bitshift^-16) % 100000)
         }
         text.push(32)
         return^r

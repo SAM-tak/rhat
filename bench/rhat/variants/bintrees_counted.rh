@@ -1,61 +1,61 @@
 # Port of aardappel/goose bench/goose/bintrees.goose, Apache-2.0.
 # Fixed-size nodes use i32^ indices (8 bytes/node), not relative references.
 # A local pool is reserved and released for every short-lived tree.
-def^ Node { self^{ l:i32^=-1, r:i32^=-1 } }
+def^Node { self^{ l:i32^= -1, r:i32^= -1 } }
 
-let^ make = p^ pool:ref^ Node[grow^], count:ref^ i32^, depth:i64^ -> i32^ {
-    var^ l:i32^=-1
-    var^ r:i32^=-1
-    if^ depth > 0 {
-        l := this^(pool,count,depth-1)
-        r := this^(pool,count,depth-1)
+let^make = p^pool:ref^Node[grow^], count:ref^i32^, depth:i64^-> i32^{
+    var^l:i32^= -1
+    var^r:i32^= -1
+    if^depth > 0 {
+        l := this^(pool, count, depth - 1)
+        r := this^(pool, count, depth - 1)
     }
-    let^ index=*count
-    pool.push(Node{l=l,r=r});
-    *count := *count+1
-    return^ index
+    let^index = *count
+    pool.push(Node{l = l, r = r});
+    *count += 1
+    return^index
 }
 
-let^ check = f^ pool:ref^ Node[grow^], index:i32^ -> i64^ {
-    let^ l=pool[index].l
-    let^ r=pool[index].r
-    if^ l < 0 { return^ 1 }
-    if^ r < 0 { return^ 1 }
-    return^ 1+this^(pool,l)+this^(pool,r)
+let^check = f^pool:ref^Node[grow^], index:i32^-> i64^{
+    let^l = pool[index].l
+    let^r = pool[index].r
+    if^l < 0 { return^1 }
+    if^r < 0 { return^1 }
+    return^1 + this^(pool, l) + this^(pool, r)
 }
 
-let^ tree_check = p^ depth:i64^ -> i64^ {
-    var^ pool:Node[grow^]=[]
-    var^ count:i32^=0
-    let^ root=make(ref^ pool,ref^ count,depth)
-    return^ check(ref^ pool,root)
+let^tree_check = p^depth:i64^-> i64^{
+    var^pool:Node[grow^] = []
+    var^count:i32^= 0
+    let^root = make(ref^pool, ref^count, depth)
+    return^check(ref^pool, root)
 }
 
 # Arithmetic spelling of 1 << n; no bitwise operators are required.
-let^ power2 = f^ n:i64^ -> i64^ {
-    var^ value:i64^=1
-    var^ i:i64^=0
-    repeat^ while^ i < n { value := value*2; i := i+1 }
-    return^ value
+let^power2 = f^n:i64^-> i64^{
+    var^value:i64^= 1
+    var^i:i64^= 0
+    repeat^while^i < n { value *= 2; i += 1 }
+    return^value
 }
 
-let^ maxdepth:i64^=15 # BENCH_N
-print^(tree_check(maxdepth+1))
-var^ long:Node[grow^]=[]
-var^ count:i32^=0
-let^ root=make(ref^ long,ref^ count,maxdepth)
-var^ d:i64^=4
-repeat^ while^ d <= maxdepth {
-    let^ iters=power2(maxdepth-d+4)
-    var^ sum:i64^=0
-    var^ i:i64^=0
-    repeat^ while^ i < iters {
-        sum := sum+tree_check(d)
-        i := i+1
+let^maxdepth:i64^= 15 # BENCH_N
+print^(tree_check(maxdepth + 1))
+var^long:Node[grow^] = []
+var^count:i32^= 0
+let^root = make(ref^long, ref^count, maxdepth)
+var^d:i64^= 4
+repeat^while^d <= maxdepth {
+    let^iters = power2(maxdepth - d + 4)
+    var^sum:i64^= 0
+    var^i:i64^= 0
+    repeat^while^i < iters {
+        sum += tree_check(d)
+        i += 1
     }
     print^(iters)
     print^(d)
     print^(sum)
-    d := d+2
+    d += 2
 }
-print^(check(ref^ long,root))
+print^(check(ref^long, root))

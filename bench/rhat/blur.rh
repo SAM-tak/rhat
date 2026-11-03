@@ -9,12 +9,12 @@ let^blur = p^src:ref^u8^[grow^], dst:ref^u8^[grow^], w:i64^{
         repeat^while^x < w - 1 {
             let^i = y * w + x
             let^s = i32^(src[i - w - 1]) + i32^(src[i - w]) * 2 + i32^(src[i - w + 1])
-                + i32^(src[i - 1]) * 2 + i32^(src[i]) * 4 + i32^(src[i + 1]) * 2
-                + i32^(src[i + w - 1]) + i32^(src[i + w]) * 2 + i32^(src[i + w + 1])
+                  + i32^(src[i - 1]) * 2 + i32^(src[i]) * 4 + i32^(src[i + 1]) * 2
+                  + i32^(src[i + w - 1]) + i32^(src[i + w]) * 2 + i32^(src[i + w + 1])
             dst[i] := u8^(s bitshift^-4)
-            x := x + 1
+            x += 1
         }
-        y := y + 1
+        y += 1
     }
 }
 let^w:i64^= 1024 # BENCH_N
@@ -40,5 +40,5 @@ repeat^while^i < a.len {
     total += i64^(a[i])
     i += 1
 }
-print^(w)
-print^(total)
+print^w
+print^total

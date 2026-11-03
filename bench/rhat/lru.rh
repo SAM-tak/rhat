@@ -103,7 +103,7 @@ var^slots:Slot[grow^] = []
 var^pool:Node[grow^] = []
 var^free:u32^[grow^] = []
 var^i:i64^= 0
-repeat^while^i < nslots { slots.push(Slot{key = 0, idx = -1}); i := i + 1 }
+repeat^while^i < nslots { slots.push(Slot{key = 0, idx = -1}); i += 1 }
 let^hi = alloc(ref^pool, ref^free, -1, 0)
 let^ti = alloc(ref^pool, ref^free, -1, 0)
 pool[hi].next := ti
@@ -114,7 +114,7 @@ i := 0
 repeat^while^i < n {
     r := std.random.xorshift64(r)
     step(ref^pool, ref^free, ref^slots, ref^stats, cap, keys, mask, r)
-    i := i + 1
+    i += 1
 }
 assert^(pool.len <= cap + 2)
 assert^(stats.count + free.len = pool.len - 2)
@@ -123,7 +123,7 @@ var^vals:i64^= 0
 var^cur = pool[hi].next
 repeat^while^pool[cur].key >= 0 {
     hash := hash * 31 + u64^(pool[cur].key)
-    vals := vals + i64^(pool[cur].val)
+    vals += i64^(pool[cur].val)
     cur := pool[cur].next
 }
 print^stats.hits

@@ -8,15 +8,15 @@ let^split = p^text:u8^[slice^] -> WordList {
     var^i:i64^= 0
     repeat^while^i < text.len {
         let^start = i
-        repeat^while^i < text.len and^text[i] != 32 { i := i + 1 }
+        repeat^while^i < text.len and^text[i] != 32 { i += 1 }
         let^len = i - start
         if^len > 0 {
             assert^(len <= 127)
             out.data.push(u8^(len))
             out.data.append(text[start .. start + len])
-            out.count := out.count + 1
+            out.count += 1
         }
-        repeat^while^i < text.len and^text[i] = 32 { i := i + 1 }
+        repeat^while^i < text.len and^text[i] = 32 { i += 1 }
     }
     return^out
 }
@@ -26,13 +26,13 @@ def^Slot { self^{ key:u8^[slice^], count:i32^} }
 let^hash = f^key:u8^[slice^] -> u64^{
     var^h:u64^= 14695981039346656037
     var^i:i64^= 0
-    repeat^while^i < key.len { h := (h bitxor^u64^(key[i])) * 1099511628211; i := i + 1 }
+    repeat^while^i < key.len { h := (h bitxor^u64^(key[i])) * 1099511628211; i += 1 }
     return^h
 }
 let^equal = f^a:u8^[slice^], b:u8^[slice^] -> bool^{
     if^a.len != b.len { return^false^}
     var^i:i64^= 0
-    repeat^while^i < a.len { if^a[i] != b[i] { return^false^}; i := i + 1 }
+    repeat^while^i < a.len { if^a[i] != b[i] { return^false^}; i += 1 }
     return^true^
 }
 let^find = f^slots:ref^Slot[grow^], key:u8^[slice^], mask:u64^-> i64^{
@@ -73,12 +73,12 @@ repeat^while^i < n {
 }
 var^words = split(text[..])
 var^nslots:i64^= 16
-repeat^while^nslots < vocab * 4 { nslots := nslots * 2 }
+repeat^while^nslots < vocab * 4 { nslots *= 2 }
 let^mask = u64^(nslots - 1)
 var^slots:Slot[grow^] = []
 let^empty = words.data[.. 0]
 i := 0
-repeat^while^i < nslots { slots.push(Slot{key = empty, count = 0}); i := i + 1 }
+repeat^while^i < nslots { slots.push(Slot{key = empty, count = 0}); i += 1 }
 var^distinct:i64^= 0
 var^at:i64^= 0
 repeat^while^at < words.data.len {
@@ -88,8 +88,10 @@ repeat^while^at < words.data.len {
     if^slots[index].count = 0 {
         slots[index].key := key
         slots[index].count := 1
-        distinct := distinct + 1
-    else^: slots[index].count := slots[index].count + 1 }
+        distinct += 1
+    else^:
+        slots[index].count += 1
+    }
     at += len + 1
 }
 var^total:i64^= 0

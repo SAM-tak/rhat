@@ -33,8 +33,16 @@ let^gen = p^text:ref^u8^[grow^], depth:i64^, seed:u64^-> u64^{
     let^op = (r bitshift^-16) % 4
     text.push(32)
     if^op = 0 {
-        text.push(43) else^: if^op = 1 {
-            text.push(45) else^: if^op = 2 { text.push(42) else^: text.push(47) }
+        text.push(43)
+    else^:
+        if^op = 1 {
+            text.push(45)
+        else^:
+            if^op = 2 {
+                text.push(42)
+            else^:
+                text.push(47)
+            }
         }
     }
     text.push(32)
