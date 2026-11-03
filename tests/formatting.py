@@ -33,12 +33,29 @@ def main():
     expect('space_after_hat', 'let^x=self^+1\n', 'let^ x = self^ + 1\n', 'rhat_space_after_hat=true\n')
     expect('calls_and_operators', 'let^x  =  foo ( 1 ,2 )+bar[ 3 ]\n',
            'let^x = foo(1, 2) + bar[3]\n')
+    expect('variadic_index', 'print^(...[0])\n', 'print^(...[0])\n')
+    expect('variadic_index_removes_space', 'print^(... [ 0 ])\n', 'print^(...[0])\n')
+    expect('variadic_slice_and_member', 'print^(... [0 .. 2],... .len)\n',
+           'print^(...[0 .. 2],....len)\n')
+    expect('variadic_parameter_and_forwarding', 'let^show=p^...:i32^{print^(... [0])}\nshow(1,2)\n',
+           'let^show = p^...:i32^{print^(...[0])}\nshow(1, 2)\n')
     expect('unary_minus', 'let^x = - 1 * ( -y )\n', 'let^x = -1 * (-y)\n')
     expect('dereferences', 'print^( * r, ** rr, 2*3 )\n', 'print^(*r, **rr, 2 * 3)\n')
+    expect('comparison_spacing', 'if^n<0 { print^(n>1,n<=2,n>=3,0<n<5) }\n',
+           'if^n < 0 { print^(n > 1, n <= 2, n >= 3, 0 < n < 5) }\n')
+    expect('comparison_and_generic_arguments',
+           'def^Vec2<T>{self^{x:T}}\nlet^F=Vec2<f32^>\nprint^(a<b,c>d)\n',
+           'def^Vec2<T>{self^{x:T}}\nlet^F = Vec2<f32^>\nprint^(a < b, c > d)\n')
+    expect('dereference_after_block', 'if^true^ {}\n* tail:=* tail+1\n',
+           'if^true^{}\n*tail := *tail + 1\n')
+    expect('dereference_after_hat', 'let^f=f^r {return^* r}\n',
+           'let^f = f^r {return^*r}\n')
+    expect('dereference_parentheses_and_power', 'print^(* (r),** (rr),2**3,2*3)\n',
+           'print^(*(r), **(rr), 2 ** 3, 2 * 3)\n')
     expect('inline_records', 'let^a={x=1,y=2}\nlet^b={ x=1 }\nlet^c={ }\n',
            'let^a = {x = 1, y = 2}\nlet^b = { x = 1 }\nlet^c = {}\n')
     expect('indent_and_braces', 'let^f=p^x\n{\nif^x>1\n{\nprint^(1)\nel^:\nprint^(2)\n}\n}\n',
-           'let^f = p^x {\n    if^x>1 {\n        print^(1)\n    el^:\n        print^(2)\n    }\n}\n')
+           'let^f = p^x {\n    if^x > 1 {\n        print^(1)\n    el^:\n        print^(2)\n    }\n}\n')
     expect('next_line_braces', 'let^f=p^x {\nif^x {\nprint^(1)\n}\n}\n',
            'let^f = p^x\n{\n    if^x\n    {\n        print^(1)\n    }\n}\n', 'rhat_brace_style=next_line\n')
     expect('wrapped_next_line_block', 'let^f=p^{print^(alpha,beta,gamma,delta)}\n',
@@ -66,12 +83,66 @@ def main():
     expect('end_of_line', 'let^x=1\nlet^y=2\n', 'let^x = 1\r\nlet^y = 2\r\n', 'end_of_line=crlf\n')
     expect('long_call', 'print^(alpha,beta(gamma,delta),epsilon)\n',
            'print^(\n    alpha,\n    beta(gamma, delta),\n    epsilon\n)\n', 'max_line_length=30\n')
+    expect('wrap_parameter_commas_before_array_types',
+           'let^parse = p^text:u8^[slice^], cursor:ref^Cursor, pool:ref^Node[grow^] {print^(1)}\n',
+           'let^parse = p^text:u8^[slice^], cursor:ref^Cursor,\n    pool:ref^Node[grow^] {print^(1)}\n',
+           'max_line_length=60\n')
+    expect('wrap_parameters_repeatedly',
+           'let^f = p^aaaaaaaaaa:i32^, bbbbbbbbbb:i32^, cccccccccc:i32^, dddddddddd:i32^, eeeeeeeeee:i32^{1}\n',
+           'let^f = p^aaaaaaaaaa:i32^, bbbbbbbbbb:i32^,\n'
+           '    cccccccccc:i32^, dddddddddd:i32^,\n    eeeeeeeeee:i32^{1}\n',
+           'max_line_length=50\n')
+    parameter_prefix = 'let^f = p^a:i32^, b:i32^,'
+    expect('wrap_parameters_exact_width', parameter_prefix + ' c:i32^{1}\n',
+           parameter_prefix + '\n    c:i32^{1}\n',
+           f'max_line_length={len(parameter_prefix)}\n')
+    expect('short_parameters_stay_on_one_line',
+           'let^f = p^a:i32^, b:i32^, c:i32^{1}\n',
+           'let^f = p^a:i32^, b:i32^, c:i32^{1}\n', 'max_line_length=60\n')
+    expect('wrap_call_with_typed_array',
+           'print^(first_argument, u8^[grow^;], last_argument)\n',
+           'print^(\n    first_argument,\n    u8^[grow^;],\n    last_argument\n)\n',
+           'max_line_length=40\n')
     expect('generics_and_refs', 'def^V<T>{\nself^{x:T,y:ref^T}\nZERO=Self^{x=T.ZERO}\n}\nlet^F=V<f32^>\n',
            'def^V<T>{\n    self^{x:T, y:ref^T}\n    ZERO = Self^{x = T.ZERO}\n}\nlet^F = V<f32^>\n')
+    expect('nominal_method_bodies', 'def^V<T>{\nself^{x:T}\n'
+           'op^+ =f^self^,b:Self^ ->Self^{\nSelf^{x=self^.x+b.x}\n}\n'
+           'get=f^self^ ->T {\nself^.x\n}\n}\nprint^(1)\n',
+           'def^V<T>{\n    self^{x:T}\n'
+           '    op^+ = f^self^, b:Self^-> Self^{\n        Self^{x = self^.x + b.x}\n    }\n'
+           '    get = f^self^-> T {\n        self^.x\n    }\n}\nprint^(1)\n')
+    expect('nominal_method_multiline_head', 'def^V{\nself^{x:i32^}\n'
+           'copy=f^self^\n->Self^{\nSelf^{x=self^.x}\n}\n}\n',
+           'def^V{\n    self^{x:i32^}\n'
+           '    copy = f^self^\n        -> Self^{\n        Self^{x = self^.x}\n    }\n}\n')
+    expect('nominal_multiline_fields_and_constants', 'def^V{\nself^{\nx:i32^\n}\n'
+           'ZERO=Self^{\nx=0\n}\nget=f^self^ {\nself^.x\n}\n}\n',
+           'def^V{\n    self^{\n        x:i32^\n    }\n'
+           '    ZERO = Self^{\n        x = 0\n    }\n    get = f^self^{\n        self^.x\n    }\n}\n')
+    expect('nested_named_initializers',
+           'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\nid=1,\nlocal=Xf{\nm=rotation(r),\nt=F3{\nx=1,\ny=2\n}\n},\nworld=identity()\n})\n',
+           'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\n    id = 1,\n    local = Xf{\n        m = rotation(r),\n'
+           '        t = F3{\n            x = 1,\n            y = 2\n        }\n    },\n    world = identity()\n})\n')
+    expect('nested_anonymous_record_initializers',
+           'let^v={\na={\nb={\nc=1\n}\n},\nd=2\n}\n',
+           'let^v = {\n    a = {\n        b = {\n            c = 1\n        }\n    },\n    d = 2\n}\n')
     expect('match_expression', 'let^x=for^mode:\nwhen^1: "one"\nother^: "other"\n;\n',
            'let^x = for^mode:\n    when^1: "one"\n    other^: "other"\n;\n')
     expect('loop_sections', 'repeat^while^true^{\nmain^:\nprint^(1)\nlast^:\nprint^(2)\n}\nprint^(3)\n',
            'repeat^while^true^{\nmain^:\n    print^(1)\nlast^:\n    print^(2)\n}\nprint^(3)\n')
+    expect('catch_expression_before_do', 'print^(read(-1) catch^42)\ndo^{\nprint^(1)\n}\nprint^(2)\n',
+           'print^(read(-1) catch^42)\ndo^{\n    print^(1)\n}\nprint^(2)\n')
+    expect('catch_expression_named_fallback', 'let^v=read() catch^fallback()\nprint^(v)\n',
+           'let^v = read() catch^fallback()\nprint^(v)\n')
+    expect('catch_clause_with_expression', 'do^{\nprint^try^read()\ncatch^Error.Invalid:\n'
+           'print^(read() catch^42)\nprint^(1)\n}\nprint^(2)\n',
+           'do^{\n    print^try^read()\ncatch^Error.Invalid:\n'
+           '    print^(read() catch^42)\n    print^(1)\n}\nprint^(2)\n')
+    expect('nested_do_after_catch_expression', 'let^f=p^{\nprint^(read() catch^fallback())\n'
+           'do^{\nprint^try^read()\ncatch^Error.Invalid:\nprint^(0)\n}\nprint^(2)\n}\nprint^(3)\n',
+           'let^f = p^{\n    print^(read() catch^fallback())\n'
+           '    do^{\n        print^try^read()\n    catch^Error.Invalid:\n        print^(0)\n'
+           '    }\n    print^(2)\n}\nprint^(3)\n')
     expect('unresolved_import', 'import^not.installed\nlet^x=unknown(1)\n',
            'import^not.installed\nlet^x = unknown(1)\n')
     expect('call_newline', 'let^f=f^x {x}\nlet^v=f\n(1)()\n',
@@ -102,6 +173,54 @@ def main():
             assert file.read_text() == 'let^ f = p^ {\n' + ' '*indent + 'print^(1)\n}' + final
     suite.case('editorconfig_hierarchy_globs_and_unset', config)
 
+    def errors_example():
+        path = fixture('errors_example')
+        path.write_bytes((suite.repo / 'examples/errors.rh').read_bytes())
+        suite.run([suite.compiler, 'format', path])
+        lines = path.read_text(encoding='utf-8').splitlines()
+        assert any('if^n < 0 {' in line for line in lines), lines
+        assert 'do^{' in lines, lines
+        assert 'catch^Error.Invalid:' in lines, lines
+        assert lines[-1].startswith('print^'), lines
+        suite.run([suite.compiler, 'format-check', path])
+        if not suite.args.checks_only:
+            result = suite.run([suite.compiler, 'run', path, '--clang', suite.clang])
+            assert result.stdout == '42\ninvalid input\n42\n', result.stdout
+    suite.case('errors_example_keeps_top_level_indent', errors_example)
+
+    def graph_example():
+        path = fixture('graph_example')
+        path.write_bytes((suite.repo / 'bench/rhat/graph.rh').read_bytes())
+        suite.run([suite.compiler, 'format', path])
+        text = path.read_text(encoding='utf-8')
+        assert '    *tail := *tail + 1' in text, text
+        suite.run([suite.compiler, 'format-check', path])
+    suite.case('graph_example_dereference_spacing', graph_example)
+
+    def scene_example():
+        path = fixture('scene_example')
+        source = (suite.repo / 'bench/rhat/scene.rh').read_text(encoding='utf-8')
+        path.write_text(source, encoding='utf-8')
+        suite.run([suite.compiler, 'format', path])
+        def initializer(text):
+            start = text.index('    pool.push(Node{')
+            end = text.index('    })', start) + len('    })')
+            return text[start:end]
+        assert initializer(path.read_text(encoding='utf-8')) == initializer(source)
+        suite.run([suite.compiler, 'format-check', path])
+    suite.case('scene_example_preserves_nested_initializer_indent', scene_example)
+
+    def sexp_example():
+        path = fixture('sexp_example')
+        path.write_bytes((suite.repo / 'bench/rhat/sexp.rh').read_bytes())
+        suite.run([suite.compiler, 'format', path])
+        text = path.read_text(encoding='utf-8')
+        assert ('let^parse_node = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Node[grow^], '
+                'symbols:ref^u8^[grow^],\n'
+                '    prev:u32^-> ParseResult {') in text, text
+        suite.run([suite.compiler, 'format-check', path])
+    suite.case('sexp_example_wraps_parameters_before_array_types', sexp_example)
+
     def live():
         path = fixture('lsp', 'indent_size=3\nindent_style=space\nmax_line_length=off\n')
         path.write_text('disk stays untouched', encoding='utf-8')
@@ -128,6 +247,21 @@ def main():
             client.change(path, source, 4)
             client.diagnostics(path, 4)
             assert client.request('textDocument/formatting', params)[0]['newText'] == expected
+            catch_source = 'print^(read(-1) catch^42)\ndo^{\nprint^(1)\n}\nprint^(2)\n'
+            client.change(path, catch_source, 5)
+            client.diagnostics(path, 5)
+            edits = client.request('textDocument/formatting', params)
+            assert edits[0]['newText'] == ('print^(read(-1) catch^42)\ndo^{\n'
+                                            '   print^(1)\n}\nprint^(2)\n'), edits
+            method_source = ('def^V<T>{\nself^{x:T}\n'
+                             'op^+ =f^self^,b:Self^ ->Self^{\nSelf^{x=self^.x+b.x}\n}\n'
+                             'get=f^self^ ->T {\nself^.x\n}\n}\nlet^F=V<i32^>\n')
+            client.change(path, method_source, 6)
+            assert client.diagnostics(path, 6) == []
+            formatted = client.request('textDocument/formatting', params)[0]['newText']
+            assert ('   op^+ = f^self^, b:Self^-> Self^{\n'
+                    '      Self^{x = self^.x + b.x}\n   }\n'
+                    '   get = f^self^-> T {\n      self^.x\n   }\n}\n') in formatted, formatted
             # The CLI sees the same options and produces the same text.
             path.write_bytes(source.encode())
             suite.run([suite.compiler, 'format', path])
@@ -149,6 +283,14 @@ def main():
             exe = root / 'vector.exe'
             suite.run([suite.compiler, 'build', path, '--clang', suite.clang, '-O2', '-o', exe])
             assert suite.run([exe]).stdout == '3.0 4.0 18.0 1 0\n'
+        lines = (root / 'examples/generic_vec2.rh').read_text(encoding='utf-8').splitlines()
+        for name in ('op^+', 'dot'):
+            at = next(i for i, line in enumerate(lines) if line.lstrip().startswith(name))
+            assert len(lines[at]) - len(lines[at].lstrip()) == 4, lines
+            assert len(lines[at + 1]) - len(lines[at + 1].lstrip()) == 8, lines
+            assert lines[at + 2] == '    }', lines
+        hanoi = (root / 'examples/hanoi.rh').read_text(encoding='utf-8')
+        assert '...[0]' in hanoi and '... [' not in hanoi, hanoi
     suite.case('project_sources_and_formatted_program_execution', examples)
     suite.finish()
 

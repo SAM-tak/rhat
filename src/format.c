@@ -380,18 +380,7 @@ static void add_region(Format *f, size_t open, size_t close, bool indents)
 
 static bool label(const Unit *u)
 {
-    if (u->kind != UNIT_TOKEN || u->token.kind != FORMAT_WORD) {
-        return false;
-    }
-    const char *names[] = {"el^",     "else^",     "elif^",    "elseif^",  "when^", "other^",
-                           "catch^",  "prolog^",   "pre^",     "first^",   "main^", "last^",
-                           "epilog^", "prologue^", "premain^", "epilogue^"};
-    for (size_t j = 0; j < sizeof(names) / sizeof(*names); j++) {
-        if (!strcmp(u->token.text, names[j])) {
-            return true;
-        }
-    }
-    return false;
+    return u->kind == UNIT_TOKEN && u->token.clause;
 }
 
 static void syntax_regions(Format *f, const Reading *r)
@@ -498,7 +487,7 @@ static bool ends_operand(const Unit *u)
 {
     return u->kind == UNIT_TOKEN &&
            (u->token.kind == FORMAT_WORD || u->token.kind == FORMAT_LITERAL || unit_is_op(u, ")") ||
-            unit_is_op(u, "]") || unit_is_op(u, "}") || unit_is_op(u, "?"));
+            unit_is_op(u, "]") || unit_is_op(u, "}") || unit_is_op(u, "?") || unit_is_op(u, "..."));
 }
 
 static uint32_t spacing(const Format *f, size_t i)
@@ -512,6 +501,10 @@ static uint32_t spacing(const Format *f, size_t i)
     }
     if (unit_is_comment(a) || unit_is_comment(b)) {
         return kept;
+    }
+    if (a->kind == UNIT_TOKEN && a->token.kind == FORMAT_OP &&
+        a->token.operator_role == FORMAT_OPERATOR_PREFIX) {
+        return 0;
     }
     // [lsp.format.hat]: the hat is drawn faint, and a word after it reads as
     // the next word without a space.
@@ -551,41 +544,17 @@ static uint32_t spacing(const Format *f, size_t i)
          unit_is_op(a, ")") || unit_is_op(a, "]"))) {
         return kept; // a constructor's braces may sit against its name
     }
+    if ((a->kind == UNIT_TOKEN && a->token.kind == FORMAT_OP &&
+         a->token.operator_role == FORMAT_OPERATOR_BINARY) ||
+        (b->kind == UNIT_TOKEN && b->token.kind == FORMAT_OP &&
+         b->token.operator_role == FORMAT_OPERATOR_BINARY)) {
+        return 1;
+    }
     if (unit_is_op(a, ":") || unit_is_op(b, ":") || unit_is_op(a, "..") || unit_is_op(b, "..") ||
         unit_is_op(a, "...") || unit_is_op(a, "<") || unit_is_op(a, ">") || unit_is_op(b, "<") ||
         unit_is_op(b, ">") || unit_is_op(a, "|") || unit_is_op(b, "|") || unit_is_op(a, "&") ||
         unit_is_op(b, "&")) {
         return kept;
-    }
-    if (unit_is_op(a, "-")) {
-        // A minus with no operand before it is a sign. After a hat word it
-        // could be either -- `return^ -1`, `self^ - 1` -- so the writer says.
-        size_t before = i - 1;
-        while (before > 0 && unit_is_comment(&f->units[before - 1])) {
-            before--;
-        }
-        if (before == 0) {
-            return 0;
-        }
-        const Unit *operand = &f->units[before - 1];
-        if (operand->kind == UNIT_TOKEN && operand->token.hat) {
-            return kept;
-        }
-        return ends_operand(operand) ? 1 : 0;
-    }
-    if (unit_is_op(a, "*") || unit_is_op(a, "**")) {
-        size_t before = i - 1;
-        while (before && unit_is_comment(&f->units[before - 1])) {
-            before--;
-        }
-        if (!before) {
-            return 0;
-        }
-        const Unit *operand = &f->units[before - 1];
-        if (operand->token.hat) {
-            return kept;
-        }
-        return ends_operand(operand) ? 1 : 0;
     }
     return 1;
 }
@@ -694,11 +663,41 @@ static bool break_long_line(Format *f)
             }
         }
         if (width > limit) {
+            size_t parameter_break = SIZE_MAX, first_parameter_break = SIZE_MAX;
+            size_t columns = indent_width(f, f->units[start].depth);
+            for (size_t i = start; i + 1 < end; i++) {
+                bool broken;
+                columns +=
+                    (i > start ? f->units[i].space : 0) + unit_width(f, &f->units[i], &broken);
+                if (broken) {
+                    break;
+                }
+                if (f->units[i].token.parameter_separator && !unit_is_comment(&f->units[i + 1])) {
+                    if (first_parameter_break == SIZE_MAX) {
+                        first_parameter_break = i + 1;
+                    }
+                    if (columns <= limit) {
+                        parameter_break = i + 1;
+                    }
+                }
+            }
+            // Keep as many parameters as fit; a single oversized parameter
+            // still ends at its comma before considering its inner brackets.
+            if (parameter_break == SIZE_MAX) {
+                parameter_break = first_parameter_break;
+            }
+            if (parameter_break != SIZE_MAX) {
+                f->units[parameter_break].breaks = 1;
+                return true;
+            }
             size_t best = SIZE_MAX, best_span = 0;
             for (size_t i = start; i < end; i++) {
                 const Unit *u = &f->units[i];
                 if (unit_opens(u) && u->match > (int32_t)(i + 1) && (size_t)u->match < end &&
-                    (size_t)u->match - i > best_span) {
+                    (best == SIZE_MAX ||
+                     (f->units[best].token.array_type && !u->token.array_type) ||
+                     (f->units[best].token.array_type == u->token.array_type &&
+                      (size_t)u->match - i > best_span))) {
                     best = i;
                     best_span = (size_t)u->match - i;
                 }
@@ -787,8 +786,9 @@ static bool same_reading(const Reading *a, const Reading *b)
     }
     for (int j = 0; j < a->syntax.tokens.n; j++) {
         FormatToken *x = a->syntax.tokens.v[j], *y = b->syntax.tokens.v[j];
-        if (x->kind != y->kind || x->length != y->length ||
-            memcmp(a->text + x->offset, b->text + y->offset, x->length)) {
+        if (x->kind != y->kind || x->clause != y->clause || x->operator_role != y->operator_role ||
+            x->array_type != y->array_type || x->parameter_separator != y->parameter_separator ||
+            x->length != y->length || memcmp(a->text + x->offset, b->text + y->offset, x->length)) {
             return false;
         }
     }

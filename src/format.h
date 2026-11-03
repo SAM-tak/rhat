@@ -31,11 +31,16 @@ int rhat_format_file(const char *path, bool check);
 // The ordinary parser supplies original token spans and grammatical extents.
 enum { FORMAT_OP, FORMAT_WORD, FORMAT_LITERAL, FORMAT_SCOPE };
 
+// Operator roles come from expression parsing, keeping type delimiters distinct.
+enum { FORMAT_OPERATOR_NONE, FORMAT_OPERATOR_PREFIX, FORMAT_OPERATOR_BINARY };
+
 typedef struct {
     const char *text;
     uint32_t offset, length;
     int kind;
-    bool hat;
+    int operator_role;
+    bool hat, clause; // Clause labels are identified by the parser, not their spelling.
+    bool array_type, parameter_separator; // Wrapping hints supplied by the parser.
 } FormatToken;
 
 typedef struct {

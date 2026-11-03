@@ -195,6 +195,49 @@ static void format_tokens(Parser *p)
     }
 }
 
+static FormatToken *format_token(Parser *p, int at)
+{
+    if (!p->p->format) {
+        return NULL;
+    }
+    Token *token = p->tokens.v[at];
+    List *tokens = &p->p->format->tokens;
+    int low = 0, high = tokens->n;
+    while (low < high) {
+        int middle = low + (high - low) / 2;
+        FormatToken *t = tokens->v[middle];
+        if (t->offset < token->offset) {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    if (low < tokens->n) {
+        FormatToken *t = tokens->v[low];
+        if (t->offset == token->offset) {
+            return t;
+        }
+    }
+    return NULL;
+}
+
+static void format_clause(Parser *p, int at)
+{
+    FormatToken *t = format_token(p, at);
+    if (t && t->kind == FORMAT_WORD) {
+        t->clause = true;
+    }
+}
+
+static void format_operator(Parser *p, int at, int role)
+{
+    FormatToken *t = format_token(p, at);
+    if (t) {
+        t->operator_role = role;
+    }
+}
+
 static Token *tok(Parser *p)
 {
     return p->tokens.v[p->at];
@@ -1119,12 +1162,17 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
 static Spec *array_spec(Parser *p, Spec *s, Expr *literal)
 {
     while (take(p, "[")) {
+        int opening_at = p->at - 1;
         int refs = 0;
         s = array_header(p, s, &refs);
         if (literal && is(p, ";")) {
             literal->array_literal = s;
             literal->array_refs = refs;
             return s;
+        }
+        FormatToken *opening = format_token(p, opening_at);
+        if (opening) {
+            opening->array_type = true;
         }
         need(p, "]");
     }
@@ -1448,11 +1496,16 @@ static void entries(Parser *p, Expr *e, const char *end, bool named)
         return;
     }
     do {
+        int first = p->at;
         if (named) {
             add(&e->names, word(p));
             need(p, "=");
         }
         add(&e->args, expr(p, 0));
+        if (named) {
+            // A named initializer anchors nested values to its field's line.
+            format_span(p, first, 3002, false, false);
+        }
         if (!strcmp(end, ")") && take(p, "...")) {
             ((Expr *)e->args.v[e->args.n - 1])->spread = true;
         }
@@ -1480,6 +1533,7 @@ static bool branch(Parser *p)
     if (!branch_word(p)) {
         return false;
     }
+    format_clause(p, p->at);
     Token *word = next(p);
     bool default_allowed = !strcmp(word->text, "el^");
     if (!strcmp(word->text, "else^")) {
@@ -1653,6 +1707,7 @@ static Expr *primary(Parser *p)
     else if (reference_depth(t->text) || !strcmp(t->text, "-") || !strcmp(t->text, "!") ||
              !strcmp(t->text, "*") || !strcmp(t->text, "**") || !strcmp(t->text, "bitnot^") ||
              !strcmp(t->text, "try^")) {
+        format_operator(p, first, FORMAT_OPERATOR_PREFIX);
         e = node(!strcmp(t->text, "try^") ? E_TRY : E_UNARY, t->loc);
         int refs = reference_depth(t->text);
         e->text = refs ? "ref^" : !strcmp(t->text, "**") ? "*" : t->text;
@@ -1862,6 +1917,7 @@ static Expr *operation(Parser *p, int min)
         if (!p->header && catch_head(p)) {
             break;
         }
+        format_operator(p, p->at, FORMAT_OPERATOR_BINARY);
         next(p);
         if (pr == 3) {
             Expr *chain = node(E_CHAIN, t->loc);
@@ -1880,6 +1936,7 @@ static Expr *operation(Parser *p, int min)
                 if (t->kind == TOK_STRING || t->kind == TOK_QUOTED || prec(t->text) != 3) {
                     break;
                 }
+                format_operator(p, p->at, FORMAT_OPERATOR_BINARY);
                 next(p);
             }
             if (chain->names.n == 1) {
@@ -2024,6 +2081,7 @@ static void catches(Parser *p, List *body, bool loop)
             fail(tok(p)->loc, "catch^: must be the final catch arm");
         }
         CatchArm *arm = mem(sizeof(*arm));
+        format_clause(p, p->at);
         arm->loc = next(p)->loc;
         if (!is(p, ":")) {
             arm->spec = spec(p);
@@ -2210,6 +2268,7 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
     p->scope_depth++;
     List *arm = &scope->body;
     while (take(p, "when^")) {
+        format_clause(p, p->at - 1);
         Stmt *s = mem(sizeof(*s));
         s->kind = S_IF;
         s->loc = tok(p)->loc;
@@ -2220,6 +2279,7 @@ static Stmt *match_statement(Parser *p, Stmt *scope, Expr *subject)
         arm = &s->other;
     }
     if (take(p, "other^") || take(p, "el^") || take(p, "else^")) {
+        format_clause(p, p->at - 1);
         need(p, ":");
         match_body(p, arm);
     }
@@ -2236,6 +2296,7 @@ static Expr *match_expression(Parser *p, Expr *scope, Expr *subject)
     need(p, ":");
     Expr **arm = &scope->a, *first = NULL;
     while (take(p, "when^")) {
+        format_clause(p, p->at - 1);
         Expr *e = node(E_IF, tok(p)->loc);
         e->a = match_condition(p, name);
         e->b = expr(p, 0);
@@ -2244,6 +2305,7 @@ static Expr *match_expression(Parser *p, Expr *scope, Expr *subject)
         first = first ? first : e;
     }
     if (take(p, "other^") || take(p, "el^") || take(p, "else^")) {
+        format_clause(p, p->at - 1);
         need(p, ":");
         *arm = expr(p, 0);
     }
@@ -2352,6 +2414,7 @@ static void loop_body(Parser *p, Stmt *loop)
             }
             explicit = true;
             section = next_section;
+            format_clause(p, p->at);
             next(p);
             need(p, ":");
             body |= section >= 1 && section <= 4;
@@ -2937,6 +3000,12 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
                 fail(a->loc, "bodiless declaration parameter requires a type annotation");
             }
             add(&f->params, a);
+            if (is(p, ",")) {
+                FormatToken *separator = format_token(p, p->at);
+                if (separator) {
+                    separator->parameter_separator = true;
+                }
+            }
         } while (take(p, ","));
     }
     if (f->mutable_self &&
@@ -3142,7 +3211,10 @@ static void def_member(Parser *p, Def *d)
 static void def_member_checked(Parser *p, Def *d)
 {
     if (!p->p->tooling) {
+        int first = p->at;
         def_member(p, d);
+        // A member's name anchors its body even when f^ starts mid-line.
+        format_span(p, first, 3001, false, false);
         return;
     }
     int start = p->at, depth = p->scope_depth;
