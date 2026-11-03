@@ -284,7 +284,7 @@ def main():
             suite.run([suite.compiler, 'build', path, '--clang', suite.clang, '-O2', '-o', exe])
             assert suite.run([exe]).stdout == '3.0 4.0 18.0 1 0\n'
         lines = (root / 'examples/generic_vec2.rh').read_text(encoding='utf-8').splitlines()
-        for name in ('op^+', 'dot'):
+        for name in ('op^+', 'op^dot^'):
             at = next(i for i, line in enumerate(lines) if line.lstrip().startswith(name))
             assert len(lines[at]) - len(lines[at].lstrip()) == 4, lines
             assert len(lines[at + 1]) - len(lines[at + 1].lstrip()) == 8, lines
