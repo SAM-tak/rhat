@@ -50,7 +50,7 @@ let^emit_sku = p^out:ref^u8^[grow^], seed:u64^{
     }
     out.push(34)
 }
-let^hash = f^bytes:u8^[slice^] -> u64^{
+let^hash = f^bytes:u8^[..] -> u64^{
     var^h:u64^= 14695981039346656037
     var^i:i64^= 0
     repeat^while^i < bytes.len { h := (h bitxor^u64^(bytes[i])) * 1099511628211; i += 1 }

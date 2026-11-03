@@ -36,7 +36,7 @@ def exercise(suite):
             var^ i:i64^=1; repeat^ while^ i < a.len { b[i] := a[i-1]+1; i := i+1 }
         }; var^ a:u8^[grow^]={}; var^ k:i64^=0
         repeat^ while^ k < 64 { a.push(1); k := k+1 }; change(ref^ a,ref^ a); print^(a[63])''', '64\n', True, None),
-        ('slice_overlap', '''let^ change=p^ a:u8^[slice^], b:ref^ u8^[grow^] {
+        ('slice_overlap', '''let^ change=p^ a:u8^[..], b:ref^ u8^[grow^] {
             var^ i:i64^=1; repeat^ while^ i < a.len { b[i] := a[i-1]+1; i := i+1 }
         }; var^ a:u8^[grow^]={}; var^ k:i64^=0
         repeat^ while^ k < 64 { a.push(1); k := k+1 }; change(a[.. 64],ref^ a); print^(a[63])''', '64\n', True, None),

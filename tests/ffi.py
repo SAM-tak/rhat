@@ -17,7 +17,7 @@ def main():
 externC^ hypot:f^ x:f64^, y:f64^ ->f64^;
 externC^ frexp:p^ x:f64^, exponent:ref^ i32^ ->f64^;
 externC^ strlen:f^ s:string^ ->u64^;
-externC^ memset:p^ s:u8^[slice^], c:i32^, n:u64^;
+externC^ memset:p^ s:u8^[..], c:i32^, n:u64^;
 externC^ abs:f^ n:i32^ ->i32^;
 let^ magnitude=f^ n:i32^ ->i32^ { abs(n) }
 var^ exponent:i32^=0
@@ -78,7 +78,7 @@ externC^ ffi_mix:f^ m:Mixed, k:i32^ -> Mixed;
 externC^ ffi_pair_sum:f^ p:Pair -> i64^;
 externC^ ffi_big:f^ b:Big -> Big;
 externC^ ffi_scale:p^ p:ref^ Point, k:f64^;
-externC^ ffi_sum:f^ ps:Point[slice^], n:u64^ -> f64^;
+externC^ ffi_sum:f^ ps:Point[..], n:u64^ -> f64^;
 externC^ ffi_nest:f^ n:Nest -> Nest;
 externC^ lldiv:f^ n:i64^, d:i64^ -> LLDiv;
 let^ s = ffi_add(Point{x = 1.0, y = 2.0}, Point{x = 10.0, y = 20.0})
@@ -210,7 +210,7 @@ externC^ abs:f^ s:Sign -> Sign;
 print^(abs(Sign.Minus), abs(Sign.Plus), abs(Sign.Zero))
 ''', 'Plus Plus Zero\n')
     negative('ffi_enum_lhat', header + 'enum^ M { A }\nexportL^ let^ g = f^ m:M -> i32^ { 0 }', "exportL^ parameter 'm' needs")
-    negative('ffi_export_slice', 'exportC^ let^ g = f^ xs:i32^[slice^] -> i32^ { 0 }', "exportC^ parameter 'xs' needs a C type annotation")
+    negative('ffi_export_slice', 'exportC^ let^ g = f^ xs:i32^[..] -> i32^ { 0 }', "exportC^ parameter 'xs' needs a C type annotation")
     negative('ffi_export_unannotated', 'exportC^ let^ g = f^ x -> i32^ { 0 }', "exportC^ parameter 'x' needs a C type annotation")
     negative('ffi_export_result', 'exportC^ let^ g = f^ x:i32^ { x }', 'needs a result type annotation')
     negative('ffi_export_template', 'exportC^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'cannot be template^')
@@ -600,11 +600,11 @@ mock_fail()
     negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
     negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
              "exportL^ parameter 'b' needs a number, bool^, string^ or exportL^ def^ type annotation")
-    negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[slice^] { {} }', 'exportL^ result must be')
+    negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[..] { {} }', 'exportL^ result must be')
     negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
 
     # externC^ function types: C function pointers to externC^ and exportC^ functions.
-    positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[slice^], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
+    positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[..], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
 exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
 var^ xs:i32^[5] = {3, 1, 4, 1, 5}
 qsort(xs[0 .. 5], 5, 4, descending)

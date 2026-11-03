@@ -487,7 +487,7 @@ let^ d=xs[all]
 print^(a.len,a[2],b.len,b[0],c.len,c[2],d.len)
 print^(head.start,head.len,both.len,tail.end ?? -1,head.end ?? -1)
 print^(head.contains(2),head.contains(3),tail.contains(1000),tail.contains(2))
-let^ pick=f^ v:i32^[slice^],r:range^ ->i32^[slice^] { v[r] }
+let^ pick=f^ v:i32^[..],r:range^ ->i32^[..] { v[r] }
 let^ ys=xs[..]
 print^(pick(ys,2 .. 4)[1],pick(ys,.. 2).len)
 let^ e=3 to^ 2

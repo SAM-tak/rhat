@@ -98,7 +98,7 @@ var^ ref:ref^ i32^[grow^]|nil^=ref^ owner
 print^(ref?[1]??0)
 ref:=nil^
 print^(ref?[999999999]??7)
-let^ view:i32^[slice^]|nil^=owner[.. 2]
+let^ view:i32^[..]|nil^=owner[.. 2]
 print^(view?[0]??0,view?.len??0)
 let^ fallback:i64^[2]={7,8}
 let^ copy=array??fallback
@@ -270,7 +270,7 @@ print^(ref?[-1]??0)
         ('nil_loop_invariant', 'var^ x:Item|nil^=Item.new() if^ x? {repeat^ 2 {print^(x.n) x:=nil^}}', 'field access requires'),
         ('nil_loop_exit', 'var^ x:Item|nil^=Item.new() repeat^ while^ x? {break^} print^(x.n)', 'field access requires'),
         ('nil_borrow_return', 'let^ bad=f^ ->ref^ i32^|nil^ {var^ x=1 return^ ref^ x} let^ r=bad()', 'cannot return a reference'),
-        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[slice^]|nil^ {var^ a:i32^[grow^]={1} let^ ref:ref^ i32^[grow^]|nil^=ref^ a return^ ref?[.. 1]} let^ r=bad()', 'cannot return a reference'),
+        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[..]|nil^ {var^ a:i32^[grow^]={1} let^ ref:ref^ i32^[grow^]|nil^=ref^ a return^ ref?[.. 1]} let^ r=bad()', 'cannot return a reference'),
         ('nil_coalesce_borrow_return', 'let^ bad=f^ ->ref^ i32^ {var^ a=1 var^ b=2 let^ x:ref^ i32^|nil^=ref^ a return^ x??ref^ b} let^ r=bad()', 'cannot return a reference'),
         ('nil_array_history', 'var^ a:(ref^ i32^|nil^)[grow^]={} do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
         ('nil_guard_store_borrow', 'var^ outer:ref^ i32^|nil^=nil^ do^{var^ local=1 outer ?:= ref^ local}', 'outlive'),

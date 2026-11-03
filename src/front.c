@@ -1133,7 +1133,7 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     if (is(p, "]")) {
         w->kind = SPEC_ARRAY;
     }
-    else if (take(p, "slice^")) {
+    else if (take(p, "..")) {
         w->kind = SPEC_SLICE;
     }
     else if (is(p, "grow^") || is(p, "flex^")) {
@@ -1149,7 +1149,7 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
         }
         Token *n = next(p);
         if (n->kind != TOK_INT) {
-            fail(n->loc, "expected an array length, grow^, flex^, slice^ or max^");
+            fail(n->loc, "expected an array length, .., grow^, flex^ or max^");
         }
         errno = 0;
         long k = strtol(n->text, NULL, 10);
@@ -1171,8 +1171,7 @@ static bool array_type_at(Parser *p, int k)
     }
     Token *next = p->tokens.v[k + 1];
     if (!strcmp(next->text, "]") || !strcmp(next->text, "grow^") || !strcmp(next->text, "flex^") ||
-        !strcmp(next->text, "max^") || !strcmp(next->text, "slice^") ||
-        reference_depth(next->text)) {
+        !strcmp(next->text, "max^") || reference_depth(next->text)) {
         return true;
     }
     if (next->kind != TOK_INT || k + 3 >= p->tokens.n ||

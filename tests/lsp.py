@@ -772,13 +772,13 @@ print^(value.add(value.copy()).x)
 
     attributes=('def^Node {self^{n:i32^=7}}\nvar^n=Node{}\n'
                 'var^refs:Node[ref^max^10]={ref^n}\n'
-                'let^view:Node[ref^slice^]=refs[..]\n'
+                'let^view:Node[ref^..]=refs[..]\n'
                 'let^borrow:ref^Node[ref^max^10]=ref^refs\n'
                 'print^(view[0].n,borrow.len)\n')
     client.change(path,attributes,148)
     assert client.diagnostics(path,148) == []
     for needle,detail in [('refs:Node','refs: Node[ref^ max^10]'),
-                          ('view:Node','view: Node[ref^ slice^]'),
+                          ('view:Node','view: Node[ref^ ..]'),
                           ('borrow:ref^','borrow: ref^ Node[ref^ max^10]')]:
         assert request('hover',needle,text=attributes)['contents']['value'] == detail
     print('PASS array attributes and element references in source and hover',flush=True)

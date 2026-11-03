@@ -28,7 +28,7 @@ def^ Circle : Shape {
         assert 'dyn.call' in rir and 'dyn.make' in rir, rir
         assert ll.count('= linkonce_odr constant [3 x ptr]') == 2, ll
 
-    positive('dyn_mixed_array', shapes + '''let^ total = f^ shapes:(ref^ dyn^ Shape)[slice^] -> f64^ {
+    positive('dyn_mixed_array', shapes + '''let^ total = f^ shapes:(ref^ dyn^ Shape)[..] -> f64^ {
   var^ sum:f64^ = 0.0
   for^ var^ i:i64^ = 0 while^ i < shapes.len next^ i += 1 { sum += shapes[i].area() }
   return^ sum

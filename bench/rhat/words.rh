@@ -3,7 +3,7 @@ import^std.random
 # Fixed-capacity vocabulary, copied packed word list and borrowed slice keys.
 def^WordList { self^{ count:i64^= 0, data:u8^[grow^] } }
 
-let^split = p^text:u8^[slice^] -> WordList {
+let^split = p^text:u8^[..] -> WordList {
     var^out = WordList{}
     var^i:i64^= 0
     repeat^while^i < text.len {
@@ -22,20 +22,20 @@ let^split = p^text:u8^[slice^] -> WordList {
 }
 
 def^Word { self^{ bytes:u8^[20], len:u8^} }
-def^Slot { self^{ key:u8^[slice^], count:i32^} }
-let^hash = f^key:u8^[slice^] -> u64^{
+def^Slot { self^{ key:u8^[..], count:i32^} }
+let^hash = f^key:u8^[..] -> u64^{
     var^h:u64^= 14695981039346656037
     var^i:i64^= 0
     repeat^while^i < key.len { h := (h bitxor^u64^(key[i])) * 1099511628211; i += 1 }
     return^h
 }
-let^equal = f^a:u8^[slice^], b:u8^[slice^] -> bool^{
+let^equal = f^a:u8^[..], b:u8^[..] -> bool^{
     if^a.len != b.len { return^false^}
     var^i:i64^= 0
     repeat^while^i < a.len { if^a[i] != b[i] { return^false^}; i += 1 }
     return^true^
 }
-let^find = f^slots:ref^Slot[grow^], key:u8^[slice^], mask:u64^-> i64^{
+let^find = f^slots:ref^Slot[grow^], key:u8^[..], mask:u64^-> i64^{
     var^i = hash(key) bitand^mask
     repeat^while^slots[i].count != 0 {
         if^equal(slots[i].key, key) { return^i64^(i) }

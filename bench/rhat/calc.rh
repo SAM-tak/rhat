@@ -63,10 +63,10 @@ let^corrupt = p^text:ref^u8^[grow^], seed:u64^{
     if^kind = 2 { text.truncate(text.len / 2); return^}
     if^kind = 3 { text.append(" / 0") }
 }
-let^skip = p^text:u8^[slice^], c:ref^Cursor {
+let^skip = p^text:u8^[..], c:ref^Cursor {
     repeat^while^c.pos < text.len and^text[c.pos] = 32 { c.pos += 1 }
 }
-let^parse_factor = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+let^parse_factor = p^text:u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
     skip(text, c)
     if^c.pos >= text.len { return^Failure{code = 1} }
     let^ch = text[c.pos]
@@ -96,7 +96,7 @@ let^parse_factor = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> Par
     pool.push(Paren{of = inside.index})
     return^Parsed{index = u32^(pool.len - 1)}
 }
-let^parse_term = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+let^parse_term = p^text:u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
     let^lhs = parse_factor(text, c, pool)
     if^lhs fits^Failure { return^lhs }
     var^left = lhs.index
@@ -113,7 +113,7 @@ let^parse_term = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> Parse
     }
     return^Parsed{index = left}
 }
-let^parse_expr = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
+let^parse_expr = p^text:u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
     let^lhs = parse_term(text, c, pool)
     if^lhs fits^Failure { return^lhs }
     var^left = lhs.index
@@ -152,7 +152,7 @@ let^eval = f^pool:ref^Expr[grow^], index:u32^-> EvalResult {
     if^b = 0 { return^Failure{code = 4} }
     return^Ok{value = a / b}
 }
-let^run = p^text:u8^[slice^], pool:ref^Expr[grow^] -> EvalResult {
+let^run = p^text:u8^[..], pool:ref^Expr[grow^] -> EvalResult {
     var^c = Cursor{}
     let^parsed = parse_expr(text, ref^c, pool)
     if^parsed fits^Failure { return^parsed }

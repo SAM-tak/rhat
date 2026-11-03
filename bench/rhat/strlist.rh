@@ -6,7 +6,7 @@ import^std.random
 # general variable-size array type. The original text and copied list coexist.
 def^WordList { self^{ count:i64^= 0, data:u8^[grow^] } }
 
-let^split = p^text:u8^[slice^] -> WordList {
+let^split = p^text:u8^[..] -> WordList {
     var^out = WordList{}
     var^i:i64^= 0
     repeat^while^i < text.len {

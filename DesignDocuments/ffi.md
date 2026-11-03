@@ -3,7 +3,7 @@
 ```rhat
 externC^ hypot:f^ x:f64^, y:f64^ ->f64^;
 externC^ frexp:p^ x:f64^, exponent:ref^ i32^ ->f64^;
-externC^ memset:p^ s:u8^[slice^], c:i32^, n:u64^;
+externC^ memset:p^ s:u8^[..], c:i32^, n:u64^;
 externC^ puts:p^ s:string^ ->i32^;
 
 var^ exponent:i32^=0
@@ -39,7 +39,7 @@ C 以外の呼び出し規約が必要になった場合は、文字列で規約
 - 引数・結果: スカラー・フラットな `def^`・不透明な C 型への `ref^ T` はそのポインタ。`ref^ T | nil^` は NULL になりうるポインタで、
   NULL は `nil^` と相互に変換します。C が返した参照の寿命は検査できないため、C 側の約束を信頼します。
 - 引数・結果: `externC^ f^ T, U -> R;` 型は C の関数ポインタ（[下記](#c-の関数ポインタ)）。`| nil^` で NULL を許します。
-- 引数だけ: スカラーかフラットな `def^` のスライス `T[slice^]` と `string^` は先頭要素へのポインタ。
+- 引数だけ: スカラーかフラットな `def^` のスライス `T[..]` と `string^` は先頭要素へのポインタ。
 
 スライスと文字列の長さは渡しません。C が長さを必要とするなら別の引数で明示します。
 NUL 終端を保証するのは文字列リテラルだけです。部分スライスなど、それ以外の終端は呼び出し側の責任です。
@@ -114,7 +114,7 @@ R^ から `externC^` を呼ぶ直前に、呼び出し元がその時点で使�
 ### C の関数ポインタ
 
 ```rhat
-externC^ qsort:p^ base:i32^[slice^], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
+externC^ qsort:p^ base:i32^[..], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
 exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
 qsort(xs[0 .. 5], 5, 4, descending)        # 名前を呼ばずに書くと C のアドレス
 

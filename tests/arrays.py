@@ -87,7 +87,7 @@ print^(*refs[0],*refs[1])
         ('wrong_owner','let^a:i32^[]=i64^[]{1}', 'cannot initialize'),
         ('wrong_type','var^x:i64^=7 let^a=i32^[ref^ 1]{x}', 'type'),
         ('wrong_count','let^a=i32^[2]{1}', 'requires exactly 2 elements'),
-        ('slice_literal','let^a=i32^[slice^]{1,2}', 'slice borrows existing storage'),
+        ('slice_literal','var^x:i32^=1 let^a=i32^[ref^ ..]{x}', 'slice borrows existing storage'),
         ('borrow_prevents_shrink','var^a:i32^[flex^]={1,2} let^refs=i32^[ref^ 1]{a[0]} a.clear()',
          "while 'refs' may refer into it"),
         ('borrow_earlier_element','let^take=p^a:ref^i32^[flex^] {a.pop() return^i32^(0)} var^a:i32^[flex^]={1,2} let^refs=i32^[ref^ 2]{a[0],take(ref^a)}',

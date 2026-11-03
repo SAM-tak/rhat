@@ -503,7 +503,7 @@ var^ fixed:Node[ref^2]={ref^ n,ref^ n}
 var^ bounded:Node[ref^max^10]={}
 var^ growing=Node[ref^grow^]{}
 bounded.push(ref^ n) growing.push(ref^ n)
-let^ view:Node[ref^slice^]=fixed[..]
+let^ view:Node[ref^..]=fixed[..]
 let^ all:ref^Node[ref^max^10]=ref^ bounded
 var^ nested:i32^[2][grow^]={{1,2}}
 print^(view[0].n,all.len,growing[0].n,nested[0][1])
@@ -511,7 +511,7 @@ print^(view[0].n,all.len,growing[0].n,nested[0][1])
 negative("grow_typed_empty_sized", "var^ a=i64^[grow^ flex^]{}", "expected ']'")
 negative("slice_inclusive_open", "var^ a={1,2}; let^ v=a[1 to^]", "needs both bounds")
 positive("slice_nested_return", """
-let^ sub=f^ a:i32^[slice^] {
+let^ sub=f^ a:i32^[..] {
     let^ local=a[1 .. 3]
     return^ local[1 .. 2]
 }
@@ -538,7 +538,7 @@ let^ view=refs[.. 1];
 *view[0] := 42
 var^ other:i32^[ref^ grow^]={}
 other.append(view)
-var^ views:i32^[slice^][grow^]={}
+var^ views:i32^[..][grow^]={}
 let^ values:i32^[2]={10,20}
 views.push(values[.. 2])
 print^(x,*other[0],views[0][1])
@@ -564,19 +564,19 @@ for name,text in (
     runtime_failure("slice_"+name, "var^ a:i32^[grow^]={1,2}; let^ v="+text, "slice range out of bounds")
 runtime_failure("slice_index_bounds", "let^ a:i32^[2]={1,2}; let^ v=a[.. 1]; print^(v[1])", "array index out of bounds")
 runtime_failure("string_index_bounds", 'print^("abc".bytes[3])', "array index out of bounds")
-negative("slice_local_escape", "let^ bad=f^ -> i32^[slice^] { let^ a:i32^[2]={1,2}; return^ a[.. 2] }", "cannot return a reference")
+negative("slice_local_escape", "let^ bad=f^ -> i32^[..] { let^ a:i32^[2]={1,2}; return^ a[.. 2] }", "cannot return a reference")
 negative("slice_outer_escape", "var^ v=\"abc\".bytes[.. 0]; do^{ var^ a:u8^[grow^]={1}; v := a[.. 1] }", "reference would outlive its owner")
 negative("slice_write", "var^ a:i32^[grow^]={1}; var^ v=a[.. 1]; v[0] := 2", "not addressable")
 negative("slice_borrow_element", "var^ a:i32^[grow^]={1}; let^ v=a[.. 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
 negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[grow^]={Item{x=1}}; a[.. 1][0].x := 2", "not addressable")
 negative("slice_temporary", "let^ v={1,2}[.. 2]", "slice source needs a binding")
 negative("slice_index_type", "let^ a:i32^[1]={1}; let^ n:i32^=0; a[n .. n+1]", "must be i64^")
-negative("slice_initializer", "def^ Box { self^{ view:i32^[slice^] } } let^ b=Box{}", "needs an initializer")
+negative("slice_initializer", "def^ Box { self^{ view:i32^[..] } } let^ b=Box{}", "needs an initializer")
 negative("append_mismatch", 'var^ a:i32^[grow^]={}; a.append("hello")', "same element type")
 negative("append_immutable", 'let^ a:u8^[grow^]={}; a.append("hello")', "cannot modify let^")
 negative("append_pure_borrow", 'let^ bad=f^ a:ref^ u8^[grow^] { a.append("hello") }', "cannot mutate borrowed storage")
 negative("append_inner_owner", "var^ a:i32^[ref^ grow^]={}; do^{ var^ x:i32^=1; var^ b:i32^[ref^ grow^]={ref^ x}; a.append(b[.. 1]) }", "reference would outlive its owner")
-negative("append_borrowed_references", "let^ bad=p^ a:ref^ i32^[ref^ grow^], b:i32^[ref^ slice^] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
+negative("append_borrowed_references", "let^ bad=p^ a:ref^ i32^[ref^ grow^], b:i32^[ref^ ..] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
 
 def direct_pop_ir(ir, ll):
     assert "array.pop" in ir and "pop_ok_" in ll

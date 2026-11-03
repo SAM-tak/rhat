@@ -301,7 +301,7 @@ static char *spec_text(Spec *s)
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
-    char *kind = s->kind == SPEC_SLICE     ? "slice^"
+    char *kind = s->kind == SPEC_SLICE     ? ".."
                  : s->kind == SPEC_GROW    ? (s->count == ARRAY_CAPPED ? "max^"
                                               : s->count               ? "flex^"
                                                                        : "grow^")

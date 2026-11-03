@@ -84,8 +84,8 @@ def main():
     expect('long_call', 'print^(alpha,beta(gamma,delta),epsilon)\n',
            'print^(\n    alpha,\n    beta(gamma, delta),\n    epsilon\n)\n', 'max_line_length=30\n')
     expect('wrap_parameter_commas_before_array_types',
-           'let^parse = p^text:u8^[slice^], cursor:ref^Cursor, pool:ref^Node[grow^] {print^(1)}\n',
-           'let^parse = p^text:u8^[slice^], cursor:ref^Cursor,\n    pool:ref^Node[grow^] {print^(1)}\n',
+           'let^parse = p^text:u8^[..], cursor:ref^Cursor, pool:ref^Node[grow^] {print^(1)}\n',
+           'let^parse = p^text:u8^[..], cursor:ref^Cursor,\n    pool:ref^Node[grow^] {print^(1)}\n',
            'max_line_length=60\n')
     expect('wrap_parameters_repeatedly',
            'let^f = p^aaaaaaaaaa:i32^, bbbbbbbbbb:i32^, cccccccccc:i32^, dddddddddd:i32^, eeeeeeeeee:i32^{1}\n',
@@ -215,7 +215,7 @@ def main():
         path.write_bytes((suite.repo / 'bench/rhat/sexp.rh').read_bytes())
         suite.run([suite.compiler, 'format', path])
         text = path.read_text(encoding='utf-8')
-        assert ('let^parse_node = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Node[grow^], '
+        assert ('let^parse_node = p^text:u8^[..], c:ref^Cursor, pool:ref^Node[grow^], '
                 'symbols:ref^u8^[grow^],\n'
                 '    prev:u32^-> ParseResult {') in text, text
         suite.run([suite.compiler, 'format-check', path])

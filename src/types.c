@@ -405,7 +405,7 @@ char *type_name(Type *t)
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
-    char *kind = t->kind == T_SLICE     ? "slice^"
+    char *kind = t->kind == T_SLICE     ? ".."
                  : t->kind == T_GROW    ? (t->count == ARRAY_SIZED    ? ""
                                            : t->count == ARRAY_CAPPED ? "max^"
                                            : t->count                 ? "flex^"
