@@ -319,6 +319,10 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
     add(&args, "-rtlib=compiler-rt");
     if (crt_dll) {
         add(&args, "-fms-runtime-lib=dll");
+        // The driver passes -defaultlib:libcmt regardless of the CRT mode;
+        // link.exe then resolves the static UCRT and leaves __imp_ imports
+        // unresolved. lld-link tolerated the conflict.
+        add(&args, "-Wl,-nodefaultlib:libcmt");
     }
     bool random = false;
     for (int j = 0; j < p->modules.n; j++) {
