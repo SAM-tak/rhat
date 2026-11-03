@@ -244,6 +244,27 @@ let^ d = C{ x = 1.0, y = 1.0, z = 1.0, w = 1.0 }
 print^(d.length(), (d + C.ONE).w, (2.0 * d).x, d dot^ d, d.normalized().w, d.clamp(C.ZERO, C{ x = 0.5, y = 2.0, z = 2.0, w = 2.0 }).x)
 '''}, '5.0 4.0 3.0 -3.0 6.0 8.0 3.0 1.5 2.0\n7.0 -1.0 0.0 2.0 1.0 true 0.0\n1.0 3.5 1.0 5.0 5.0\n'
           '3.0 0.0 0.0 1.0 1.0 5.0 1.0 1.5 3.0 1.0 -1.0\n2.0 2.0 2.0 4.0 0.5 0.5\n')
+    positive('std_math_complex_quaternion', {'main.rh': '''let^ cx = import^ std.math.complex
+let^ qt = import^ std.math.quaternion
+let^ v3 = import^ std.math.vector3
+let^ C = cx.Complex
+let^ a = C{ re = 3.0, im = 4.0 }
+let^ p = C.I * C.I
+print^(a.length(), p.re, p.im, (a * 2.0).im, (2.0 * a).re, (-a).re, a.conjugate().im, (a - C.ONE).re, C.ZERO.normalized().re)
+let^ Q = qt.Quaternion
+let^ V = v3.Vector3
+let^ q = Q.fromAxisAngle(V.UP, 1.5707964)
+if^ q fits^ Q {
+    let^ r = q.rotate(V.FORWARD)
+    print^(r.x > 0.999, r.z < 0.001, (q * q.conjugate()).w > 0.999, Q.IDENTITY.slerp(q, 0.5).rotate(V.FORWARD).x > 0.7)
+    print^(Q.IDENTITY.rotate(V.RIGHT).x, Q{ x = 0.0, y = 0.0, z = 0.0, w = 0.0 }.rotate(V.RIGHT).x, (2.0 * q).length() > 1.99)
+}
+let^ f = Q.fromTo(V.RIGHT, V.UP)
+if^ f fits^ Q { print^(f.rotate(V.RIGHT).y > 0.999) }
+let^ o = Q.fromTo(V.RIGHT, -V.RIGHT)
+if^ o fits^ Q { print^(o.rotate(V.RIGHT).x, o.w) }
+print^(Q.fromTo(V.ZERO, V.UP) fits^ nil^, Q.fromAxisAngle(V.ZERO, 1.0) fits^ nil^)
+'''}, '5.0 -1.0 0.0 8.0 6.0 -3.0 -4.0 2.0 0.0\ntrue true true true\n1.0 1.0 true\ntrue\n-1.0 0.0\ntrue true\n')
     positive('number_parse', {'main.rh': '''let^ t = import^ std.text
 let^ show = p^ r:i64^ | t.Error.Invalid | t.Error.OutOfRange {
     if^ r fits^ i64^ { print^(r) elseif^ r fits^ t.Error.Invalid: print^("invalid") else^: print^("range") }

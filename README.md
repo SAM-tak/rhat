@@ -217,7 +217,7 @@ print^(value.a, value.b, value.c)
 - **文字列**: UTF-8 の保証、`char^`、補間 `$"...{x}..."`、`std.text.Builder`。
 - **C との連携**: `externC^` で C の関数を呼び、`exportC^` で R^ の関数を C に公開し、`exportL^` で L^ に公開します。
   [C 連携](DesignDocuments/ffi.md)。
-- **モジュール**: `module^ lib.example`、`public^`、`import^`。標準ライブラリは `std.random`・`std.math`（`std.math.vector2`・`vector3`・`vector4`）・`std.text`・`std.sys`。
+- **モジュール**: `module^ lib.example`、`public^`、`import^`。標準ライブラリは `std.random`・`std.math`（`std.math.vector2`・`vector3`・`vector4`・`complex`・`quaternion`）・`std.text`・`std.sys`。
   ビルドは全依存ソースを検査した後、モジュール別にオブジェクトを生成し、
   既定の `<出力先ディレクトリ>/.rhat-cache` で再利用します。
   [分割コンパイル](DesignDocuments/separate_compilation.md)、[モジュールと分割コンパイル](DesignDocuments/design.md#モジュールと分割コンパイル)。

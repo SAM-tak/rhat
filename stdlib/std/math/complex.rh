@@ -1,0 +1,45 @@
+module^std.math.complex
+
+let^math = import^std.math
+
+# A complex number re + im i. T is a float.
+public^def^Cplx<T> {
+    self^{ re:T, im:T }
+
+    ZERO = Self^{ re = T.ZERO, im = T.ZERO }
+    ONE = Self^{ re = T.ONE, im = T.ZERO }
+    I = Self^{ re = T.ZERO, im = T.ONE }
+
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{ re = self^.re + other.re, im = self^.im + other.im }
+    }
+    op^- = f^self^, other:Self^-> Self^{
+        Self^{ re = self^.re - other.re, im = self^.im - other.im }
+    }
+    overload^op^- = f^self^-> Self^{ Self^{ re = -self^.re, im = -self^.im } }
+    op^* = f^self^, other:Self^-> Self^{
+        Self^{
+            re = self^.re * other.re - self^.im * other.im,
+            im = self^.re * other.im + self^.im * other.re
+        }
+    }
+    overload^op^* = f^self^, scale:T -> Self^{
+        Self^{ re = self^.re * scale, im = self^.im * scale }
+    }
+    overload^op^* = f^scale:T, self^-> Self^{
+        Self^{ re = scale * self^.re, im = scale * self^.im }
+    }
+
+    conjugate = f^self^-> Self^{ Self^{ re = self^.re, im = -self^.im } }
+    length = f^self^-> T{ math.sqrt(self^.re * self^.re + self^.im * self^.im) }
+    # Zero stays zero.
+    normalized = f^self^-> Self^{
+        let^n = self^.length()
+        if^n = T.ZERO {
+            return^*self^
+        }
+        return^Self^{ re = self^.re / n, im = self^.im / n }
+    }
+}
+
+public^let^Complex = Cplx<f32^>

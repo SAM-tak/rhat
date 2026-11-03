@@ -588,6 +588,19 @@ print^(a.length(), (2.0 * a).z, (V.RIGHT cross^ V.UP).z, V.distance(a, V.ZERO))
 - 静的メンバ `distance(a, b)`。
 - L^ の `tostring` はまだありません。`p^` のメソッドは受け手を書き換えうるものとして扱われるため、`let^` の値から呼べる `write_text(out)` を書けないからです。
 
+### 複素数・四元数
+
+`std.math.complex` は `Cplx<T>` と別名 `Complex`（f32^）、`std.math.quaternion` は `Quat<T>` と別名 `Quaternion`（f32^）を公開します。
+どちらも L^ の同名モジュールに相当し、ベクトルと同じく構築は `Complex{ re = ..., im = ... }` / `Quaternion{ x = ..., y = ..., z = ..., w = ... }` です。
+
+- complex: 欄 `re`・`im`、型定数 `ZERO`・`ONE`・`I`。`+`、二項・単項 `-`、`*`（複素数の積、またはスカラー倍を左右どちらからでも）、
+  `conjugate`、`length`、`normalized`（ゼロはゼロのまま）。
+- quaternion: 欄 `x`・`y`・`z`・`w`（`w` が実部）、型定数 `IDENTITY`。`+`、二項・単項 `-`、`*`（ハミルトン積、またはスカラー倍を左右どちらからでも）、
+  `dot^`、`conjugate`、`length`、`normalized`、`slerp(other, t)`（0 でない入力を正規化して最短の弧を補間し、t は制限しない。0 の入力は線形補間）。
+- quaternion と `std.math.vector3` の連携: `q.rotate(v)` は正規化してから `Vec3<T>` を回します（0 の四元数は恒等）。
+  静的メンバ `fromTo(from, to)`・`fromAxisAngle(axis, radians)` は `Quat<T> | nil^` を返し、向きのない 0 ベクトルには `nil^` を返します。
+  `fromTo` の逆向きの2方向は、`from` と最も平行でない座標軸との外積を回転軸にします。
+
 ## 文字列から数値への変換
 
 すべての数値型が、型の側のメソッド `T.parse(s)` を持ちます。

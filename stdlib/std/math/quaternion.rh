@@ -1,0 +1,153 @@
+module^std.math.quaternion
+
+let^math = import^std.math
+let^v3 = import^std.math.vector3
+
+# A quaternion x i + y j + z k + w; w is the scalar part. T is a float.
+public^def^Quat<T> {
+    self^{ x:T, y:T, z:T, w:T }
+
+    IDENTITY = Self^{ x = T.ZERO, y = T.ZERO, z = T.ZERO, w = T.ONE }
+
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x + other.x,
+            y = self^.y + other.y,
+            z = self^.z + other.z,
+            w = self^.w + other.w
+        }
+    }
+    op^- = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x - other.x,
+            y = self^.y - other.y,
+            z = self^.z - other.z,
+            w = self^.w - other.w
+        }
+    }
+    overload^op^- = f^self^-> Self^{
+        Self^{ x = -self^.x, y = -self^.y, z = -self^.z, w = -self^.w }
+    }
+    # The Hamilton product: self^ applied after other.
+    op^* = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.w * other.x + self^.x * other.w + self^.y * other.z - self^.z * other.y,
+            y = self^.w * other.y - self^.x * other.z + self^.y * other.w + self^.z * other.x,
+            z = self^.w * other.z + self^.x * other.y - self^.y * other.x + self^.z * other.w,
+            w = self^.w * other.w - self^.x * other.x - self^.y * other.y - self^.z * other.z
+        }
+    }
+    overload^op^* = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x * scale, y = self^.y * scale, z = self^.z * scale, w = self^.w * scale }
+    }
+    overload^op^* = f^scale:T, self^-> Self^{
+        Self^{ x = scale * self^.x, y = scale * self^.y, z = scale * self^.z, w = scale * self^.w }
+    }
+    op^dot^= f^self^, other:Self^-> T {
+        self^.x * other.x + self^.y * other.y + self^.z * other.z + self^.w * other.w
+    }
+
+    conjugate = f^self^-> Self^{ Self^{ x = -self^.x, y = -self^.y, z = -self^.z, w = self^.w } }
+    length = f^self^-> T { math.sqrt(*self^dot^*self^) }
+    # Zero stays zero.
+    normalized = f^self^-> Self^{
+        let^n = self^.length()
+        if^n = T.ZERO {
+            return^*self^
+        }
+        return^Self^{ x = self^.x / n, y = self^.y / n, z = self^.z / n, w = self^.w / n }
+    }
+
+    # Rotate v, normalizing first; the zero quaternion leaves v unchanged.
+    rotate = f^self^, v:v3.Vec3<T> -> v3.Vec3<T> {
+        let^n = self^.length()
+        if^n = T.ZERO {
+            return^v
+        }
+        let^x = self^.x / n
+        let^y = self^.y / n
+        let^z = self^.z / n
+        let^w = self^.w / n
+        let^two = T.ONE + T.ONE
+        let^tx = two * (y * v.z - z * v.y)
+        let^ty = two * (z * v.x - x * v.z)
+        let^tz = two * (x * v.y - y * v.x)
+        return^v3.Vec3<T>{
+            x = v.x + w * tx + y * tz - z * ty,
+            y = v.y + w * ty + z * tx - x * tz,
+            z = v.z + w * tz + x * ty - y * tx
+        }
+    }
+
+    # Spherical interpolation along the shortest arc; t is not clamped.
+    # Nonzero inputs are normalized first; a zero input blends linearly.
+    slerp = f^self^, other:Self^, t:T -> Self^{
+        let^a = self^.length()
+        let^b = other.length()
+        if^a = T.ZERO or^b = T.ZERO {
+            return^*self^* (T.ONE - t) + other * t
+        }
+        let^u = *self^* (T.ONE / a)
+        var^v = other * (T.ONE / b)
+        var^d = u dot^v
+        if^d < T.ZERO {
+            d := -d
+            v := -v
+        }
+        # Near parallel, sin(angle) is too small for a stable quotient.
+        var^from = T.ONE - t
+        var^to = t
+        if^d < 0.9995 {
+            let^angle = math.acos(if^d > T.ONE: T.ONE el^: d;)
+            let^s = math.sin(angle)
+            from := math.sin((T.ONE - t) * angle) / s
+            to := math.sin(t * angle) / s
+        }
+        return^(u * from + v * to).normalized()
+    }
+
+    # The shortest unit rotation turning from toward to; nil^ for a zero direction.
+    # Opposite directions turn about a reproducible perpendicular axis.
+    fromTo = f^from:v3.Vec3<T>, to:v3.Vec3<T> -> Self^| nil^{
+        let^la = from.length()
+        let^lb = to.length()
+        if^la = T.ZERO or^lb = T.ZERO {
+            return^nil^
+        }
+        let^a = from * (T.ONE / la)
+        let^b = to * (T.ONE / lb)
+        let^d = a dot^b
+        if^d >= T.ONE {
+            return^def^.IDENTITY
+        }
+        if^d <= -T.ONE {
+            # a crossed with the coordinate axis it is least aligned with.
+            var^axis = v3.Vec3<T> { x = T.ZERO, y = a.z, z = -a.y }
+            var^least = math.abs(a.x)
+            if^math.abs(a.y) < least {
+                axis := v3.Vec3<T>{ x = -a.z, y = T.ZERO, z = a.x }
+                least := math.abs(a.y)
+            }
+            if^math.abs(a.z) < least {
+                axis := v3.Vec3<T>{ x = a.y, y = -a.x, z = T.ZERO }
+            }
+            let^unit = axis.normalized()
+            return^Self^{ x = unit.x, y = unit.y, z = unit.z, w = T.ZERO }
+        }
+        let^c = a cross^b
+        return^Self^{ x = c.x, y = c.y, z = c.z, w = T.ONE + d }.normalized()
+    }
+
+    # A right-handed rotation about axis; nil^ for a zero axis.
+    fromAxisAngle = f^axis:v3.Vec3<T>, radians:T -> Self^| nil^{
+        let^n = axis.length()
+        if^n = T.ZERO {
+            return^nil^
+        }
+        let^half = radians / (T.ONE + T.ONE)
+        let^s = math.sin(half) / n
+        return^Self^{ x = axis.x * s, y = axis.y * s, z = axis.z * s, w = math.cos(half) }
+    }
+}
+
+public^let^Quaternion = Quat<f32^>
