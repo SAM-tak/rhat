@@ -2184,8 +2184,17 @@ static Value array_element(Context *c, Expr *array, Expr *element, Type *expecte
     return expression(c, element, expected);
 }
 
+void empty_array_braces(Expr *e, Type *t)
+{
+    if (e->kind == E_RECORD && !e->text && !e->type_expr && !e->args.n && !e->tuple && t &&
+        (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED)) {
+        e->kind = E_ARRAY;
+    }
+}
+
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
+    empty_array_braces(e, t);
     if (e->constant_owner) {
         Expr copy = *e;
         copy.constant_owner = NULL;

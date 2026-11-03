@@ -71,7 +71,7 @@ var^ rr:ref^^ i32^=ref^r;
 let^ rrr:ref^^^ i32^=ref^rr
 print^(***rrr)
 let^ read=f^ p:ref^ i32^ ->i32^ {*p}
-var^ refs:i32^[ref^ 2]=[ref^ n,r]
+var^ refs:i32^[ref^ 2]={ref^ n,r}
 let^ all:ref^ i32^[ref^ 2]=ref^ refs
 print^(read(ref^ n),*all[0],*refs[1],n*2)
 def^ Box {self^{value:i32^=1} get=f^ self^ {self^.value}}
@@ -79,7 +79,7 @@ var^ box=Box{}
 let^ b=ref^ box
 b.value:=3
 print^(b.value,b.get())
-var^ values:i32^[2]=[4,5]
+var^ values:i32^[2]={4,5}
 let^ a=ref^ values
 print^(a[1],a.len)
 let^ ref=11
@@ -99,7 +99,7 @@ show(nested.point)
 let^ make=f^ ->Point {return^ {x=6,y=7}}
 let^ implicit=f^ ->Point {{x=8,y=9}}
 show(make()) show(implicit())
-var^ items:Point[2]=[{x=11},{y=12}]
+var^ items:Point[2]={{x=11},{y=12}}
 show(items[0]) show(items[1])
 let^ optional:Point|nil^={x=13,y=14}
 print^(optional?.x??0)
@@ -136,7 +136,7 @@ repeat^ 1 {if^ true^ {do^{next^}} print^(99)}
 
     positive('contextual_owned_records', '''
 def^ Bag {self^{tag:i32^=0,items:i32^[grow^]}}
-let^ make=f^ ->Bag {return^ {items=[1,2],tag=7}}
+let^ make=f^ ->Bag {return^ {items={1,2},tag=7}}
 var^ bag=make()
 print^(bag.tag,bag.items[1])
 let^ read=f^ b:ref^ Bag ->i32^ {b.tag}
@@ -185,7 +185,7 @@ print^(f^ n:i64^ {
 
     positive('outer_this_owned', '''
 let^ make=f^ n:i32^ ->i32^[grow^] {
- if^ n=0 {return^ [7,8]}
+ if^ n=0 {return^ {7,8}}
  return^ f^ m:i32^ ->i32^[grow^] {this^^(m-1)}(n)
 }
 var^ result=make(4)
@@ -194,7 +194,7 @@ let^ fill=p^ a:ref^ i32^[grow^],n:i32^ ->i64^ {
  if^ n=0 {return^ a.len}
  return^ p^ b:ref^ i32^[grow^],m:i32^ ->i64^ {b.push(m) return^ this^^(b,m-1)}(a,n)
 }
-var^ values:i32^[grow^]=[]
+var^ values:i32^[grow^]={}
 print^(fill(ref^ values,3),values[0],values[2])
 ''', '2 8\n3 3 1\n')
 
@@ -226,7 +226,7 @@ print^(counter.run(4))
 let^ index=p^ calls:ref^ i32^ ->i64^ { *calls+=1 return^ 0 }
 let^ change=p^ a:ref^ i32^[2] ->i32^ { a[0]:=100 return^ 3 }
 var^ calls=0
-var^ a:i32^[2]=[10,20]
+var^ a:i32^[2]={10,20}
 a[index(ref^ calls)] += change(ref^ a)
 print^(a[0],calls)
 a[0],a[1] := a[1],a[0]
@@ -253,7 +253,7 @@ print^(1 ≦ 2 and^ 3 ≥ 2 and^ 2 ≠ 3 and^ 1 =/ 2)
 
     positive('parallel_owned_result', '''
 let^ make=f^ ->i32^[grow^] {
- var^ n,data:i32^[grow^]=7,[1,2]
+ var^ n,data:i32^[grow^]=7,{1,2}
  data.push(n)
  return^ data
 }
@@ -315,7 +315,7 @@ do^{ let^ m,n=try^ dm(7,0) print^(m,n) catch^: print^("caught") }
 errordef^ E { Bad }
 let^ make=f^ n:i64^ ->i64^[grow^] | E.Bad {
  if^ n<0 { return^ E.Bad{} }
- var^ xs:i64^[grow^]=[]
+ var^ xs:i64^[grow^]={}
  xs.push(n) xs.push(n+1)
  return^ xs
 }
@@ -325,27 +325,27 @@ let^ use=f^ n:i64^ ->i64^ | E.Bad {
  return^ ys[0]+ys[2]
 }
 print^(use(3) catch^ -1,use(-1) catch^ -1)
-var^ a=make(4) catch^ [grow^; 0]
-let^ b=make(-1) catch^ [grow^; 7,7]
+var^ a=make(4) catch^ i64^[grow^]{0}
+let^ b=make(-1) catch^ i64^[grow^]{7,7}
 a.push(1)
 print^(a.len,a[2],b.len,b[0])
-let^ literal=f^ n:i64^ { if^ n<0 { return^ E.Bad{} } return^ [grow^; n,n] }
+let^ literal=f^ n:i64^ { if^ n<0 { return^ E.Bad{} } return^ i64^[grow^]{n,n} }
 let^ again=f^ n:i64^ ->i64^[grow^] | E.Bad { return^ make(n) }
-let^ x=literal(5) catch^ [grow^; 0]
-let^ z=again(8) catch^ [grow^; 0]
+let^ x=literal(5) catch^ i64^[grow^]{0}
+let^ z=again(8) catch^ i64^[grow^]{0}
 print^(x.len,z[1])
-let^ find=f^ n:i64^ ->i64^[grow^] | nil^ { if^ n=0 { return^ nil^ } return^ [grow^; n] }
-let^ p=find(2) ?? [grow^; 0,0]
-let^ q=find(0) ?? [grow^; 0,0]
+let^ find=f^ n:i64^ ->i64^[grow^] | nil^ { if^ n=0 { return^ nil^ } return^ i64^[grow^]{n} }
+let^ p=find(2) ?? i64^[grow^]{0,0}
+let^ q=find(0) ?? i64^[grow^]{0,0}
 print^(p.len,q.len)
 var^ v=make(2)
 if^ !(v fits^ E.Bad) { print^(v.len,v[1]) }
 if^ v fits^ i64^[grow^] { v.push(5) }
 if^ v fits^ i64^[grow^] { print^(v.len) }
 var^ total:i64^=0
-repeat^ 100000 { let^ t=make(1) catch^ [grow^; 0] total+=t[1] }
+repeat^ 100000 { let^ t=make(1) catch^ i64^[grow^]{0} total+=t[1] }
 print^(total)
-def^ A { self^{ data:u8^[grow^]=[] } }
+def^ A { self^{ data:u8^[grow^]={} } }
 def^ B {}
 def^ Value = A | B
 let^ w:Value=B{}
@@ -353,17 +353,17 @@ let^ none:i32^[grow^] | nil^=nil^
 print^(w fits^ B,none fits^ nil^)
 let^ count=f^ n:i64^ ->(i64^,i64^[grow^]) | E.Bad {
  if^ n<0 { return^ E.Bad{} }
- var^ xs:i64^[grow^]=[]
+ var^ xs:i64^[grow^]={}
  xs.push(n) xs.push(n*10)
  return^ n*2,xs
 }
-let^ k,ys=count(3) catch^ (0,[grow^; 0])
-let^ j,zs=count(-1) catch^ (0,[grow^; 5])
+let^ k,ys=count(3) catch^ (0,{0})
+let^ j,zs=count(-1) catch^ (0,{5})
 let^ g=f^ ->i64^ | E.Bad { var^ m,ws=try^ count(2) ws.push(1) return^ m+ws.len }
 print^(k,ys.len,ys[1],j,zs[0],g() catch^ -1)
 let^ forward=f^ n:i64^ ->i64^[grow^] | E.Bad { return^ try^ make(n) }
-let^ settle=f^ n:i64^ ->i64^[grow^] { return^ make(n) catch^ [grow^; 0] }
-let^ f3=forward(3) catch^ [grow^; 9]
+let^ settle=f^ n:i64^ ->i64^[grow^] { return^ make(n) catch^ i64^[grow^]{0} }
+let^ f3=forward(3) catch^ i64^[grow^]{9}
 let^ s1=settle(-1)
 let^ s6=settle(6)
 print^(f3[1],s1.len,s6[1])
@@ -371,11 +371,11 @@ print^(f3[1],s1.len,s6[1])
 
     positive('multiple_owned_results', '''
 let^ count=f^ n:i64^ ->(i64^,i64^[grow^]) {
- var^ xs:i64^[grow^]=[]
+ var^ xs:i64^[grow^]={}
  xs.push(n) xs.push(n+1)
  return^ n*2,xs
 }
-let^ literal=f^ ->(i64^,i64^[grow^]) { return^ 1,[grow^; 7,8] }
+let^ literal=f^ ->(i64^,i64^[grow^]) { return^ 1,{7,8} }
 var^ k,ys=count(5)
 ys.push(100)
 print^(k,ys.len,ys[2])
@@ -386,18 +386,18 @@ print^(one,eight[1])
 
     positive('fs_roundtrip', '''
 let^ fs=import^ std.fs
-let^ data:u8^[5]=[104,101,108,108,111]
+let^ data:u8^[5]={104,101,108,108,111}
 let^ path="fs_往復.tmp"
 fs.write(path,data[..])
 fs.append(path,data[1 .. 3])
 print^(fs.exists(path))
-var^ got:u8^[grow^]=[]
+var^ got:u8^[grow^]={}
 fs.read(path,ref^ got)
 print^(got.len,got[0],got[6])
-var^ big:u8^[grow^]=[]
+var^ big:u8^[grow^]={}
 for^ 1 to^ 150000 { big.push(7) }
 fs.write(path,big[..])
-var^ back:u8^[grow^]=[]
+var^ back:u8^[grow^]={}
 fs.read(path,ref^ back)
 print^(back.len,back[149999])
 print^(fs.delete(path),fs.exists(path),fs.delete(path))
@@ -416,7 +416,7 @@ print^(4 + n, 4 + n * 8 <= 100, 4.0 + x, -2 + n, 2 - n)
 
     positive('top_level_bindings', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
-var^ points:V[grow^] = []
+var^ points:V[grow^] = {}
 var^ count:i64^ = 0
 let^ scale:f32^ = 2.0
 let^ add = p^ x:f32^ {
@@ -441,7 +441,7 @@ print^(read_late())
     positive('bounded_arrays', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
 def^ World {
-    self^{ points:V[max^8] = [], ids:i64^[max^4] = [1, 2], count:i64^ = 0, log:i64^[grow^] = [] }
+    self^{ points:V[max^8] = {}, ids:i64^[max^4] = {1, 2}, count:i64^ = 0, log:i64^[grow^] = {} }
 }
 let^ add = p^ w:ref^ World, x:f32^ {
     w.points.push(V{x=x, y=1.0})
@@ -460,14 +460,14 @@ copy.clear()
 w.ids.truncate(1)
 let^ view = w.points[..]
 print^(copy.len, w.points.len, w.ids.len, view.len, view[0].x)
-let^ empty:i32^[max^3] = []
+let^ empty:i32^[max^3] = {}
 print^(empty.len)
 ''', '2 2 4.0 4 3 2 16 2\n0 2 1 2 2.0\n0\n')
 
     positive('array_bytes', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
-let^ ints:i32^[3]=[1,258,-1]
-var^ vs:V[grow^]=[]
+let^ ints:i32^[3]={1,258,-1}
+var^ vs:V[grow^]={}
 vs.push(V{x=1.0,y=2.0})
 vs.push(V{x=3.0,y=4.0})
 let^ part=ints[1 .. 3]
@@ -475,7 +475,7 @@ print^(ints.bytes.len,ints.bytes[4],ints.bytes[5],ints.bytes[11],vs.bytes.len,pa
 ''', '12 2 1 255 16 8 2\n')
 
     positive('range_values', '''
-let^ xs=[10,20,30,40,50]
+let^ xs={10,20,30,40,50}
 let^ head=0 .. 3
 let^ tail=(3 ..)
 let^ both=1 to^ 3
@@ -506,7 +506,7 @@ let^ f=char^("x") catch^ char^"?"
 let^ g=char^("xy") catch^ char^"?"
 print^(c,d,f,g)
 do^{ let^ h=try^ char^(-1) print^(h) catch^: print^(it^.message()) }
-let^ arr:char^[3]=[char^"x",char^"y",char^"z"]
+let^ arr:char^[3]={char^"x",char^"y",char^"z"}
 let^ next=f^ c:char^ ->char^ { char^(i64^(c)+1) catch^ c }
 print^(arr[1],i64^(arr[2]),next(char^"m"))
 ''', 'あ a 😀 12354 128512 true true 1\nA ? x ?\nnot a Unicode scalar value\ny 122 n\n')
@@ -524,9 +524,9 @@ let^ cs=s.chars()
 print^(cs.len,cs[1],cs[2])
 print^(s.find("😀") ?? -1,s.find("z") ?? -1,s.starts_with("aあ"),s.ends_with("b"),s.ends_with("x"))
 print^("abc"="abc","abc"<"abd","b">"abc","a"<=>"b","x"!="y")
-let^ raw:u8^[3]=[104,105,33]
+let^ raw:u8^[3]={104,105,33}
 let^ t=string^(raw[..]) catch^ "?"
-let^ bad:u8^[2]=[255,1]
+let^ bad:u8^[2]={255,1}
 let^ u=string^(bad[..]) catch^ "invalid"
 print^(t,u,s.slice(1 .. 4),s.slice((4 ..)))
 ''', '9 4 97\na a\nあ あ\n😀 😀\nb b\n4 あ 😀\n4 -1 true true false\ntrue true true -1 true\nhi! invalid あ 😀b\n')
@@ -578,7 +578,7 @@ let^ b=$"b{n}c"
 print^($"a{b.text()}d",$"{ $"{n}" }")
 let^ u:u64^=18446744073709551615
 print^($"{u:%u} {u} {2.5:%d} {7:%e}")
-let^ xs=[1,2,3]
+let^ xs={1,2,3}
 print^($"{xs[1 .. 3].len} {xs[2]}")
 ''', 'hello R^, n = 42, pi = 3.14, hex 002a, braces {} and }\nx=43 true あ 3.142e+00|\t.\n[   42]big42.0 2a\nab42cd 42\n18446744073709551615 18446744073709551615 2 7.000000e+00\n2 3\n')
 
@@ -635,7 +635,7 @@ for^ i from^ 1 downto^ 9 { print^(98) }
 ''', '340282366920938463463374607431768211454\n340282366920938463463374607431768211455\n-170141183460469231731687303715884105728\n-170141183460469231731687303715884105727\n-127\n0\n127\n')
 
     positive('for_range_proof', '''
-var^ values:i32^[4]=[1,2,3,4]
+var^ values:i32^[4]={1,2,3,4}
 var^ total=0
 for^ var^ i:i64^=0 while^ i<4 next^ i+=1 {total+=values[i]}
 print^(total)
@@ -645,15 +645,15 @@ print^(total)
 var^ calls=0
 for^ var^ i=0 while^ i<3 next^ i+=1 {
 prolog^: print^(10)
-pre^: var^ temp:i32^[grow^]=[] temp.push(i) calls+=1
-first^: var^ kept:i32^[grow^]=[] kept.push(temp[0])
+pre^: var^ temp:i32^[grow^]={} temp.push(i) calls+=1
+first^: var^ kept:i32^[grow^]={} kept.push(temp[0])
 main^: kept.push(i) print^(temp[0])
 last^: print^(i) print^(kept.len)
 epilog^: print^(20)
 }
 print^(calls)
 repeat^ 0 { pre^: print^(30) first^: print^(99) last^: print^(98) epilog^: print^(40) }
-repeat^ 3 { main^: var^ tmp:i32^[grow^]=[] tmp.push(1) break^ last^: print^(50) epilog^: print^(60) }
+repeat^ 3 { main^: var^ tmp:i32^[grow^]={} tmp.push(1) break^ last^: print^(50) epilog^: print^(60) }
 repeat^ 2 { first^: let^ a,b=1,2 main^: print^(a,b) last^: print^(a+b) }
 ''', '10\n0\n1\n2\n2\n4\n20\n4\n30\n40\n50\n60\n1 2\n1 2\n3\n')
 
@@ -662,7 +662,7 @@ var^ hits=0
 for^ var^ i=0 while^ i<3 next^ i+=1 {
 main^:
  repeat^ 2 {
- main^: var^ owned:i32^[grow^]=[] owned.push(i) hits+=1 continue^[2]
+ main^: var^ owned:i32^[grow^]={} owned.push(i) hits+=1 continue^[2]
  last^: print^(99)
  epilog^: print^(98)
  }
@@ -675,7 +675,7 @@ last^: print^(1)
 epilog^: print^(2)
 }
 let^ early=p^ ->i32^ {
- repeat^ 2 { first^: var^ a:i32^[grow^]=[] main^: a.push(42) return^ a[0] last^: print^(95) epilog^: print^(94) }
+ repeat^ 2 { first^: var^ a:i32^[grow^]={} main^: a.push(42) return^ a[0] last^: print^(95) epilog^: print^(94) }
  return^ 0
 }
 print^(early())
@@ -686,13 +686,13 @@ repeat^ 2 { print^(1) epilogue^: print^(2) }
 repeat^ 0 { prologue^: print^(3) premain^: print^(4) epilogue^: print^(5) }
 repeat^ 1 {
 main^:
- repeat^ 1 { pre^: break^^ first^: var^ a:i32^[grow^]=[] main^: a.push(0) }
+ repeat^ 1 { pre^: break^^ first^: var^ a:i32^[grow^]={} main^: a.push(0) }
 last^: print^(6)
 epilog^: print^(7)
 }
 repeat^ 1 {
 pre^: break^
-first^: var^ a:i32^[grow^]=[]
+first^: var^ a:i32^[grow^]={}
 main^: a.push(99)
 last^: print^(98)
 epilog^: print^(8)
@@ -744,7 +744,7 @@ let^ `not a name`=7 let^ `a``b`=8
 print^(変数,`not a name`,`a``b`)
 let^ s="A\0B\x43\u{1f600}"
 print^(s.bytes.len,s.bytes[1],s.bytes[2])
-var^ bytes:u8^[grow^]=[] bytes.append("a\0b")
+var^ bytes:u8^[grow^]={} bytes.append("a\0b")
 print^(bytes.len,bytes[1],bytes[2])
 print^('a''b')
 print^("x
@@ -852,7 +852,7 @@ print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
         ('outer_this_capture', 'print^(f^ n:i32^ ->i32^ {f^ {this^^(n-1)}()}(1))', "unknown value 'n'"),
         ('outer_this_effect', 'let^ run=p^ n:i32^ {f^ {this^^(0)}()} run(1)', 'f^ cannot call p^'),
         ('outer_this_local_owner', '''let^ run=f^ n:i32^ ->i32^ {
-var^ scratch:i32^[grow^]=[n]
+var^ scratch:i32^[grow^]={n}
 if^ n=0 {return^ scratch[0]}
 return^ f^ m:i32^ ->i32^ {this^^(m-1)}(n)
 } print^(run(3))''', 'holds local owned value'),
@@ -917,17 +917,17 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
-        ('bytes_of_bool', 'let^ a:bool^[2]=[true^,false^]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
-        ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:i32^[ref^ 1]=[ref^ n]\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
-        ('bytes_of_temporary', 'print^([1,2].bytes.len)', 'cannot borrow a temporary'),
-        ('bounded_literal_too_long', 'let^ a:i32^[max^2]=[1,2,3]', 'holds at most 2 elements'),
-        ('bounded_owned_elements', 'var^ a:(i32^[grow^])[max^2]=[]', 'nonempty fixed-size'),
+        ('bytes_of_bool', 'let^ a:bool^[2]={true^,false^}\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
+        ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:i32^[ref^ 1]={ref^ n}\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
+        ('bytes_of_temporary', 'print^({1,2}.bytes.len)', 'cannot borrow a temporary'),
+        ('bounded_literal_too_long', 'let^ a:i32^[max^2]={1,2,3}', 'holds at most 2 elements'),
+        ('bounded_owned_elements', 'var^ a:(i32^[grow^])[max^2]={}', 'nonempty fixed-size'),
         ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),
         ('top_level_hidden', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\ndo^{ var^ n:i64^ = 5\nshow() }', "which a local hides here"),
         ('top_level_value', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\nlet^ g = show', "cannot be a value"),
         ('top_level_method', 'var^ n:i64^ = 1\ndef^ A { self^{ x:i64^ = 0 }\nget = f^ self^ -> i64^ { return^ n } }\nprint^(A{}.get())', "only top-level functions can use"),
         ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot mutate borrowed storage"),
-        ('top_level_shrink', 'var^ q:i64^[flex^] = [1, 2]\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
+        ('top_level_shrink', 'var^ q:i64^[flex^] = {1, 2}\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
         ('top_level_narrowing', 'var^ t:i64^ | nil^ = 1\nlet^ reset = p^ { t := nil^ }\nif^ t? {\nreset()\nprint^(t + 1) }', "not defined for 'i64^ | nil^'"),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),
@@ -949,12 +949,12 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('results_single', 'let^ f=f^ ->i32^ {return^ 1,2}', 'multiple values go only where'),
         ('results_tuple_value', 'let^ t=(1,2)', 'need a name each'),
         ('results_union_bare', 'errordef^ E { Bad }\nlet^ f=f^ ->(i32^,i32^) | E.Bad {return^ 1,2}\nlet^ a,b=f()', 'take them out with try^'),
-        ('owned_union_copy', 'errordef^ E { Bad }\nlet^ m=f^ ->i32^[grow^] | E.Bad {return^ [grow^; 1]}\nlet^ v=m()\nif^ !(v fits^ E.Bad) { let^ w=v }', 'cannot be copied'),
+        ('owned_union_copy', 'errordef^ E { Bad }\nlet^ m=f^ ->i32^[grow^] | E.Bad {return^ {1}}\nlet^ v=m()\nif^ !(v fits^ E.Bad) { let^ w=v }', 'cannot be copied'),
         ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
         ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
         ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),
-        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ [grow^; 1],[grow^; 2]}', 'final field'),
-        ('results_owned_moved', 'let^ f=f^ ->(i32^,i32^[grow^]) {\nvar^ a:i32^[grow^]=[]\nvar^ b:i32^[grow^]=[]\nif^ true^ {return^ 1,a}\nreturn^ 2,b\n}\nlet^ n,x=f()', 'cannot be copied'),
+        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ {1},{2}}', 'final field'),
+        ('results_owned_moved', 'let^ f=f^ ->(i32^,i32^[grow^]) {\nvar^ a:i32^[grow^]={}\nvar^ b:i32^[grow^]={}\nif^ true^ {return^ 1,a}\nreturn^ 2,b\n}\nlet^ n,x=f()', 'cannot be copied'),
         ('duplicate_first', 'repeat^ 1 {first^: let^ x=1 let^ x=2 main^:}', 'duplicate binding'),
         ('prolog_self_jump', 'repeat^ 1 {prolog^: break^ main^:}', 'own loop'),
         ('epilog_self_jump', 'repeat^ 1 {main^: epilog^: next^}', 'own loop'),
@@ -980,11 +980,11 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     suite.runtime_failure('string_decode_middle', 'let^ s="あ"\nlet^ c,n=s.decode(1)', 'not the start of a character')
     suite.runtime_failure('interp_bad_format', 'print^($"{1:%s}")', 'one numeric conversion')
     suite.runtime_failure('interp_two_conversions', 'print^($"{1:%d%d}")', 'one numeric conversion')
-    suite.runtime_failure('bounded_full', 'var^ a:i64^[max^2]=[7,8]\na.push(9)', 'bounded array is full')
-    suite.runtime_failure('bounded_index', 'var^ a:i64^[max^4]=[7]\nprint^(a[1])', 'array index out of bounds')
+    suite.runtime_failure('bounded_full', 'var^ a:i64^[max^2]={7,8}\na.push(9)', 'bounded array is full')
+    suite.runtime_failure('bounded_index', 'var^ a:i64^[max^4]={7}\nprint^(a[1])', 'array index out of bounds')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ..)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
-    suite.runtime_failure('range_slice_bounds', 'let^ xs=[1,2]\nlet^ r=1 .. 5\nprint^(xs[r].len)', 'slice range out of bounds')
+    suite.runtime_failure('range_slice_bounds', 'let^ xs={1,2}\nlet^ r=1 .. 5\nprint^(xs[r].len)', 'slice range out of bounds')
     suite.runtime_failure('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}', 'assert')
     suite.finish()
 

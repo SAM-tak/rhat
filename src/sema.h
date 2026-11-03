@@ -311,6 +311,8 @@ bool sum_accepts(Type *to, Type *from);
 
 // Resolve the lexical declaration selected by this^ and its outer forms.
 Function *this_function(Program *p, Instance *in, Expr *target);
+// Turn {} into an empty array literal where t, the expected type, is an array.
+void empty_array_braces(Expr *e, Type *t);
 // The def^ whose static member a Type.name call target names, or NULL.
 Def *static_owner(Program *p, Expr *target);
 

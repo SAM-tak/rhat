@@ -1114,25 +1114,23 @@ static int self_type_depth(const char *text)
     return text[4 + count] ? 0 : (int)count;
 }
 
-// Parse the shared type/literal bracket header, leaving its terminator unread.
+// Parse an array type's bracket contents, leaving the closing ']' unread.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
     int refs = reference_depth(tok(p)->text);
-    if (references) {
-        *references = refs;
-    }
+    *references = refs;
     if (refs) {
         Token *token = next(p);
-        while (elem && refs--) {
+        while (refs--) {
             Spec *ref = mem(sizeof(*ref));
             *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = elem};
             elem = ref;
         }
     }
     Spec *w = mem(sizeof(*w));
-    w->loc = elem ? elem->loc : tok(p)->loc;
+    w->loc = elem->loc;
     w->elem = elem;
-    if (is(p, "]") || is(p, ";")) {
+    if (is(p, "]")) {
         w->kind = SPEC_ARRAY;
     }
     else if (take(p, "slice^")) {
@@ -1164,17 +1162,33 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     return w;
 }
 
-static Spec *array_spec(Parser *p, Spec *s, Expr *literal)
+// Whether the '[' at token k opens an array type in an expression: a kind or
+// reference word, an empty pair, or a length followed by '{' or another one.
+static bool array_type_at(Parser *p, int k)
+{
+    if (k + 1 >= p->tokens.n) {
+        return false;
+    }
+    Token *next = p->tokens.v[k + 1];
+    if (!strcmp(next->text, "]") || !strcmp(next->text, "grow^") || !strcmp(next->text, "flex^") ||
+        !strcmp(next->text, "max^") || !strcmp(next->text, "slice^") ||
+        reference_depth(next->text)) {
+        return true;
+    }
+    if (next->kind != TOK_INT || k + 3 >= p->tokens.n ||
+        strcmp(((Token *)p->tokens.v[k + 2])->text, "]")) {
+        return false;
+    }
+    const char *after = ((Token *)p->tokens.v[k + 3])->text;
+    return (!strcmp(after, "{") && !p->header) || (!strcmp(after, "[") && array_type_at(p, k + 3));
+}
+
+// The array type suffixes after s; refs counts the last bracket's ref^ depth.
+static Spec *array_spec(Parser *p, Spec *s, int *refs)
 {
     while (take(p, "[")) {
         int opening_at = p->at - 1;
-        int refs = 0;
-        s = array_header(p, s, &refs);
-        if (literal && is(p, ";")) {
-            literal->array_literal = s;
-            literal->array_refs = refs;
-            return s;
-        }
+        s = array_header(p, s, refs);
         FormatToken *opening = format_token(p, opening_at);
         if (opening) {
             opening->array_type = true;
@@ -1254,8 +1268,7 @@ static Spec *spec_part(Parser *p)
         }
         type_arguments(p, s);
     }
-    s = array_spec(p, s, NULL);
-    return s;
+    return array_spec(p, s, &refs);
 }
 
 static Spec *spec_intersection(Parser *p)
@@ -1690,24 +1703,14 @@ static Expr *primary(Parser *p)
         need(p, ")");
     }
     else if (!strcmp(t->text, "[")) {
-        e = node(E_ARRAY, t->loc);
-        bool attributed =
-            is(p, "grow^") || is(p, "flex^") || is(p, "max^") || is(p, "slice^") || is(p, ";");
-        if (reference_depth(tok(p)->text) && p->at + 1 < p->tokens.n) {
-            Token *after = p->tokens.v[p->at + 1];
-            attributed |= !strcmp(after->text, ";") || !strcmp(after->text, "grow^") ||
-                          !strcmp(after->text, "flex^") || !strcmp(after->text, "max^") ||
-                          !strcmp(after->text, "slice^") || after->kind == TOK_INT;
-        }
-        if (attributed) {
-            e->array_literal = array_header(p, NULL, &e->array_refs);
-            need(p, ";");
-        }
-        entries(p, e, "]", false);
+        fail(t->loc, "array literals are written {a, b} or T[...]{a, b}");
     }
     else if (!strcmp(t->text, "{")) {
-        e = node(E_RECORD, t->loc);
-        entries(p, e, "}", true);
+        // {name = value} and {} are records; positional {a, b} is an array.
+        bool named = is(p, "}") || (tok(p)->kind == TOK_WORD && p->at + 1 < p->tokens.n &&
+                                    !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "="));
+        e = node(named ? E_RECORD : E_ARRAY, t->loc);
+        entries(p, e, "}", named);
     }
     else if (reference_depth(t->text) || !strcmp(t->text, "-") || !strcmp(t->text, "!") ||
              !strcmp(t->text, "*") || !strcmp(t->text, "**") || !strcmp(t->text, "bitnot^") ||
@@ -1817,21 +1820,21 @@ static Expr *primary(Parser *p)
             }
             e = n;
         }
-        else if (is(p, "[") && p->at + 1 < p->tokens.n &&
-                 (!strcmp(((Token *)p->tokens.v[p->at + 1])->text, "]") ||
-                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, ";") ||
-                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "grow^") ||
-                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "flex^") ||
-                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "max^") ||
-                  !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "slice^") ||
-                  reference_depth(((Token *)p->tokens.v[p->at + 1])->text))) {
+        else if (is(p, "[") && array_type_at(p, p->at)) {
             Spec *base = array_element_spec(p, e);
             Expr *array = node(E_ARRAY, e->loc);
-            array->test_spec = array_spec(p, base, array);
-            if (array->array_literal) {
-                array->test_spec = NULL;
-                need(p, ";");
-                entries(p, array, "]", false);
+            int refs;
+            Spec *s = array_spec(p, base, &refs);
+            if (take(p, "{")) {
+                array->array_literal = s;
+                array->array_refs = refs;
+                entries(p, array, "}", false);
+            }
+            else if (is(p, "(")) {
+                array->test_spec = s;
+            }
+            else {
+                fail(array->loc, "an array type here needs {elements} or (arguments)");
             }
             e = array;
         }
@@ -2023,6 +2026,19 @@ static Expr *expr(Parser *p, int min)
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
 static int loop_section(Parser *p);
+
+// Whether word can only begin a statement, never a literal's first element.
+static bool statement_word(const char *word)
+{
+    const char *words[] = {"let^",   "var^",  "return^", "if^",  "for^",  "repeat^",
+                           "break^", "next^", "do^",     "def^", "print^"};
+    for (size_t j = 0; j < sizeof(words) / sizeof(*words); j++) {
+        if (!strcmp(word, words[j])) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // A clause head is syntactically a nominal type (possibly a union), then ':'.
 static bool catch_type(Parser *p)
@@ -2821,9 +2837,9 @@ static Stmt *stmt_unchecked(Parser *p)
         s->kind = S_BLOCK;
         block(p, &s->body);
     }
-    else if (is(p, "{") &&
-             !(p->at + 1 < p->tokens.n && !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "}")) &&
-             !(p->at + 2 < p->tokens.n && !strcmp(((Token *)p->tokens.v[p->at + 2])->text, "="))) {
+    else if (is(p, "{") && p->at + 1 < p->tokens.n &&
+             statement_word(((Token *)p->tokens.v[p->at + 1])->text)) {
+        // Otherwise a leading '{' is a record or array literal.
         fail(t->loc, "standalone blocks require do^{...}");
     }
     else {

@@ -17,6 +17,6 @@ count ?:= nil^
 count ?:= 99
 print^(count?, count ?? 0)
 
-var^values = [10, 20]
+var^values = {10, 20}
 let^view:ref^i32^[2] | nil^= ref^values
 print^view?[1] ?? 0

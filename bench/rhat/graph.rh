@@ -11,13 +11,13 @@ let^enqueue = p^q:ref^i32^[grow^], tail:ref^i64^, vertex:i32^{
 
 let^nv:i64^= 100000 # BENCH_N
 let^ne = nv * 8
-var^esrc:i32^[grow^] = []
-var^edst:i32^[grow^] = []
-var^start:i32^[grow^] = []
-var^fill:i32^[grow^] = []
-var^out:i32^[grow^] = []
-var^dist:i32^[grow^] = []
-var^q:i32^[grow^] = []
+var^esrc:i32^[grow^] = {}
+var^edst:i32^[grow^] = {}
+var^start:i32^[grow^] = {}
+var^fill:i32^[grow^] = {}
+var^out:i32^[grow^] = {}
+var^dist:i32^[grow^] = {}
+var^q:i32^[grow^] = {}
 var^r:u64^= 12345
 var^i:i64^= 0
 repeat^while^i < ne {

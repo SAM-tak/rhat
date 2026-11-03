@@ -128,16 +128,16 @@ let^walk_chain = f^pool:ref^Node[grow^], symbols:ref^u8^[grow^], index:u32^, pas
     return^walk(pool, symbols, index, pass) + this^(pool, symbols, nextof(pool[index]), pass)
 }
 let^n:i64^= 20000 # BENCH_N
-var^text:u8^[grow^] = []
+var^text:u8^[grow^] = {}
 var^seed:u64^= 12345
 var^i:i64^= 0
 repeat^while^i < n {
     seed := gen(ref^text, 4, seed)
     i += 1
 }
-var^pool:Node[grow^] = [Num{value = 0, next = 0}]
-var^symbols:u8^[grow^] = []
-var^roots:u32^[grow^] = []
+var^pool:Node[grow^] = {Num{value = 0, next = 0}}
+var^symbols:u8^[grow^] = {}
+var^roots:u32^[grow^] = {}
 let^err = parse_all(text[..], ref^pool, ref^symbols, ref^roots)
 print^text.len
 print^pool.len - 1

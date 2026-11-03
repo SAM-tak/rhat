@@ -87,7 +87,7 @@ print^(x.result(-1) fits^ x.Error.Bad,x.result(0) fits^ nil^,result)
     positive('module_owned_template_composition', {
         'lib/mem.rh': '''module^ lib.mem
 public^ def^ Base { self^{ value:i32^=42 }; read=f^ self^ ->i32^ { self^.value } }
-public^ let^ make=p^ ->i32^[grow^] { return^ [20,22] }
+public^ let^ make=p^ ->i32^[grow^] { return^ {20,22} }
 public^ let^ total=f^ a:ref^ i32^[grow^] ->i32^ { a[0]+a[1] }
 public^ let^ read=template^f^ item { item.read() }
 ''', 'main.rh': '''import^ lib.mem
@@ -200,13 +200,13 @@ print^(box.run(42))
     positive('block_may_shadow_import', {'main.rh':'import^ std.random\ndo^{ let^ std=42; print^(std) }'}, '42\n')
     negative('module_local_owner_recursive', {'lib/a.rh': '''module^ lib.a
 public^ let^ recur=p^ n:i32^ {
-    var^ a:i32^[grow^]=[n]
+    var^ a:i32^[grow^]={n}
     if^ n > 0 { this^(n-1) }
     print^(a[0])
 }''', 'main.rh': 'import^ lib.a\nlib.a.recur(2)'}, 'recursive call')
     negative('module_borrow_escape', {'lib/a.rh': '''module^ lib.a
 public^ let^ bad=p^ ->ref^ i32^ {
- var^ a:i32^[grow^]=[1]; return^ ref^ a[0]
+ var^ a:i32^[grow^]={1}; return^ ref^ a[0]
 }''', 'main.rh': 'import^ lib.a'}, 'escape')
     positive('primitive_union_literals', {'main.rh': '''errordef^ Error { Bad }
 def^ Int = i64^ | Error.Bad | nil^
@@ -304,7 +304,7 @@ if^ x fits^ lib.kinds.D1 { print^("main sees D1", x.a) }
 public^ let^ fill=p^ a:ref^ i32^[grow^], n:i32^ {
     if^ n > 0 { a.push(n); this^(a,n-1) }
 }
-''', 'main.rh':'import^ lib.borrow\nvar^ a:i32^[grow^]=[]\nlib.borrow.fill(ref^ a,3)\nprint^(a.len,a[0],a[2])'}, '3 3 1\n')
+''', 'main.rh':'import^ lib.borrow\nvar^ a:i32^[grow^]={}\nlib.borrow.fill(ref^ a,3)\nprint^(a.len,a[0],a[2])'}, '3 3 1\n')
     external = project('external_root', {'lib/value.rh': 'module^ lib.value\npublic^ let^ n=f^ { 42 }'})
     positive('module_search_path', {'main.rh': 'import^ lib.value\nprint^(lib.value.n())'}, '42\n', ['--module-path', external])
 

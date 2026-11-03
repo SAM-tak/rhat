@@ -51,7 +51,7 @@ main という名前に特別な意味はなく、main 関数は必須ではあ�
 プログラム全体で共有するグローバル変数ではありません。
 
 ```rhat
-var^ points:V[grow^] = []
+var^ points:V[grow^] = {}
 var^ count:i64^ = 0
 let^ add = p^ x:f32^ {
     points.push(V{x=x, y=1.0})
@@ -205,7 +205,7 @@ LLVM の範囲外変換に到達して poison を生成することはありま�
 def^ Num { self^{ value:i32^ } }
 def^ Pair { self^{ left:u32^, right:u32^ } }
 def^ Expr = Num | Pair
-var^ values=[grow^; Num{value=42},Pair{left=1,right=2}]
+var^ values=Expr[grow^]{Num{value=42},Pair{left=1,right=2}}
 let^ value=values[0]
 if^ value fits^ Num { print^(value.value) }
 ```

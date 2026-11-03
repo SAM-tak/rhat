@@ -24,7 +24,7 @@ let^split = p^text:u8^[slice^] -> WordList {
     return^out
 }
 let^n:i64^= 200000 # BENCH_N
-var^text:u8^[grow^] = []
+var^text:u8^[grow^] = {}
 var^r:u64^= 12345
 var^i:i64^= 0
 repeat^while^i < n {

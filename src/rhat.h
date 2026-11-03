@@ -142,10 +142,10 @@ struct Expr {
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
-    Spec *test_spec;     // The type operand of fits^, or the type of an empty
-                         // typed array value; never evaluated as a value.
+    Spec *test_spec;     // The type operand of fits^, or the type of a T[](...)
+                         // construction; never evaluated as a value.
     Spec *constant_spec;
-    Spec *array_literal;  // Explicit bracket attributes; elem is NULL when inferred.
+    Spec *array_literal;  // The written type of a T[...]{...} literal.
     int array_refs;       // Explicit ref^ depth, enabling stable-place borrowing.
     bool optional;        // This postfix link starts a nil-propagating guard.
     bool tuple;           // return^ a, b: a record of the multiple result type.
@@ -384,7 +384,8 @@ void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
-// Resolve a literal's bracket attributes from its annotation, context or first element.
+// A literal's array type: its written T[...]{...} type, else the context or
+// a fixed array of its first element's type.
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first);
 char *type_name(Type *t);
 const char *builtin_name(int kind);

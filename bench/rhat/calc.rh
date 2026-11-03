@@ -161,8 +161,8 @@ let^run = p^text:u8^[slice^], pool:ref^Expr[grow^] -> EvalResult {
     return^eval(pool, parsed.index)
 }
 let^n:i64^= 100000 # BENCH_N
-var^text:u8^[grow^] = []
-var^pool:Expr[grow^] = []
+var^text:u8^[grow^] = {}
+var^pool:Expr[grow^] = {}
 var^seed:u64^= 12345
 var^stats = Stats{}
 var^i:i64^= 0

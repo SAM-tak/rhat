@@ -719,12 +719,12 @@ print^(value.add(value.copy()).x)
     assert client.diagnostics(path,136) == []
     print('PASS Unicode operator aliases, navigation and exact diagnostic ranges',flush=True)
 
-    captures = ('var^pictures=i32^[grow^]\n'
+    captures = ('var^pictures=i32^[grow^]{}\n'
                 'let^new_picture=p^ {pictures.push(1)}\n'
                 'let^bad=missing_capture_initializer\n'
                 'new_picture()\n')
     for version,source in [(137,captures),
-                           (138,captures.replace('i32^[grow^]','missing_capture_value')),
+                           (138,captures.replace('i32^[grow^]{}','missing_capture_value')),
                            (139,captures+'let^unused=p^x {print^(pictures.len,x)}\n')]:
         client.change(path,source,version)
         diagnostics=client.diagnostics(path,version)
@@ -755,7 +755,7 @@ print^(value.add(value.copy()).x)
     hover=request('hover','message:u8^',text=annotated_binding)['contents']['value']
     assert hover == 'message: u8^[max^160]', hover
     for version,source,expected in [
-            (144,annotated_binding.replace('missing_message_initializer','[]'),1),
+            (144,annotated_binding.replace('missing_message_initializer','{}'),1),
             (145,annotated_binding.replace('u8^[max^160]','i64^'),3),
             (146,annotated_binding.replace('u8^[max^160]','MissingMessageType'),2)]:
         client.change(path,source,version)
@@ -764,14 +764,14 @@ print^(value.add(value.copy()).x)
         hover=request('hover','message:',text=source)['contents']['value']
         assert hover == ('message: i64^' if version == 145 else
                          'message: ?' if version == 146 else 'message: u8^[max^160]'), hover
-    repaired_binding=annotated_binding.replace('let^bad=missing_before_message\n','').replace('missing_message_initializer','[]')
+    repaired_binding=annotated_binding.replace('let^bad=missing_before_message\n','').replace('missing_message_initializer','{}')
     client.change(path,repaired_binding,147)
     assert client.diagnostics(path,147) == []
     assert request('hover','message:u8^',text=repaired_binding)['contents']['value'] == 'message: u8^[max^160]'
     print('PASS resolved variable annotations survive initializer errors and recover after edits',flush=True)
 
     attributes=('def^Node {self^{n:i32^=7}}\nvar^n=Node{}\n'
-                'var^refs:Node[ref^max^10]=[ref^n]\n'
+                'var^refs:Node[ref^max^10]={ref^n}\n'
                 'let^view:Node[ref^slice^]=refs[..]\n'
                 'let^borrow:ref^Node[ref^max^10]=ref^refs\n'
                 'print^(view[0].n,borrow.len)\n')
@@ -803,23 +803,23 @@ print^(value.add(value.copy()).x)
     assert client.diagnostics(path,151) == []
     print('PASS runtime-sized owning array construction, signatures and diagnostic recovery',flush=True)
 
-    literals=('def^B {self^{n:i32^=7}}\nvar^a:B[2]=[B{},B{}]\n'
-              'let^refs=[ref^;a[0],ref^a[1]]\n'
-              'let^typed=B[ref^;a[0],a[1]]\n'
-              'var^bounded=[ref^max^10;a[0]]\n'
-              'var^numbers=u32^[max^10;0,1,2,3]\n'
+    literals=('def^B {self^{n:i32^=7}}\nvar^a:B[2]={B{},B{}}\n'
+              'let^refs=B[ref^ 2]{a[0],ref^a[1]}\n'
+              'let^typed=B[ref^ 2]{a[0],a[1]}\n'
+              'var^bounded=B[ref^ max^10]{a[0]}\n'
+              'var^numbers=u32^[max^10]{0,1,2,3}\n'
               'print^(refs[0].n,typed[1].n,bounded.len,numbers[3])\n')
     client.change(path,literals,152)
     assert client.diagnostics(path,152) == []
-    for needle,detail in [('refs=[','refs: B[ref^ 2]'),('typed=B','typed: B[ref^ 2]'),
-                          ('bounded=[','bounded: B[ref^ max^10]'),('numbers=u32^','numbers: u32^[max^10]')]:
+    for needle,detail in [('refs=B','refs: B[ref^ 2]'),('typed=B','typed: B[ref^ 2]'),
+                          ('bounded=B','bounded: B[ref^ max^10]'),('numbers=u32^','numbers: u32^[max^10]')]:
         assert request('hover',needle,text=literals)['contents']['value'] == detail
-    assert request('definition','B[ref^;',text=literals)['range']['start'] == at(literals,'B {')
-    broken_literal=literals+'let^bad=[ref^;42]\n'
+    assert request('definition','B[ref^ 2]{a[0],a[1]}',text=literals)['range']['start'] == at(literals,'B {')
+    broken_literal=literals+'let^bad=i32^[ref^ 1]{42}\n'
     client.change(path,broken_literal,153)
     diagnostics=client.diagnostics(path,153)
     assert len(diagnostics) == 1 and 'cannot borrow a temporary' in diagnostics[0]['message'], diagnostics
-    assert request('hover','refs=[',text=broken_literal)['contents']['value'] == 'refs: B[ref^ 2]'
+    assert request('hover','refs=B',text=broken_literal)['contents']['value'] == 'refs: B[ref^ 2]'
     client.change(path,literals,154)
     assert client.diagnostics(path,154) == []
     print('PASS array literal attributes, automatic element borrowing and recovery',flush=True)
@@ -881,6 +881,17 @@ def^F2 { self^{ x:f32^ } }
             spelled[qualified.splitlines()[1][column:column+length]]=kind
     assert spelled == {'F2':1,'std':11,'math':11,'vector2':11,'Vector2':1}, spelled
     print('PASS duplicate declarations and qualified type paths are located',flush=True)
+
+    # A syntax error inside the only caller's body hides the calls, not the captures' types.
+    broken_caller=('var^pictures=i32^[grow^]{}\n'
+                   'let^hud_point=f^x:i64^ {pictures[x]}\n'
+                   'let^hud_quad=p^x:i64^ {print^(hud_point(x))}\n'
+                   'let^upload=p^ {\n    var^hud=i32^[grow^]\n    hud_quad(0)\n}\n'
+                   'upload()\n')
+    client.change(path,broken_caller,160)
+    diagnostics=client.diagnostics(path,160)
+    assert len(diagnostics) == 1 and 'needs {elements}' in diagnostics[0]['message'], diagnostics
+    print('PASS a broken function body does not cascade into capture inference',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601

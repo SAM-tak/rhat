@@ -108,7 +108,7 @@ print^(read(A{}),read(B{}))
 
     positive('inference_owned_return', '''
 let^ build=p^ n {
- var^ items:i32^[grow^]=[]
+ var^ items:i32^[grow^]={}
  for^ i from^ 1 to^ n {items.push(i32^(i))}
  return^ items
 }
@@ -119,7 +119,7 @@ print^(a.len,a[2],b.len,b[1])
     positive('inference_borrow', '''
 let^ at=f^ items,index {ref^ items[index]}
 let^ add=p^ items,value {items.push(value)}
-var^ a:i32^[grow^]=[1,2]
+var^ a:i32^[grow^]={1,2}
 let^ ref=at(ref^ a,1)
 add(ref^ a,3);
 *ref:=42
@@ -197,7 +197,7 @@ print^(outer(41))
     positive('body_constructor_array_alias', """
 def^ Box {self^{value:i64^}}
 let^ boxed=f^ x {let^ alias=x return^ Box{value=alias}}
-let^ array=f^ x ->i64^[2] {[x,x+1]}
+let^ array=f^ x ->i64^[2] {{x,x+1}}
 let^ a=array(20)
 print^(boxed(42).value,a[0],a[1])
 """, '42 20 21\n')
@@ -247,9 +247,9 @@ print^((f^ x {typed(x)})(41))
     negative('body_nominal_not_guessed', 'def^ A {self^{value:i32^}} let^ read=f^ x {x.value}', 'without a call shape')
 
     negative('inference_unused', 'let^ unused=f^ x {x}', 'without a call shape')
-    negative('inference_unused_capture', 'var^ pictures=i32^[grow^] let^ read=p^ {print^(pictures.len)}',
+    negative('inference_unused_capture', 'var^ pictures=i32^[grow^]{} let^ read=p^ {print^(pictures.len)}',
              "cannot infer captured binding 'pictures' of 'read'")
-    negative('inference_unused_capture_parameter', 'var^ pictures=i32^[grow^] let^ read=p^ x {print^(pictures.len,x)}',
+    negative('inference_unused_capture_parameter', 'var^ pictures=i32^[grow^]{} let^ read=p^ x {print^(pictures.len,x)}',
              "cannot infer parameter 'x' of 'read'")
     negative('inference_unused_method', 'def^ A {read=f^ self^,x {x}}', 'without a call shape')
     negative('inference_missing_member', 'def^ A {} let^ read=f^ x {x.value} print^(read(A{}))', 'has no field')
@@ -259,8 +259,8 @@ print^((f^ x {typed(x)})(41))
     negative('inference_bare_record', 'let^ use=p^ x {} use({value=42})', 'single nominal struct')
     negative('inference_pure_mutation', 'let^ edit=f^ x {*x:=42} var^ n=0 edit(ref^ n)', 'f^ cannot mutate')
     negative('inference_borrow_escape', 'let^ bad=f^ x {var^ local=x return^ ref^ local} let^ ref=bad(1)', 'cannot return a reference')
-    negative('inference_owned_argument', 'let^ use=p^ x {} var^ a:i32^[grow^]=[] use(a)', 'pass owned values by reference')
-    negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:i32^[grow^]=[n] if^ n>0 {this^(n-1)} print^(a.len)} call(3)', 'holds local owned value')
+    negative('inference_owned_argument', 'let^ use=p^ x {} var^ a:i32^[grow^]={} use(a)', 'pass owned values by reference')
+    negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:i32^[grow^]={n} if^ n>0 {this^(n-1)} print^(a.len)} call(3)', 'holds local owned value')
     negative('inference_ungrounded_recursion', 'let^ forever=f^ x {this^(x)} print^(forever(1))', 'cannot infer return type')
     negative('inference_abstract_contract', 'def^ A {abstract^ read:f^ self^,x ->i32^;}', 'requires a type annotation')
     suite.finish()

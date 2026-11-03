@@ -72,7 +72,7 @@ if^r fits^i32^ {print^(r)}
     positive('generic_array_and_callable_arguments', '''
 def^Box<T> {self^{value:T}}
 let^B=Box<i32^[2]>
-let^b=B{value=[4,5]}
+let^b=B{value={4,5}}
 print^(b.value[1])
 ''', '5\n')
     positive('specialization_keeps_nested_function_scope', '''

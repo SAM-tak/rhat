@@ -22,7 +22,7 @@ externC^ abs:f^ n:i32^ ->i32^;
 let^ magnitude=f^ n:i32^ ->i32^ { abs(n) }
 var^ exponent:i32^=0
 let^ mantissa=frexp(8.0, ref^ exponent)
-var^ bytes:u8^[4]=[1,2,3,4]
+var^ bytes:u8^[4]={1,2,3,4}
 memset(bytes[1 .. 3], 7, 2)
 print^(hypot(3.0,4.0), mantissa, exponent, strlen("hello"), abs(-5), magnitude(-6))
 print^(bytes[0], bytes[1], bytes[2], bytes[3])
@@ -70,8 +70,8 @@ Nest ffi_nest(Nest n) {{ n.p.lo++; n.ok = !n.ok; n.w[2] = (uint16_t)(n.w[0] + n.
 struct^ Point { x:f64^ = 0.0, y:f64^ = 0.0 }
 def^ Mixed { self^{ a:i32^ = 0, b:i8^ = 0, c:i64^ = 0 } }
 def^ Pair { self^{ lo:i32^ = 0, hi:i32^ = 0 } }
-def^ Big { self^{ v:i64^[4] = [1, 2, 3, 4] } }
-def^ Nest { self^{ p:Pair = Pair{}, ok:bool^ = false^, w:u16^[3] = [1, 2, 0] } }
+def^ Big { self^{ v:i64^[4] = {1, 2, 3, 4} } }
+def^ Nest { self^{ p:Pair = Pair{}, ok:bool^ = false^, w:u16^[3] = {1, 2, 0} } }
 def^ LLDiv { self^{ quot:i64^ = 0, rem:i64^ = 0 } }
 externC^ ffi_add:f^ a:Point, b:Point -> Point;
 externC^ ffi_mix:f^ m:Mixed, k:i32^ -> Mixed;
@@ -86,7 +86,7 @@ let^ m = ffi_mix(Mixed{a = 1, b = 3, c = 100}, 5)
 let^ b = ffi_big(Big{})
 var^ p = Point{x = 2.0, y = 3.0}
 ffi_scale(ref^ p, 2.0)
-var^ ps:Point[2] = [Point{x = 1.0, y = 1.0}, Point{x = 2.0, y = 3.0}]
+var^ ps:Point[2] = {Point{x = 1.0, y = 1.0}, Point{x = 2.0, y = 3.0}}
 let^ n = ffi_nest(Nest{})
 let^ q = lldiv(17, 5)
 print^(s.x, s.y, m.a, m.b, m.c, ffi_pair_sum(Pair{lo = 40, hi = 2}))
@@ -193,7 +193,7 @@ exportC^ let^ r_twice = f^ x:i64^ -> i64^ { x * 2 }
 exportC^ let^ r_mid = f^ a:Point, b:Point -> Point { Point{x = (a.x + b.x) / 2.0, y = (a.y + b.y) / 2.0} }
 exportC^ let^ r_count = p^ n:i64^ -> i64^ { if^ n = 0 { return^ 0 } return^ ffi_recurse(n - 1) + 1 }
 exportC^ let^ r_hold = p^ n:i64^ -> i64^ {
-  var^ buf:i64^[grow^] = []
+  var^ buf:i64^[grow^] = {}
   buf.push(n)
   if^ n = 0 { return^ 0 }
   return^ ffi_hold(n - 1) + buf[0]
@@ -600,13 +600,13 @@ mock_fail()
     negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
     negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
              "exportL^ parameter 'b' needs a number, bool^, string^ or exportL^ def^ type annotation")
-    negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[slice^] { [] }', 'exportL^ result must be')
+    negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[slice^] { {} }', 'exportL^ result must be')
     negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
 
     # externC^ function types: C function pointers to externC^ and exportC^ functions.
     positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[slice^], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
 exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
-var^ xs:i32^[5] = [3, 1, 4, 1, 5]
+var^ xs:i32^[5] = {3, 1, 4, 1, 5}
 qsort(xs[0 .. 5], 5, 4, descending)
 print^(xs[0], xs[1], xs[2], xs[3], xs[4])
 ''', '5 4 3 1 1\n')

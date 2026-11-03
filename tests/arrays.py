@@ -5,32 +5,35 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
-    positive('literal_attributes_inferred_and_typed', '''
-var^a=[max^10;0,1,2,3]
-var^b=u32^[max^10;0,1,2,3]
-var^c=[grow^;1,2]
-var^d=i64^[flex^;7,8]
-let^e=u32^[;10,11]
+    positive('literal_typed_and_contextual', '''
+var^a=i64^[max^10]{0,1,2,3}
+var^b=u32^[max^10]{0,1,2,3}
+var^c=i32^[grow^]{1,2}
+var^d=i64^[flex^]{7,8}
+let^e=u32^[2]{10,11}
+let^f={10,11,12}
+let^g=i32^[]{4,5,6}
+let^h:i32^[]=i32^[]{1}
 a.push(4) b.push(4) c.push(3) d.pop()
-print^(a.len,b[4],c[2],d.len,e[1])
-''', '5 4 3 1 11\n')
+print^(a.len,b[4],c[2],d.len,e[1],f[2],g.len,h[0])
+''', '5 4 3 1 11 12 3 1\n')
     positive('literal_reference_auto_borrow', '''
 def^B {self^{n:i32^}}
-var^a:B[4]=[B{n=0},B{n=1},B{n=2},B{n=3}]
-let^refs=[ref^;a[0],a[1],a[2],a[3]]
-let^typed=B[ref^;a[0],a[1],ref^a[2],ref^a[3]]
-var^bounded=B[ref^max^10;a[0],a[1]]
-var^growing=[ref^grow^;a[2],ref^a[3]]
-var^flexing=B[ref^flex^;a[1]]
+var^a:B[4]={B{n=0},B{n=1},B{n=2},B{n=3}}
+let^refs=B[ref^ 4]{a[0],a[1],a[2],a[3]}
+let^typed=B[ref^ 4]{a[0],a[1],ref^a[2],ref^a[3]}
+var^bounded=B[ref^max^10]{a[0],a[1]}
+var^growing=B[ref^grow^]{a[2],ref^a[3]}
+var^flexing=B[ref^flex^]{a[1]}
 a[0].n:=42
 bounded.push(ref^a[2]) growing.push(ref^a[0]) flexing.pop()
 print^(refs[0].n,typed[0].n,typed[3].n,bounded.len,growing[2].n,flexing.len)
 ''', '42 42 3 3 42 0\n')
     positive('literal_references_are_not_borrowed_twice', '''
-var^a:i32^[2]=[7,8]
+var^a:i32^[2]={7,8}
 let^r=ref^a[0]
-let^refs=[ref^;r,ref^a[1]]
-let^typed=i32^[ref^;r,ref^a[1]]
+let^refs=i32^[ref^ 2]{r,ref^a[1]}
+let^typed=i32^[ref^ 2]{r,ref^a[1]}
 print^(*refs[0],*refs[1],*typed[0])
 ''', '7 8 7\n')
     positive('literal_dynamic_references_are_not_borrowed_twice', '''
@@ -38,55 +41,56 @@ def^Shape {abstract^value:f^self^ ->i32^;}
 def^B:Shape {self^{} value=f^self^ ->i32^ {7}}
 var^b=B{}
 let^view:ref^dyn^Shape=ref^b
-let^refs=[ref^;view]
+let^refs={view}
 print^(refs[0].value())
 ''', '7\n')
     positive('literal_empty_and_contextual', '''
-var^a:i64^[max^10]=[max^10;]
-var^b=u32^[grow^;]
-var^c:i64^[grow^]=[grow^;0,1]
+var^a:i64^[max^10]={}
+var^b=u32^[grow^]{}
+var^c:i64^[grow^]={0,1}
 var^x:i32^=42
-let^refs:i32^[ref^2]=[ref^;x,x]
+let^refs:i32^[ref^2]={ref^x,ref^x}
+let^owned:i32^[]={}
 b.push(7) a.push(9)
-print^(a[0],b[0],c[1],*refs[1])
-''', '9 7 1 42\n')
+print^(a[0],b[0],c[1],*refs[1],owned.len)
+''', '9 7 1 42 0\n')
     positive('literal_borrow_once_and_lifetime', '''
 let^index=p^calls:ref^i64^ {*calls+=1 return^i64^(0)}
 var^calls:i64^=0
-var^a:i32^[1]=[7]
-let^refs=[ref^;a[index(ref^calls)],ref^a[index(ref^calls)]]
+var^a:i32^[1]={7}
+let^refs=i32^[ref^ 2]{a[index(ref^calls)],ref^a[index(ref^calls)]}
 print^(calls,*refs[0],*refs[1])
 ''', '2 7 7\n')
     positive('literal_nominal_and_nested_elements', '''
 def^B {self^{n:i64^}}
-let^records=B[max^10;{n=7},{n=8}]
-let^nested=i32^[2][max^3;[1,2],[3,4]]
-print^(records[1].n,nested[1][0])
-''', '8 3\n')
+let^records=B[max^10]{{n=7},{n=8}}
+let^nested=i32^[2][max^3]{{1,2},{3,4}}
+let^grid={{1,2},{3,4}}
+print^(records[1].n,nested[1][0],grid[1][1])
+''', '8 3 4\n')
     positive('literal_borrowed_parameter_return', '''
-let^borrow=f^a:ref^i32^[2] {[ref^;a[0],a[1]]}
-var^a:i32^[2]=[7,8]
+let^borrow=f^a:ref^i32^[2] {i32^[ref^ 2]{a[0],a[1]}}
+var^a:i32^[2]={7,8}
 let^refs=borrow(ref^a)
 print^(*refs[0],*refs[1])
 ''', '7 8\n')
     for name,source,error in [
-        ('missing_separator','let^a=[grow^ 1,2]', "expected ';'"),
-        ('typed_missing_separator','let^a=i32^[max^10 1,2]', "expected ']'"),
-        ('invalid_order','let^a=[grow^ref^;1]', "expected ';'"),
-        ('over_capacity','let^a=[max^2;1,2,3]', 'holds at most 2'),
-        ('borrow_literal','let^a=[ref^max^10;0,1,2]', 'cannot borrow a temporary'),
-        ('borrow_temporary','def^B {} let^a=B[ref^;B{}]', 'cannot borrow a temporary'),
-        ('borrow_let','let^x=1 let^a=[ref^;x]', 'requires var^'),
-        ('borrow_escape','let^bad=f^ {var^x=1 return^[ref^;x]} let^r=bad()', 'cannot return a reference'),
-        ('borrow_scope','var^x=1 var^refs:i32^[ref^max^3]=[] do^{var^local=2 refs:=[ref^max^3;local]}', 'outlive'),
-        ('wrong_kind','let^a:i32^[grow^]=[max^3;1,2]', 'cannot initialize'),
-        ('wrong_type','var^x:i64^=7 let^a=i32^[ref^;x]', 'type'),
-        ('empty_untyped','let^a=[max^10;]', 'needs a type annotation'),
-        ('empty_fixed','let^a=i32^[ref^;]', 'needs at least one element'),
-        ('slice_literal','let^a=i32^[slice^;1,2]', 'slice borrows existing storage'),
-        ('borrow_prevents_shrink','var^a:i32^[flex^]=[1,2] let^refs=[ref^;a[0]] a.clear()',
+        ('brackets','let^a=[1,2]', 'array literals are written {a, b}'),
+        ('bare_type','let^a=i32^[grow^]', 'needs {elements} or (arguments)'),
+        ('over_capacity','let^a=i32^[max^2]{1,2,3}', 'holds at most 2'),
+        ('borrow_literal','let^a=i32^[ref^max^10]{0,1,2}', 'cannot borrow a temporary'),
+        ('borrow_temporary','def^B {} let^a=B[ref^ 1]{B{}}', 'cannot borrow a temporary'),
+        ('borrow_let','let^x=1 let^a=i64^[ref^ 1]{x}', 'requires var^'),
+        ('borrow_escape','let^bad=f^ {var^x=1 return^i32^[ref^ 1]{x}} let^r=bad()', 'cannot return a reference'),
+        ('borrow_scope','var^x=1 var^refs:i32^[ref^max^3]={} do^{var^local=2 refs:=i32^[ref^max^3]{local}}', 'outlive'),
+        ('wrong_kind','let^a:i32^[grow^]=i32^[max^3]{1,2}', 'cannot initialize'),
+        ('wrong_owner','let^a:i32^[]=i64^[]{1}', 'cannot initialize'),
+        ('wrong_type','var^x:i64^=7 let^a=i32^[ref^ 1]{x}', 'type'),
+        ('wrong_count','let^a=i32^[2]{1}', 'requires exactly 2 elements'),
+        ('slice_literal','let^a=i32^[slice^]{1,2}', 'slice borrows existing storage'),
+        ('borrow_prevents_shrink','var^a:i32^[flex^]={1,2} let^refs=i32^[ref^ 1]{a[0]} a.clear()',
          "while 'refs' may refer into it"),
-        ('borrow_earlier_element','let^take=p^a:ref^i32^[flex^] {a.pop() return^i32^(0)} var^a:i32^[flex^]=[1,2] let^refs=[ref^;a[0],take(ref^a)]',
+        ('borrow_earlier_element','let^take=p^a:ref^i32^[flex^] {a.pop() return^i32^(0)} var^a:i32^[flex^]={1,2} let^refs=i32^[ref^ 2]{a[0],take(ref^a)}',
          'earlier operand may refer into it'),
     ]:
         negative('literal_'+name,source,error)
@@ -94,25 +98,25 @@ print^(*refs[0],*refs[1])
 let^make=f^n {i64^[](n,7)}
 var^a=make(3)
 a[1]:=42
-var^empty:i64^[]=[]
+var^empty:i64^[]={}
 let^zero=i64^[](0,9)
 print^(a.len,a[0],a[1],a[2],empty.len,zero.len,a.bytes.len)
 ''', '3 7 42 7 0 0 24\n')
     positive('sized_copy_sources', '''
-var^fixed:i32^[3]=[1,2,3]
-var^grow:i32^[grow^]=[4,5]
-var^bounded:i32^[max^8]=[6,7]
+var^fixed:i32^[3]={1,2,3}
+var^grow:i32^[grow^]={4,5}
+var^bounded:i32^[max^8]={6,7}
 let^a=i32^[](fixed)
 let^b=i32^[](ref^grow)
 let^c=i32^[](bounded[..])
-let^d=i32^[]([8,9])
+let^d=i32^[]({8,9})
 fixed[0]:=99 grow[0]:=99 bounded[0]:=99
 let^e=i32^[](a)
 print^(a[0],b[0],c[0],d[0],e.len,e[2])
 ''', '1 4 6 8 3 3\n')
     positive('sized_copy_return_independent', '''
 let^make=f^n:i64^ {
- var^source:i64^[grow^]=[n,n+1]
+ var^source:i64^[grow^]={n,n+1}
  return^i64^[](source[..])
 }
 var^a=make(41)
@@ -137,14 +141,14 @@ let^b=i64^[](0,initial(ref^calls))
 print^(calls,a.len,a[0],a[2],b.len)
 ''', '21 3 11 11 0\n')
     positive('sized_empty_typed_value', '''
-var^a=i32^[]
-var^b:i32^[]=[1,2]
+var^a=i32^[]{}
+var^b:i32^[]={1,2}
 print^(a.len,b.len,b[1])
 ''', '0 2 2\n')
     positive('sized_struct_and_fixed_elements', '''
 def^Pair {self^{a:i64^,b:i64^}}
 let^pairs=Pair[](2,Pair{a=7,b=8})
-var^source:i64^[2][2]=[[1,2],[3,4]]
+var^source:i64^[2][2]={{1,2},{3,4}}
 let^arrays=i64^[2][](source)
 print^(pairs[1].a,pairs[1].b,arrays[1][0])
 ''', '7 8 3\n')
@@ -165,9 +169,9 @@ print^(copies.len,copies[1].n)
              'owned')
     negative('sized_forbid_by_value','let^read=f^a:i32^[] {a.len} let^a=i32^[](2,1) print^(read(a))',
              'reference')
-    negative('sized_forbid_owned_elements','let^a=i32^[grow^][]',
+    negative('sized_forbid_owned_elements','let^a=i32^[grow^][]{}',
              'nonempty fixed-size')
-    negative('sized_wrong_element','let^a=i32^[](["x"])', 'array or slice')
+    negative('sized_wrong_element','let^a=i32^[]({"x"})', 'array or slice')
     negative('sized_wrong_source','let^a=i32^[](42)', 'array or slice')
     negative('sized_wrong_count','let^n:i32^=2 let^a=i32^[](n,1)', 'array length must be i64^')
     negative('sized_wrong_initial','let^a=i32^[](2,"x")', "initial value must be 'i32^'")
@@ -175,14 +179,14 @@ print^(copies.len,copies[1].n)
     negative('sized_no_grow_conversion','let^a:i32^[grow^]=i32^[](2,1)', 'cannot initialize')
     negative('sized_reference_escape','let^bad=f^ {var^x=1 return^i32^[ref^](2,ref^x)} let^a=bad()',
              'cannot return a reference')
-    negative('sized_copy_reference_escape','let^bad=f^ {var^x=1 let^a:i32^[ref^1]=[ref^x] return^i32^[ref^](a)} let^b=bad()',
+    negative('sized_copy_reference_escape','let^bad=f^ {var^x=1 let^a:i32^[ref^1]={ref^x} return^i32^[ref^](a)} let^b=bad()',
              'cannot return a reference')
     suite.runtime_failure('sized_negative_count','let^a=i32^[](-1,0)', 'data stack')
     suite.runtime_failure('sized_overflow_count','let^a=i64^[](9223372036854775807,0)', 'data stack')
     suite.runtime_failure('sized_bounds','let^a=i32^[](2,7) print^(a[2])', 'out of bounds')
     positive('capped_operations', '''
 var^a=i32^[max^](4)
-let^src=[7,8]
+let^src={7,8}
 a.push(1)
 let^r=a.push(2)
 a.append(src[..])
@@ -209,9 +213,8 @@ for^ k from^ 1 to^ 1000 {
 }
 print^(w.xs.len,w.xs[1],q.len,q[0],copy[0],total)
 ''', '2 9 1 3 3 1000\n')
-    negative('capped_literal', 'var^a:i32^[max^]=[1,2]', 'is built with i32^[max^](capacity)')
-    negative('capped_empty_value', 'let^a=i32^[max^]', 'is built with')
-    negative('capped_literal_attribute', 'let^a=[max^;1,2]', 'expected an array length')
+    negative('capped_literal', 'var^a:i32^[max^]={1,2}', 'is built with i32^[max^](capacity)')
+    negative('capped_empty_value', 'let^a=i32^[max^]{}', 'is built with')
     negative('capped_wrong_capacity', 'let^n:i32^=2 let^a=i32^[max^](n)',
              'array capacity must be i64^')
     negative('capped_constructor_arity', 'let^a=i32^[max^](1,2)', 'expects a capacity')
@@ -219,7 +222,7 @@ print^(w.xs.len,w.xs[1],q.len,q[0],copy[0],total)
     negative('capped_forbid_implicit_copy', 'let^a=i32^[max^](2) let^b=a', 'owned')
     suite.runtime_failure('capped_push_full', 'var^a=i32^[max^](1) a.push(1) a.push(2)',
                           'bounded array is full')
-    suite.runtime_failure('capped_append_full', 'var^a=i32^[max^](2) let^s=[1,2,3] a.append(s[..])',
+    suite.runtime_failure('capped_append_full', 'var^a=i32^[max^](2) let^s={1,2,3} a.append(s[..])',
                           'bounded array is full')
     suite.runtime_failure('capped_negative_capacity', 'let^a=i32^[max^](-1)', 'data stack')
     suite.runtime_failure('capped_overflow_capacity', 'let^a=i64^[max^](9223372036854775807)',

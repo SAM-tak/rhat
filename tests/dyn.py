@@ -35,7 +35,7 @@ def^ Circle : Shape {
 }
 var^ a = Square{}
 var^ b = Circle{}
-var^ all:(ref^ dyn^ Shape)[2] = [ref^ a, ref^ b]
+var^ all:(ref^ dyn^ Shape)[2] = {ref^ a, ref^ b}
 print^ total(all[..])
 for^ var^ i:i64^ = 0 while^ i < 2 next^ i += 1 { all[i].describe() all[i].scale(2.0) }
 print^ total(all[..])
@@ -113,7 +113,7 @@ print^(g(ref^ k), g(ref^ k))
     negative('dyn_recursion_holding_owned', '''def^ W { abstract^ go:p^ self^, n:i64^; }
 def^ A : W {
   self^{ z:i32^ = 0 }
-  go = p^ self^, n:i64^ { var^ buf:i64^[grow^] = []  buf.push(n)  let^ me:ref^ dyn^ W = self^  if^ n > 0 { me.go(n - 1) } }
+  go = p^ self^, n:i64^ { var^ buf:i64^[grow^] = {}  buf.push(n)  let^ me:ref^ dyn^ W = self^  if^ n > 0 { me.go(n - 1) } }
 }
 var^ a = A{}
 a.go(2)''', "holds local owned value 'buf'")

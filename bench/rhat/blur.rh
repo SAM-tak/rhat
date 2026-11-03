@@ -18,8 +18,8 @@ let^blur = p^src:ref^u8^[grow^], dst:ref^u8^[grow^], w:i64^{
     }
 }
 let^w:i64^= 1024 # BENCH_N
-var^a:u8^[grow^] = []
-var^b:u8^[grow^] = []
+var^a:u8^[grow^] = {}
+var^b:u8^[grow^] = {}
 var^r:u64^= 12345
 var^i:i64^= 0
 repeat^while^i < w * w {

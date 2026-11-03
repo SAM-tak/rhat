@@ -479,9 +479,10 @@ void inferred_unused(Program *p, Function *f)
         }
     }
     if (param->capture) {
-        // Failed entry analysis can prevent the capture's call shape from existing.
-        for (int j = 0; j < p->entry->instances.n; j++) {
-            Instance *in = p->entry->instances.v[j];
+        // Any failed analysis, at the top level or inside a function body, can
+        // stop before the only calls that would give the capture its shape.
+        for (int j = 0; j < p->instances.n; j++) {
+            Instance *in = p->instances.v[j];
             if (in->invalid) {
                 return;
             }
@@ -1212,6 +1213,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (e->invalid) {
         tool_abort();
     }
+    empty_array_braces(e, expected);
     if (e->constant_spec) {
         return type_spec(c->p, e->constant_spec);
     }
@@ -2440,6 +2442,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     if (!e || c->blocked) {
         return n;
     }
+    empty_array_braces(e, want);
     n->kind = e->kind;
     n->op = e->text;
     if (e->optional) {

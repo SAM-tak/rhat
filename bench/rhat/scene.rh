@@ -6,7 +6,7 @@ def^Xf { self^{ m:f32^[9], t:F3 } }
 def^Node { self^{ id:i32^, local:Xf, world:Xf, kids:u32^[4], nkids:u8^} }
 
 let^identity = f^-> Xf {
-    return^Xf{m = [1, 0, 0, 0, 1, 0, 0, 0, 1], t = F3{ x = 0, y = 0, z = 0 }}
+    return^Xf{m = {1, 0, 0, 0, 1, 0, 0, 0, 1}, t = F3{ x = 0, y = 0, z = 0 }}
 }
 let^rotation = f^seed:u64^-> f32^[9] {
     let^axis = seed % 3
@@ -27,9 +27,9 @@ let^rotation = f^seed:u64^-> f32^[9] {
             }
         }
     }
-    if^axis = 0 { return^[1, 0, 0, 0, c, -s, 0, s, c] }
-    if^axis = 1 { return^[c, 0, s, 0, 1, 0, -s, 0, c] }
-    return^[c, -s, 0, s, c, 0, 0, 0, 1]
+    if^axis = 0 { return^{1, 0, 0, 0, c, -s, 0, s, c} }
+    if^axis = 1 { return^{c, 0, s, 0, 1, 0, -s, 0, c} }
+    return^{c, -s, 0, s, c, 0, 0, 0, 1}
 }
 let^compose = p^p:ref^Xf, l:ref^Xf, w:ref^Xf {
     var^i:i32^= 0
@@ -62,7 +62,7 @@ let^make = p^pool:ref^Node[grow^], depth:i64^, seed:u64^-> u32^{
             }
         },
         world = identity(),
-        kids = [0, 0, 0, 0],
+        kids = {0, 0, 0, 0},
         nkids = 0
     })
     if^depth = 0 { return^self }
@@ -87,7 +87,7 @@ let^update = p^pool:ref^Node[grow^], index:u32^, parent:ref^Xf {
     }
 }
 let^depth:i64^= 12 # BENCH_N
-var^pool:Node[grow^] = []
+var^pool:Node[grow^] = {}
 let^root = make(ref^pool, depth, 12345)
 var^ident = identity()
 var^total:i64^= 0

@@ -15,7 +15,7 @@ let^ sum = f^ ...:i64^ -> i64^ {
 let^ label = f^ name:string^, ...:i64^ -> i64^ { sum(...) + ....len }
 let^ twice = f^ xs:i64^[slice^] -> i64^ { sum(xs...) * 2 }
 let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return^ this^(n - 1, ...) }
-var^ values:i64^[3] = [1, 2, 3]
+var^ values:i64^[3] = {1, 2, 3}
 print^(sum(), sum(5), sum(1, 2, 3), label("x", 10, 20), twice(values[0 .. 3]), sum(values...), depth(3, 4, 5))
 ''', '0 5 6 32 12 6 9\n')
 
@@ -53,15 +53,15 @@ for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i], ...[i].byt
         suite.case('variadic_command_arguments', arguments)
 
     negative('variadic_not_last', 'let^ s = f^ ...:i32^, x:i32^ { }', 'must be last')
-    negative('variadic_untyped', 'let^ s = f^ ... { }', 'needs an element type')
+    negative('variadic_untyped', 'let^ s = f^ ... [ ]', 'needs an element type')
     negative('variadic_overload', 'let^ s = f^ ...:i32^ -> i64^ { ....len } & f^ x:string^ -> i64^ { 0 }', 'cannot be overloaded')
     negative('variadic_missing_fixed', 'let^ s = f^ x:i32^, ...:i32^ -> i64^ { ....len }\nprint^(s())', 'expects at least 1 arguments')
     negative('variadic_element_type', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nprint^(s(1, "x"))', "expected 'i32^'")
-    negative('variadic_mixed_forward', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nvar^ a:i32^[1] = [1]\nprint^(s(1, a...))', 'only variadic argument')
-    negative('variadic_forward_plain', 'let^ g = f^ x:i32^ -> i32^ { x }\nvar^ a:i32^[1] = [1]\nprint^(g(a...))', 'forwards only into a variadic parameter')
+    negative('variadic_mixed_forward', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nvar^ a:i32^[1] = {1}\nprint^(s(1, a...))', 'only variadic argument')
+    negative('variadic_forward_plain', 'let^ g = f^ x:i32^ -> i32^ { x }\nvar^ a:i32^[1] = {1}\nprint^(g(a...))', 'forwards only into a variadic parameter')
     negative('variadic_escape_binding', 'let^ id = f^ ...:i32^ -> i32^[slice^] { return^ ... }\nlet^ s = id(1, 2)\nprint^(s[0])', 'outlive its owner')
     negative('variadic_escape_return', 'let^ id = f^ ...:i32^ -> i32^[slice^] { return^ ... }\nlet^ wrap = f^ -> i32^[slice^] { return^ id(1, 2) }\nprint^(wrap()[0])', 'cannot return a reference')
-    negative('variadic_owned_elements', 'let^ s = f^ ...:i32^[grow^] -> i64^ { ....len }\nprint^(s(i32^[grow^]))', 'cannot own storage')
+    negative('variadic_owned_elements', 'let^ s = f^ ...:i32^[grow^] -> i64^ { ....len }\nprint^(s(i32^[grow^]{}))', 'cannot own storage')
     negative('variadic_extern', 'externC^ printf:p^ format:string^, ...:i32^ ->i32^;', 'variadic')
     suite.finish()
 

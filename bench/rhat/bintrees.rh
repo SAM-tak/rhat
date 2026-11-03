@@ -25,14 +25,14 @@ let^check = f^pool:ref^Node[grow^], index:i32^-> i64^{
 }
 
 let^tree_check = p^depth:i64^-> i64^{
-    var^pool:Node[grow^] = []
+    var^pool:Node[grow^] = {}
     let^root = make(ref^pool, depth)
     return^check(ref^pool, root)
 }
 
 let^maxdepth:i64^= 15 # BENCH_N
 print^tree_check(maxdepth + 1)
-var^long:Node[grow^] = []
+var^long:Node[grow^] = {}
 let^root = make(ref^long, maxdepth)
 var^d:i64^= 4
 repeat^while^d <= maxdepth {

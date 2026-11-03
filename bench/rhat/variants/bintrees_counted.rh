@@ -25,7 +25,7 @@ let^check = f^pool:ref^Node[grow^], index:i32^-> i64^{
 }
 
 let^tree_check = p^depth:i64^-> i64^{
-    var^pool:Node[grow^] = []
+    var^pool:Node[grow^] = {}
     var^count:i32^= 0
     let^root = make(ref^pool, ref^count, depth)
     return^check(ref^pool, root)
@@ -41,7 +41,7 @@ let^power2 = f^n:i64^-> i64^{
 
 let^maxdepth:i64^= 15 # BENCH_N
 print^(tree_check(maxdepth + 1))
-var^long:Node[grow^] = []
+var^long:Node[grow^] = {}
 var^count:i32^= 0
 let^root = make(ref^long, ref^count, maxdepth)
 var^d:i64^= 4

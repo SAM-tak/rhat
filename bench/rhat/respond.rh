@@ -89,7 +89,7 @@ let^handle = p^out:ref^u8^[grow^], seed:u64^-> Result {
     return^Result{hash = hash(out[..]), bytes = out.len}
 }
 let^n:i64^= 100000 # BENCH_N
-var^out:u8^[grow^] = []
+var^out:u8^[grow^] = {}
 var^seed:u64^= 12345
 var^h:u64^= 0
 var^bytes:i64^= 0

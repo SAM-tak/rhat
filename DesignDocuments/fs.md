@@ -6,7 +6,7 @@
 ```rhat
 let^ fs = import^ std.fs
 
-var^ wad:u8^[grow^] = []
+var^ wad:u8^[grow^] = {}
 let^ loaded = fs.read("freedoom1-e1m1.wad", ref^ wad)       # 全体を wad の末尾に追加
 for^ loaded { when^ fits^ fs.Error: print^("cannot read") other^: print^(wad.len) }
 

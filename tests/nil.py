@@ -79,7 +79,7 @@ print^(nil^?.missing?)
 ''', '9 77\n9 88\n10 false\n12 66\n9\nfalse\n')
 
     positive('nil_chain_lazy', '''
-def^ Node {self^{values:i32^[2]=[5,6]} read=f^ self^,x:i32^ ->i32^ {x+1}}
+def^ Node {self^{values:i32^[2]={5,6}} read=f^ self^,x:i32^ ->i32^ {x+1}}
 let^ make=p^ calls:ref^ i32^,yes:bool^ ->Node|nil^ {*calls+=1 return^ if^ yes: Node.new() el^: nil^;}
 let^ index=p^ calls:ref^ i32^ ->i64^ {*calls+=10 return^ 1}
 let^ arg=p^ calls:ref^ i32^ ->i32^ {*calls+=100 return^ 7}
@@ -91,16 +91,16 @@ print^(make(ref^ calls,true^)?.read(arg(ref^ calls))??0,calls)
 ''', '0 1\n6 12\n0 13\n8 114\n')
 
     positive('nil_array', '''
-let^ array:i64^[2]|nil^=[10,20]
+let^ array:i64^[2]|nil^={10,20}
 print^(array?.len??0,array?[1]??0)
-var^ owner:i32^[grow^]=[3,4]
+var^ owner:i32^[grow^]={3,4}
 var^ ref:ref^ i32^[grow^]|nil^=ref^ owner
 print^(ref?[1]??0)
 ref:=nil^
 print^(ref?[999999999]??7)
 let^ view:i32^[slice^]|nil^=owner[.. 2]
 print^(view?[0]??0,view?.len??0)
-let^ fallback:i64^[2]=[7,8]
+let^ fallback:i64^[2]={7,8}
 let^ copy=array??fallback
 print^(copy[0],copy[1])
 ''', '2 20\n4\n7\n3 2\n10 20\n')
@@ -144,7 +144,7 @@ print^(plain)
     positive('nil_parallel_assignment', '''
 let^ tick=p^ calls:ref^ i32^ ->i32^ {*calls+=1 return^ *calls}
 var^ calls=0
-var^ a:(i32^|nil^)[3]=[1,nil^,3]
+var^ a:(i32^|nil^)[3]={1,nil^,3}
 a[0],a[1],a[2] ?+= tick(ref^ calls),tick(ref^ calls),tick(ref^ calls)
 print^(a[0]??0,a[1]??0,a[2]??0,calls)
 a[0],a[2] ?:= a[2],a[0]
@@ -163,7 +163,7 @@ var^ maybe:ref^ Item|nil^=ref^ item
 maybe?.x ?+= tick(ref^ calls)
 maybe:=nil^
 maybe?.x ?+= tick(ref^ calls)
-var^ a:(i32^|nil^)[2]=[1,nil^]
+var^ a:(i32^|nil^)[2]={1,nil^}
 var^ ref:ref^ (i32^|nil^)[2]|nil^=ref^ a
 ref?[index(ref^ calls)] ?:= tick(ref^ calls)
 ref:=nil^
@@ -242,7 +242,7 @@ print^(read(a),read(b))
 ''', '7 0\n')
 
     positive('nil_bounds_present', '''
-var^ a:i32^[2]=[1,2]
+var^ a:i32^[2]={1,2}
 var^ ref:ref^ i32^[2]|nil^=ref^ a
 print^(ref?[-1]??0)
 ''', 'array index out of bounds', failure=True)
@@ -270,9 +270,9 @@ print^(ref?[-1]??0)
         ('nil_loop_invariant', 'var^ x:Item|nil^=Item.new() if^ x? {repeat^ 2 {print^(x.n) x:=nil^}}', 'field access requires'),
         ('nil_loop_exit', 'var^ x:Item|nil^=Item.new() repeat^ while^ x? {break^} print^(x.n)', 'field access requires'),
         ('nil_borrow_return', 'let^ bad=f^ ->ref^ i32^|nil^ {var^ x=1 return^ ref^ x} let^ r=bad()', 'cannot return a reference'),
-        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[slice^]|nil^ {var^ a:i32^[grow^]=[1] let^ ref:ref^ i32^[grow^]|nil^=ref^ a return^ ref?[.. 1]} let^ r=bad()', 'cannot return a reference'),
+        ('nil_chain_borrow_return', 'let^ bad=f^ ->i32^[slice^]|nil^ {var^ a:i32^[grow^]={1} let^ ref:ref^ i32^[grow^]|nil^=ref^ a return^ ref?[.. 1]} let^ r=bad()', 'cannot return a reference'),
         ('nil_coalesce_borrow_return', 'let^ bad=f^ ->ref^ i32^ {var^ a=1 var^ b=2 let^ x:ref^ i32^|nil^=ref^ a return^ x??ref^ b} let^ r=bad()', 'cannot return a reference'),
-        ('nil_array_history', 'var^ a:(ref^ i32^|nil^)[grow^]=[] do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
+        ('nil_array_history', 'var^ a:(ref^ i32^|nil^)[grow^]={} do^{var^ local=1 a.push(ref^ local)}', 'outlive'),
         ('nil_guard_store_borrow', 'var^ outer:ref^ i32^|nil^=nil^ do^{var^ local=1 outer ?:= ref^ local}', 'outlive'),
         ('nil_compare_order', 'let^ x:i32^|nil^=1 print^(x<nil^)', 'only equality'),
     ]

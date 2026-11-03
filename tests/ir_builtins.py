@@ -10,7 +10,7 @@ let^ tick=p^ counter:ref^ i32^, result:i64^ -> i64^ {
     *counter := *counter+1; return^ result
 }
 var^ counter:i32^=0
-var^ a:i32^[grow^]=[10,20,30,40]
+var^ a:i32^[grow^]={10,20,30,40}
 let^ view=a[tick(ref^ counter,1) .. tick(ref^ counter,3)]
 a.truncate(tick(ref^ counter,3))
 a.append(view)
@@ -18,7 +18,7 @@ assert^(tick(ref^ counter,1)=1)
 print^(counter,a.len,a[3],a[4])
 ''', '4 5 20 30\n')
     positive('inline_append_overlap_both_directions', '''
-var^ a:u8^[grow^]=[1,2,3,4,5,6,7,8]
+var^ a:u8^[grow^]={1,2,3,4,5,6,7,8}
 let^ held=a[.. 8]
 a.truncate(2)
 a.append(held[.. 6])
@@ -28,7 +28,7 @@ a.append(held[2 .. 8])
 print^(a.len,a[0],a[2],a[5])
 ''', '8 1 6\n6 1 3 6\n')
     high_water('view_append_keeps_high_water', '''
-var^ a:i32^[grow^]=[1,2,3,4]
+var^ a:i32^[grow^]={1,2,3,4}
 let^ held=a[.. 4]
 a.truncate(1)
 a.append(held[2 .. 4])
@@ -40,10 +40,10 @@ assert^(a.len=4)
 print^(held[3])
 ''', [16,16,16], '9\n')
     runtime_failure('slice_maximum_inclusive_end',
-                    'let^ a:i32^[1]=[1]; let^ n:i64^=9223372036854775807; let^ v=a[n to^ n]',
+                    'let^ a:i32^[1]={1}; let^ n:i64^=9223372036854775807; let^ v=a[n to^ n]',
                     'line 1: slice range out of bounds')
     runtime_failure('truncate_minimum_length',
-                    'var^ a:i32^[grow^]=[1]; a.truncate(-9223372036854775808)',
+                    'var^ a:i32^[grow^]={1}; a.truncate(-9223372036854775808)',
                     'line 1: truncate length out of bounds')
 
     if suite.args.checks_only or not (
@@ -52,7 +52,7 @@ print^(held[3])
         return
 
     path=source('runtime_boundary', '''
-var^ a:i32^[grow^]=[1,2,3]
+var^ a:i32^[grow^]={1,2,3}
 let^ v=a[1 .. 3]
 a.append(v)
 a.truncate(4)

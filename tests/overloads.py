@@ -27,7 +27,7 @@ print^("× ⋅ ≦ ≤ ≧ ≥ ≠",`×`)
 '''
     positive('overload_contextual_numeric_literals', numeric_overloads+'''
 let^text="hello"
-var^message:u8^[grow^]=[]
+var^message:u8^[grow^]={}
 message.append(text.bytes[0 .. min(text.bytes.len,160)])
 let^alias=min
 let^wide:i64^=200
@@ -86,7 +86,7 @@ let^a=F2{x=4.0,y=5.0}
 let^b=F2{x=1.0,y=1.0}
 var^source=a
 let^read=ref^source
-let^items=[a,b]
+let^items={a,b}
 let^make=f^ {F2{x=1.0,y=1.0}}
 print^((a-b).length(),(a+b).x,(a*2.0).y)
 print^(a dot^ b,read dot^ b,a dot^ read,read dot^ read,a cross^ b)
@@ -296,7 +296,7 @@ print^(v.n)
     positive('operator_owned_result_destination', '''def^ Packet {
  self^{n:i32^=2}
  op^:: =f^ self^,rhs:i32^ ->i32^[grow^] {
-  var^ result:i32^[grow^]=[self^.n,rhs]
+  var^ result:i32^[grow^]={self^.n,rhs}
   return^ result
  }
 }
@@ -364,7 +364,7 @@ print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
         ('operator_wrong_order', 'def^ V {op^<=>=f^ self^,x:i32^ {true^}}', 'op^<=> must return a signed integer'),
         ('intersection_noncallable', 'let^ x:i32^ & string^=1', 'intersection'),
         ('generic_callable_bad_contract', 'let^ f=template^f^ x {"bad"} let^ g:f^i32^->i32^;=f', 'callable result'),
-        ('callable_array_storage', 'let^ f=f^ n:i32^ {n} let^ items=[f]', 'callable array storage'),
+        ('callable_array_storage', 'let^ f=f^ n:i32^ {n} let^ items={f}', 'callable array storage'),
         ('callable_mutable_effect', 'def^ V {self^{n:i32^=0} m=f^mutable^ self^ ->i32^ {self^.n+=1 return^ self^.n}} var^ v=V{} let^ cb:f^ref^ V->i32^;=v.m', 'callable'),
         ('callable_bad_contract', 'let^ f=f^ n:i32^ {n} let^ g:f^i32^->string^;=f', 'callable'),
         ('callable_mutable_storage', 'let^ f=f^ n:i32^ {n} var^ g=f', 'require let^'),

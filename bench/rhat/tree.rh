@@ -23,7 +23,7 @@ let^sum_tree = f^pool:ref^Node[grow^], index:u32^, pass:i64^-> i64^{
 }
 
 let^depth:i64^= 16 # BENCH_N
-var^pool:Node[grow^] = []
+var^pool:Node[grow^] = {}
 pool.push(Node{ v = 0, l = 0, r = 0 })
 let^root = make(ref^pool, depth, 12345)
 let^count = pool.len - 1

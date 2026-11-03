@@ -114,11 +114,11 @@ def^ A {self^{a:i32^=7}}
 var^ a=A.new()
 var^ ref:ref^ A|nil^=ref^ a
 if^ ref fits^ ref^ A {ref.a+=1 print^(ref.a)}
-var^ array:i32^[2]=[3,4]
+var^ array:i32^[2]={3,4}
 let^ view:ref^ i32^[2]|nil^=ref^ array
 if^ view fits^ ref^ i32^[2] {print^(view[1])}
 print^(array fits^ i32^[2],array fits^ i32^[3])
-var^ owned:i32^[grow^]=[]
+var^ owned:i32^[grow^]={}
 print^(owned fits^ i32^[grow^])
 ''', '8\n4\ntrue false\ntrue\n')
 
@@ -281,13 +281,13 @@ test(1) test(nil^)
         ('fits_path_alias_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ h:ref^ H {h.item:=B.new()} var^ h=H.new() let^ ref=ref^ h if^ ref.item fits^ A {clear(ref^ h) print^(ref.item.a)}','field access requires'),
         ('fits_path_borrow_invalidates','def^ H {self^{item:A|B=A.new()}} let^ clear=p^ x:ref^ (A|B) {*x:=B.new()} var^ h=H.new() if^ h.item fits^ A {clear(ref^ h.item) print^(h.item.a)}','field access requires'),
         ('fits_method_invalidates','def^ H {self^{item:A|B=A.new()} clear=p^ self^ {self^.item:=B.new()}} var^ h=H.new() if^ h.item fits^ A {h.clear() print^(h.item.a)}','field access requires'),
-        ('fits_push_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[grow^]=[H.new()] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.push(H{item=B.new()}) print^(ref.item.a)}','field access requires'),
-        ('fits_append_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[grow^]=[H.new()] var^ b:H[1]=[H{item=B.new()}] let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.append(b[.. 1]) print^(ref.item.a)}','field access requires'),
+        ('fits_push_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[grow^]={H.new()} let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.push(H{item=B.new()}) print^(ref.item.a)}','field access requires'),
+        ('fits_append_alias_invalidates','def^ H {self^{item:A|B=A.new()}} var^ a:H[grow^]={H.new()} var^ b:H[1]={H{item=B.new()}} let^ ref=ref^ a[0] if^ ref.item fits^ A {a.clear() a.append(b[.. 1]) print^(ref.item.a)}','field access requires'),
         ('fits_match_nil_value_missing','let^ read=f^ x:A|B|nil^ ->i32^ {for^ x: when^ fits^ A: 1 when^ nil^: 3;}',"covering B"),
         ('fits_match_expression_missing','let^ read=f^ x:A|B ->i32^ {for^ x: when^ fits^ A: 1;}',"value match expression requires other^: or arms covering B"),
         ('fits_match_bool_missing','let^ read=f^ x:bool^ ->i32^ {for^ x: when^ true^: 1;}',"covering false^"),
         ('fits_match_original_invalidates','let^ change=p^ x:ref^ (A|B) ->bool^ {*x:=B.new() return^ false^} var^ x:A|B=A.new() for^ x {when^ fits^ A: x:=B.new() print^(x.a) other^: print^(0)}','field access requires'),
-        ('fits_index_not_narrowed','var^ items:(A|B)[1]=[A.new()] if^ items[0] fits^ A {print^(items[0].a)}','field access requires'),
+        ('fits_index_not_narrowed','var^ items:(A|B)[1]={A.new()} if^ items[0] fits^ A {print^(items[0].a)}','field access requires'),
         ('fits_call_not_narrowed','let^ value=f^ ->A|B {A.new()} if^ value() fits^ A {print^(value().a)}','field access requires'),
         ('fits_chain_not_narrowed','var^ x:A|nil^=A.new() if^ x fits^ A fits^ A {print^(x.a)}','field access requires'),
         ('fits_loop_lost_fact','var^ x:A|B=A.new() if^ x fits^ A {repeat^ 2 {print^(x.a) x:=B.new()}}','field access requires'),

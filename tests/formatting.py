@@ -100,8 +100,8 @@ def main():
            'let^f = p^a:i32^, b:i32^, c:i32^{1}\n',
            'let^f = p^a:i32^, b:i32^, c:i32^{1}\n', 'max_line_length=60\n')
     expect('wrap_call_with_typed_array',
-           'print^(first_argument, u8^[grow^;], last_argument)\n',
-           'print^(\n    first_argument,\n    u8^[grow^;],\n    last_argument\n)\n',
+           'print^(first_argument, u8^[grow^]{}, last_argument)\n',
+           'print^(\n    first_argument,\n    u8^[grow^]{},\n    last_argument\n)\n',
            'max_line_length=40\n')
     expect('generics_and_refs', 'def^V<T>{\nself^{x:T,y:ref^T}\nZERO=Self^{x=T.ZERO}\n}\nlet^F=V<f32^>\n',
            'def^V<T>{\n    self^{x:T, y:ref^T}\n    ZERO = Self^{x = T.ZERO}\n}\nlet^F = V<f32^>\n')

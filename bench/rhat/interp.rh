@@ -38,7 +38,7 @@ let^eval = f^pool:ref^Expr[grow^], index:u32^, pass:i64^-> i64^{
     return^(1000003 - this^(pool, node.of, pass)) % 1000003
 }
 let^depth:i64^= 16 # BENCH_N
-var^pool:Expr[grow^] = []
+var^pool:Expr[grow^] = {}
 let^root = make(ref^pool, depth, 12345)
 var^total:i64^= 0
 var^pass:i64^= 0

@@ -60,7 +60,7 @@ def^ Point { self^{ x:i32^=0 } }
 let^ point:Point | nil^ = Point{x=42}
 print^(point?.x ?? 0)
 
-var^ items:i32^[2] = [10,20]
+var^ items:i32^[2] = {10,20}
 let^ view:ref^ i32^[2] | nil^ = ref^ items
 print^(view?[1] ?? 0)
 ```

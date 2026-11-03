@@ -3,11 +3,11 @@
 ```rhat
 let^ sum = f^ ...:i64^ -> i64^ {
     var^ total:i64^ = 0
-    for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { total += ...[i] }
+    for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { total += ...{i} }
     return^ total
 }
 let^ label = f^ name:string^, ...:i64^ -> i64^ { sum(...) + ....len }
-var^ values:i64^[3] = [1, 2, 3]
+var^ values:i64^[3] = {1, 2, 3}
 print^(sum(), sum(1, 2, 3), label("x", 10, 20), sum(values...))   # 0 6 32 6
 ```
 
@@ -59,7 +59,7 @@ let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return
 
 ```rhat
 print^(....len)
-for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i]) }
+for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...{i}) }
 ```
 
 `rhat run SOURCE [OPTIONS] -- ARGS...` では `--` より後ろがプログラムへの引数です。

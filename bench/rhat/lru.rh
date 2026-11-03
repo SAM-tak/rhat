@@ -99,9 +99,9 @@ assert^(cap > 0)
 var^nslots:i64^= 16
 repeat^while^nslots < cap * 2 { nslots := nslots * 2 }
 let^mask = nslots - 1
-var^slots:Slot[grow^] = []
-var^pool:Node[grow^] = []
-var^free:u32^[grow^] = []
+var^slots:Slot[grow^] = {}
+var^pool:Node[grow^] = {}
+var^free:u32^[grow^] = {}
 var^i:i64^= 0
 repeat^while^i < nslots { slots.push(Slot{key = 0, idx = -1}); i += 1 }
 let^hi = alloc(ref^pool, ref^free, -1, 0)

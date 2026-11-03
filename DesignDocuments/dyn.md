@@ -10,7 +10,7 @@ def^ Circle : Shape { self^{ r:f64^ = 1.0 } area = f^ self^ -> f64^ { 3.0 * self
 
 var^ a = Square{}
 var^ b = Circle{}
-var^ all:dyn^ Shape[ref^ 2] = [ref^ a, ref^ b]    # 型の異なる値を混ぜる
+var^ all:dyn^ Shape[ref^ 2] = {ref^ a, ref^ b}    # 型の異なる値を混ぜる
 for^ var^ i:i64^ = 0 while^ i < 2 next^ i += 1 { all[i].describe() }
 ```
 

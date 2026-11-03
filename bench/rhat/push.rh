@@ -4,8 +4,8 @@ import^std.random
 def^Item { self^{ key:i32^, val:i32^} }
 
 let^n:i64^= 1000000 # BENCH_N
-var^items:Item[grow^] = []
-var^marks:Item[ref^grow^] = []
+var^items:Item[grow^] = {}
+var^marks:Item[ref^grow^] = {}
 var^r:u64^= 12345
 var^i:i64^= 0
 repeat^while^i < n {

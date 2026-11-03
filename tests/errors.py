@@ -202,11 +202,11 @@ catch^:
 def^ Bag {self^{items:i32^[grow^]}}
 repeat^ 3 {
  do^{
-  var^ before:i32^[grow^]=[1,2]
-  var^ pending=Bag{items=[3,try^ read(0)]}
+  var^ before:i32^[grow^]={1,2}
+  var^ pending=Bag{items={3,try^ read(0)}}
   print^(pending.items.len,before.len)
  catch^:
-  var^ after:i32^[grow^]=[7]
+  var^ after:i32^[grow^]={7}
   print^(after[0])
  }
 }
@@ -215,9 +215,9 @@ repeat^ 3 {
     positive('error_owned_result_retry', prefix+'''
 def^ Bag {self^{tag:i32^,items:i32^[grow^]}}
 let^ build=f^ ->Bag {
- return^ Bag{tag=1,items=[1,try^ read(0)]}
+ return^ Bag{tag=1,items={1,try^ read(0)}}
 catch^:
- return^ Bag{tag=9,items=[7,8]}
+ return^ Bag{tag=9,items={7,8}}
 }
 repeat^ 3 {var^ bag=build() print^(bag.tag,bag.items.len,bag.items[0],bag.items[1])}
 ''', '9 2 7 8\n9 2 7 8\n9 2 7 8\n')
@@ -326,14 +326,14 @@ void rh_runtime_shutdown(void) {
     positive('error_repeated_cleanup', prefix+'''
 def^ Bag {self^{items:i32^[grow^]}}
 let^ build=p^ ->Bag {
- return^ Bag{items=[1,2,try^ read(0)]}
+ return^ Bag{items={1,2,try^ read(0)}}
 catch^:
- return^ Bag{items=[7,8]}
+ return^ Bag{items={7,8}}
 }
 repeat^ 10000 {
  do^{
-  var^ a:i32^[grow^]=[1,2]
-  var^ b:i32^[grow^]=[3,try^ read(0)]
+  var^ a:i32^[grow^]={1,2}
+  var^ b:i32^[grow^]={3,try^ read(0)}
  catch^:
   var^ c=build()
   assert^(c.items[0]=7)
@@ -369,7 +369,7 @@ let^ index=f^ items:ref^ i32^[2]|nil^ {
  return^ result
 }
 var^ item=Item{}
-var^ items:i32^[2]=[1,2]
+var^ items:i32^[2]={1,2}
 print^(test(nil^) fits^ nil^,test(ref^ item) fits^ E.Bad)
 print^(index(nil^) fits^ nil^,index(ref^ items) fits^ E.Bad)
 ''', 'true true\ntrue true\n')
@@ -385,7 +385,7 @@ print^(a fits^ nil^,b)
 ''', '10\n20\n30\ntrue 1\n')
 
     positive('error_destination_abort', prefix+'''
-var^ items:i32^[2]=[1,2]
+var^ items:i32^[2]={1,2}
 do^{items[try^ E.Bad{}]:=42 catch^: print^(10)}
 do^{let^ a,b=1,try^ E.Bad{} catch^: print^(20)}
 do^{let^ a,b,c=1,try^ E.Bad{},3 catch^: print^(30)}
