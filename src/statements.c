@@ -1380,6 +1380,9 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
              f->name);
     }
     layout(in->result, f->loc);
+    if (f->constant_value && in->result->owned) {
+        fail(f->loc, "type constant cannot own a data stack region");
+    }
     if (f->operator_member) {
         operator_contract(f, in->result, f->loc);
     }
@@ -1575,6 +1578,13 @@ void analyze(Program *p)
         }
         if (d->lhat_value || d->lhat_data) {
             TOOL_CHECK(p, lhat_def_validate(p, d););
+        }
+    }
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *m = p->modules.v[j];
+        for (int k = 0; k < m->aliases.n; k++) {
+            TypeAlias *a = m->aliases.v[k];
+            TOOL_CHECK(p, type_spec(p, a->spec););
         }
     }
     for (int j = 0; j < p->functions.n; j++) {

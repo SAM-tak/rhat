@@ -263,6 +263,9 @@ static char *expression_path(Expr *e)
 
 static bool type_constructor(Parser *p, Expr *e)
 {
+    if (e->kind == E_TYPE) {
+        return true;
+    }
     char *name = expression_path(e);
     if (!name) {
         return false;
@@ -927,6 +930,85 @@ static int reference_depth(const char *text)
 static Spec *spec(Parser *p);
 static Spec *result_spec(Parser *p);
 
+static bool type_parameter(Parser *p, const char *name)
+{
+    for (int j = 0; p->type_owner && j < p->type_owner->type_params.n; j++) {
+        if (!strcmp(p->type_owner->type_params.v[j], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void type_close(Parser *p)
+{
+    // In a type context the first character of >= closes the argument list.
+    if (is(p, ">=")) {
+        Token *t = tok(p);
+        t->text = "=";
+        t->loc.col++;
+        t->loc.length = 1;
+        return;
+    }
+    need(p, ">");
+}
+
+static bool type_arguments_ahead(Parser *p)
+{
+    if (!is(p, "<") || p->at + 1 >= p->tokens.n) {
+        return false;
+    }
+    Token *first = p->tokens.v[p->at + 1];
+    if (first->kind != TOK_WORD && strcmp(first->text, "(")) {
+        return false;
+    }
+    int angles = 0, parens = 0, brackets = 0;
+    for (int j = p->at; j < p->tokens.n; j++) {
+        Token *t = p->tokens.v[j];
+        if (t->kind == TOK_EOF || !strcmp(t->text, "{") || !strcmp(t->text, "}")) {
+            return false;
+        }
+        if (!strcmp(t->text, "<")) {
+            angles++;
+        }
+        else if (!strcmp(t->text, ">") || !strcmp(t->text, ">=")) {
+            if (!--angles) {
+                return true;
+            }
+        }
+        else if (!strcmp(t->text, "(")) {
+            parens++;
+        }
+        else if (!strcmp(t->text, ")")) {
+            if (!parens--) {
+                return false;
+            }
+        }
+        else if (!strcmp(t->text, "[")) {
+            brackets++;
+        }
+        else if (!strcmp(t->text, "]")) {
+            if (!brackets--) {
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+static void type_arguments(Parser *p, Spec *s)
+{
+    if (type_arguments_ahead(p) && take(p, "<")) {
+        if (is(p, ">")) {
+            fail(tok(p)->loc, "type argument list must not be empty");
+        }
+        do {
+            add(&s->type_args, spec(p));
+        } while (take(p, ","));
+        type_close(p);
+    }
+}
+
 static int self_type_depth(const char *text)
 {
     if (strncmp(text, "Self", 4) || text[4] != '^') {
@@ -1060,7 +1142,11 @@ static Spec *spec_part(Parser *p)
         }
         else {
             s->name = qualified_word(p);
+            if (type_parameter(p, s->name)) {
+                s->parameter_owner = p->type_owner;
+            }
         }
+        type_arguments(p, s);
     }
     s = array_spec(p, s, NULL);
     return s;
@@ -1083,6 +1169,9 @@ static Spec *spec_intersection(Parser *p)
 // A numeric subscript before an array-kind bracket denotes an element array type.
 static Spec *array_element_spec(Parser *p, Expr *e)
 {
+    if (e->kind == E_TYPE) {
+        return e->type_expr;
+    }
     Spec *s = mem(sizeof(*s));
     s->loc = e->loc;
     if (e->kind == E_INDEX && !e->optional && e->b->kind == E_INT) {
@@ -1381,9 +1470,6 @@ static Expr *named(char *name, Loc loc);
 static Expr *primary(Parser *p)
 {
     Token *t = next(p);
-    if (t->kind == TOK_WORD && self_type_depth(t->text) && !is(p, "[")) {
-        fail(t->loc, "'%s' names a type, not a value", t->text);
-    }
     if (t->kind == TOK_INVALID) {
         tool_abort();
     }
@@ -1556,6 +1642,19 @@ static Expr *primary(Parser *p)
     else if (t->kind == TOK_WORD) {
         e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
         e->text = t->text;
+        int depth = self_type_depth(t->text);
+        if (depth || type_parameter(p, t->text)) {
+            if (depth && (depth != 1 || !p->type_owner)) {
+                fail(t->loc, "'%s' is outside the enclosing type definition", t->text);
+            }
+            e->kind = E_TYPE;
+            e->type_expr = mem(sizeof(Spec));
+            *e->type_expr = (Spec){.kind = SPEC_NAME,
+                                   .loc = t->loc,
+                                   .name = t->text,
+                                   .self_type = depth ? p->type_owner : NULL,
+                                   .parameter_owner = depth ? NULL : p->type_owner};
+        }
         if (!strncmp(e->text, "it^^", 4)) {
             e->scope_kind = 3;
             e->scope_count = (int)strlen(e->text) - 3;
@@ -1566,7 +1665,13 @@ static Expr *primary(Parser *p)
         fail(t->loc, "expected an expression, found '%s'", t->text);
     }
     for (;;) {
-        if (take(p, ".") || take(p, "?.")) {
+        if (type_arguments_ahead(p) && type_constructor(p, e)) {
+            Spec *s = array_element_spec(p, e);
+            type_arguments(p, s);
+            e = node(E_TYPE, e->loc);
+            e->type_expr = s;
+        }
+        else if (take(p, ".") || take(p, "?.")) {
             Expr *n = node(E_MEMBER, e->loc);
             n->optional = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "?.");
             n->a = e;
@@ -1639,7 +1744,12 @@ static Expr *primary(Parser *p)
         }
         else if (!p->header && type_constructor(p, e) && take(p, "{")) {
             Expr *n = node(E_RECORD, e->loc);
-            n->text = expression_path(e);
+            if (e->kind == E_TYPE) {
+                n->type_expr = e->type_expr;
+            }
+            else {
+                n->text = expression_path(e);
+            }
             entries(p, n, "}", true);
             e = n;
         }
@@ -2824,6 +2934,19 @@ static void definition(Parser *p, bool structure)
     Def *d = mem(sizeof(*d));
     d->loc = tok(p)->loc;
     d->name = decl_word(p);
+    if (take(p, "<")) {
+        do {
+            Loc at = tok(p)->loc;
+            char *name = decl_word(p);
+            for (int j = 0; j < d->type_params.n; j++) {
+                if (!strcmp(name, d->type_params.v[j])) {
+                    fail(at, "duplicate type parameter '%s'", name);
+                }
+            }
+            add(&d->type_params, name);
+        } while (take(p, ","));
+        type_close(p);
+    }
     d->id = p->p->defs.n;
     add(&p->p->defs, d);
     if (structure) {
@@ -2835,16 +2958,22 @@ static void definition(Parser *p, bool structure)
         return;
     }
     if (take(p, "=")) {
+        Def *outer = p->type_owner;
+        p->type_owner = d;
         do {
             add(&d->union_specs, spec_part(p));
         } while (take(p, "|"));
+        p->type_owner = outer;
         take(p, ";");
         return;
     }
     if (take(p, ":")) {
+        Def *outer = p->type_owner;
+        p->type_owner = d;
         do {
-            add(&d->base_names, qualified_word(p));
+            add(&d->base_specs, spec_part(p));
         } while (take(p, ","));
+        p->type_owner = outer;
     }
     def_body(p, d);
 }
@@ -2905,6 +3034,23 @@ static void def_member(Parser *p, Def *d)
     }
     else if (!take(p, ":=")) {
         need(p, "=");
+    }
+    if (!abstr && !is(p, "f^") && !is(p, "p^") && !is(p, "template^") && !is(p, "mutable^")) {
+        if (over || overload || !strncmp(name, "op^", 3)) {
+            fail(declaration, "type constants cannot override or overload methods");
+        }
+        Constant *constant = mem(sizeof(*constant));
+        Stmt *binding = mem(sizeof(*binding));
+        binding->kind = S_BIND;
+        binding->loc = declaration;
+        binding->name = name;
+        binding->a = expr(p, 0);
+        constant->name = name;
+        constant->binding = binding;
+        constant->owner = d;
+        constant->public = !priv;
+        add(&d->constants, constant);
+        return;
     }
     Function *f = function(p, name, d, abstr);
     f->declaration = declaration;
@@ -3234,6 +3380,11 @@ static void declaration(Parser *q)
     }
     if (!binding) {
         Stmt *s = stmt(q);
+        if (s->kind == S_BIND && !s->mut && s->a &&
+            (s->a->kind == E_TYPE || type_constructor(q, s->a) ||
+             (s->a->kind == E_NAME && numeric_kind(s->a->text) >= 0))) {
+            add(&q->type_names, s->name);
+        }
         if (!module->root) {
             if ((s->kind != S_BIND && s->kind != S_BIND_MANY) || s->mut) {
                 fail(s->loc, "library top level permits only declarations and "
@@ -3257,10 +3408,7 @@ static void declaration(Parser *q)
             }
         }
         else {
-            if (public) {
-                fail(s->loc, "public^ executable bindings are not supported in the "
-                             "entry file");
-            }
+            s->public_binding = public;
             add(&p->entry->body, s);
         }
         return;
@@ -3341,6 +3489,7 @@ static void declaration_checked(Parser *q)
 
 void parse_file(Program *p, const char *path, Module *module)
 {
+    module->program = p;
     p->path = path;
     const char *overlay = source_override(p, path);
     if (overlay) {

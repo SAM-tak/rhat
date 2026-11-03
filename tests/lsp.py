@@ -824,6 +824,32 @@ print^(value.add(value.copy()).x)
     assert client.diagnostics(path,154) == []
     print('PASS array literal attributes, automatic element borrowing and recovery',flush=True)
 
+    generic = '''def^Vec2<T> {
+ self^{x:T,y:T}
+ ZERO=Self^{x=T.ZERO,y=T.ZERO}
+ ONE=Self^{x=T.ONE,y=T.ONE}
+}
+let^Float2=Vec2<f32^>
+let^a:Float2=Float2.ONE
+print^(a.x)
+'''
+    client.change(path,generic,155)
+    assert client.diagnostics(path,155) == []
+    assert request('hover','a.x',shift=2,text=generic)['contents']['value'] == 'x: f32^'
+    alias_definition=request('definition','a:Float2',shift=2,text=generic)
+    assert alias_definition['range']['start'] == at(generic,'Float2=Vec2'), alias_definition
+    constant_definition=request('definition','Float2.ONE',shift=7,text=generic)
+    assert constant_definition['range']['start'] == at(generic,'ONE=Self^'), constant_definition
+    outline=client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=path.as_uri())))
+    assert {'Vec2','Float2','ZERO','ONE'} <= {x['name'] for x in outline}, outline
+    assert not any(x['name'].endswith('>') for x in outline), outline
+    broken_generic=generic.replace('Vec2<f32^>','Vec2<string^>')
+    client.change(path,broken_generic,156)
+    assert any('has no constant' in d['message'] for d in client.diagnostics(path,156))
+    client.change(path,generic,157)
+    assert client.diagnostics(path,157) == []
+    print('PASS generic definitions, aliases, type constants, navigation and edit recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

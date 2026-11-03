@@ -1215,6 +1215,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return infer_chain(c, e, true);
     }
     switch (e->kind) {
+    case E_TYPE:
+        fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
     case E_TRY: {
         bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT || e->a->kind == E_RECORD ||
                        e->a->kind == E_ARRAY;

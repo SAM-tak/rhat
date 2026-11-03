@@ -34,6 +34,17 @@ typedef struct Spec Spec;
 typedef struct Instance Instance;
 typedef struct Field Field;
 typedef struct Module Module;
+typedef struct Program Program;
+
+// A compile-time name for a type, preserving the target's nominal identity.
+typedef struct {
+    char *name;
+    Loc loc;
+    Spec *spec;
+    Module *module;
+    bool public;
+    int state;
+} TypeAlias;
 
 typedef struct {
     char *name, *alias;
@@ -45,13 +56,15 @@ typedef struct {
 typedef struct {
     char *name;
     Stmt *binding;
+    Def *owner; // Non-NULL for a constant declared in a def^.
     bool public;
     int state;
 } Constant;
 
 struct Module {
+    Program *program;
     char *name, *path;
-    List imports, defs, functions, constants;
+    List imports, defs, functions, constants, aliases;
     List c_headers; // includeC^ headers its externC^ shims read.
     Function *entry;
     bool root;
@@ -59,9 +72,11 @@ struct Module {
 };
 
 struct Spec {
-    Def *self_type; // Lexical definition denoted by Self^; unaffected by inheritance.
-    bool invalid;   // An editor diagnostic already explains this unavailable type.
-    Type *type;     // Canonical type, cached after module name resolution.
+    Def *parameter_owner; // Lexical owner of a generic type parameter.
+    List type_args;       // Explicit arguments to a generic def^.
+    Def *self_type;       // Lexical definition denoted by Self^; unaffected by inheritance.
+    bool invalid;         // An editor diagnostic already explains this unavailable type.
+    Type *type;           // Canonical type, cached after module name resolution.
     bool resolved;
     Loc loc;
     char *name;
@@ -117,14 +132,17 @@ enum {
     E_PANIC,    // panic^ a: end the process; it produces no value.
     E_RANGE,    // a .. b or a to^ b (text): a range^ value; a or b may be omitted.
     E_CHAR,     // char^"x": the Unicode scalar value in text, as decimal digits.
-    E_INTERP    // $"...": text and holes in args, each hole's format in names.
+    E_INTERP,   // $"...": text and holes in args, each hole's format in names.
+    E_TYPE      // Compile-time type expression, eliminated by module resolution.
 };
 
 struct Expr {
-    bool invalid;    // A recovered syntax/name-resolution error, never executable.
-    Loc name_loc;    // Exact member spelling, distinct from receiver diagnostics.
-    Spec *test_spec; // The type operand of fits^, or the type of an empty
-                     // typed array value; never evaluated as a value.
+    Spec *type_expr;     // Type application, Self^, or an explicit constructor type.
+    Def *constant_owner; // A type constant retains its declaration's access rights.
+    bool invalid;        // A recovered syntax/name-resolution error, never executable.
+    Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
+    Spec *test_spec;     // The type operand of fits^, or the type of an empty
+                         // typed array value; never evaluated as a value.
     Spec *constant_spec;
     Spec *array_literal;  // Explicit bracket attributes; elem is NULL when inferred.
     int array_refs;       // Explicit ref^ depth, enabling stable-place borrowing.
@@ -172,6 +190,7 @@ typedef struct {
 } CatchArm;
 
 struct Stmt {
+    bool public_binding;  // A public entry binding must resolve to a type alias.
     List handlers;        // Ordered CatchArm pointers for S_HANDLE.
     bool loop_handler;    // A loop catches main^ only, with outer names visible.
     bool scoped_handlers; // If arms share the if^ body's lexical scope depth.
@@ -204,6 +223,8 @@ typedef struct {
 } Param;
 
 struct Function {
+    bool resolved;       // Module references in this body have been resolved.
+    bool constant_value; // Synthetic validation body of a type constant.
     bool invalid;        // Its signature or parameter constraints could not be checked.
     Loc declaration;     // Name token for editor navigation.
     Function *enclosing; // Lexical enclosing function, without a captured
@@ -247,6 +268,10 @@ typedef struct {
 } EnumMember;
 
 struct Def {
+    List type_params, type_args, instances; // Parameters, concrete arguments and cached defs.
+    Def *generic;                           // The template of a concrete instantiation.
+    List base_specs, constants;             // Composition types and type-level constants.
+    bool resolved;                          // Module references have been resolved.
     bool invalid; // Its composition or storage layout could not be checked.
     Module *module;
     bool public;
@@ -325,7 +350,7 @@ struct Type {
     bool procedure;     // The callable may have procedure effects.
 };
 
-typedef struct {
+struct Program {
     bool library_root; // Check a standalone module using library rules.
     bool tooling;      // Retain source and checked resolutions for editor clients.
     List sources, overlays, resolutions; // ToolSource and ToolRef records.
@@ -343,11 +368,13 @@ typedef struct {
     bool crt_dll;   // --crt-dll: build and link against the C runtime DLL.
     char *source;
     const char *path;
-} Program;
+};
 
 void parse(Program *p, const char *path);
 void parse_file(Program *p, const char *path, Module *module);
 void resolve_modules(Program *p);
+// Clone a generic definition, substituting its lexical type parameters and Self^.
+Def *specialize_definition(Def *source, List *arguments, const char *name);
 void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
 Type *type_builtin(Program *p, int kind);

@@ -1580,6 +1580,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
 
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
+    if (c->type_constant || c->in->fn->constant_value) {
+        fail(e->loc, "type constant cannot call a function, including in field defaults");
+    }
     Program *p = c->p;
     Expr *target = e->a;
     if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
@@ -2150,6 +2153,18 @@ static Value array_element(Context *c, Expr *array, Expr *element, Type *expecte
 
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
+    if (e->constant_owner) {
+        Expr copy = *e;
+        copy.constant_owner = NULL;
+        Def *access = c->access;
+        bool constant = c->type_constant;
+        c->access = e->constant_owner;
+        c->type_constant = true;
+        Value result = construct(c, &copy, t, dst);
+        c->access = access;
+        c->type_constant = constant;
+        return result;
+    }
     if (e->invalid) {
         tool_abort();
     }
@@ -2378,6 +2393,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (!t || t->kind != T_STRUCT) {
             fail(e->loc, "contextual construction requires a nominal struct type; "
                          "write Type{field=value}");
+        }
+        if ((c->type_constant || c->in->fn->constant_value) && t->owned) {
+            fail(e->loc, "type constant cannot own a data stack region");
         }
         Module *scope = c->in_default && c->access ? c->access->module : c->in->fn->module;
         if (!e->text && t->def->module && t->def->module != scope && !t->def->public) {
@@ -2819,6 +2837,21 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
 
 Value expression(Context *c, Expr *e, Type *expected)
 {
+    if (e->constant_owner) {
+        Expr copy = *e;
+        copy.constant_owner = NULL;
+        Def *access = c->access;
+        bool constant = c->type_constant;
+        c->access = e->constant_owner;
+        c->type_constant = true;
+        Value result = expression(c, &copy, expected);
+        c->access = access;
+        c->type_constant = constant;
+        return result;
+    }
+    if (e->kind == E_TYPE) {
+        fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
+    }
     if (e->invalid) {
         tool_abort();
     }

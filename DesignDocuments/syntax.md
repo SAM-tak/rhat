@@ -28,7 +28,8 @@ def^ Point {
 struct^ Node { next:ref^ Self^|nil^=nil^, value:i32^=0 }
 ```
 
-`self^` は受け手の値、`Self^` は型です。`Self^` を値や構築式の名前としては使いません。
+`self^` は受け手の値、`Self^` は型です。`Self^{x=1, y=2}` の構築や `Self^.ZERO` の型メンバ参照にも使えます。
+`Self^` 単独を実行時の値として扱うことはできません。型パラメータと型別名は [generics.md](generics.md) を参照してください。
 定義の外側の `Self^` はエラーです。現在は型定義の入れ子を認めないため、
 `Self^^` 以上の段数も範囲外になります。`ref^ Self^` による再帰する参照は可能ですが、
 `field:Self^` のような再帰する値の配置は従来どおり認めません。

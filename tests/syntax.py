@@ -58,7 +58,6 @@ print^(failure.copy().code)
         ('outer','def^ Box {self^{x:Self^^}}','outside the enclosing type definition'),
         ('leak','def^ Box {self^{x:i32^=1}}\nlet^ x:Self^=Box{}','outside the enclosing type definition'),
         ('value','def^ Box {self^{x:i32^=1} bad=f^self^ {Self^}}','names a type, not a value'),
-        ('constructor','def^ Box {self^{x:i32^=1} bad=f^self^ {Self^{x=1}}}','names a type, not a value'),
         ('recursive_value','def^ Box {self^{x:Self^}}','recursive by-value layout'),
         ('inherited_result','def^ Base {self^{x:i32^=1} copy=f^self^ ->Self^ {Base{x=self^.x}}}\ndef^ Derived:Base {}\nvar^ d=Derived{}\nlet^ copy:Derived=d.copy()',"expected 'Derived'"),
     ]:

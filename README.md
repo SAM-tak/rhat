@@ -163,6 +163,7 @@ print^(value.a, value.b, value.c)
 
 - [examples/layout.rh](examples/layout.rh): 抽象フィールドを含む合成と配置。
 - [examples/nominal_template.rh](examples/nominal_template.rh): 明示的な公称の適合、デフォルト実装、private、構造によるテンプレート検査。
+- [examples/generic_vec2.rh](examples/generic_vec2.rh): `Vec2<T>` の型パラメータ、型別名、`ZERO`・`ONE` とベクトル演算。
 - [examples/regions.rh](examples/regions.rh): 呼び出し側への配列構築、伸長後も有効な参照、スコープでの領域回収。
 - [examples/inference.rh](examples/inference.rh): 無注釈引数の呼び出し形ごとの具体化と返り値推論。
 - [examples/factorial.rh](examples/factorial.rh): 無名関数の即時呼び出し、返り値の推論、`if^` 式、`this^` による再帰。10! を `i64^` で計算します。
@@ -273,6 +274,7 @@ C 標準ライブラリの入出力内部まで動的確保を禁止する frees
 - [設計](DesignDocuments/design.md): 処理の流れ、型・合成・領域と寿命・数値・モジュール・エラー・検証。
 - [構文対応](DesignDocuments/syntax.md): L^ の構文との対応と、採用しなかったもの。
 - [配列](DesignDocuments/arrays.md)・[範囲](DesignDocuments/ranges.md)・[文字列](DesignDocuments/strings.md)・[可変長引数](DesignDocuments/variadic.md)。
+- [型パラメータ・型別名・型定数](DesignDocuments/generics.md)。
 - [fits^](DesignDocuments/fits.md)・[ニル伝播](DesignDocuments/nil.md)・[エラー](DesignDocuments/errors.md)・[複数の返り値](DesignDocuments/results.md)・[列挙体](DesignDocuments/enums.md)。
 - [オーバーロード](DesignDocuments/overloads.md)・[動的ディスパッチ](DesignDocuments/dyn.md)。
 - [C 連携](DesignDocuments/ffi.md)・[分割コンパイル](DesignDocuments/separate_compilation.md)・[言語サーバー](DesignDocuments/lsp.md)。

@@ -8,7 +8,7 @@ add_library(rhat_json STATIC vendor/cjson/cJSON.c)
 target_include_directories(rhat_json PUBLIC vendor/cjson)
 target_compile_definitions(rhat_json PUBLIC CJSON_HIDE_SYMBOLS)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
-  src/front.c src/modules.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
+  src/front.c src/modules.c src/generics.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
   src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c
   lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c lsp/uri.c lsp/position.c lsp/port/thread.c)
 target_include_directories(rhat PRIVATE src lsp)
@@ -91,6 +91,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/overload-tests")
   add_test(NAME arrays COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/arrays.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/arrays-tests")
+  add_test(NAME generics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/generics.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/generics-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)

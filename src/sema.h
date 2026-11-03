@@ -104,6 +104,7 @@ typedef struct {
     bool raw_name;
     Expr *raw_place;
     bool in_default;
+    bool type_constant;        // Restrict expanded type constants and their field defaults.
     Expr *operator_target;     // The operator constructing an owning destination.
     int operator_destination;  // Valid only when operator_target is non-NULL.
     List inflight;             // Values a statement still uses while evaluating later ones.

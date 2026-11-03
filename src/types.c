@@ -325,7 +325,9 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (!d) {
         fail(s->loc, "unknown type '%s'", s->name);
     }
-    tool_record(p, s->loc, d->loc, d->name, d->type, NULL, d, 23, false);
+    Def *declaration = d->generic ? d->generic : d;
+    tool_record(p, s->loc, declaration->loc, declaration->name, d->type, NULL, declaration, 23,
+                false);
     if (d->invalid) {
         tool_abort();
     }

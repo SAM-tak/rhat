@@ -138,6 +138,12 @@ static char *canonical(Module *m, const char *name)
 
 static bool has_name(Module *m, const char *name, bool external, Constant **constant)
 {
+    for (int j = 0; j < m->aliases.n; j++) {
+        TypeAlias *a = m->aliases.v[j];
+        if (!strcmp(a->name, name)) {
+            return !external || a->public;
+        }
+    }
     for (int j = 0; j < m->defs.n; j++) {
         Def *d = m->defs.v[j];
         if (!strcmp(d->name, name)) {
@@ -260,6 +266,151 @@ static char *resolve_type_name(Module *m, char *name, Loc loc)
 }
 
 static void resolve_spec(Module *m, Spec *s);
+static void resolve_definition(Program *p, Def *d);
+
+static void resolve_alias(TypeAlias *a)
+{
+    if (a->state == 2) {
+        return;
+    }
+    if (a->state == 1) {
+        fail(a->loc, "cyclic type alias '%s'", a->name);
+    }
+    a->state = 1;
+    resolve_spec(a->module, a->spec);
+    a->state = 2;
+}
+
+// Definition names are still module-local during this pass.
+static Def *named_definition(Program *p, const char *name)
+{
+    if (!name) {
+        return NULL;
+    }
+    for (int j = 0; j < p->defs.n; j++) {
+        Def *d = p->defs.v[j];
+        if (!strcmp(canonical(d->module, d->name), name)) {
+            return d;
+        }
+    }
+    return NULL;
+}
+
+static TypeAlias *named_alias(Program *p, const char *name)
+{
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *m = p->modules.v[j];
+        for (int k = 0; k < m->aliases.n; k++) {
+            TypeAlias *a = m->aliases.v[k];
+            if (!strcmp(canonical(m, a->name), name)) {
+                return a;
+            }
+        }
+    }
+    return NULL;
+}
+
+static char *spec_identity(Spec *s);
+
+static void identity_parts(List *parts, Spec *s, int kind)
+{
+    if (s->kind == kind) {
+        identity_parts(parts, s->elem, kind);
+        identity_parts(parts, s->other, kind);
+        return;
+    }
+    char *name = spec_identity(s);
+    int at = 0;
+    while (at < parts->n && strcmp(parts->v[at], name) < 0) {
+        at++;
+    }
+    if (at < parts->n && !strcmp(parts->v[at], name)) {
+        return;
+    }
+    add(parts, name);
+    memmove(parts->v + at + 1, parts->v + at, (size_t)(parts->n - at - 1) * sizeof(void *));
+    parts->v[at] = name;
+}
+
+static char *spec_identity(Spec *s)
+{
+    if (s->kind == SPEC_NAME) {
+        return s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;
+    }
+    if (s->kind == SPEC_UNION || s->kind == SPEC_INTERSECTION) {
+        List parts = {0};
+        identity_parts(&parts, s, s->kind);
+        char *key = parts.v[0];
+        for (int j = 1; j < parts.n; j++) {
+            key = fmt("%s %s %s", key, s->kind == SPEC_UNION ? "|" : "&", parts.v[j]);
+        }
+        return parts.n == 1 ? key : fmt("(%s)", key);
+    }
+    char *elem = s->elem ? spec_identity(s->elem) : "";
+    switch (s->kind) {
+    case SPEC_REF:
+        return fmt("ref^ (%s)", elem);
+    case SPEC_DYN:
+        return fmt("dyn^ (%s)", elem);
+    case SPEC_ARRAY:
+        return s->count ? fmt("(%s)[%d]", elem, s->count) : fmt("(%s)[]", elem);
+    case SPEC_GROW:
+        return fmt("(%s)[%s]", elem, s->count == ARRAY_SIZED ? "" : s->count ? "flex^" : "grow^");
+    case SPEC_SLICE:
+        return fmt("(%s)[slice^]", elem);
+    case SPEC_BOUNDED:
+        return fmt("(%s)[max^%d]", elem, s->count);
+    default:
+        break;
+    }
+    char *key = s->kind == SPEC_FUNCTION ? (s->procedure ? "p^(" : "f^(") : "(";
+    for (int j = 0; j < s->params.n; j++) {
+        key = fmt("%s%s%s", key, j ? "," : "", spec_identity(s->params.v[j]));
+    }
+    return s->kind == SPEC_FUNCTION ? fmt("%s%s)->%s;", s->foreign ? "externC^ " : "", key, elem)
+                                    : fmt("%s)", key);
+}
+
+static void apply_definition(Module *m, Spec *s, Def *source)
+{
+    Program *p = m->program;
+    if (source->invalid) {
+        tool_abort();
+    }
+    if (s->type_args.n != source->type_params.n) {
+        fail(s->loc, "type '%s' expects %d type arguments, got %d", source->name,
+             source->type_params.n, s->type_args.n);
+    }
+    char *name = fmt("%s<", source->name);
+    for (int j = 0; j < s->type_args.n; j++) {
+        resolve_spec(m, s->type_args.v[j]);
+        name = fmt("%s%s%s", name, j ? "," : "", spec_identity(s->type_args.v[j]));
+    }
+    name = fmt("%s>", name);
+    Def *instance = NULL;
+    for (int j = 0; j < source->instances.n; j++) {
+        Def *d = source->instances.v[j];
+        if (!strcmp(name, d->name)) {
+            instance = d;
+            break;
+        }
+    }
+    if (!instance) {
+        if (p->defs.n >= 4096 || source->instances.n >= 512) {
+            fail(s->loc, "generic type specialization limit exceeded at '%s'", source->name);
+        }
+        instance = specialize_definition(source, &s->type_args, name);
+        instance->id = p->defs.n;
+        add(&source->instances, instance);
+        add(&p->defs, instance);
+        add(&source->module->defs, instance);
+        resolve_definition(p, instance);
+    }
+    tool_record(p, s->loc, source->loc, source->name, NULL, NULL, source, 23, false);
+    s->name = canonical(instance->module, instance->name);
+    s->self_type = instance;
+    s->type_args = (List){0};
+}
 
 static void resolve_spec_unchecked(Module *m, Spec *s)
 {
@@ -267,8 +418,31 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
         return;
     }
     s->resolved = true;
+    if (s->self_type && s->type_args.n) {
+        fail(s->loc, "Self^ does not accept type arguments");
+    }
     if (s->kind == SPEC_NAME && !s->self_type) {
         s->name = resolve_type_name(m, s->name, s->loc);
+        TypeAlias *a = named_alias(m->program, s->name);
+        if (a) {
+            if (s->type_args.n) {
+                fail(s->loc, "type alias '%s' does not accept type arguments", a->name);
+            }
+            resolve_alias(a);
+            tool_record(m->program, s->loc, a->loc, canonical(a->module, a->name), NULL, NULL, NULL,
+                        23, false);
+            Loc loc = s->loc;
+            *s = *a->spec;
+            s->loc = loc;
+            return;
+        }
+        Def *d = named_definition(m->program, s->name);
+        if (s->type_args.n || (d && d->type_params.n)) {
+            if (!d) {
+                fail(s->loc, "unknown generic type '%s'", s->name);
+            }
+            apply_definition(m, s, d);
+        }
     }
     else {
         resolve_spec(m, s->elem);
@@ -394,6 +568,10 @@ static Expr *unary_expr(const char *op, Expr *a)
 
 static void resolve_function(Program *p, Module *m, Function *f)
 {
+    if (f->resolved) {
+        return;
+    }
+    f->resolved = true;
     Function *outer = top_user;
     top_user = f;
     f->module = m;
@@ -408,7 +586,7 @@ static void resolve_function(Program *p, Module *m, Function *f)
     top_user = outer;
 }
 
-static bool constant_expr(Expr *e)
+static bool constant_expr(Expr *e, bool values)
 {
     if (!e) {
         return false;
@@ -420,17 +598,31 @@ static bool constant_expr(Expr *e)
         return true;
     }
     if (e->kind == E_UNARY) {
-        return constant_expr(e->a);
+        return constant_expr(e->a, values);
     }
     if (e->kind == E_FITS) {
-        return !e->a || constant_expr(e->a);
+        return !e->a || constant_expr(e->a, values);
     }
     if (e->kind == E_BIN) {
-        return constant_expr(e->a) && constant_expr(e->b);
+        return constant_expr(e->a, values) && constant_expr(e->b, values);
+    }
+    if (values && (e->kind == E_RECORD || e->kind == E_ARRAY)) {
+        if (e->array_refs || (e->kind == E_ARRAY && e->test_spec)) {
+            return false;
+        }
+        for (int j = 0; j < e->args.n; j++) {
+            if (!constant_expr(e->args.v[j], values)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (values && e->kind == E_MEMBER) {
+        return constant_expr(e->a, values);
     }
     if (e->kind == E_CHAIN) {
         for (int j = 0; j < e->args.n; j++) {
-            if (!constant_expr(e->args.v[j])) {
+            if (!constant_expr(e->args.v[j], values)) {
                 return false;
             }
         }
@@ -456,6 +648,93 @@ static Expr *copy_expr(Expr *e)
     return r;
 }
 
+static Spec *expression_type(Module *m, Expr *e)
+{
+    if (!e) {
+        return NULL;
+    }
+    if (e->kind == E_TYPE) {
+        return e->type_expr;
+    }
+    char *path = path_of(e);
+    if (!path) {
+        return NULL;
+    }
+    bool builtin = numeric_kind(path) >= 0 || !strcmp(path, "bool^") || !strcmp(path, "string^") ||
+                   !strcmp(path, "char^");
+    if (!builtin && !visible_declaration(m, path)) {
+        return NULL;
+    }
+    char *name = builtin ? path : resolve(m, path, e->loc, NULL);
+    if (!builtin && !named_definition(m->program, name) && !named_alias(m->program, name)) {
+        return NULL;
+    }
+    Spec *s = mem(sizeof(*s));
+    *s = (Spec){.kind = SPEC_NAME, .loc = e->loc, .name = path};
+    return s;
+}
+
+static Constant *type_constant(Program *p, Def *d, const char *name, int depth)
+{
+    if (depth > 128) {
+        fail(d->loc, "cyclic def^ composition at '%s'", d->name);
+    }
+    for (int j = 0; j < d->constants.n; j++) {
+        Constant *c = d->constants.v[j];
+        if (!strcmp(c->name, name)) {
+            return c;
+        }
+    }
+    Constant *result = NULL;
+    for (int j = 0; j < d->base_specs.n; j++) {
+        Spec *s = d->base_specs.v[j];
+        resolve_spec(d->module, s);
+        Def *base = s->self_type ? s->self_type : named_definition(p, s->name);
+        Constant *c = base ? type_constant(p, base, name, depth + 1) : NULL;
+        if (c && result && c != result) {
+            fail(d->loc, "inherited type constant '%s' is ambiguous", name);
+        }
+        if (c) {
+            result = c;
+        }
+    }
+    return result;
+}
+
+static void resolve_constant(Program *p, Constant *c)
+{
+    if (c->state == 2) {
+        return;
+    }
+    if (c->state == 1) {
+        fail(c->binding->loc, "cyclic type constant '%s.%s'", c->owner->name, c->name);
+    }
+    c->state = 1;
+    Function scope = {.owner = c->owner};
+    Function *outer = top_user;
+    top_user = &scope;
+    List names = {0};
+    resolve_expr(p, c->owner->module, &names, c->binding->a);
+    top_user = outer;
+    if (!constant_expr(c->binding->a, true)) {
+        fail(c->binding->loc, "type constant requires literal operations and value construction");
+    }
+    c->binding->a->constant_owner = c->owner;
+    c->state = 2;
+}
+
+static void expand_constant(Program *p, Constant *c, Expr *e)
+{
+    if (!c->public && (!top_user || top_user->owner != c->owner)) {
+        fail(e->loc, "private type constant '%s.%s'", c->owner->name, c->name);
+    }
+    Loc loc = e->loc;
+    resolve_constant(p, c);
+    tool_record(p, loc, c->binding->loc, c->name, NULL, NULL, c->owner, 14, false);
+    *e = *copy_expr(c->binding->a);
+    e->loc = loc;
+}
+
 static bool module_function(Module *m, const char *name)
 {
     for (int j = 0; j < m->functions.n; j++) {
@@ -471,9 +750,89 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     if (!e) {
         return;
     }
+    if (e->kind == E_TYPE) {
+        resolve_spec(m, e->type_expr);
+        return;
+    }
+    if (e->kind == E_CALL) {
+        char *path = path_of(e->a);
+        Spec *s = path && local(names, path) ? NULL : expression_type(m, e->a);
+        if (s) {
+            resolve_spec(m, s);
+            if (s->kind == SPEC_NAME && numeric_kind(s->name) >= 0) {
+                *e->a = *name_expr(s->name, e->a->loc);
+            }
+        }
+    }
+    if (e->kind == E_MEMBER && !e->optional) {
+        char *path = path_of(e->a);
+        Spec *s = path && local(names, path) ? NULL : expression_type(m, e->a);
+        if (s) {
+            resolve_spec(m, s);
+            int kind = s->kind == SPEC_NAME ? numeric_kind(s->name) : -1;
+            if (kind >= 0 && (!strcmp(e->text, "ZERO") || !strcmp(e->text, "ONE"))) {
+                e->kind = E_INT;
+                e->text = !strcmp(e->text, "ZERO") ? "0" : "1";
+                e->constant_spec = s;
+                e->a = NULL;
+                return;
+            }
+            Def *d = s->self_type ? s->self_type : named_definition(p, s->name);
+            Constant *c = d ? type_constant(p, d, e->text, 0) : NULL;
+            if (c) {
+                expand_constant(p, c, e);
+                return;
+            }
+            if ((kind >= 0 && !strcmp(e->text, "parse")) || (d && !strcmp(e->text, "new"))) {
+                *e->a =
+                    *name_expr(s->self_type ? canonical(d->module, d->name) : s->name, e->a->loc);
+                return;
+            }
+            if (d && d->backing) {
+                char *member = fmt("%s.%s", d->name, e->text);
+                for (int j = 0; j < d->module->constants.n; j++) {
+                    Constant *value = d->module->constants.v[j];
+                    if (!strcmp(value->name, member)) {
+                        Loc loc = e->name_loc.file ? e->name_loc : e->loc;
+                        tool_record(p, loc, value->binding->loc, canonical(d->module, member), NULL,
+                                    NULL, NULL, 14, false);
+                        *e = *copy_expr(value->binding->a);
+                        e->constant_spec = s;
+                        return;
+                    }
+                }
+            }
+            if (!d || !d->backing) {
+                fail(e->loc, "type '%s' has no constant '%s'", spec_identity(s), e->text);
+            }
+        }
+    }
+    if (e->kind == E_NAME && top_user && top_user->owner && !local(names, e->text)) {
+        Constant *c = type_constant(p, top_user->owner, e->text, 0);
+        if (c) {
+            expand_constant(p, c, e);
+            return;
+        }
+    }
+    if (e->kind == E_MEMBER && top_user && top_user->owner) {
+        char *path = path_of(e);
+        if (path && !local(names, path)) {
+            char *root = str(path), *dot = strchr(root, '.');
+            if (dot) {
+                *dot = 0;
+            }
+            if (type_constant(p, top_user->owner, root, 0)) {
+                resolve_expr(p, m, names, e->a);
+                return;
+            }
+        }
+    }
     if (m->root && e->kind == E_NAME && !local(names, e->text)) {
         Stmt *binding = top_user ? top_binding(e->text) : NULL;
         if (binding) {
+            if (top_user->name && !strcmp(top_user->name, "<field-default>")) {
+                fail(e->loc, "field default cannot capture caller locals");
+            }
             // Inside a function the binding is its hidden parameter.
             if (top_user->owner || !module_function(m, top_user->name)) {
                 fail(e->loc,
@@ -544,7 +903,14 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         }
     }
     if (e->kind == E_RECORD && e->text) {
-        e->text = resolve_type_name(m, e->text, e->loc);
+        Spec s = {.kind = SPEC_NAME, .loc = e->loc, .name = e->text};
+        resolve_spec(m, &s);
+        e->text = s.self_type ? canonical(s.self_type->module, s.self_type->name) : s.name;
+    }
+    if (e->kind == E_RECORD && e->type_expr) {
+        resolve_spec(m, e->type_expr);
+        Spec *s = e->type_expr;
+        e->text = s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;
     }
     if (e->test_spec) {
         resolve_spec(m, e->test_spec);
@@ -713,6 +1079,9 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
 static void check_names(Program *p, Module *m)
 {
     List declared = {0};
+    for (int j = 0; j < m->aliases.n; j++) {
+        add(&declared, ((TypeAlias *)m->aliases.v[j])->name);
+    }
     for (int j = 0; j < m->defs.n; j++) {
         add(&declared, ((Def *)m->defs.v[j])->name);
     }
@@ -957,25 +1326,121 @@ static void pass_top_bindings(Program *p, Module *m)
     }
 }
 
-static char *resolve_base(Program *p, Module *m, Def *d, char *name)
+static void resolve_definition(Program *p, Def *d)
 {
-    if (!p->tooling) {
-        return resolve_type_name(m, name, d->loc);
+    if (d->resolved || d->type_params.n || d->invalid) {
+        return;
     }
-    ToolRecovery recovery;
-    tool_enter(&recovery);
-    if (setjmp(recovery.escape)) {
-        d->invalid = true;
-        tool_leave(&recovery);
-        return name;
+    d->resolved = true;
+    Module *m = d->module;
+    List names = {0};
+    for (int j = 0; j < d->base_specs.n; j++) {
+        Spec *s = d->base_specs.v[j];
+        resolve_spec(m, s);
+        if (s->kind != SPEC_NAME) {
+            fail(s->loc, "composition base must be a def^ type");
+        }
+        add(&d->base_names,
+            s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name);
     }
-    char *resolved = resolve_type_name(m, name, d->loc);
-    tool_leave(&recovery);
-    return resolved;
+    for (int j = 0; j < d->union_specs.n; j++) {
+        resolve_spec(m, d->union_specs.v[j]);
+    }
+    for (int j = 0; j < d->own_fields.n; j++) {
+        Field *f = d->own_fields.v[j];
+        resolve_spec(m, f->spec);
+        Function scope = {.owner = d, .name = "<field-default>"};
+        Function *outer = top_user;
+        top_user = &scope;
+        resolve_expr(p, m, &names, f->init);
+        top_user = outer;
+    }
+    for (int j = 0; j < d->own_methods.n; j++) {
+        resolve_function(p, m, d->own_methods.v[j]);
+    }
+    for (int j = 0; j < d->constants.n; j++) {
+        Constant *c = d->constants.v[j];
+        for (int k = 0; k < j; k++) {
+            if (!strcmp(c->name, ((Constant *)d->constants.v[k])->name)) {
+                fail(c->binding->loc, "duplicate type constant '%s'", c->name);
+            }
+        }
+        for (int k = 0; k < d->own_fields.n; k++) {
+            if (!strcmp(c->name, ((Field *)d->own_fields.v[k])->name)) {
+                fail(c->binding->loc, "field/type constant name collision '%s'", c->name);
+            }
+        }
+        for (int k = 0; k < d->own_methods.n; k++) {
+            if (!strcmp(c->name, ((Function *)d->own_methods.v[k])->name)) {
+                fail(c->binding->loc, "method/type constant name collision '%s'", c->name);
+            }
+        }
+        resolve_constant(p, c);
+        Function *f = mem(sizeof(*f));
+        f->name = fmt("<type-constant:%s.%s>", d->name, c->name);
+        f->loc = c->binding->loc;
+        f->module = m;
+        f->owner = d;
+        f->resolved = f->constant_value = true;
+        Stmt *ret = mem(sizeof(*ret));
+        *ret = (Stmt){.kind = S_RETURN, .loc = f->loc, .a = copy_expr(c->binding->a)};
+        add(&f->body, ret);
+        add(&p->functions, f);
+        add(&m->functions, f);
+    }
+}
+
+static bool collect_alias(Module *m, Stmt *s, bool public)
+{
+    if (s->kind != S_BIND || s->mut || s->spec) {
+        return false;
+    }
+    Spec *spec = expression_type(m, s->a);
+    if (!spec) {
+        return false;
+    }
+    TypeAlias *a = mem(sizeof(*a));
+    *a = (TypeAlias){.name = s->name, .loc = s->loc, .spec = spec, .module = m, .public = public};
+    add(&m->aliases, a);
+    // Type bindings occupy no runtime storage and capture no activation.
+    s->kind = S_BLOCK;
+    s->a = NULL;
+    s->public_binding = false;
+    return true;
+}
+
+static void collect_aliases(Program *p)
+{
+    bool changed;
+    do {
+        changed = false;
+        for (int j = 0; j < p->modules.n; j++) {
+            Module *m = p->modules.v[j];
+            for (int k = 0; k < m->constants.n;) {
+                Constant *c = m->constants.v[k];
+                if (collect_alias(m, c->binding, c->public)) {
+                    memmove(m->constants.v + k, m->constants.v + k + 1,
+                            (size_t)(m->constants.n - k - 1) * sizeof(void *));
+                    m->constants.n--;
+                    changed = true;
+                }
+                else {
+                    k++;
+                }
+            }
+            for (int k = 0; m->root && k < m->entry->body.n; k++) {
+                Stmt *s = m->entry->body.v[k];
+                changed |= collect_alias(m, s, s->public_binding);
+            }
+        }
+    } while (changed);
 }
 
 void resolve_modules(Program *p)
 {
+    top_bindings = top_calls = top_references = (List){0};
+    top_user = NULL;
+    collect_aliases(p);
     // Names remain local until every module's references have been resolved.
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
@@ -986,6 +1451,11 @@ void resolve_modules(Program *p)
         top_references = (List){0};
         for (int k = 0; m->root && k < m->entry->body.n; k++) {
             Stmt *s = m->entry->body.v[k];
+            if (s->public_binding) {
+                TOOL_CHECK(
+                    p, fail(s->loc,
+                            "public^ executable bindings are not supported in the entry file"););
+            }
             if (s->kind == S_BIND) {
                 add(&top_bindings, s);
             }
@@ -993,9 +1463,13 @@ void resolve_modules(Program *p)
                 add(&top_bindings, s->body.v[n]);
             }
         }
+        for (int k = 0; k < m->aliases.n; k++) {
+            TypeAlias *a = m->aliases.v[k];
+            TOOL_CHECK(p, resolve_alias(a););
+        }
         for (int k = 0; k < m->constants.n; k++) {
             Constant *c = m->constants.v[k];
-            if (!constant_expr(c->binding->a) && !c->binding->a->invalid) {
+            if (!constant_expr(c->binding->a, false) && !c->binding->a->invalid) {
                 TOOL_CHECK(p, fail(c->binding->loc,
                                    "module constant requires scalar literal operations"););
                 c->binding->a->invalid = true;
@@ -1017,20 +1491,7 @@ void resolve_modules(Program *p)
         }
         for (int k = 0; k < m->defs.n; k++) {
             Def *d = m->defs.v[k];
-            for (int n = 0; n < d->base_names.n; n++) {
-                d->base_names.v[n] = resolve_base(p, m, d, d->base_names.v[n]);
-            }
-            for (int n = 0; n < d->union_specs.n; n++) {
-                resolve_spec(m, d->union_specs.v[n]);
-            }
-            for (int n = 0; n < d->own_fields.n; n++) {
-                Field *f = d->own_fields.v[n];
-                resolve_spec(m, f->spec);
-                resolve_expr(p, m, &names, f->init);
-            }
-            for (int n = 0; n < d->own_methods.n; n++) {
-                resolve_function(p, m, d->own_methods.v[n]);
-            }
+            TOOL_CHECK(p, resolve_definition(p, d););
         }
         for (int k = 0; k < m->functions.n; k++) {
             resolve_function(p, m, m->functions.v[k]);
@@ -1051,6 +1512,15 @@ void resolve_modules(Program *p)
             f->name = canonical(m, f->name);
         }
     }
+    // Templates have no storage layout or executable bodies of their own.
+    int concrete = 0;
+    for (int j = 0; j < p->defs.n; j++) {
+        Def *d = p->defs.v[j];
+        if (!d->type_params.n) {
+            p->defs.v[concrete++] = d;
+        }
+    }
+    p->defs.n = concrete;
 }
 
 void parse(Program *p, const char *path)

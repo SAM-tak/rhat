@@ -562,7 +562,8 @@ static cJSON *export_index(Session *s)
     cJSON *refs = cJSON_AddArrayToObject(out, "symbols");
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
-        ToolRef r = {d->loc, d->loc, d->name, d->type, NULL, NULL, 23, true};
+        ToolRef r = {d->loc, d->loc, d->generic ? d->generic->name : d->name, d->type, NULL, NULL,
+                     23,     true};
         emit_ref(p, refs, &r);
         for (int k = 0; k < d->own_fields.n; k++) {
             Field *f = d->own_fields.v[k];
@@ -577,9 +578,65 @@ static cJSON *export_index(Session *s)
             r = (ToolRef){loc, loc, f->name, NULL, f, d, 6, true};
             emit_ref(p, refs, &r);
         }
+        for (int k = 0; k < d->constants.n; k++) {
+            Constant *c = d->constants.v[k];
+            Type *type = NULL;
+            for (int n = 0; n < p->instances.n; n++) {
+                Instance *in = p->instances.v[n];
+                if (in->fn->constant_value && in->fn->owner == d &&
+                    in->fn->loc.line == c->binding->loc.line &&
+                    in->fn->loc.col == c->binding->loc.col) {
+                    type = in->result;
+                    break;
+                }
+            }
+            r = (ToolRef){c->binding->loc, c->binding->loc, c->name, type, NULL, d, 14, true};
+            int count = cJSON_GetArraySize(refs);
+            emit_ref(p, refs, &r);
+            if (cJSON_GetArraySize(refs) > count) {
+                cJSON *last = cJSON_GetArrayItem(refs, count);
+                cJSON_ReplaceItemInObjectCaseSensitive(last, "private",
+                                                       cJSON_CreateBool(!c->public));
+            }
+            for (int n = 0; n < p->resolutions.n; n++) {
+                ToolRef *use = p->resolutions.v[n];
+                if (use->kind == 14 && use->owner == d && !strcmp(use->name, c->name)) {
+                    use->type = type;
+                }
+            }
+        }
     }
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
+        for (int k = 0; k < m->aliases.n; k++) {
+            TypeAlias *a = m->aliases.v[k];
+            const char *name = m->name ? fmt("%s.%s", m->name, a->name) : a->name;
+            ToolRef r = {a->loc, a->loc, name, a->spec->type, NULL, NULL, 23, true};
+            emit_ref(p, refs, &r);
+            cJSON *last = cJSON_GetArrayItem(refs, cJSON_GetArraySize(refs) - 1);
+            if (last) {
+                cJSON_ReplaceItemInObjectCaseSensitive(last, "public", cJSON_CreateBool(a->public));
+            }
+            for (int n = 0; n < p->resolutions.n; n++) {
+                ToolRef *use = p->resolutions.v[n];
+                if (use->kind == 23 && !strcmp(use->name, name)) {
+                    use->type = a->spec->type;
+                }
+            }
+        }
+        for (int k = 0; k < m->defs.n; k++) {
+            Def *d = m->defs.v[k];
+            if (d->type_params.n) {
+                ToolRef r = {d->loc, d->loc, d->name, NULL, NULL, NULL, 23, true};
+                int count = cJSON_GetArraySize(refs);
+                emit_ref(p, refs, &r);
+                if (cJSON_GetArraySize(refs) > count) {
+                    cJSON *last = cJSON_GetArrayItem(refs, count);
+                    cJSON_ReplaceItemInObjectCaseSensitive(last, "public",
+                                                           cJSON_CreateBool(d->public));
+                }
+            }
+        }
         for (int k = 0; k < m->constants.n; k++) {
             Constant *c = m->constants.v[k];
             Type *type = NULL;
@@ -609,6 +666,9 @@ static cJSON *export_index(Session *s)
     }
     for (int j = 0; j < p->functions.n; j++) {
         Function *f = p->functions.v[j];
+        if (f->constant_value) {
+            continue;
+        }
         Loc loc = f->declaration.file ? f->declaration : f->loc;
         ToolRef r = {loc, loc, f->name, NULL, f, NULL, 12, true};
         emit_ref(p, refs, &r);
