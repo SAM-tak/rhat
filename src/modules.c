@@ -1114,15 +1114,21 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
 
 static void check_names(Program *p, Module *m)
 {
-    List declared = {0};
+    List declared = {0}, places = {0}; // Names and their declaration Loc *.
     for (int j = 0; j < m->aliases.n; j++) {
-        add(&declared, ((TypeAlias *)m->aliases.v[j])->name);
+        TypeAlias *a = m->aliases.v[j];
+        add(&declared, a->name);
+        add(&places, &a->loc);
     }
     for (int j = 0; j < m->defs.n; j++) {
-        add(&declared, ((Def *)m->defs.v[j])->name);
+        Def *d = m->defs.v[j];
+        add(&declared, d->name);
+        add(&places, &d->loc);
     }
     for (int j = 0; j < m->constants.n; j++) {
-        add(&declared, ((Constant *)m->constants.v[j])->name);
+        Constant *c = m->constants.v[j];
+        add(&declared, c->name);
+        add(&places, &c->binding->loc);
     }
     for (int j = 0; j < m->functions.n; j++) {
         Function *f = m->functions.v[j];
@@ -1134,13 +1140,17 @@ static void check_names(Program *p, Module *m)
         }
         if (!overload) {
             add(&declared, f->name);
+            add(&places, f->declaration.file ? &f->declaration : &f->loc);
         }
     }
     for (int j = 0; j < declared.n; j++) {
         char *name = declared.v[j];
         for (int k = 0; k < j; k++) {
             if (!strcmp(name, declared.v[k])) {
-                TOOL_CHECK(p, fail((Loc){m->path, 1, 1}, "duplicate declaration '%s'", name););
+                // Report the later of the two in source order.
+                Loc *a = places.v[j], *b = places.v[k];
+                Loc *later = a->line > b->line || (a->line == b->line && a->col > b->col) ? a : b;
+                TOOL_CHECK(p, fail(*later, "duplicate declaration '%s'", name););
             }
         }
         for (int k = 0; k < m->imports.n; k++) {

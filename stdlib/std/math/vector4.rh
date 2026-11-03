@@ -1,0 +1,108 @@
+module^std.math.vector4
+
+let^math = import^std.math
+
+# A four-component vector. T is a float. There is no 4D cross product.
+public^def^Vec4<T> {
+    self^{ x:T, y:T, z:T, w:T }
+
+    ZERO = Self^{ x = T.ZERO, y = T.ZERO, z = T.ZERO, w = T.ZERO }
+    ONE = Self^{ x = T.ONE, y = T.ONE, z = T.ONE, w = T.ONE }
+
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x + other.x,
+            y = self^.y + other.y,
+            z = self^.z + other.z,
+            w = self^.w + other.w
+        }
+    }
+    op^- = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x - other.x,
+            y = self^.y - other.y,
+            z = self^.z - other.z,
+            w = self^.w - other.w
+        }
+    }
+    overload^op^- = f^self^-> Self^{
+        Self^{ x = -self^.x, y = -self^.y, z = -self^.z, w = -self^.w }
+    }
+    op^* = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x * scale, y = self^.y * scale, z = self^.z * scale, w = self^.w * scale }
+    }
+    overload^op^* = f^scale:T, self^-> Self^{
+        Self^{ x = scale * self^.x, y = scale * self^.y, z = scale * self^.z, w = scale * self^.w }
+    }
+    overload^op^* = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x * other.x,
+            y = self^.y * other.y,
+            z = self^.z * other.z,
+            w = self^.w * other.w
+        }
+    }
+    op^/ = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x / scale, y = self^.y / scale, z = self^.z / scale, w = self^.w / scale }
+    }
+    overload^op^/ = f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.x / other.x,
+            y = self^.y / other.y,
+            z = self^.z / other.z,
+            w = self^.w / other.w
+        }
+    }
+    op^dot^= f^self^, other:Self^-> T{
+        self^.x * other.x + self^.y * other.y + self^.z * other.z + self^.w * other.w
+    }
+
+    length = f^self^-> T{ math.sqrt(*self^dot^*self^) }
+    # The zero vector stays zero.
+    normalized = f^self^-> Self^{
+        let^n = self^.length()
+        if^n = T.ZERO {
+            return^*self^
+        }
+        return^Self^{ x = self^.x / n, y = self^.y / n, z = self^.z / n, w = self^.w / n }
+    }
+    # Unclamped: t outside 0..1 extrapolates.
+    lerp = f^self^, other:Self^, t:T -> Self^{ *self^+ (other - *self^) * t }
+    abs = f^self^-> Self^{
+        Self^{
+            x = math.abs(self^.x),
+            y = math.abs(self^.y),
+            z = math.abs(self^.z),
+            w = math.abs(self^.w)
+        }
+    }
+    clamp = f^self^, low:T, high:T -> Self^{
+        Self^{
+            x = def^.limit(self^.x, low, high),
+            y = def^.limit(self^.y, low, high),
+            z = def^.limit(self^.z, low, high),
+            w = def^.limit(self^.w, low, high)
+        }
+    }
+    overload^clamp = f^self^, low:Self^, high:Self^-> Self^{
+        Self^{
+            x = def^.limit(self^.x, low.x, high.x),
+            y = def^.limit(self^.y, low.y, high.y),
+            z = def^.limit(self^.z, low.z, high.z),
+            w = def^.limit(self^.w, low.w, high.w)
+        }
+    }
+    distance = f^a:Self^, b:Self^-> T{ (a - b).length() }
+
+    private^limit = f^value:T, low:T, high:T -> T{
+        if^value < low {
+            return^low
+        }
+        if^value > high {
+            return^high
+        }
+        return^value
+    }
+}
+
+public^let^Vector4 = Vec4<f32^>

@@ -863,6 +863,25 @@ print^(a.get(),W.make(2).x,V.ZERO.x)
         assert want == {x['label'] for x in completions} & {'ZERO','make','get','x'}, (needle,completions)
     print('PASS static members complete on types and def^, methods on values',flush=True)
 
+    qualified="""import^std.math.vector2
+let^F2 = std.math.vector2.Vector2
+def^F2 { self^{ x:f32^ } }
+"""
+    client.change(path,qualified,159)
+    duplicate=client.diagnostics(path,159)
+    assert [d['range']['start'] for d in duplicate if 'duplicate declaration' in d['message']] == [at(qualified,'F2 {')], duplicate
+    tokens=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    line=column=0
+    spelled={}
+    for offset in range(0,len(tokens),5):
+        delta_line,delta_column,length,kind,_=tokens[offset:offset+5]
+        line+=delta_line
+        column=delta_column if delta_line else column+delta_column
+        if line == 1:
+            spelled[qualified.splitlines()[1][column:column+length]]=kind
+    assert spelled == {'F2':1,'std':11,'math':11,'vector2':11,'Vector2':1}, spelled
+    print('PASS duplicate declarations and qualified type paths are located',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

@@ -1,0 +1,92 @@
+module^std.math.vector3
+
+let^math = import^std.math
+
+# A three-component vector: UP is +y and FORWARD is +z. T is a float.
+public^def^Vec3<T> {
+    self^{ x:T, y:T, z:T }
+
+    ZERO = Self^{ x = T.ZERO, y = T.ZERO, z = T.ZERO }
+    ONE = Self^{ x = T.ONE, y = T.ONE, z = T.ONE }
+    RIGHT = Self^{ x = T.ONE, y = T.ZERO, z = T.ZERO }
+    LEFT = Self^{ x = -T.ONE, y = T.ZERO, z = T.ZERO }
+    UP = Self^{ x = T.ZERO, y = T.ONE, z = T.ZERO }
+    DOWN = Self^{ x = T.ZERO, y = -T.ONE, z = T.ZERO }
+    FORWARD = Self^{ x = T.ZERO, y = T.ZERO, z = T.ONE }
+    BACK = Self^{ x = T.ZERO, y = T.ZERO, z = -T.ONE }
+
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x + other.x, y = self^.y + other.y, z = self^.z + other.z }
+    }
+    op^- = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x - other.x, y = self^.y - other.y, z = self^.z - other.z }
+    }
+    overload^op^- = f^self^-> Self^{ Self^{ x = -self^.x, y = -self^.y, z = -self^.z } }
+    op^* = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x * scale, y = self^.y * scale, z = self^.z * scale }
+    }
+    overload^op^* = f^scale:T, self^-> Self^{
+        Self^{ x = scale * self^.x, y = scale * self^.y, z = scale * self^.z }
+    }
+    overload^op^* = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x * other.x, y = self^.y * other.y, z = self^.z * other.z }
+    }
+    op^/ = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x / scale, y = self^.y / scale, z = self^.z / scale }
+    }
+    overload^op^/ = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x / other.x, y = self^.y / other.y, z = self^.z / other.z }
+    }
+    op^dot^= f^self^, other:Self^-> T{
+        self^.x * other.x + self^.y * other.y + self^.z * other.z
+    }
+    op^cross^= f^self^, other:Self^-> Self^{
+        Self^{
+            x = self^.y * other.z - self^.z * other.y,
+            y = self^.z * other.x - self^.x * other.z,
+            z = self^.x * other.y - self^.y * other.x
+        }
+    }
+
+    length = f^self^-> T{ math.sqrt(*self^dot^*self^) }
+    # The zero vector stays zero.
+    normalized = f^self^-> Self^{
+        let^n = self^.length()
+        if^n = T.ZERO {
+            return^*self^
+        }
+        return^Self^{ x = self^.x / n, y = self^.y / n, z = self^.z / n }
+    }
+    # Unclamped: t outside 0..1 extrapolates.
+    lerp = f^self^, other:Self^, t:T -> Self^{ *self^+ (other - *self^) * t }
+    abs = f^self^-> Self^{
+        Self^{ x = math.abs(self^.x), y = math.abs(self^.y), z = math.abs(self^.z) }
+    }
+    clamp = f^self^, low:T, high:T -> Self^{
+        Self^{
+            x = def^.limit(self^.x, low, high),
+            y = def^.limit(self^.y, low, high),
+            z = def^.limit(self^.z, low, high)
+        }
+    }
+    overload^clamp = f^self^, low:Self^, high:Self^-> Self^{
+        Self^{
+            x = def^.limit(self^.x, low.x, high.x),
+            y = def^.limit(self^.y, low.y, high.y),
+            z = def^.limit(self^.z, low.z, high.z)
+        }
+    }
+    distance = f^a:Self^, b:Self^-> T{ (a - b).length() }
+
+    private^limit = f^value:T, low:T, high:T -> T{
+        if^value < low {
+            return^low
+        }
+        if^value > high {
+            return^high
+        }
+        return^value
+    }
+}
+
+public^let^Vector3 = Vec3<f32^>

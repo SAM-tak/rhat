@@ -226,6 +226,24 @@ let^ inf = 1.0/0.0
 print^(m.isnan(inf-inf), m.isinf(inf), m.isinf(-inf), m.isinf(f64^(1.0)), m.isfinite(f64^(1.0)), m.isfinite(inf), m.isnan(f32^(1.0)))
 '''}, '1.4142135623730951 2.5 1.0 true 1024.0\n-2.0 -1.0 -1.0 3.0 3.0 -2.0 7.0\n1.0 3.0 3.0 8.0 0.0 1.0 true\n'
           'true true true false true false false\n')
+    positive('std_math_vectors', {'main.rh': '''let^ v2 = import^ std.math.vector2
+let^ v3 = import^ std.math.vector3
+let^ v4 = import^ std.math.vector4
+let^ A = v2.Vector2
+let^ a = A{ x = 3.0, y = 4.0 }
+let^ b = A.ONE
+print^(a.length(), (a + b).x, (a - b).y, (-a).x, (a * 2.0).x, (2.0 * a).y, (a * b).x, (a / 2.0).x, (a / A{ x = 3.0, y = 2.0 }).y)
+print^(a dot^ b, a cross^ b, A.ZERO.normalized().x, a.lerp(b, 0.5).x, A.RIGHT.rotate(1.5707964).y, A.UP.angle() < 0.0, A.ZERO.angle())
+print^(A{ x = -1.0, y = 2.0 }.abs().x, a.clamp(0.0, 3.5).y, a.clamp(A.ZERO, A{ x = 1.0, y = 10.0 }).x, A.distance(a, A.ZERO), v2.Vec2<f64^>{ x = 3.0, y = 4.0 }.length())
+let^ B = v3.Vector3
+let^ c = B{ x = 1.0, y = 2.0, z = 2.0 }
+let^ z = B.RIGHT cross^ B.UP
+print^(c.length(), z.x, z.y, z.z, (0.5 * c).y, c dot^ B.ONE, c.lerp(B.ZERO, 0.5).y, c.clamp(0.0, 1.5).z, B.distance(c, B.ZERO), B.FORWARD.z, B.BACK.z)
+let^ C = v4.Vector4
+let^ d = C{ x = 1.0, y = 1.0, z = 1.0, w = 1.0 }
+print^(d.length(), (d + C.ONE).w, (2.0 * d).x, d dot^ d, d.normalized().w, d.clamp(C.ZERO, C{ x = 0.5, y = 2.0, z = 2.0, w = 2.0 }).x)
+'''}, '5.0 4.0 3.0 -3.0 6.0 8.0 3.0 1.5 2.0\n7.0 -1.0 0.0 2.0 1.0 true 0.0\n1.0 3.5 1.0 5.0 5.0\n'
+          '3.0 0.0 0.0 1.0 1.0 5.0 1.0 1.5 3.0 1.0 -1.0\n2.0 2.0 2.0 4.0 0.5 0.5\n')
     positive('number_parse', {'main.rh': '''let^ t = import^ std.text
 let^ show = p^ r:i64^ | t.Error.Invalid | t.Error.OutOfRange {
     if^ r fits^ i64^ { print^(r) elseif^ r fits^ t.Error.Invalid: print^("invalid") else^: print^("range") }

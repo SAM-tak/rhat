@@ -404,6 +404,12 @@ static const char *declaration_spelling(Program *p, ToolRef *r)
     return r->name;
 }
 
+// A byte of a name word, hats included, as the server's lexer reads it.
+static bool name_byte(unsigned char c)
+{
+    return isalnum(c) || c >= 128 || c == '_' || c == '^';
+}
+
 static void emit_ref(Program *p, cJSON *array, ToolRef *r)
 {
     if (!r->declaration.file || !r->name || *short_name(r->name) == '<') {
@@ -412,9 +418,40 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     const char *decl_name = declaration_spelling(p, r);
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
+    Loc at_use = r->use;
     if (r->kind == 23 && !r->definition && source &&
         !strncmp(source->text + loc_offset(source, r->use), "Self^", 5)) {
         use_name = "Self^";
+    }
+    else if (r->kind == 23 && !r->definition && source) {
+        // A module path or import alias before a type stays a namespace; the
+        // type is the segment after the longest such prefix.
+        const char *start = source->text + loc_offset(source, r->use), *last = start;
+        for (int j = 0; j < p->modules.n; j++) {
+            Module *m = p->modules.v[j];
+            List prefixes = {0};
+            add(&prefixes, m->name);
+            for (int k = 0; k < m->imports.n; k++) {
+                add(&prefixes, ((Import *)m->imports.v[k])->alias);
+            }
+            for (int k = 0; k < prefixes.n; k++) {
+                const char *prefix = prefixes.v[k];
+                size_t n = prefix ? strlen(prefix) : 0;
+                if (n && !strncmp(start, prefix, n) && start[n] == '.' && start + n + 1 > last) {
+                    last = start + n + 1;
+                }
+            }
+        }
+        if (last != start) {
+            size_t n = 0;
+            while (name_byte((unsigned char)last[n]) && last[n] != '^') {
+                n++;
+            }
+            char *segment = mem(n + 1);
+            memcpy(segment, last, n);
+            use_name = segment;
+            at_use.col += (int)(last - start);
+        }
     }
     if (r->function && source) {
         const char *at = source->text + loc_offset(source, r->use);
@@ -447,7 +484,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
             use_name = name;
         }
     }
-    cJSON *use = location(p, r->use, use_name);
+    cJSON *use = location(p, at_use, use_name);
     char *key = fmt("%s:%d:%d:%s", r->declaration.file, r->declaration.line, r->declaration.col,
                     short_name(r->name));
     // Keep one checked view per source occurrence and declaration. Distinct

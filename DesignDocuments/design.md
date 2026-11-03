@@ -567,6 +567,27 @@ print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 組み込み関数は `public^ let^ sin = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;` の形で宣言します。
 `externLLVM^` は標準ライブラリ（`std.*`）の `llvm.*` シンボル専用です。渡せる型と効果の規則は [externC^](ffi.md) と同じです。
 
+### ベクトル
+
+`std.math.vector2`・`std.math.vector3`・`std.math.vector4` は L^ の同名モジュールに相当します。
+浮動小数点型 `T` の `Vec2<T>`・`Vec3<T>`・`Vec4<T>` と、f32^ 版の別名 `Vector2`・`Vector3`・`Vector4` を公開します。
+
+```rhat
+let^ v3 = import^ std.math.vector3
+let^ V = v3.Vector3
+let^ a = V{ x = 1.0, y = 2.0, z = 2.0 }
+print^(a.length(), (2.0 * a).z, (V.RIGHT cross^ V.UP).z, V.distance(a, V.ZERO))
+```
+
+- 構築: `V{ x = ..., y = ... }`（L^ の `new(x, y)` は置きません）。L^ のモジュール関数 `zero()` などは型定数 `ZERO`・`ONE`・`RIGHT`・`LEFT`・`UP`・`DOWN`（vector3 は `FORWARD`・`BACK` も。vector4 は `ZERO`・`ONE` だけ）。
+  vector2 は L^ と同じ x 右・y 下の座標系で、`UP` は -y です。vector3 は `UP` が +y、`FORWARD` が +z です。
+- 演算子: `+`、二項・単項 `-`、`*`（スカラーを左右どちらからでも掛けられ、ベクトル同士なら成分ごと）、`/`（スカラーまたは成分ごと）、`dot^`。
+  `cross^` は vector2 では外積の z 成分（スカラー）、vector3 ではベクトルを返します。vector4 にはありません。
+- メソッド: `length`、`normalized`（ゼロベクトルはゼロのまま）、`lerp(other, t)`（t は制限しない）、`abs`、
+  `clamp(low, high)`（スカラー2つ、またはベクトル2つ）。vector2 は `rotate(radians)`（+x を +y へ回す）、`angle()`（`atan2(y, x)`、ゼロベクトルは 0）も持ちます。
+- 静的メンバ `distance(a, b)`。
+- L^ の `tostring` はまだありません。`p^` のメソッドは受け手を書き換えうるものとして扱われるため、`let^` の値から呼べる `write_text(out)` を書けないからです。
+
 ## 文字列から数値への変換
 
 すべての数値型が、型の側のメソッド `T.parse(s)` を持ちます。

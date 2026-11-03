@@ -330,15 +330,24 @@ List overload_candidates(Program *p, Def *owner, const char *name, int arity)
 
 Type *overload_hint(Program *p, List *candidates, int index, Expr *arg)
 {
+    // A number literal can only become a number, so other arms cast no vote.
+    Expr *number = arg && arg->kind == E_UNARY && !strcmp(arg->text, "-") ? arg->a : arg;
+    bool literal =
+        number && !number->constant_spec && (number->kind == E_INT || number->kind == E_FLOAT);
     Type *hint = NULL;
+    bool first = true;
     for (int j = 0; j < candidates->n; j++) {
         Function *f = candidates->v[j];
         Param *a = index < f->params.n ? f->params.v[index] : NULL;
         Type *t = a && a->self ? type_wrap(p, T_REF, f->owner->type, 0) : parameter_hint(p, a, arg);
-        if (j && t != hint) {
+        if (literal && t && !kind_integer(t->kind) && !kind_float(t->kind) && t->kind != T_UNION) {
+            continue;
+        }
+        if (!first && t != hint) {
             return NULL;
         }
         hint = t;
+        first = false;
     }
     return hint;
 }
