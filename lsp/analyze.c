@@ -302,7 +302,9 @@ static char *spec_text(Spec *s)
         elem = elem->elem;
     }
     char *kind = s->kind == SPEC_SLICE     ? "slice^"
-                 : s->kind == SPEC_GROW    ? (s->count ? "flex^" : "grow^")
+                 : s->kind == SPEC_GROW    ? (s->count == ARRAY_CAPPED ? "max^"
+                                              : s->count               ? "flex^"
+                                                                       : "grow^")
                  : s->kind == SPEC_BOUNDED ? fmt("max^%d", s->count)
                  : s->count                ? fmt("%d", s->count)
                                            : "";

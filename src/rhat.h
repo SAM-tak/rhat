@@ -317,7 +317,7 @@ enum {
     T_STRUCT,
     T_REF,
     T_ARRAY,
-    T_GROW, // An owning runtime-sized array; count selects ARRAY_GROW/FLEX/SIZED.
+    T_GROW, // An owning runtime-sized array; count selects ARRAY_GROW/FLEX/SIZED/CAPPED.
     T_SLICE,
     T_UNION,
     T_NEVER,        // Compiler-only type for an expression with no normal value path.
@@ -330,8 +330,10 @@ enum {
     T_BOUNDED       // T[max^N]: up to count elems inline after an i64 length; owns nothing.
 };
 
-// Owning array length policies; ARRAY_SIZED fixes length after construction.
-enum { ARRAY_GROW, ARRAY_FLEX, ARRAY_SIZED };
+// Owning array length policies; ARRAY_SIZED fixes length after construction,
+// ARRAY_CAPPED fixes capacity: its stack field names a private RhStack whose
+// limit ends the reserved elements.
+enum { ARRAY_GROW, ARRAY_FLEX, ARRAY_SIZED, ARRAY_CAPPED };
 
 struct Type {
     bool invalid; // Storage layout failed during editor analysis.
@@ -450,7 +452,8 @@ enum {
                  // source line goes last.
     I_SITE,      // dst = the static record of where an error is built: its source, line,
                  // column and message; text is the source (length bytes), a NUL, the message.
-    I_FILL       // Fill owning array dst with a copies of element b during construction.
+    I_FILL       // Fill owning array dst with a copies of element b during construction,
+                 // or with b < 0 reserve a elements of capacity for a T[max^].
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };

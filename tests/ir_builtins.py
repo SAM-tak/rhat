@@ -107,14 +107,15 @@ print^(x+y,f64^(x),i32^(3.5))
 
     # Exercise the actual emitted append helper with lengths that safe R^
     # source cannot fabricate. This verifies the pre-copy overflow checks.
-    helpers=re.findall(r'(?ms)^define internal void @rh_append_.*?^}',llvm)
-    assert len(helpers)==3
+    helpers=re.findall(r'(?ms)^define internal void @rh_(?:append_|growth_fail).*?^}',llvm)
+    assert len(helpers)==4
     exported_helpers=work/'append_boundary_helpers.ll'
     metadata='\n'.join(line for line in llvm.splitlines() if re.match(r'^!\d+ = ',line))
     exported_helpers.write_text('%RhStack = type {ptr,ptr,ptr,ptr}\n'
         'declare void @llvm.memcpy.p0.p0.i64(ptr,ptr,i64,i1 immarg)\n'
         'declare void @llvm.memmove.p0.p0.i64(ptr,ptr,i64,i1 immarg)\n'
-        'declare void @rh_stack_overflow(i32) cold noreturn\n'+
+        'declare void @rh_stack_overflow(i32) cold noreturn\n'
+        'declare void @rh_capacity_fail(i32) cold noreturn\n'+
         '\n'.join(f.replace('define internal ','define ',1) for f in helpers)+'\n'+metadata+'\n')
     c=work/'append_boundary.c'
     c.write_text('''
@@ -136,6 +137,7 @@ int main(int argc,char **argv) {
     if(!strcmp(argv[1],"partial")) rh_append_view(&a,seed,11,3,7);
     if(!strcmp(argv[1],"repeat_count")) rh_append_repeat(&a,seed,UINT64_MAX,1,7);
     if(!strcmp(argv[1],"repeat_size")) rh_append_repeat(&a,seed,1,UINT64_MAX,7);
+    if(!strcmp(argv[1],"capped")) {s.base=0;rh_append_view(&a,seed,33,1,7);}
     return 2;
   }
   rh_append_view(&a,seed,8,1,7);assert(a.len==8 && s.top==storage+8);
@@ -161,4 +163,6 @@ int main(int argc,char **argv) {
         for mode in ('count','size','len','partial','repeat_count','repeat_size'):
             result=run([str(exe),mode],1)
             assert 'at line 7: data stack overflow' in result.stderr,result.stderr
+        result=run([str(exe),'capped'],1)
+        assert 'at line 7: bounded array is full' in result.stderr,result.stderr
     suite.mark('emitted_append_overflow_overlap_and_empty_source')

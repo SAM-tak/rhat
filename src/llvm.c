@@ -907,8 +907,8 @@ static void instruction(Output *o, Instr *i)
                 "  br i1 %%t%d, label %%push_ok_%d, label %%push_bad_%d, !prof "
                 "!0\npush_bad_%d:\n",
                 ok, ok, ok, ok);
-        fprintf(f, "  call void @rh_stack_overflow(i32 %d)\n  unreachable\npush_ok_%d:\n",
-                i->loc.line, ok);
+        fprintf(f, "  call void @rh_growth_fail(ptr %%t%d, i32 %d)\n  unreachable\npush_ok_%d:\n",
+                stack, i->loc.line, ok);
         int ptr = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %%t%d\n", ptr, data, off);
         a = load(o, i->b);
@@ -1084,6 +1084,11 @@ static void instruction(Output *o, Instr *i)
     }
     case I_FILL:
         a = load(o, i->a);
+        if (i->b < 0) {
+            fprintf(f, "  call void @rh_reserve(ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n", i->dst,
+                    a, t->elem->size, i->loc.line);
+            break;
+        }
         fprintf(f,
                 "  call void @rh_append_repeat(ptr %%p%d, ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n",
                 i->dst, i->b, a, t->elem->size, i->loc.line);

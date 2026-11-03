@@ -1433,7 +1433,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (e->test_spec) {
             Type *type = type_spec(c->p, e->test_spec);
             for (int j = 0; j < e->args.n; j++) {
-                Type *hint = e->args.n == 2 ? (j ? type->elem : type_builtin(c->p, T_I64)) : NULL;
+                Type *hint = j ? type->elem
+                             : e->args.n == 2 || type->count == ARRAY_CAPPED
+                                 ? type_builtin(c->p, T_I64)
+                                 : NULL;
                 infer_expr(c, e->args.v[j], hint);
             }
             return c->terminated ? type_builtin(c->p, T_NEVER) : type;
@@ -2730,8 +2733,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, want, NULL);
         if (e->test_spec && e->text) {
             for (int j = 0; j < e->args.n; j++) {
-                Type *hint =
-                    e->args.n == 2 ? (j ? n->type->elem : type_builtin(c->p, T_I64)) : NULL;
+                Type *hint = j ? n->type->elem
+                             : e->args.n == 2 || n->type->count == ARRAY_CAPPED
+                                 ? type_builtin(c->p, T_I64)
+                                 : NULL;
                 body_expr(c, e->args.v[j], hint);
             }
             break;

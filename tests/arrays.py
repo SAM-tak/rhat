@@ -180,6 +180,50 @@ print^(copies.len,copies[1].n)
     suite.runtime_failure('sized_negative_count','let^a=i32^[](-1,0)', 'data stack')
     suite.runtime_failure('sized_overflow_count','let^a=i64^[](9223372036854775807,0)', 'data stack')
     suite.runtime_failure('sized_bounds','let^a=i32^[](2,7) print^(a[2])', 'out of bounds')
+    positive('capped_operations', '''
+var^a=i32^[max^](4)
+let^src=[7,8]
+a.push(1)
+let^r=a.push(2)
+a.append(src[..])
+print^(a.len,a[0],*r,a[3],a[1 ..].len)
+a.pop() a.truncate(1)
+print^(a.len)
+a.clear()
+for^ i from^ 0 to^ 3 {a.push(i32^(i)*10)}
+print^(a.len,a[3])
+''', '4 1 2 8 3\n1\n4 30\n')
+    positive('capped_reference_field_result_and_reuse', '''
+def^W {self^{n:i32^, xs:i64^[max^]}}
+let^fill=p^b:ref^i64^[max^] {b.push(9)}
+let^build=f^c:i64^ -> i64^[max^] {var^r=i64^[max^](c) r.push(c) return^r}
+var^w=W{n=1, xs=i64^[max^](3)}
+fill(ref^w.xs) fill(ref^w.xs)
+let^q=build(3)
+let^copy=i64^[](q)
+var^total:i64^=0
+for^ k from^ 1 to^ 1000 {
+    var^c=u8^[max^](10000000)
+    c.push(u8^(1))
+    total+=c.len
+}
+print^(w.xs.len,w.xs[1],q.len,q[0],copy[0],total)
+''', '2 9 1 3 3 1000\n')
+    negative('capped_literal', 'var^a:i32^[max^]=[1,2]', 'is built with i32^[max^](capacity)')
+    negative('capped_empty_value', 'let^a=i32^[max^]', 'is built with')
+    negative('capped_literal_attribute', 'let^a=[max^;1,2]', 'expected an array length')
+    negative('capped_wrong_capacity', 'let^n:i32^=2 let^a=i32^[max^](n)',
+             'array capacity must be i64^')
+    negative('capped_constructor_arity', 'let^a=i32^[max^](1,2)', 'expects a capacity')
+    negative('capped_no_grow_conversion', 'let^a:i32^[grow^]=i32^[max^](2)', 'cannot initialize')
+    negative('capped_forbid_implicit_copy', 'let^a=i32^[max^](2) let^b=a', 'owned')
+    suite.runtime_failure('capped_push_full', 'var^a=i32^[max^](1) a.push(1) a.push(2)',
+                          'bounded array is full')
+    suite.runtime_failure('capped_append_full', 'var^a=i32^[max^](2) let^s=[1,2,3] a.append(s[..])',
+                          'bounded array is full')
+    suite.runtime_failure('capped_negative_capacity', 'let^a=i32^[max^](-1)', 'data stack')
+    suite.runtime_failure('capped_overflow_capacity', 'let^a=i64^[max^](9223372036854775807)',
+                          'data stack')
     suite.finish()
 
 

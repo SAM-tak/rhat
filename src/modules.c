@@ -355,7 +355,11 @@ static char *spec_identity(Spec *s)
     case SPEC_ARRAY:
         return s->count ? fmt("(%s)[%d]", elem, s->count) : fmt("(%s)[]", elem);
     case SPEC_GROW:
-        return fmt("(%s)[%s]", elem, s->count == ARRAY_SIZED ? "" : s->count ? "flex^" : "grow^");
+        return fmt("(%s)[%s]", elem,
+                   s->count == ARRAY_SIZED    ? ""
+                   : s->count == ARRAY_CAPPED ? "max^"
+                   : s->count                 ? "flex^"
+                                              : "grow^");
     case SPEC_SLICE:
         return fmt("(%s)[slice^]", elem);
     case SPEC_BOUNDED:

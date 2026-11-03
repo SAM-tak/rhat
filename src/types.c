@@ -406,9 +406,10 @@ char *type_name(Type *t)
         elem = elem->elem;
     }
     char *kind = t->kind == T_SLICE     ? "slice^"
-                 : t->kind == T_GROW    ? (t->count == ARRAY_SIZED ? ""
-                                           : t->count              ? "flex^"
-                                                                   : "grow^")
+                 : t->kind == T_GROW    ? (t->count == ARRAY_SIZED    ? ""
+                                           : t->count == ARRAY_CAPPED ? "max^"
+                                           : t->count                 ? "flex^"
+                                                                      : "grow^")
                  : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
                                         : fmt("%d", t->count);
     return fmt(elem->kind == T_UNION || elem->kind == T_DYN ? "(%s)[%s%s%s]" : "%s[%s%s%s]",

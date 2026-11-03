@@ -2084,15 +2084,20 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     layout(t, e->loc);
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     Value count = {0}, source = {0};
-    bool repeat = e->args.n == 2;
-    if (repeat) {
+    bool reserve = t->count == ARRAY_CAPPED, repeat = e->args.n == 2;
+    if (repeat || reserve) {
         count = snapshot(c, expression(c, e->args.v[0], type_builtin(c->p, T_I64)), e->loc);
         if (dead(count)) {
             return count;
         }
         if (count.type->kind != T_I64) {
-            fail(e->loc, "array length must be i64^");
+            fail(e->loc, "array %s must be i64^", reserve ? "capacity" : "length");
         }
+    }
+    if (reserve) {
+        source = count;
+    }
+    else if (repeat) {
         source = snapshot(c, expression(c, e->args.v[1], t->elem), e->loc);
         if (!dead(source) && source.type != t->elem) {
             fail(e->loc, "array initial value must be '%s'", type_name(t->elem));
@@ -2121,14 +2126,14 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     if (dead(source)) {
         return source;
     }
-    out.deps = t->elem->refs ? source.deps : (Roots){0};
+    out.deps = t->elem->refs && !reserve ? source.deps : (Roots){0};
     Instr *region = emit(c, I_REGION, e->loc);
     region->dst = out.id;
     region->type = t;
-    Instr *fill = emit(c, repeat ? I_FILL : I_APPEND, e->loc);
+    Instr *fill = emit(c, repeat || reserve ? I_FILL : I_APPEND, e->loc);
     fill->type = t;
-    fill->b = source.id;
-    if (repeat) {
+    fill->b = reserve ? -1 : source.id;
+    if (repeat || reserve) {
         fill->dst = out.id;
         fill->a = count.id;
     }
@@ -2533,9 +2538,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
             }
             t = named;
-            if (t->kind == T_GROW && t->count == ARRAY_SIZED && e->text) {
+            if (t->kind == T_GROW && t->count >= ARRAY_SIZED && e->text) {
                 return sized_array(c, e, t, dst);
             }
+        }
+        if (t && t->kind == T_GROW && t->count == ARRAY_CAPPED) {
+            fail(e->loc, "'%s' is built with %s(capacity)", type_name(t), type_name(t));
         }
         Type *shape = array_literal_type(c->p, e, t, NULL);
         Value first = {0};

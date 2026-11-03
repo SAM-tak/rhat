@@ -1144,6 +1144,11 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     }
     else {
         bool bounded = take(p, "max^");
+        if (bounded && is(p, "]")) {
+            w->kind = SPEC_GROW;
+            w->count = ARRAY_CAPPED;
+            return w;
+        }
         Token *n = next(p);
         if (n->kind != TOK_INT) {
             fail(n->loc, "expected an array length, grow^, flex^, slice^ or max^");
@@ -1796,11 +1801,16 @@ static Expr *primary(Parser *p)
             n->a = e;
             entries(p, n, ")", false);
             if (e->kind == E_ARRAY && e->test_spec) {
-                if (e->text || e->test_spec->kind != SPEC_ARRAY || e->test_spec->count ||
-                    (n->args.n != 1 && n->args.n != 2)) {
+                Spec *s = e->test_spec;
+                bool capped = s->kind == SPEC_GROW && s->count == ARRAY_CAPPED;
+                if (capped && (e->text || n->args.n != 1)) {
+                    fail(e->loc, "T[max^] construction expects a capacity");
+                }
+                if (!capped && (e->text || s->kind != SPEC_ARRAY || s->count ||
+                                (n->args.n != 1 && n->args.n != 2))) {
                     fail(e->loc, "T[] construction expects a source or a length and initial value");
                 }
-                e->text = n->args.n == 1 ? "copy" : "repeat";
+                e->text = capped ? "reserve" : n->args.n == 1 ? "copy" : "repeat";
                 e->args = n->args;
                 continue;
             }

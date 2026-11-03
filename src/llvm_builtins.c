@@ -31,7 +31,7 @@ static void append_helper(FILE *f, int mode)
           "  %count_ok = icmp ule i64 %n, %remaining\n"
           "  %ok = and i1 %len_ok, %count_ok\n"
           "  br i1 %ok, label %checked, label %bad, !prof !0\n"
-          "bad:\n  call void @rh_stack_overflow(i32 %line)\n  unreachable\n"
+          "bad:\n  call void @rh_growth_fail(ptr %stack, i32 %line)\n  unreachable\n"
           "checked:\n"
           "  %off = mul i64 %len, %size\n"
           "  %copybytes = mul i64 %n, %size\n"
@@ -71,6 +71,62 @@ static void append_helper(FILE *f, int mode)
           "  store ptr %high, ptr %topp\n"
           "  store i64 %newlen, ptr %lenp, !tbaa !5\n"
           "  ret void\n}\n",
+          f);
+}
+
+// Reserve n elements for a fresh T[max^] at its stack's top, preceded by the
+// private 16-byte aligned RhStack its push and append check: limit ends the
+// elements, so the shared growth paths enforce the capacity unchanged.
+static void reserve_helper(FILE *f)
+{
+    fputs("define internal void @rh_reserve(ptr %a, i64 %n, i64 %size, i32 %line) "
+          "alwaysinline {\nentry:\n"
+          "  %top = load ptr, ptr %a, !tbaa !5\n"
+          "  %stackp = getelementptr {ptr,i64,ptr}, ptr %a, i32 0, i32 2\n"
+          "  %stack = load ptr, ptr %stackp, !tbaa !5\n"
+          "  %limitp = getelementptr %RhStack, ptr %stack, i32 0, i32 2\n"
+          "  %limit = load ptr, ptr %limitp\n"
+          "  %ti = ptrtoint ptr %top to i64\n"
+          "  %bumped = add i64 %ti, 15\n"
+          "  %ri = and i64 %bumped, -16\n"
+          "  %li = ptrtoint ptr %limit to i64\n"
+          "  %bytes = sub i64 %li, %ri\n"
+          "  %room_ok = icmp sge i64 %bytes, 32\n"
+          "  %room = sub i64 %bytes, 32\n"
+          "  %capacity = udiv i64 %room, %size\n"
+          "  %count_ok = icmp ule i64 %n, %capacity\n"
+          "  %ok = and i1 %room_ok, %count_ok\n"
+          "  br i1 %ok, label %checked, label %bad, !prof !0\n"
+          "bad:\n  call void @rh_stack_overflow(i32 %line)\n  unreachable\n"
+          "checked:\n"
+          "  %record = inttoptr i64 %ri to ptr\n"
+          "  %data = getelementptr i8, ptr %record, i64 32\n"
+          "  %databytes = mul i64 %n, %size\n"
+          "  %end = getelementptr i8, ptr %data, i64 %databytes\n"
+          "  store %RhStack { ptr null, ptr null, ptr null, ptr null }, ptr %record\n"
+          "  %recordtop = getelementptr %RhStack, ptr %record, i32 0, i32 1\n"
+          "  store ptr %data, ptr %recordtop\n"
+          "  %recordlimit = getelementptr %RhStack, ptr %record, i32 0, i32 2\n"
+          "  store ptr %end, ptr %recordlimit\n"
+          "  %stacktop = getelementptr %RhStack, ptr %stack, i32 0, i32 1\n"
+          "  store ptr %end, ptr %stacktop\n"
+          "  store ptr %data, ptr %a, !tbaa !5\n"
+          "  store ptr %record, ptr %stackp, !tbaa !5\n"
+          "  ret void\n}\n",
+          f);
+}
+
+// Growth past a stack's limit: a T[max^]'s private record has no base, so
+// there the limit is its capacity rather than the data stack's end.
+static void growth_fail(FILE *f)
+{
+    fputs("define internal void @rh_growth_fail(ptr %stack, i32 %line) cold noreturn {\n"
+          "entry:\n"
+          "  %base = load ptr, ptr %stack\n"
+          "  %capped = icmp eq ptr %base, null\n"
+          "  br i1 %capped, label %full, label %overflow\n"
+          "full:\n  call void @rh_capacity_fail(i32 %line)\n  unreachable\n"
+          "overflow:\n  call void @rh_stack_overflow(i32 %line)\n  unreachable\n}\n",
           f);
 }
 
@@ -227,6 +283,8 @@ void emit_llvm_builtins(FILE *f)
     append_helper(f, true);
     append_helper(f, false);
     append_helper(f, 2);
+    reserve_helper(f);
+    growth_fail(f);
     fp8_decode(f);
     fp8_encode(f, false);
     fp8_encode(f, true);
