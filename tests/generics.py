@@ -10,6 +10,7 @@ def^ Vec2<T> {
  RIGHT=Self^{x=T.ONE,y=T.ZERO}
  op^+ =f^self^,b:Self^ ->Self^ {Self^{x=self^.x+b.x,y=self^.y+b.y}}
  dot=f^self^,b:Self^ ->T {self^.x*b.x+self^.y*b.y}
+ make=f^x:T,y:T ->Self^ {Self^{x=x,y=y}}
 }
 '''
 
@@ -171,7 +172,33 @@ let^o:{scalar}^={scalar}^.ONE
 print^(z,o)
 ''', '0.0 1.0\n' if scalar.startswith(('f', 'bf')) else '0 1\n')
 
+    positive('static_members', VECTOR + '''
+def^Pos:Vec2<i32^>{}
+def^M {
+ self^{v:i64^}
+ fact=f^n:i64^ ->i64^ {if^ n<2: 1 el^: n*this^(n-1);}
+ hello=p^n:i64^ {print^("hi",n)}
+ private^ secret=f^ ->i64^ {7}
+ peek=f^ ->i64^ {Self^.secret()}
+ pick=f^n:i64^ ->i64^ {n}
+ overload^ pick=f^a:i64^,b:i64^ ->i64^ {a+b}
+ twice=f^self^ ->i64^ {Self^.pick(self^.v,self^.v)}
+}
+let^Float2=Vec2<f32^>
+let^a=Float2.make(1.0,2.0)
+M.hello(3)
+print^(a.dot(Vec2<f32^>.make(3.0,4.0)),Pos.make(1,2).y,M.fact(5),M.peek(),M.pick(2),M{v=4}.twice())
+''', 'hi 3\n11.0 2 120 7 2 8\n')
+
     cases = [
+        ('static_private', 'def^V{private^s=f^ ->i32^ {7}}\nprint^(V.s())', "private member 's'"),
+        ('static_from_value', 'def^V{self^{x:i32^} s=f^ ->i32^ {7}}\nprint^(V{x=1}.s())', 'is a static member'),
+        ('static_uncalled', 'def^V{s=f^ ->i32^ {7}}\nlet^g=V.s', "static member 's' must be called"),
+        ('static_method_name', 'def^V{s=f^ ->i32^ {7} overload^s=f^self^,n:i32^ ->i32^ {n}}', 'cannot share a name'),
+        ('static_abstract', 'def^V{abstract^s:f^ ->i32^;}', 'cannot be abstract^ or override^'),
+        ('static_override', 'def^B{s=f^ ->i32^ {7}}\ndef^D:B{override^s=f^ ->i32^ {8}}', 'cannot be abstract^ or override^'),
+        ('static_missing', 'def^V{}\nprint^(V.s())', 'has no constant or static member'),
+        ('static_arity', 'def^V{s=f^ ->i32^ {7}}\nprint^(V.s(1))', 'expects 0 arguments'),
         ('missing_arguments', 'def^Box<T>{self^{v:T}}\nlet^B=Box', 'expects 1 type arguments'),
         ('extra_arguments', 'def^Box<T>{self^{v:T}}\nlet^B=Box<i32^,f32^>', 'expects 1 type arguments'),
         ('nongeneric_arguments', 'def^Box{}\nlet^B=Box<i32^>', 'expects 0 type arguments'),
@@ -217,8 +244,8 @@ public^let^read=f^p:F ->f32^ {p.x}
 let^o=import^other
 let^F=v.Float2
 let^p:F=v.Vec2<f32^>.ONE
-let^q:o.F=F{x=2.0,y=3.0}
-print^(o.read(p),o.read(q),F.ZERO.y)
+let^q:o.F=F.make(2.0,3.0)
+print^(o.read(p),o.read(q),F.ZERO.y,v.Float2.make(4.0,5.0).y)
 ''', encoding='utf-8')
         if suite.args.checks_only:
             suite.run([suite.compiler, 'check', source])
@@ -226,7 +253,7 @@ print^(o.read(p),o.read(q),F.ZERO.y)
             for opt in suite.opts:
                 exe = root / ('main' + opt + '.exe')
                 suite.run([suite.compiler, 'build', source, '-o', exe, '--clang', suite.clang, opt])
-                assert suite.run([exe]).stdout == '1.0 2.0 0.0\n'
+                assert suite.run([exe]).stdout == '1.0 2.0 0.0 5.0\n'
     suite.case('imported_templates_and_alias_identity', module_case)
     suite.finish()
 

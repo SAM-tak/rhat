@@ -3205,6 +3205,10 @@ static void def_member(Parser *p, Def *d)
     f->priv = priv;
     f->override = over;
     f->overload = overload;
+    f->static_member = !f->operator_member && (!f->params.n || !((Param *)f->params.v[0])->self);
+    if (f->static_member && (abstr || over)) {
+        fail(f->loc, "static member '%s' cannot be abstract^ or override^", name);
+    }
     if (f->operator_member) {
         int self_count = 0;
         for (int k = 0; k < f->params.n; k++) {

@@ -784,7 +784,7 @@ static Type *infer_call(Infer *c, Expr *e)
         }
         if ((f = this_function(c->p, c->in, target))) {
             self = f == c->in->fn ? c->in->self : NULL;
-            if (self) {
+            if (self && !f->static_member) {
                 add(&actual, infer_lookup(c, "self^"));
             }
         }
@@ -793,6 +793,14 @@ static Type *infer_call(Infer *c, Expr *e)
             candidates = binding ? callable_candidates(binding, e->args.n)
                                  : overload_candidates(c->p, NULL, target->text, e->args.n);
             f = candidates.n ? candidates.v[0] : NULL;
+        }
+    }
+    else if ((self = static_owner(c->p, target))) {
+        candidates = overload_candidates(c->p, self, target->text, e->args.n);
+        f = candidates.n ? candidates.v[0] : method(self, target->text);
+        if (!f || !f->static_member) {
+            fail(target->name_loc.file ? target->name_loc : e->loc,
+                 "'%s' has no static member '%s'", self->name, target->text);
         }
     }
     else if (target->kind == E_MEMBER) {
@@ -1217,6 +1225,8 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     switch (e->kind) {
     case E_TYPE:
         fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
+    case E_STATIC:
+        fail(e->loc, "static member '%s' must be called", e->text);
     case E_TRY: {
         bool literal = e->a->kind == E_INT || e->a->kind == E_FLOAT || e->a->kind == E_RECORD ||
                        e->a->kind == E_ARRAY;
@@ -2640,6 +2650,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         }
         else if (e->a->kind == E_FUNCTION) {
             f = e->a->function;
+        }
+        else if (static_owner(c->p, e->a)) {
+            candidates = overload_candidates(c->p, static_owner(c->p, e->a), e->a->text, e->args.n);
+            f = candidates.n ? candidates.v[0] : NULL;
         }
         else if (e->a->kind == E_MEMBER) {
             BodyNode *receiver = body_expr(c, e->a->a, NULL);

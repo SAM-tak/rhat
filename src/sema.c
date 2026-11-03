@@ -1230,6 +1230,18 @@ Function *this_function(Program *p, Instance *in, Expr *target)
     return f;
 }
 
+Def *static_owner(Program *p, Expr *target)
+{
+    if (target->kind != E_STATIC) {
+        return NULL;
+    }
+    Type *t = type_spec(p, target->a->type_expr);
+    if (t->kind != T_STRUCT) {
+        fail(target->loc, "'%s' has no static member '%s'", type_name(t), target->text);
+    }
+    return t->def;
+}
+
 Def *outer_receiver(Function *f, Type *type, Loc loc)
 {
     if (type->kind != T_REF || type->elem->kind != T_STRUCT ||
@@ -1738,7 +1750,19 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     Def *self = NULL;
     List actual = {0};
     List values = {0};
-    if (target->kind == E_MEMBER) {
+    if ((self = static_owner(p, target))) {
+        List candidates = overload_candidates(p, self, target->text, e->args.n);
+        f = select_call(c, &candidates, e, NULL);
+        if (!f) {
+            f = method(self, target->text);
+        }
+        if (!f || !f->static_member) {
+            fail(target->name_loc.file ? target->name_loc : e->loc,
+                 "'%s' has no static member '%s'", self->name, target->text);
+        }
+        access_check(c, f->priv, f->owner, e->loc, f->name);
+    }
+    else if (target->kind == E_MEMBER) {
         Value receiver = expression(c, target->a, NULL);
         if (dead(receiver)) {
             return receiver;
@@ -1872,6 +1896,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             fail(target->name_loc.file ? target->name_loc : e->loc, "'%s' has no method '%s'",
                  self->name, target->text);
         }
+        if (f->static_member) {
+            fail(e->loc, "'%s' is a static member; call it as %s.%s(...)", f->name, self->name,
+                 f->name);
+        }
         access_check(c, f->priv, f->owner, e->loc, f->name);
         if (base.guarded_copy && (f->procedure || f->mutable_self)) {
             fail(e->loc, "mutable nil-propagating receiver requires an optional reference");
@@ -1898,7 +1926,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     else if ((f = this_function(p, c->in, target))) {
         self = f == c->in->fn ? c->in->self : NULL;
-        if (self) {
+        if (self && !f->static_member) {
             Var *receiver = lookup(c, "self^");
             Value ref = snapshot(c, variable(receiver), e->loc);
             Value *saved = mem(sizeof(*saved));
@@ -2859,6 +2887,9 @@ Value expression(Context *c, Expr *e, Type *expected)
     }
     if (e->kind == E_TYPE) {
         fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
+    }
+    if (e->kind == E_STATIC) {
+        fail(e->loc, "static member '%s' must be called", e->text);
     }
     if (e->invalid) {
         tool_abort();

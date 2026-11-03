@@ -887,9 +887,6 @@ static void compose_unchecked(Program *p, Def *d)
         if (field(d, f->name)) {
             fail(f->loc, "field/method name collision '%s'", f->name);
         }
-        if (!f->operator_member && (!f->params.n || !((Param *)f->params.v[0])->self)) {
-            fail(f->loc, "methods must start with self^ in this compiler");
-        }
         if (f->abstract && f->priv) {
             fail(f->loc, "private abstract methods cannot be implemented by another def^");
         }
@@ -900,6 +897,9 @@ static void compose_unchecked(Program *p, Def *d)
             Function *candidate = d->methods.v[j];
             if (strcmp(candidate->name, f->name)) {
                 continue;
+            }
+            if (candidate->static_member != f->static_member) {
+                fail(f->loc, "static member and method '%s' cannot share a name", f->name);
             }
             named = true;
             if (overload_overlap(p, candidate, f)) {

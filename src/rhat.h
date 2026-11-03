@@ -133,7 +133,8 @@ enum {
     E_RANGE,    // a .. b or a to^ b (text): a range^ value; a or b may be omitted.
     E_CHAR,     // char^"x": the Unicode scalar value in text, as decimal digits.
     E_INTERP,   // $"...": text and holes in args, each hole's format in names.
-    E_TYPE      // Compile-time type expression, eliminated by module resolution.
+    E_TYPE,     // Compile-time type expression, eliminated by module resolution.
+    E_STATIC    // Type.text naming a static member: a is the E_TYPE; only called.
 };
 
 struct Expr {
@@ -244,11 +245,12 @@ struct Function {
     bool intrinsic; // externLLVM^ binds an LLVM intrinsic instead of a C symbol.
     bool procedure, templ, abstract, priv, override, mutable_self;
     bool overload, operator_member, right_receiver; // Explicit member roles.
-    bool exported;                                  // exportC^: callable from C under its own name.
-    bool lhat_export;                               // exportL^: registered as an L^ host function.
-    bool variadic; // The last parameter "..." collects trailing arguments as a
-                   // slice.
-    List uses;     // Top-level bindings of the entry file the body reaches (Stmt *).
+    bool static_member; // A def^ member without self^, called as Type.name(...).
+    bool exported;      // exportC^: callable from C under its own name.
+    bool lhat_export;   // exportL^: registered as an L^ host function.
+    bool variadic;      // The last parameter "..." collects trailing arguments as a
+                        // slice.
+    List uses;          // Top-level bindings of the entry file the body reaches (Stmt *).
 };
 
 struct Field {

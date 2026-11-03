@@ -705,6 +705,29 @@ static Constant *type_constant(Program *p, Def *d, const char *name, int depth)
     return result;
 }
 
+// Whether d or a def^ it composes declares a static member name.
+static bool static_member(Program *p, Def *d, const char *name, int depth)
+{
+    if (depth > 128) {
+        fail(d->loc, "cyclic def^ composition at '%s'", d->name);
+    }
+    for (int j = 0; j < d->own_methods.n; j++) {
+        Function *f = d->own_methods.v[j];
+        if (f->static_member && !strcmp(f->name, name)) {
+            return true;
+        }
+    }
+    for (int j = 0; j < d->base_specs.n; j++) {
+        Spec *s = d->base_specs.v[j];
+        resolve_spec(d->module, s);
+        Def *base = s->self_type ? s->self_type : named_definition(p, s->name);
+        if (base && static_member(p, base, name, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void resolve_constant(Program *p, Constant *c)
 {
     if (c->state == 2) {
@@ -787,6 +810,14 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                 expand_constant(p, c, e);
                 return;
             }
+            if (d && static_member(p, d, e->text, 0)) {
+                // Type.member(...): the receiver stays a type, not a value.
+                Expr *type = mem(sizeof(*type));
+                *type = (Expr){.kind = E_TYPE, .loc = e->a->loc, .type_expr = s};
+                e->kind = E_STATIC;
+                e->a = type;
+                return;
+            }
             if ((kind >= 0 && !strcmp(e->text, "parse")) || (d && !strcmp(e->text, "new"))) {
                 *e->a =
                     *name_expr(s->self_type ? canonical(d->module, d->name) : s->name, e->a->loc);
@@ -807,7 +838,8 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                 }
             }
             if (!d || !d->backing) {
-                fail(e->loc, "type '%s' has no constant '%s'", spec_identity(s), e->text);
+                fail(e->loc, "type '%s' has no constant or static member '%s'", spec_identity(s),
+                     e->text);
             }
         }
     }

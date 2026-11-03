@@ -311,6 +311,8 @@ bool sum_accepts(Type *to, Type *from);
 
 // Resolve the lexical declaration selected by this^ and its outer forms.
 Function *this_function(Program *p, Instance *in, Expr *target);
+// The def^ whose static member a Type.name call target names, or NULL.
+Def *static_owner(Program *p, Expr *target);
 
 // Intern an anonymous union while preserving named alternatives.
 Type *type_union(Program *p, Type *a, Type *b, Loc loc);

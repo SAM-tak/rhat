@@ -105,7 +105,7 @@ C が新しく定義したメソッドにはそのアクセス権がありませ
 ## テンプレートと引数
 
 型定義の `def^ Vec2<T>`、`let^ Float2 = Vec2<f32^>` による型別名、
-型に属する `ZERO` などの定数は [型パラメータと型定数](generics.md) を参照してください。
+型に属する `ZERO` などの定数、`Type.make(...)` で呼ぶ静的メンバ関数は [型パラメータと型定数](generics.md) を参照してください。
 
 `template^` は `template^f^` / `template^p^` として関数・手続きリテラルを修飾します。
 `let^ name = template^p^ ...`、メソッドの `name = template^f^ ...`、
