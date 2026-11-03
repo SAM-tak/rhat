@@ -386,6 +386,7 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
     bool member = dot && buffer[dot - 1] == '.';
     char receiver[256] = "", type[1024] = "";
     size_t receiver_begin = dot;
+    bool type_receiver = false;
     if (member) {
         size_t end = --receiver_begin;
         while (receiver_begin && (identifier((unsigned char)buffer[receiver_begin - 1]) ||
@@ -399,6 +400,19 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
         cJSON *r = symbol_at(index, uri, end ? end - 1 : end);
         if (r) {
             snprintf(type, sizeof(type), "%s", text(r, "type"));
+            type_receiver = number(r, "kind") == 23;
+        }
+        if (!*type && (!strcmp(receiver, "def^") || !strcmp(receiver, "Self^"))) {
+            // The enclosing def^ itself.
+            cJSON *s;
+            cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
+                if (number(s, "kind") == 23 &&
+                    cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) &&
+                    inside_owner(index, uri, buffer, cursor, text(s, "qualified"))) {
+                    snprintf(type, sizeof(type), "%s", text(s, "qualified"));
+                    type_receiver = true;
+                }
+            }
         }
         if (!*type) {
             cJSON *s;
@@ -441,6 +455,10 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
                     matches |= !strncmp(qualified, module, strlen(module)) &&
                                qualified[strlen(module)] == '.';
                 }
+            }
+            // A type offers its static members and constants; a value its fields and methods.
+            if (*owner && cJSON_IsTrue(cJSON_GetObjectItem(s, "static")) != type_receiver) {
+                continue;
             }
             if (!matches || (cJSON_IsTrue(cJSON_GetObjectItem(s, "private")) &&
                              !inside_owner(index, uri, buffer, cursor, owner))) {

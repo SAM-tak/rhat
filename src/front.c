@@ -1756,7 +1756,8 @@ static Expr *primary(Parser *p)
     else if (t->kind == TOK_WORD) {
         e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
         e->text = t->text;
-        int depth = self_type_depth(t->text);
+        // def^.name reaches a member of the enclosing def^, as Self^.name does.
+        int depth = !strcmp(t->text, "def^") && is(p, ".") ? 1 : self_type_depth(t->text);
         if (depth || type_parameter(p, t->text)) {
             if (depth && (depth != 1 || !p->type_owner)) {
                 fail(t->loc, "'%s' is outside the enclosing type definition", t->text);

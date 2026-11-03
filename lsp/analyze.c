@@ -489,6 +489,8 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         }
     }
     cJSON_AddBoolToObject(out, "private", r->function ? r->function->priv : false);
+    // Static members and type constants belong to the def^, not its values.
+    cJSON_AddBoolToObject(out, "static", r->function ? r->function->static_member : r->kind == 14);
     bool public = r->function               ? r->function->public
                   : r->type && r->type->def ? r->type->def->public
                                             : false;

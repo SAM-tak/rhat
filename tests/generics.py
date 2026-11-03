@@ -179,10 +179,10 @@ def^M {
  fact=f^n:i64^ ->i64^ {if^ n<2: 1 el^: n*this^(n-1);}
  hello=p^n:i64^ {print^("hi",n)}
  private^ secret=f^ ->i64^ {7}
- peek=f^ ->i64^ {Self^.secret()}
+ peek=f^ ->i64^ {def^.secret()}
  pick=f^n:i64^ ->i64^ {n}
  overload^ pick=f^a:i64^,b:i64^ ->i64^ {a+b}
- twice=f^self^ ->i64^ {Self^.pick(self^.v,self^.v)}
+ twice=f^self^ ->i64^ {def^.pick(self^.v,self^.v)+Self^.pick(0)}
 }
 let^Float2=Vec2<f32^>
 let^a=Float2.make(1.0,2.0)
@@ -198,7 +198,8 @@ print^(a.dot(Vec2<f32^>.make(3.0,4.0)),Pos.make(1,2).y,M.fact(5),M.peek(),M.pick
         ('static_abstract', 'def^V{abstract^s:f^ ->i32^;}', 'cannot be abstract^ or override^'),
         ('static_override', 'def^B{s=f^ ->i32^ {7}}\ndef^D:B{override^s=f^ ->i32^ {8}}', 'cannot be abstract^ or override^'),
         ('static_missing', 'def^V{}\nprint^(V.s())', 'has no constant or static member'),
-        ('static_arity', 'def^V{s=f^ ->i32^ {7}}\nprint^(V.s(1))', 'expects 0 arguments'),
+        ('static_def_outside', 'let^g=f^ ->i32^ {def^.s()}', 'outside the enclosing type definition'),
+        ('static_arity','def^V{s=f^ ->i32^ {7}}\nprint^(V.s(1))', 'expects 0 arguments'),
         ('missing_arguments', 'def^Box<T>{self^{v:T}}\nlet^B=Box', 'expects 1 type arguments'),
         ('extra_arguments', 'def^Box<T>{self^{v:T}}\nlet^B=Box<i32^,f32^>', 'expects 1 type arguments'),
         ('nongeneric_arguments', 'def^Box{}\nlet^B=Box<i32^>', 'expects 0 type arguments'),

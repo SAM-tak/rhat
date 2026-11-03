@@ -850,6 +850,19 @@ print^(a.x)
     assert client.diagnostics(path,157) == []
     print('PASS generic definitions, aliases, type constants, navigation and edit recovery',flush=True)
 
+    statics="""def^ V {self^{x:i32^} ZERO=Self^{x=0} make=f^ x:i32^ ->Self^ {Self^{x=x}} get=f^ self^ ->i32^ {self^.x+def^.make(1).x}}
+let^ W=V
+let^ a=V.make(1)
+print^(a.get(),W.make(2).x,V.ZERO.x)
+"""
+    client.change(path,statics,158)
+    assert client.diagnostics(path,158) == []
+    for needle,shift,want in [('a.get',2,{'get','x'}),('V.make',2,{'ZERO','make'}),('W.make',2,{'ZERO','make'}),
+                              ('def^.make',5,{'ZERO','make'}),('self^.x',6,{'get','x'})]:
+        completions=request('completion',needle,shift=shift,text=statics)
+        assert want == {x['label'] for x in completions} & {'ZERO','make','get','x'}, (needle,completions)
+    print('PASS static members complete on types and def^, methods on values',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
