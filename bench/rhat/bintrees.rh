@@ -40,12 +40,12 @@ repeat^while^d <= maxdepth {
     var^sum:i64^= 0
     var^i:i64^= 0
     repeat^while^i < iters {
-        sum := sum + tree_check(d)
-        i := i + 1
+        sum += tree_check(d)
+        i += 1
     }
     print^(iters)
     print^(d)
     print^(sum)
-    d := d + 2
+    d += 2
 }
 print^check(ref^long, root)

@@ -30,8 +30,8 @@ let^count = pool.len - 1
 var^total:i64^= 0
 var^pass:i64^= 0
 repeat^while^pass < 8 {
-    total := total + sum_tree(ref^pool, root, pass)
-    pass := pass + 1
+    total += sum_tree(ref^pool, root, pass)
+    pass += 1
 }
-print^(count)
-print^(total)
+print^count
+print^total

@@ -56,7 +56,7 @@ let^corrupt = p^text:ref^u8^[grow^], seed:u64^{
     if^kind = 3 { text.append(" / 0") }
 }
 let^skip = p^text:u8^[slice^], c:ref^Cursor {
-    repeat^while^c.pos < text.len and^text[c.pos] = 32 { c.pos := c.pos + 1 }
+    repeat^while^c.pos < text.len and^text[c.pos] = 32 { c.pos += 1 }
 }
 let^parse_factor = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
     skip(text, c)
@@ -114,7 +114,7 @@ let^parse_expr = p^text:u8^[slice^], c:ref^Cursor, pool:ref^Expr[grow^] -> Parse
         if^c.pos >= text.len { return^Parsed{index = left} }
         let^op = text[c.pos]
         if^op != 43 and^op != 45 { return^Parsed{index = left} }
-        c.pos := c.pos + 1
+        c.pos += 1
         let^rhs = parse_term(text, c, pool)
         if^rhs fits^Failure { return^rhs }
         pool.push(Bin{op = op, l = left, r = rhs.index})
@@ -164,18 +164,18 @@ repeat^while^i < n {
     let^depth = i64^(seed % 4) + 3
     let^s = gen(ref^text, depth, seed bitshift^-8)
     corrupt(ref^text, s)
-    stats.chars := stats.chars + text.len
+    stats.chars += text.len
     pool.clear()
     let^result = run(text[..], ref^pool)
-    stats.nodes := stats.nodes + pool.len
+    stats.nodes += pool.len
     if^result fits^Ok {
-        stats.ok := stats.ok + 1
+        stats.ok += 1
         stats.sum := stats.sum * 31 + result.value
     else^:
         let^error = result.code
-        stats.errors[error] := stats.errors[error] + 1
+        stats.errors[error] += 1
     }
-    i := i + 1
+    i += 1
 }
 print^stats.chars
 print^stats.nodes

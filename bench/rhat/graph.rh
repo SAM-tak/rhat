@@ -5,8 +5,8 @@ import^std.random
 # in variants/graph_linked.rh.
 
 let^enqueue = p^q:ref^i32^[grow^], tail:ref^i64^, vertex:i32^{
-    if^*tail < q.len { q[*tail] := vertex else^: q.push(vertex) }
-    * tail := *tail + 1
+    if^*tail < q.len { q[*tail] := vertex else^:q.push(vertex) }
+    *tail := *tail + 1
 }
 
 let^nv:i64^= 100000 # BENCH_N
@@ -24,10 +24,10 @@ repeat^while^i < ne {
     r := std.random.xorshift64(r)
     esrc.push(i32^(r % u64^(nv)))
     edst.push(i32^((r bitshift^-24) % u64^(nv)))
-    i := i + 1
+    i += 1
 }
 i := 0
-repeat^while^i < nv + 1 { start.push(0); i := i + 1 }
+repeat^while^i < nv + 1 { start.push(0); i += 1 }
 i := 0
 repeat^while^i < ne {
     let^u = i64^(esrc[i]) + 1
@@ -35,18 +35,18 @@ repeat^while^i < ne {
     i := i + 1
 }
 i := 0
-repeat^while^i < nv { start[i + 1] := start[i + 1] + start[i]; i := i + 1 }
+repeat^while^i < nv { start[i + 1] := start[i + 1] + start[i]; i += 1 }
 i := 0
-repeat^while^i < nv + 1 { fill.push(start[i]); i := i + 1 }
+repeat^while^i < nv + 1 { fill.push(start[i]); i += 1 }
 i := 0
-repeat^while^i < ne { out.push(0); i := i + 1 }
+repeat^while^i < ne { out.push(0); i += 1 }
 i := 0
 repeat^while^i < ne {
     let^u = esrc[i]
     let^at = fill[u]
     out[at] := edst[i]
     fill[u] := at + 1
-    i := i + 1
+    i += 1
 }
 i := 0
 repeat^while^i < nv { dist.push(0); i := i + 1 }
@@ -65,7 +65,7 @@ repeat^while^source < 4 {
     var^head:i64^= 0
     repeat^while^head < tail {
         let^u = q[head]
-        head := head + 1
+        head += 1
         let^d = dist[u]
         total := total + i64^(d)
         var^k = start[u]
@@ -76,11 +76,11 @@ repeat^while^source < 4 {
                 dist[w] := d + 1
                 enqueue(ref^q, ref^tail, w)
             }
-            k := k + 1
+            k += 1
         }
     }
     assert^(tail <= nv)
-    source := source + 1
+    source += 1
 }
 print^(nv + ne)
 print^total

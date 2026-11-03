@@ -29,11 +29,11 @@ let^compose = p^p:ref^Xf, l:ref^Xf, w:ref^Xf {
         repeat^while^j < 3 {
             var^s:f32^= 0
             var^k:i32^= 0
-            repeat^while^k < 3 { s := s + p.m[i * 3 + k] * l.m[k * 3 + j]; k := k + 1 }
+            repeat^while^k < 3 { s := s + p.m[i * 3 + k] * l.m[k * 3 + j]; k += 1 }
             w.m[i * 3 + j] := s
-            j := j + 1
+            j += 1
         }
-        i := i + 1
+        i += 1
     }
     w.t.x := p.m[0] * l.t.x + p.m[1] * l.t.y + p.m[2] * l.t.z + p.t.x
     w.t.y := p.m[3] * l.t.x + p.m[4] * l.t.y + p.m[5] * l.t.z + p.t.y
@@ -42,13 +42,20 @@ let^compose = p^p:ref^Xf, l:ref^Xf, w:ref^Xf {
 let^make = p^pool:ref^Node[grow^], depth:i64^, seed:u64^-> u32^{
     let^r = std.random.xorshift64(seed)
     let^self = u32^(pool.len)
-    pool.push(Node{id = i32^(self), local = Xf{m = rotation(r),
-        t = F3{
-        x = f32^((r bitshift^-16) % 9),
-        y = f32^((r bitshift^-24) % 9),
-        z = f32^((r bitshift^-32) % 9)
-    }},
-        world = identity(), kids = [0, 0, 0, 0], nkids = 0})
+    pool.push(Node{
+        id = i32^(self),
+        local = Xf{
+            m = rotation(r),
+            t = F3{
+                x = f32^((r bitshift^-16) % 9),
+                y = f32^((r bitshift^-24) % 9),
+                z = f32^((r bitshift^-32) % 9)
+            }
+        },
+        world = identity(),
+        kids = [0, 0, 0, 0],
+        nkids = 0
+    })
     if^depth = 0 { return^self }
     let^n = 1 + (r bitshift^-40) % 4
     var^i:u64^= 0
@@ -57,7 +64,7 @@ let^make = p^pool:ref^Node[grow^], depth:i64^, seed:u64^-> u32^{
         let^k = pool[self].nkids
         pool[self].kids[k] := child
         pool[self].nkids := k + 1
-        i := i + 1
+        i += 1
     }
     return^self
 }
@@ -67,7 +74,7 @@ let^update = p^pool:ref^Node[grow^], index:u32^, parent:ref^Xf {
     var^k:u8^= 0
     repeat^while^k < nd.nkids {
         this^(pool, nd.kids[k], ref^nd.world)
-        k := k + 1
+        k += 1
     }
 }
 let^depth:i64^= 12 # BENCH_N
@@ -82,17 +89,20 @@ repeat^while^frame < 16 {
     var^i:i64^= 0
     repeat^while^i < pool.len {
         let^nd = ref^pool[i]
-        if^nd.id % 7 = phase { nd.local.t.x := step; nd.local.t.z := 8 - step }
-        i := i + 1
+        if^nd.id % 7 = phase {
+            nd.local.t.x := step
+            nd.local.t.z := 8 - step
+        }
+        i += 1
     }
     update(ref^pool, root, ref^ident)
     i := 0
     repeat^while^i < pool.len {
         let^t = pool[i].world.t
-        total := total + i64^(t.x + t.y + t.z)
-        i := i + 1
+        total += i64^(t.x + t.y + t.z)
+        i += 1
     }
-    frame := frame + 1
+    frame += 1
 }
-print^(pool.len)
-print^(total)
+print^pool.len
+print^total

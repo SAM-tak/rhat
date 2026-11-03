@@ -62,19 +62,19 @@ let^step = p^pool:ref^Node[grow^], free:ref^u32^[grow^], slots:ref^Slot[grow^], 
             unlink(pool, u32^(fi))
             remove(slots, at, mask)
             free.push(u32^(fi))
-            stats.count := stats.count - 1
-            stats.removes := stats.removes + 1
+            stats.count -= 1
+            stats.removes += 1
         }
         return^
     }
     if^fi >= 0 {
-        pool[fi].val := pool[fi].val + 1
+        pool[fi].val += 1
         unlink(pool, u32^(fi))
         link_front(pool, u32^(fi))
-        stats.hits := stats.hits + 1
+        stats.hits += 1
         return^
     }
-    stats.misses := stats.misses + 1
+    stats.misses += 1
     var^ins = at
     if^stats.count = cap {
         let^lru = pool[1].prev
@@ -83,13 +83,13 @@ let^step = p^pool:ref^Node[grow^], free:ref^u32^[grow^], slots:ref^Slot[grow^], 
         let^li = slots[lat].idx
         remove(slots, lat, mask)
         free.push(u32^(li))
-        stats.count := stats.count - 1
+        stats.count -= 1
         ins := find(slots, key, mask)
     }
     let^ni = alloc(pool, free, key, key % 1000)
     slots[ins] := Slot{key = key, idx = i32^(ni)}
     link_front(pool, ni)
-    stats.count := stats.count + 1
+    stats.count += 1
 }
 
 let^n:i64^= 2000000 # BENCH_N

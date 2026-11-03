@@ -11,10 +11,13 @@ let^emit_int = p^out:ref^u8^[grow^], value:u64^{
     var^count:i64^= 0
     repeat^while^d > 0 {
         tmp.data[count] := u8^(d % 10) + 48
-        count := count + 1
-        d := d / 10
+        count += 1
+        d /= 10
     }
-    repeat^while^count > 0 { count := count - 1; out.push(tmp.data[count]) }
+    repeat^while^count > 0 {
+        count -= 1
+        out.push(tmp.data[count])
+    }
 }
 let^emit_name = p^out:ref^u8^[grow^], seed:u64^{
     var^r = std.random.xorshift64(seed)
@@ -27,8 +30,10 @@ let^emit_name = p^out:ref^u8^[grow^], seed:u64^{
         if^odd and^i = 1 {
             out.push(92)
             out.push(if^r % 2 = 0: 34 el^: 92;)
-        else^: out.push(u8^(r % 26) + 97) }
-        i := i + 1
+        else^:
+            out.push(u8^(r % 26) + 97)
+        }
+        i += 1
     }
     out.push(34)
 }
@@ -38,13 +43,17 @@ let^emit_sku = p^out:ref^u8^[grow^], seed:u64^{
     out.push(u8^(r % 26) + 65)
     out.push(u8^((r bitshift^-8) % 26) + 65)
     var^i:i32^= 0
-    repeat^while^i < 4 { r := std.random.xorshift64(r); out.push(u8^(r % 10) + 48); i := i + 1 }
+    repeat^while^i < 4 {
+        r := std.random.xorshift64(r)
+        out.push(u8^(r % 10) + 48)
+        i += 1
+    }
     out.push(34)
 }
 let^hash = f^bytes:u8^[slice^] -> u64^{
     var^h:u64^= 14695981039346656037
     var^i:i64^= 0
-    repeat^while^i < bytes.len { h := (h bitxor^u64^(bytes[i])) * 1099511628211; i := i + 1 }
+    repeat^while^i < bytes.len { h := (h bitxor^u64^(bytes[i])) * 1099511628211; i += 1 }
     return^h
 }
 let^handle = p^out:ref^u8^[grow^], seed:u64^-> Result {
@@ -71,8 +80,8 @@ let^handle = p^out:ref^u8^[grow^], seed:u64^-> Result {
         out.append(",\"price\":")
         emit_int(out, price)
         out.push(125)
-        total := total + qty * price
-        i := i + 1
+        total += qty * price
+        i += 1
     }
     out.append("],\"total\":")
     emit_int(out, total)
@@ -89,8 +98,8 @@ repeat^while^i < n {
     seed := std.random.xorshift64(seed)
     let^result = handle(ref^out, seed)
     h := h bitxor^(result.hash * 31 + u64^(i))
-    bytes := bytes + result.bytes
-    i := i + 1
+    bytes += result.bytes
+    i += 1
 }
 print^(n)
 print^(bytes)

@@ -1,19 +1,22 @@
-def^ Vec2<T> {
+def^Vec2<T> {
     self^{ x:T, y:T }
-    ZERO = Self^{ x=T.ZERO, y=T.ZERO }
-    ONE = Self^{ x=T.ONE, y=T.ONE }
-    RIGHT = Self^{ x=T.ONE, y=T.ZERO }
-    op^+ = f^ self^, other:Self^ -> Self^ {
-        Self^{ x=self^.x+other.x, y=self^.y+other.y }
+    ZERO = Self^{ x = T.ZERO, y = T.ZERO }
+    ONE = Self^{ x = T.ONE, y = T.ONE }
+    RIGHT = Self^{ x = T.ONE, y = T.ZERO }
+    LEFT = Self^{ x = -T.ONE, y = T.ZERO }
+    UP = Self^{ x = T.ZERO, y = T.ONE }
+    DOWN = Self^{ x = T.ZERO, y = -T.ONE }
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x + other.x, y = self^.y + other.y }
     }
-    dot = f^ self^, other:Self^ -> T {
-        self^.x*other.x + self^.y*other.y
+    op^dot^= f^self^, other:Self^-> T {
+        self^.x * other.x + self^.y * other.y
     }
 }
 
-let^ Float2 = Vec2<f32^>
-let^ Int2 = Vec2<i32^>
-let^ a = Float2{ x=2.0, y=3.0 }
-let^ b:Vec2<f32^> = a + Float2.ONE
-let^ c = Int2.ZERO + Int2.RIGHT
-print^(b.x, b.y, a.dot(b), c.x, c.y)
+let^Float2 = Vec2<f32^>
+let^Int2 = Vec2<i32^>
+let^a = Float2{ x = 2.0, y = 3.0 }
+let^b:Vec2<f32^> = a + Float2.ONE
+let^c = Int2.ZERO + Int2.RIGHT
+print^(b.x, b.y, a dot^b, c.x, c.y)

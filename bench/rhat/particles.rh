@@ -19,7 +19,7 @@ repeat^while^i < n {
         vy = f32^(i64^((r bitshift^-44) % 256) - 128) / 16.0,
         vz = f32^(i64^((r bitshift^-52) % 256) - 128) / 16.0
     })
-    i := i + 1
+    i += 1
 }
 var^step:i32^= 0
 repeat^while^step < 200 {
@@ -30,16 +30,16 @@ repeat^while^step < 200 {
         p.x := p.x + p.vx
         p.y := p.y + p.vy
         p.z := p.z + p.vz
-        if^p.y < 0.0 { p.y := -p.y; p.vy := - (p.vy * 0.5) }
-        i := i + 1
+        if^p.y < 0.0 { p.y := -p.y; p.vy := -(p.vy * 0.5) }
+        i += 1
     }
-    step := step + 1
+    step += 1
 }
 var^total:i64^= 0
 i := 0
 repeat^while^i < n {
     total := total + i64^(ps[i].x * 16.0) + i64^(ps[i].y * 16.0) + i64^(ps[i].z * 16.0)
-    i := i + 1
+    i += 1
 }
 print^n
 print^total

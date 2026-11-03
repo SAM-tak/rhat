@@ -26,7 +26,7 @@ repeat^while^i < w * w {
     r := std.random.xorshift64(r)
     a.push(u8^(r % 256))
     b.push(0)
-    i := i + 1
+    i += 1
 }
 var^pass:i32^= 0
 repeat^while^pass < 8 {

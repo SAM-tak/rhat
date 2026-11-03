@@ -16,7 +16,7 @@ let^word = f^seed:u64^-> Text {
     repeat^while^i < out.len {
         r := std.random.xorshift64(r)
         out.bytes[i] := u8^(r % 26) + 97
-        i := i + 1
+        i += 1
     }
     return^out
 }
@@ -49,19 +49,21 @@ repeat^while^i < n {
                 dy = i16^((r bitshift^-40) % 201) - 100
             }
         )
-    else^: if^k < 6 {
-        log.push(Say{id = id, text = word(r)}) else^: if^k < 7 {
-            log.push(Quit{id = id, code = u8^((r bitshift^-20) % 256)}) else^: log.push(Tick{})
+    else^:
+        if^k < 6 {
+            log.push(Say{id = id, text = word(r)}) else^: if^k < 7 {
+                log.push(Quit{id = id, code = u8^((r bitshift^-20) % 256)}) else^: log.push(Tick{})
+            }
         }
-    } }
-    i := i + 1
+    }
+    i += 1
 }
 var^total:i64^= 0
 var^pass:i32^= 0
 repeat^while^pass < 4 {
     i := 0
     repeat^while^i < log.len { total := total + score(log[i]); i := i + 1 }
-    pass := pass + 1
+    pass += 1
 }
-print^(log.len)
-print^(total)
+print^log.len
+print^total
