@@ -308,6 +308,10 @@ bool step_optional(Expr *e);
 // Remove error alternatives while preserving nominal success values.
 Type *success_type(Program *p, Type *t, Loc loc);
 
+// Test whether from is an enum^ whose backing integer type is to; such a
+// value converts implicitly where that integer type is expected.
+bool enum_backs(Type *to, Type *from);
+
 // Test whether every source alternative is admitted by a destination.
 bool sum_accepts(Type *to, Type *from);
 
@@ -334,6 +338,8 @@ Type *type_range(Program *p);
 bool range_type(Type *t);
 // What char^(x) casts to: char^ | std.text.Error.Invalid.
 Type *char_cast_type(Program *p, Loc loc);
+// What T(n) converts to for enum^ t: t | std.sys.Error.CastFail.
+Type *enum_cast_type(Program *p, Type *t, Loc loc);
 // What string^(bytes) casts to: string^ | std.text.Error.Invalid.
 Type *text_cast_type(Program *p, Loc loc);
 // What T.parse(s) answers for number type kind: T | std.text.Error.Invalid |
@@ -474,6 +480,9 @@ Value range_contains(Context *c, Value r, Value i, Loc loc);
 // char^(x): the one character of string^ x, or integer x as a scalar
 // value, else std.text.Error.Invalid.
 Value char_cast(Context *c, Expr *e, int destination);
+// T(n): the member of enum^ T whose value is n, of T's backing type, else
+// std.sys.Error.CastFail.
+Value enum_cast(Context *c, Expr *e, int destination);
 // dst = the runtime function name applied to args, or no result when k is
 // T_VOID.
 Value helper(Context *c, const char *name, Value *args, int n, int k, Loc loc);

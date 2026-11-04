@@ -52,7 +52,7 @@ Value range_contains(Context *c, Value r, Value i, Loc loc)
     return operate(c, "bitand^", operate(c, "<=", start, i, loc), below, loc);
 }
 
-// Build std.text.Error variant with message, a literal, as union t into slot dst.
+// Build error variant with message, a literal, as union t into slot dst.
 static void construct_error(Context *c, const char *variant, const char *message, Type *t, int dst,
                             Loc loc)
 {
@@ -167,6 +167,45 @@ Value char_cast(Context *c, Expr *e, int destination)
     construct_error(c, "std.text.Error.Invalid",
                     text ? "not exactly one Unicode scalar value" : "not a Unicode scalar value", t,
                     out.id, e->loc);
+    nil_jump(c, done, e->loc);
+    nil_label(c, done, e->loc);
+    return out;
+}
+
+Value enum_cast(Context *c, Expr *e, int destination)
+{
+    Program *p = c->p;
+    Type *mode = type_spec(p, e->a->type_expr), *t = enum_cast_type(p, mode, e->loc);
+    if (e->args.n != 1) {
+        fail(e->loc, "%s(...) converts one '%s'", type_name(mode), type_name(mode->elem));
+    }
+    Value v = expression(c, e->args.v[0], mode->elem);
+    if (dead(v)) {
+        return v;
+    }
+    if (v.type != mode->elem) {
+        fail(e->loc, "%s(...) converts its backing type '%s', found '%s'", type_name(mode),
+             type_name(mode->elem), type_name(v.type));
+    }
+    Value out = {.id = destination >= 0 ? destination : slot(c, t, false), .type = t};
+    int done = ++c->in->labels;
+    for (int j = 0; j < mode->def->members.n; j++) {
+        EnumMember *member = mode->def->members.v[j];
+        int yes = ++c->in->labels, no = ++c->in->labels;
+        Value same = operate(c, "=", v, constant(c, mode->elem->kind, member->value, e->loc), e->loc);
+        nil_branch(c, same, yes, no, e->loc);
+        nil_label(c, yes, e->loc);
+        Value found = value(c, mode);
+        Instr *i = emit(c, I_CONST, e->loc);
+        i->dst = found.id;
+        i->type = mode;
+        i->text = member->value;
+        convert_value(c, found, t, out.id, e->loc);
+        nil_jump(c, done, e->loc);
+        nil_label(c, no, e->loc);
+    }
+    construct_error(c, "std.sys.Error.CastFail", fmt("no %s member has this value", type_name(mode)),
+                    t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, done, e->loc);
     return out;

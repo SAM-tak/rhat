@@ -570,10 +570,24 @@ void store_check(Context *c, Value dst, Value src, Loc l)
     }
 }
 
+// An enum^ value seen as its backing integer.
+static Value enum_integer(Context *c, Value v, Loc l)
+{
+    Value out = value(c, v.type->elem);
+    Instr *i = emit(c, I_CONVERT, l);
+    i->dst = out.id;
+    i->a = v.id;
+    i->type = out.type;
+    return out;
+}
+
 Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
 {
     if (dead(src)) {
         return src;
+    }
+    if (enum_backs(dst.type, src.type)) {
+        src = enum_integer(c, src, l);
     }
     if (dst.type != src.type && sum_accepts(dst.type, src.type)) {
         src = convert_value(c, src, dst.type, -1, l);
@@ -1636,6 +1650,24 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                    ? copy_to(c, (Value){.id = destination, .type = out.type}, out, e->loc, true)
                    : out;
     }
+    // A cast that can fail answers a union with its error, which must be
+    // handled before it reaches a destination of the plain type.
+    bool parse = target->kind == E_MEMBER && !strcmp(target->text, "parse") &&
+                 target->a->kind == E_NAME && numeric_kind(target->a->text) >= 0;
+    Type *cast = target->kind == E_TYPE
+                     ? enum_cast_type(p, type_spec(p, target->type_expr), e->loc)
+                 : parse                    ? parse_type(p, numeric_kind(target->a->text), e->loc)
+                 : target->kind != E_NAME   ? NULL
+                 : !strcmp(target->text, "char^")   ? char_cast_type(p, e->loc)
+                 : !strcmp(target->text, "string^") ? text_cast_type(p, e->loc)
+                                                    : NULL;
+    if (cast && expected && expected != cast) {
+        fail(e->loc, "conversion result is '%s', expected '%s'", type_name(cast),
+             type_name(expected));
+    }
+    if (target->kind == E_TYPE) {
+        return enum_cast(c, e, destination);
+    }
     if (target->kind == E_NAME) {
         for (int k = T_U8; k <= T_F64; k++) {
             if (strcmp(target->text, builtin_name(k))) {
@@ -1675,8 +1707,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (target->kind == E_NAME && !strcmp(target->text, "string^")) {
         return text_cast(c, e, destination);
     }
-    if (target->kind == E_MEMBER && !strcmp(target->text, "parse") && target->a->kind == E_NAME &&
-        numeric_kind(target->a->text) >= 0) {
+    if (parse) {
         return number_parse(c, e, destination);
     }
     if (target->kind == E_MEMBER && !strcmp(target->text, "from_bits") &&
@@ -3031,6 +3062,9 @@ Value expression(Context *c, Expr *e, Type *expected)
             i->dst = member.id;
             i->type = t;
             i->text = e->text;
+            if (expected && enum_backs(expected, t)) {
+                return enum_integer(c, member, e->loc);
+            }
             if (expected && expected != t) {
                 fail(e->loc, "constant type mismatch");
             }
@@ -3514,6 +3548,12 @@ Value expression(Context *c, Expr *e, Type *expected)
                                        : a.type);
         if (dead(b)) {
             return b;
+        }
+        if (enum_backs(b.type, a.type)) {
+            a = enum_integer(c, a, e->loc);
+        }
+        else if (enum_backs(a.type, b.type)) {
+            b = enum_integer(c, b, e->loc);
         }
         Function *op = operator_select(p, e->text, a.type, b.type, e->loc);
         if (op) {

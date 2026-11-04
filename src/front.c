@@ -144,6 +144,7 @@ typedef struct {
     List type_names, error_names; // Declaration names indexed once after lexing.
     bool header;
     bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
+    bool enum_cast; // An enum^ declaration's Mode(n) cast needs std.sys for its error.
 } Parser;
 
 static void format_span(Parser *p, int first, int kind, bool block, bool row)
@@ -1628,6 +1629,22 @@ static Expr *if_tail(Parser *p, Expr *condition, Loc loc)
 
 static Expr *for_expression(Parser *p, Loc loc);
 static Expr *named(char *name, Loc loc);
+
+// Import module name when needed, unless module is it or imports it already.
+static void hidden_import(Module *module, bool needed, const char *name, const char *path)
+{
+    needed = needed && !(module->name && !strcmp(module->name, name));
+    for (int j = 0; needed && j < module->imports.n; j++) {
+        needed = strcmp(((Import *)module->imports.v[j])->name, name);
+    }
+    if (needed) {
+        Import *i = mem(sizeof(*i));
+        i->name = (char *)name;
+        i->alias = fmt("\001%s", name);
+        i->loc = (Loc){path, 1, 1};
+        add(&module->imports, i);
+    }
+}
 
 static Expr *primary(Parser *p)
 {
@@ -3478,6 +3495,7 @@ static void declaration(Parser *q)
         return;
     }
     if (take(q, "enum^")) {
+        q->enum_cast = true; // Mode(n) fails with std.sys's error.
         enum_declaration(q, p, module, public);
         return;
     }
@@ -3775,16 +3793,7 @@ void parse_file(Program *p, const char *path, Module *module)
         declaration_checked(&q);
     }
 
-    // A char^(...) or string^(...) cast fails with std.text's error, imported out of sight.
-    bool text = q.text_cast && !(module->name && !strcmp(module->name, "std.text"));
-    for (int j = 0; text && j < module->imports.n; j++) {
-        text = strcmp(((Import *)module->imports.v[j])->name, "std.text");
-    }
-    if (text) {
-        Import *i = mem(sizeof(*i));
-        i->name = "std.text";
-        i->alias = "\001std.text";
-        i->loc = (Loc){path, 1, 1};
-        add(&module->imports, i);
-    }
+    // Casts fail with std.text's or std.sys's errors, imported out of sight.
+    hidden_import(module, q.text_cast, "std.text", path);
+    hidden_import(module, q.enum_cast, "std.sys", path);
 }

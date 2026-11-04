@@ -537,7 +537,8 @@ if^ result fits^ i64^ { print^(result) }
 型は関数・手続き型の交差 `&` で表します。メソッドの `overload^`・演算子の `op^`・
 静的な関数値については [関数・手続きの交差型と演算子定義](overloads.md) を参照してください。
 
-`std.sys` は `Error.OutOfMemory` を公開します。ランタイムの予約・コミット失敗時の診断と終了は維持します。
+`std.sys` は `Error.OutOfMemory` と `Error.CastFail` を公開します。ランタイムの予約・コミット失敗時の診断と終了は維持します。
+`Error.CastFail` は整数から `enum^` への変換 `Mode(n)` が、どのメンバとも一致しない値に当たったときの結果です。
 `std.random.Random` は非公開のu64状態を持つ値型です。GC・ヒープ確保・disposeは不要です。
 
 | API | 結果・挙動 |

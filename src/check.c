@@ -219,6 +219,15 @@ Type *char_cast_type(Program *p, Loc loc)
     return type_union(p, type_builtin(p, T_CHAR), invalid->type, loc);
 }
 
+Type *enum_cast_type(Program *p, Type *t, Loc loc)
+{
+    Def *failure = lookup_def(p, "std.sys.Error.CastFail");
+    if (!failure) {
+        fail(loc, "internal: enum^ conversion needs std.sys");
+    }
+    return type_union(p, t, failure->type, loc);
+}
+
 Type *error_view(Type *t, const char *name)
 {
     bool shared = !strcmp(name, "source") || !strcmp(name, "line") || !strcmp(name, "column");
@@ -757,6 +766,13 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         }
         return c->terminated ? type_builtin(c->p, T_NEVER)
                              : parse_type(c->p, numeric_kind(target->a->text), e->loc);
+    }
+    else if (target->kind == E_TYPE) {
+        for (int j = 0; j < e->args.n; j++) {
+            infer_expr(c, e->args.v[j], NULL);
+        }
+        return c->terminated ? type_builtin(c->p, T_NEVER)
+                             : enum_cast_type(c->p, type_spec(c->p, target->type_expr), e->loc);
     }
     else if (target->kind == E_NAME &&
              (!strcmp(target->text, "char^") || !strcmp(target->text, "string^"))) {

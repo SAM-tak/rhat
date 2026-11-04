@@ -195,7 +195,7 @@ print^(value.a, value.b, value.c)
   - `value fits^ Type` と `when^ fits^ Type:` による適合判定と、両側の型の絞り込み。
   - `?` / `?.` / `?[]` / `??` / `?:=` などのニル伝播。
   - [`fits^`](DesignDocuments/fits.md)、[合併型とニル伝播](DesignDocuments/nil.md)。
-- **列挙体**: `enum^ Mode : u8^ { Idle, Walk, Dash = 10 }`。C 互換の整数で、`=` / `!=` で比べ、`print^` はメンバ名を表示します。
+- **列挙体**: `enum^ Mode : u8^ { Idle, Walk, Dash = 10 }`。C 互換の整数で、`=` / `!=` で比べ、`print^` はメンバ名を表示します。基底型の値が求められる所では暗黙にその整数になり、基底型の整数からは `Mode(n)` で変換します（メンバにない値は `std.sys.Error.CastFail`）。
   [列挙体](DesignDocuments/enums.md)。
 - **パターンマッチ**: `for^ value { when^ 1,2: ... when^ 3 to^ 5: ... other^: ... }` と式形。
   `other^` を省く式形のマッチは、`bool^`・`enum^`・合併型のすべての値を腕で尽くさなければなりません。文形は網羅を検査しません（[網羅](DesignDocuments/syntax.md#パターンマッチの網羅)）。

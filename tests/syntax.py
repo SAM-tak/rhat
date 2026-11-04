@@ -805,6 +805,33 @@ enum^ Signed : i16^ { Down = -2, Up = 0x10 }
 print^(Small.A, Small.B, Signed.Down, Signed.Up, i32^(Signed.Down), i32^(Small.B))
 ''', 'A B Down Up -2 255\n')
 
+    positive('enum_integer_cast', '''
+import^ std.sys
+enum^ Block : u8^ { Air, Grass, Lamp = 12 }
+enum^ Sign : i16^ { Minus = -1, Zero, Plus }
+var^ cells:u8^[] = {Block.Lamp, 7, 1}
+let^ at = f^ i:i64^ -> Block { Block(cells[i]) catch^ Block.Air }
+print^(at(0), at(1), at(2))
+print^(Sign(-1) catch^ Sign.Zero, Sign(i16^(i64^(1))) catch^ Sign.Zero, Sign(255) catch^ Sign.Zero)
+let^ strict = f^ n:u8^ -> Block|std.sys.Error { let^ b = try^ Block(n) return^ b }
+print^(strict(1) catch^ Block.Air, strict(200) catch^ Block.Air)
+let^ bad = Block(200)
+for^ bad { when^ fits^ std.sys.Error.CastFail: print^(bad.message()) other^: print^("block") }
+''', 'Lamp Air Grass\nMinus Plus Zero\nGrass Air\nno Block member has this value\n')
+
+    positive('enum_backing_conversion', '''
+enum^ Block : u8^ { Air, Grass, Lamp }
+let^ SLOTS:u8^[2] = {Block.Grass, Block.Lamp}
+var^ cells:u8^[] = {Block.Air repeat^ 3}
+cells[1] := Block.Lamp
+let^ at = f^ i:i64^ -> u8^ { if^ i < 0 { return^ Block.Air } return^ cells[i] }
+let^ solid = f^ b:u8^ -> bool^ { b != Block.Air }
+let^ next = f^ b:u8^ -> u8^ { b + 1 }
+let^ m = Block.Lamp
+print^(SLOTS[0], at(1), at(-1), solid(cells[1]), next(Block.Grass))
+print^(cells[1] > Block.Grass, Block.Grass < cells[1], m = cells[1], cells[1] = m, m)
+''', '1 2 0 true 2\ntrue true true true Lamp\n')
+
     positive('enum_statement_open', '''
 enum^ Mode { Idle, Walk, Dash }
 def^ A {}
@@ -848,7 +875,14 @@ print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
         ('enum_from_integer', 'enum^ Mode { Idle, Walk }\nlet^ m:Mode = 1', "expected 'Mode'"),
         ('enum_order', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle < Mode.Walk)', "operator '<' is not defined for 'Mode'"),
         ('enum_arithmetic', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle + Mode.Walk)', "operator '+' is not defined for 'Mode'"),
-        ('enum_member_use_site', 'enum^ Mode : u8^ {\n    Idle,\n    Walk\n}\nlet^ b:u8^ = Mode.Walk', '5:14: error: constant type mismatch'),
+        ('enum_cast_unhandled', 'enum^ Mode { Idle, Walk }\nlet^ m:Mode = Mode(1)', "conversion result is 'std.sys.Error.CastFail | Mode', expected 'Mode'"),
+        ('enum_cast_argument', 'enum^ Mode : u8^ { Idle, Walk }\nlet^ n:i32^ = 1\nlet^ m = Mode(n)', "Mode(...) converts its backing type 'u8^', found 'i32^'"),
+        ('enum_cast_arity', 'enum^ Mode { Idle, Walk }\nlet^ m = Mode()', "Mode(...) converts one 'i32^'"),
+        ('enum_other_integer', 'enum^ Mode : u8^ { Idle, Walk }\nlet^ w:i64^ = Mode.Walk', 'constant type mismatch'),
+        ('enum_from_backing', 'enum^ Mode : u8^ { Idle, Walk }\nlet^ v:u8^ = 1\nlet^ m:Mode = v', "expected 'Mode', found 'u8^'"),
+        ('char_cast_unhandled', 'let^ c:char^ = char^(65)', "conversion result is 'char^ | std.text.Error.Invalid', expected 'char^'"),
+        ('parse_unhandled', 'let^ n:i32^ = i32^.parse("1")', "expected 'i32^'"),
+        ('enum_member_use_site', 'enum^ Mode : u8^ {\n    Idle,\n    Walk\n}\nlet^ b:i64^ = Mode.Walk', '5:15: error: constant type mismatch'),
         ('ref_repeated_expression', 'var^ x=1 let^ r=ref^^ x', 'cannot borrow a temporary'),
         ('ref_repeated_expanded_expression', 'var^ x=1 let^ r=ref^ ref^ x', 'cannot borrow a temporary'),
 

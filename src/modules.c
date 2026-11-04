@@ -878,6 +878,13 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             if (s->kind == SPEC_NAME && numeric_kind(s->name) >= 0) {
                 *e->a = *name_expr(s->name, e->a->loc);
             }
+            Def *d = s->kind == SPEC_NAME ? named_definition(p, s->name) : NULL;
+            if (d && d->backing) {
+                // Mode(n) converts an integer to enum^ Mode.
+                Expr *type = mem(sizeof(*type));
+                *type = (Expr){.kind = E_TYPE, .loc = e->a->loc, .type_expr = s};
+                e->a = type;
+            }
         }
     }
     if (e->kind == E_MEMBER && !e->optional) {

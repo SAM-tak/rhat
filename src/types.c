@@ -456,6 +456,11 @@ int union_alternative(Type *sum, Type *arm)
     return -1;
 }
 
+bool enum_backs(Type *to, Type *from)
+{
+    return from->kind == T_ENUM && from->elem == to;
+}
+
 bool sum_accepts(Type *to, Type *from)
 {
     if (to == from || union_alternative(to, from) >= 0) {
