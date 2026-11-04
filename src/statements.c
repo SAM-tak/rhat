@@ -1439,6 +1439,7 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
         v->root = root(&c, a, 1, false);
         if (t->refs) {
             v->deps = root(&c, &a->name, 0, true);
+            v->deps.v[0]->readonly = a->capture && !a->capture->mut ? a->capture->name : NULL;
         }
         if (j < 64) {
             c.param_deps[j] = v->deps;

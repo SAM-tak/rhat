@@ -435,8 +435,19 @@ twice(3.0)
 print^(count, points.len, total(), shadow(4))
 var^ late:i64^ = 7
 let^ read_late = f^ -> i64^ { return^ late }
-print^(read_late())
-''', '3 3 16.0 40\n7\n')
+let^ label = "abc"
+let^ last = f^ -> i64^ {
+    var^ n:i64^ = 0
+    for^ i from^ 0 to^ label.bytes.len - 1 { n := i }
+    return^ n
+}
+print^(read_late(), last())
+let^ names:string^[3] = {"a", "b", "c"}
+let^ table:i64^[grow^] = {10, 20, 30}
+let^ name = f^ i:i64^ -> string^ { return^ names[i] }
+let^ tail = f^ -> i64^[..] { return^ table[1 .. 3] }
+print^(name(1), tail().len, tail()[1])
+''', '3 3 16.0 40\n7 2\nb 2 30\n')
 
     positive('bounded_arrays', '''
 def^ V { self^{ x:f32^ = 0.0, y:f32^ = 0.0 } }
@@ -928,6 +939,9 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('top_level_method', 'var^ n:i64^ = 1\ndef^ A { self^{ x:i64^ = 0 }\nget = f^ self^ -> i64^ { return^ n } }\nprint^(A{}.get())', "only top-level functions can use"),
         ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot mutate borrowed storage"),
         ('top_level_shrink', 'var^ q:i64^[flex^] = {1, 2}\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
+        ('top_level_let_write', 'let^ t:i64^[2] = {1, 2}\nlet^ w = p^ { t[0] := 5 }\nw()', "cannot modify let^ binding 't'"),
+        ('top_level_let_borrow', 'let^ t:i64^[2] = {1, 2}\nlet^ h = p^ r:ref^ i64^[2] { r[0] := 5 }\nlet^ w = p^ { h(ref^ t) }\nw()', "requires var^, found let^ 't'"),
+        ('top_level_let_method', 'def^ B { self^{ n:i64^ = 0 }\nset = p^ self^ { self^.n := 1 } }\nlet^ b = B{}\nlet^ w = p^ { b.set() }\nw()', "cannot modify let^ binding 'b'"),
         ('top_level_narrowing', 'var^ t:i64^ | nil^ = 1\nlet^ reset = p^ { t := nil^ }\nif^ t? {\nreset()\nprint^(t + 1) }', "not defined for 'i64^ | nil^'"),
         ('string_no_slice', 'let^ s="xy"\nlet^ t=s[0 .. 1]', 'slice it with s.slice'),
         ('string_hex_escape', 'let^ s="\\xFF"', 'stop at \\x7F'),

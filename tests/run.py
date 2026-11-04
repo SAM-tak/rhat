@@ -937,7 +937,24 @@ positive("f8_direct_conversion", '''
 print^(f8^(1.0625000000000002), f8^(1.0624999999999998))
 print^(f8^(0.0009765625000000002), f8^(0.0009765624999999998))
 ''', "1.125 1.0\n0.001953125 0.0\n")
-positive("bitwise_precedence", "print^(2 + 3 bitand^ 1, bitnot^ 0 bitand^ 3, 8 bitshift^ -1 bitxor^ 3)", "3 3 7\n")
+positive("float_bits", '''
+let^ x:f32^=1.0
+let^ h:f16^=1.0
+let^ d=-2.5
+let^ q:f8^=1.5
+let^ decode = f^ n:u32^ -> f32^ { return^ f32^.from_bits(n) }
+print^(x.bits, h.bits, f32^.from_bits(x.bits + 1) > x, f64^.from_bits(d.bits) = d)
+print^(f32^.from_bits(1065353216), f16^.from_bits(15360), f8^.from_bits(q.bits) = q)
+print^(decode(1069547520), decode(3196059648))
+''', "1065353216 15360 true true\n1.0 1.0 true\n1.5 -0.25\n")
+negative("from_bits_integer", "print^(i32^.from_bits(1))", "from_bits is defined for float types, not 'i32^'")
+negative("from_bits_width", "let^ n:i64^=1 print^(f32^.from_bits(n))", "f32^.from_bits takes a u32^, found 'i64^'")
+positive("float_remainder", '''
+var^ t:f32^=5.25
+t %= 2.0
+print^(7.5 % 2.0, -7.5 % 2.0, t, 1.0 % 0.0 != 1.0 % 0.0)
+''', "1.5 -1.5 1.25 true\n")
+positive("bitwise_precedence","print^(2 + 3 bitand^ 1, bitnot^ 0 bitand^ 3, 8 bitshift^ -1 bitxor^ 3)", "3 3 7\n")
 positive("numeric_side_effects_and_inference", '''
 let^ bump=p^ x:ref^ i32^ -> i32^ { *x := *x+1; return^ *x }
 let^ amount=f^ { let^ n:i128^=-1; return^ n }

@@ -700,7 +700,7 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be, Loc lo
     fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a), type_name(b));
 }
 
-static Type *infer_call(Infer *c, Expr *e)
+static Type *infer_call(Infer *c, Expr *e, Type *expected)
 {
     Expr *target = e->a;
     if (target->kind == E_MEMBER && !strcmp(target->text, "message") && !e->args.n &&
@@ -741,6 +741,14 @@ static Type *infer_call(Infer *c, Expr *e)
     List actual = {0}, candidates = {0};
     if (target->kind == E_FUNCTION) {
         f = target->function;
+    }
+    else if (target->kind == E_MEMBER && !strcmp(target->text, "from_bits") &&
+             target->a->kind == E_NAME && kind_float(numeric_kind(target->a->text))) {
+        int k = numeric_kind(target->a->text);
+        for (int j = 0; j < e->args.n; j++) {
+            infer_expr(c, e->args.v[j], type_builtin(c->p, bits_kind(k)));
+        }
+        return c->terminated ? type_builtin(c->p, T_NEVER) : type_builtin(c->p, k);
     }
     else if (target->kind == E_MEMBER && !strcmp(target->text, "parse") &&
              target->a->kind == E_NAME && numeric_kind(target->a->text) >= 0) {
@@ -910,10 +918,15 @@ static Type *infer_call(Infer *c, Expr *e)
         add(&actual, right_self);
     }
     if (candidates.n > 1) {
-        f = overload_select(c->p, &candidates, &actual, e, offset, e->loc, false);
+        f = overload_select(c->p, &candidates, &actual, e, offset, expected, e->loc, false);
         if (!f) {
             if (known) {
-                overload_select(c->p, &candidates, &actual, e, offset, e->loc, true);
+                // The arms' results may break a tie between literal fits; infer
+                // them, and decide on a later pass.
+                for (int j = 0; expected && j < candidates.n; j++) {
+                    callable_declaration(c->p, candidates.v[j]);
+                }
+                overload_select(c->p, &candidates, &actual, e, offset, expected, e->loc, true);
             }
             return NULL;
         }
@@ -1377,7 +1390,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     case E_FUNCTION:
         return callable_declaration(c->p, e->function);
     case E_CALL:
-        return infer_call(c, e);
+        return infer_call(c, e, expected);
     case E_RECORD: {
         Type *type = expected;
         if (e->tuple && !(type && type->kind == T_STRUCT && type->def->tuple)) {
@@ -1505,6 +1518,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
                 fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
             }
             return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+        }
+        if (kind_float(base->kind) && !strcmp(e->text, "bits")) {
+            return type_builtin(c->p, bits_kind(base->kind));
         }
         Field *f = base->kind == T_STRUCT ? field(base->def, e->text) : NULL;
         if (base->kind == T_STRUCT && !f) {
@@ -2693,7 +2709,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             }
         }
         if (candidates.n > 1) {
-            f = overload_select(c->p, &candidates, &actual, e, offset, e->loc, false);
+            f = overload_select(c->p, &candidates, &actual, e, offset, want, e->loc, false);
             for (int j = 0; f && j < arguments.n; j++) {
                 body_require(c, arguments.v[j], parameter_type(c->p, f->params.v[j + offset]),
                              UINT64_MAX);

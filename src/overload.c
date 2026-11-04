@@ -384,6 +384,24 @@ static bool literal_argument(Program *p, Type *want, Expr *arg, Type **actual)
     return fits;
 }
 
+// What f returns when declared or already inferred; never makes an instance.
+static Type *known_result(Program *p, Function *f)
+{
+    if (f->templ) {
+        return NULL;
+    }
+    if (f->result || f->required_result) {
+        return f->result ? type_spec(p, f->result) : f->required_result;
+    }
+    for (int j = 0; j < f->instances.n; j++) {
+        Instance *in = f->instances.v[j];
+        if (in->result) {
+            return in->result;
+        }
+    }
+    return NULL;
+}
+
 static Expr *call_argument(Expr *call, Function *f, int offset, int index)
 {
     int arg = index - (offset && !f->right_receiver ? offset : 0);
@@ -391,9 +409,11 @@ static Expr *call_argument(Expr *call, Function *f, int offset, int index)
 }
 
 Function *overload_select(Program *p, List *candidates, List *actual, Expr *call, int offset,
-                          Loc loc, bool strict)
+                          Type *expected, Loc loc, bool strict)
 {
-    Function *found = NULL;
+    Function *found = NULL, *ambiguous = NULL, *preferred = NULL;
+    int preferences = 0;
+    bool pending = false;
     for (int j = 0; j < candidates->n; j++) {
         Function *f = candidates->v[j];
         if (f->params.n != actual->n) {
@@ -412,13 +432,27 @@ Function *overload_select(Program *p, List *candidates, List *actual, Expr *call
             }
         }
         if (match) {
-            if (found) {
-                if (!strict) {
-                    return NULL;
-                }
-                fail(loc, "ambiguous overload '%s'; annotate the argument types", f->name);
+            ambiguous = found ? f : NULL;
+            found = found ? found : f;
+            // Literal arguments fit several arms; the expected result picks one.
+            // An arm whose result is still being inferred decides on a later pass.
+            Type *result = expected ? known_result(p, f) : NULL;
+            pending |= expected && !result;
+            if (expected && result == expected) {
+                preferred = f;
+                preferences++;
             }
-            found = f;
+        }
+    }
+    if (ambiguous) {
+        if (preferences == 1) {
+            found = preferred;
+        }
+        else if (!strict || pending) {
+            return NULL;
+        }
+        else {
+            fail(loc, "ambiguous overload '%s'; annotate the argument types", ambiguous->name);
         }
     }
     if (!found && strict) {
@@ -533,7 +567,7 @@ static Function *operator_on(Program *p, Type *receiver, Type *other, const char
     if (!right && other) {
         add(&actual, other);
     }
-    return overload_select(p, &filtered, &actual, NULL, 0, loc, false);
+    return overload_select(p, &filtered, &actual, NULL, 0, NULL, loc, false);
 }
 
 Type *operator_hint(Program *p, const char *op, Type *receiver, bool right, Expr *arg)

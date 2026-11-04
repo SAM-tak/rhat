@@ -542,6 +542,9 @@ void store_check(Context *c, Value dst, Value src, Loc l)
     }
     for (int n = 0; n < dst.storage.n; n++) {
         Root *owner = dst.storage.v[n];
+        if (owner->readonly) {
+            fail(l, "cannot modify let^ binding '%s'", owner->readonly);
+        }
         if (owner->external && !c->in->fn->procedure &&
             !(c->in->fn->mutable_self && roots_has(c->self_roots, owner))) {
             fail(l, "f^ cannot mutate borrowed storage; use p^ or mutable^self^");
@@ -1266,7 +1269,7 @@ void check_callable(Program *p, Type *want, Type *actual, Loc loc)
         return;
     }
     List candidates = callable_candidates(actual, want->params.n);
-    Function *f = overload_select(p, &candidates, &want->params, NULL, 0, loc, true);
+    Function *f = overload_select(p, &candidates, &want->params, NULL, 0, NULL, loc, true);
     Type *signature = callable_declaration(p, f);
     if (f->mutable_self) {
         fail(loc, "a mutable^ method cannot satisfy a pure callable contract");
@@ -1294,7 +1297,7 @@ void check_callable(Program *p, Type *want, Type *actual, Loc loc)
     }
 }
 
-static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiver)
+static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiver, Type *expected)
 {
     if (candidates->n == 1) {
         return candidates->v[0];
@@ -1310,7 +1313,7 @@ static Function *select_call(Context *c, List *candidates, Expr *e, Type *receiv
         Type *hint = overload_hint(c->p, candidates, j + (receiver != NULL), e->args.v[j]);
         add(&actual, expression_type(c, e->args.v[j], hint));
     }
-    return overload_select(c->p, candidates, &actual, e, receiver != NULL, e->loc, true);
+    return overload_select(c->p, candidates, &actual, e, receiver != NULL, expected, e->loc, true);
 }
 
 // Whether a value of type part could be stored inside a value of type whole.
@@ -1590,6 +1593,19 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     return out;
 }
 
+// x.bits and T.from_bits(n): the same bits seen as another number type of the same width.
+static Value bit_cast(Context *c, Value v, int kind, Loc loc, int destination)
+{
+    Type *t = type_builtin(c->p, kind);
+    Value out = destination >= 0 ? (Value){.id = destination, .type = t} : value(c, t);
+    Instr *i = emit(c, I_CONVERT, loc);
+    i->dst = out.id;
+    i->a = v.id;
+    i->type = out.type;
+    i->text = "bits";
+    return out;
+}
+
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
     if (c->type_constant || c->in->fn->constant_value) {
@@ -1662,6 +1678,26 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (target->kind == E_MEMBER && !strcmp(target->text, "parse") && target->a->kind == E_NAME &&
         numeric_kind(target->a->text) >= 0) {
         return number_parse(c, e, destination);
+    }
+    if (target->kind == E_MEMBER && !strcmp(target->text, "from_bits") &&
+        target->a->kind == E_NAME && numeric_kind(target->a->text) >= 0) {
+        int k = numeric_kind(target->a->text);
+        if (!kind_float(k)) {
+            fail(e->loc, "from_bits is defined for float types, not '%s'", builtin_name(k));
+        }
+        Type *bits = type_builtin(p, bits_kind(k));
+        if (e->args.n != 1) {
+            fail(e->loc, "%s.from_bits takes one %s", builtin_name(k), type_name(bits));
+        }
+        Value n = expression(c, e->args.v[0], bits);
+        if (dead(n)) {
+            return n;
+        }
+        if (n.type != bits) {
+            fail(e->loc, "%s.from_bits takes a %s, found '%s'", builtin_name(k), type_name(bits),
+                 type_name(n.type));
+        }
+        return bit_cast(c, n, k, e->loc, destination);
     }
     if (target->kind == E_MEMBER && !strcmp(target->text, "append") && e->args.n == 1 &&
         ((Expr *)e->args.v[0])->kind == E_INTERP) {
@@ -1752,7 +1788,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     List values = {0};
     if ((self = static_owner(p, target))) {
         List candidates = overload_candidates(p, self, target->text, e->args.n);
-        f = select_call(c, &candidates, e, NULL);
+        f = select_call(c, &candidates, e, NULL, expected);
         if (!f) {
             f = method(self, target->text);
         }
@@ -1888,7 +1924,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
         self = base.type->def;
         List candidates = overload_candidates(p, self, target->text, e->args.n + 1);
-        f = select_call(c, &candidates, e, type_wrap(p, T_REF, base.type, 0));
+        f = select_call(c, &candidates, e, type_wrap(p, T_REF, base.type, 0), expected);
         if (!f) {
             f = method(self, target->text);
         }
@@ -1939,7 +1975,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         Var *binding = selected(c, target);
         List candidates = binding ? callable_candidates(binding->type, e->args.n)
                                   : overload_candidates(p, NULL, target->text, e->args.n);
-        f = select_call(c, &candidates, e, NULL);
+        f = select_call(c, &candidates, e, NULL, expected);
         if (!f) {
             fail(e->loc, "unknown function '%s'", target->text);
         }
@@ -1947,7 +1983,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     else {
         Value target_value = expression(c, target, NULL);
         List candidates = callable_candidates(target_value.type, e->args.n);
-        f = select_call(c, &candidates, e, NULL);
+        f = select_call(c, &candidates, e, NULL, expected);
         if (!f) {
             fail(e->loc, "callable has no statically selected implementation");
         }
@@ -3155,6 +3191,9 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (range_type(base.type) && strcmp(e->text, "start")) {
             return range_member(c, base, e->text, e->loc);
         }
+        if (kind_float(base.type->kind) && !strcmp(e->text, "bits")) {
+            return bit_cast(c, base, bits_kind(base.type->kind), e->loc, -1);
+        }
         if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
              base.type->kind == T_BOUNDED || base.type->kind == T_SLICE) &&
             !strcmp(e->text, "bytes")) {
@@ -3308,8 +3347,14 @@ Value expression(Context *c, Expr *e, Type *expected)
             if (!a.addressable) {
                 fail(e->loc, "cannot borrow a temporary; bind it first");
             }
-            if (a.var && !a.var->mut) {
+            if (a.var && !a.var->mut && !e->top_binding) {
                 fail(e->loc, "borrowing storage requires var^, found let^ '%s'", a.var->name);
+            }
+            for (int n = 0; n < a.storage.n; n++) {
+                if (a.storage.v[n]->readonly) {
+                    fail(e->loc, "borrowing storage requires var^, found let^ '%s'",
+                         a.storage.v[n]->readonly);
+                }
             }
             out = value(c, type_wrap(p, T_REF, a.type, 0));
             out.deps = roots_union(a.storage, a.deps);
@@ -3518,9 +3563,6 @@ Value expression(Context *c, Expr *e, Type *expected)
               strchr("=!", e->text[0])) &&
             !(cmp && a.type->kind == T_CHAR)) {
             fail(e->loc, "operator '%s' is not defined for '%s'", e->text, type_name(a.type));
-        }
-        if (kind_float(a.type->kind) && !strcmp(e->text, "%")) {
-            fail(e->loc, "floating remainder is not supported");
         }
         if (!strcmp(e->text, "<=>")) {
             Expr *left = saved_value(a, e->loc), *right = saved_value(b, e->loc);

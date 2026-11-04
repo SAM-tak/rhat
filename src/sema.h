@@ -12,6 +12,7 @@ typedef struct Var Var;
 typedef struct {
     int depth;
     bool external;
+    const char *readonly; // The top-level let^ a hidden parameter refers to, or NULL.
 } Root;
 
 // A set of roots, an immutable array in the compiler's arena; empty with n 0.
@@ -159,8 +160,9 @@ List overload_candidates(Program *p, Def *owner, const char *name, int arity);
 Type *overload_hint(Program *p, List *candidates, int index, Expr *arg);
 // Select the sole compatible arm; unresolved inference may return NULL.
 // call supplies contextual literals; offset counts implicit receiver arguments.
+// When several arms fit, the one whose declared result is expected wins.
 Function *overload_select(Program *p, List *candidates, List *actual, Expr *call, int offset,
-                          Loc loc, bool strict);
+                          Type *expected, Loc loc, bool strict);
 // Whether two declarations admit any common call, ignoring return types.
 bool overload_overlap(Program *p, Function *a, Function *b);
 // Reject overlapping declarations in one callable group.

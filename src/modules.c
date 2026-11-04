@@ -818,7 +818,8 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                 e->a = type;
                 return;
             }
-            if ((kind >= 0 && !strcmp(e->text, "parse")) || (d && !strcmp(e->text, "new"))) {
+            if ((kind >= 0 && (!strcmp(e->text, "parse") || !strcmp(e->text, "from_bits"))) ||
+                (d && !strcmp(e->text, "new"))) {
                 *e->a =
                     *name_expr(s->self_type ? canonical(d->module, d->name) : s->name, e->a->loc);
                 return;
@@ -878,8 +879,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             }
             use_binding(top_user, binding);
             tool_record(p, e->loc, binding->loc, binding->name, NULL, NULL, NULL, 13, false);
-            Expr *hidden = name_expr(hidden_name(binding), e->loc);
-            *e = binding->mut ? *unary_expr("*", hidden) : *hidden;
+            *e = *unary_expr("*", name_expr(hidden_name(binding), e->loc));
             return;
         }
         if (module_function(m, e->text)) {
@@ -900,8 +900,9 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     if (m->root && top_user && root && strchr(root, '.')) {
         root = str(root);
         *strchr(root, '.') = 0;
-        if (!local(names, root) && top_binding(root)) {
-            // a.b of a top-level binding a: its leaf name is rewritten below.
+        // a.b of a top-level binding a: its leaf name is rewritten below. A
+        // subexpression shared by a desugaring may already name the hidden one.
+        if (!local(names, root) && (top_binding(root) || root[0] == '\001')) {
             resolve_expr(p, m, names, e->a);
             return;
         }
@@ -1312,7 +1313,7 @@ static void pass_top_bindings(Program *p, Module *m)
                 a->name = hidden_name(binding);
                 a->capture = binding;
                 a->spec = binding->spec;
-                if (binding->mut && binding->spec) {
+                if (binding->spec) {
                     a->spec = mem(sizeof(*a->spec));
                     *a->spec = (Spec){.kind = SPEC_REF, .loc = binding->loc, .elem = binding->spec};
                 }
@@ -1362,8 +1363,9 @@ static void pass_top_bindings(Program *p, Module *m)
                                    callee->name, binding->name););
                 call->call->invalid = true;
             }
-            Expr *name = name_expr(binding->name, at);
-            add(&args, binding->mut ? unary_expr("ref^", name) : name);
+            Expr *borrow = unary_expr("ref^", name_expr(binding->name, at));
+            borrow->top_binding = !binding->mut;
+            add(&args, borrow);
         }
         for (int k = 0; k < call->call->args.n; k++) {
             add(&args, call->call->args.v[k]);

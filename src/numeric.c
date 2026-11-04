@@ -55,6 +55,11 @@ bool kind_float(int k)
     return k >= T_F8 && k <= T_F64;
 }
 
+int bits_kind(int k)
+{
+    return kind_float(k) ? k - T_F8 + T_U8 : -1;
+}
+
 int numeric_bits(int k)
 {
     static const int widths[] = {0, 1, 8, 16, 32, 64, 128, 8, 16, 32, 64, 128, 8, 16, 32, 64};

@@ -141,6 +141,7 @@ struct Expr {
     Spec *type_expr;     // Type application, Self^, or an explicit constructor type.
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
+    bool top_binding;    // ref^ of a top-level let^ for its hidden parameter: read only.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec;     // The type operand of fits^, or the type of a T[](...)
                          // construction; never evaluated as a value.
@@ -396,6 +397,8 @@ int numeric_kind(const char *name);
 const char *unicode_operator(const char *text, size_t *length);
 bool kind_unsigned(int kind);
 bool kind_float(int kind);
+// The unsigned integer type holding a float type's bits, such as u32^ for f32^, or -1.
+int bits_kind(int kind);
 // Whether every bit pattern of t is a value: numbers, and arrays and structs of them.
 bool plain_data(Type *t);
 int numeric_bits(int kind);

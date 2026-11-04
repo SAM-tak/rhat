@@ -65,8 +65,16 @@ print^(unbound(ref^choice,160,wide))
     ]:
         negative('overload_numeric_'+name,
                  numeric_overloads+'let^small=2\nprint^('+call+')', diagnostic)
-    negative('overload_numeric_no_return_ranking', numeric_overloads+
-             'let^result:i64^=min(1,2)\nprint^(result)', 'ambiguous overload')
+    positive('overload_expected_result', numeric_overloads+'''let^ math=import^std.math
+let^wide:i64^=min(1,2)
+let^real:f32^=min(1,2)
+let^half=f^x:f32^ -> f32^ {x*0.5}
+let^lens=f^ -> f32^ {return^ math.tan(0.5)}
+print^(wide,real,half(math.sin(1.0)),lens())
+''', '1 1.0 0.4207354784011841 0.5463024973869324\n')
+    negative('overload_expected_result_no_narrowing', numeric_overloads+'''let^ math=import^std.math
+let^x:f64^=0.5
+let^y:f32^=math.tan(x)''', "call returns 'f64^', expected 'f32^'")
     negative('overload_numeric_literal_width_ambiguity',
              'let^pick=f^n:i8^ {1} & f^n:i64^ {2}\nprint^(pick(127))', 'ambiguous overload')
 

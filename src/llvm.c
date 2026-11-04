@@ -1267,8 +1267,8 @@ static void instruction(Output *o, Instr *i)
         else if (!strcmp(op, "*")) {
             ins = fp ? "fmul" : "mul";
         }
-        else if (!strcmp(op, "/") && fp) {
-            ins = "fdiv";
+        else if ((!strcmp(op, "/") || !strcmp(op, "%")) && fp) {
+            ins = op[0] == '/' ? "fdiv" : "frem";
         }
         else if (!strcmp(op, "bitand^")) {
             ins = "and";
@@ -1373,6 +1373,16 @@ static void instruction(Output *o, Instr *i)
         int src_bits = numeric_bits(source->kind), dst_bits = numeric_bits(t->kind);
         if (source == t) {
             save(o, i->dst, t, fmt("%%t%d", a));
+            break;
+        }
+        if (i->text) {
+            // bits: the same width seen as another type; an f8 already is its byte.
+            r = a;
+            if (source->kind != T_F8 && t->kind != T_F8) {
+                r = ++o->tmp;
+                fprintf(f, "  %%t%d = bitcast %s %%t%d to %s\n", r, src_type, a, llvm_type(t));
+            }
+            save(o, i->dst, t, fmt("%%t%d", r));
             break;
         }
         if (source->kind == T_F8) {
