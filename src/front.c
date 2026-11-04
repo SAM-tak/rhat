@@ -2775,6 +2775,9 @@ static Stmt *stmt_unchecked(Parser *p)
     if (branch_word(p)) {
         fail(t->loc, "%s belongs inside the preceding if^ braces", t->text);
     }
+    if (is(p, "overload^")) {
+        fail(t->loc, "overload^ declares top-level functions only");
+    }
     Stmt *s = mem(sizeof(*s));
     s->loc = t->loc;
     if (take(p, "let^") || take(p, "var^")) {
@@ -3145,10 +3148,8 @@ static void require_new_function_name(Module *module, const char *name, Loc loc)
 {
     for (int j = 0; j < module->functions.n; j++) {
         Function *previous = module->functions.v[j];
-        if (!strcmp(previous->name, name)) {
-            fail(loc,
-                 "function '%s' is already declared; put its overloads in one declaration with &",
-                 name);
+        if (!previous->overload && !strcmp(previous->name, name)) {
+            fail(loc, "function '%s' is already declared; add overloads with & or overload^", name);
         }
     }
 }
@@ -3596,8 +3597,13 @@ static void declaration(Parser *q)
         add(&module->defs, d);
         return;
     }
+    // overload^ adds arms to the name its one let^ declares, under its visibility.
+    bool overload = is(q, "overload^");
+    if (overload && public) {
+        fail(export_at, "overload^ arms take the visibility of their let^ declaration");
+    }
     bool binding = false;
-    if (is(q, "let^") && q->at + 3 < q->tokens.n) {
+    if ((overload || is(q, "let^")) && q->at + 3 < q->tokens.n) {
         Token *equal = q->tokens.v[q->at + 2];
         Token *initializer = q->tokens.v[q->at + 3];
         binding =
@@ -3609,6 +3615,9 @@ static void declaration(Parser *q)
     if ((exported || lhat_export) && (!binding || q->at + 3 >= q->tokens.n ||
                                       strstr(((Token *)q->tokens.v[q->at + 3])->text, "extern"))) {
         fail(export_at, "exportC^ and exportL^ apply only to a let^ function declaration");
+    }
+    if (overload && !binding) {
+        fail(tok(q)->loc, "overload^ takes NAME = followed by a function");
     }
     if (!binding) {
         Stmt *s = stmt(q);
@@ -3646,7 +3655,7 @@ static void declaration(Parser *q)
         return;
     }
     int binding_start = q->at;
-    need(q, "let^");
+    next(q);
     Loc declaration = tok(q)->loc;
     char *name = decl_word(q);
     need(q, "=");
@@ -3666,14 +3675,18 @@ static void declaration(Parser *q)
             // function.
             if (first_arm && (is(q, "(") || is(q, ".") || is(q, "[") ||
                               (tok(q)->kind != TOK_STRING && prec(tok(q)->text) >= 0))) {
+                if (overload) {
+                    fail(tok(q)->loc, "overload^ takes a function, not a value");
+                }
                 q->at = binding_start;
                 add(&p->entry->body, stmt(q));
                 break;
             }
         }
-        if (first_arm) {
+        if (first_arm && !overload) {
             require_new_function_name(module, name, declaration);
         }
+        parsed_function->overload = overload;
         parsed_function->declaration = first_arm ? declaration : parsed_function->loc;
         parsed_function->module = module;
         parsed_function->public = public;
@@ -3791,6 +3804,22 @@ void parse_file(Program *p, const char *path, Module *module)
     }
     while (tok(&q)->kind != TOK_EOF) {
         declaration_checked(&q);
+    }
+    // An overload^ arm, wherever written, joins the let^ of its name.
+    for (int j = 0; j < module->functions.n; j++) {
+        Function *f = module->functions.v[j], *base = NULL;
+        for (int k = 0; f->overload && !base && k < module->functions.n; k++) {
+            Function *g = module->functions.v[k];
+            base = !g->overload && !strcmp(g->name, f->name) ? g : NULL;
+        }
+        if (base) {
+            f->public = base->public;
+            f->exported = base->exported;
+            f->lhat_export = base->lhat_export;
+        }
+        else if (f->overload) {
+            TOOL_CHECK(p, fail(f->loc, "overload^ has no existing function '%s'", f->name););
+        }
     }
 
     // Casts fail with std.text's or std.sys's errors, imported out of sight.

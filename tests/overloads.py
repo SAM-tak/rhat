@@ -65,6 +65,14 @@ print^(unbound(ref^choice,160,wide))
     ]:
         negative('overload_numeric_'+name,
                  numeric_overloads+'let^small=2\nprint^('+call+')', diagnostic)
+    positive('overload_declarations', '''overload^min=f^a:i64^,b:i64^ {if^a<b:a el^:b;}
+let^min=f^a:f32^,b:f32^ {if^a<b:a el^:b;}
+overload^min=f^a:string^,b:string^ ->i32^ {7}
+& f^a:bool^ ->i32^ {8}
+let^w:i64^=3
+print^(min(w,2),min(1.5,2.5),min("a","b"),min(true^))
+''', '2 1.5 7 8\n')
+
     positive('overload_expected_result', numeric_overloads+'''let^ math=import^std.math
 let^wide:i64^=min(1,2)
 let^real:f32^=min(1,2)
@@ -329,6 +337,7 @@ print^(3+v)
 
     (work/'lib').mkdir(exist_ok=True)
     (work/'lib'/'calls.rh').write_text('''module^ lib.calls
+overload^ choose=f^ b:bool^ ->i32^ {9}
 public^ let^ choose=f^ n:i32^ ->i32^ {n+1}
 & f^ n:string^ ->i32^ {40}
 public^ let^ inc=f^ n:i32^ ->i32^ {n+1}
@@ -337,9 +346,9 @@ public^ let^ small:i32^=2
 public^ let^ apply=f^ cb:f^i32^->i32^;,n ->i32^ {cb(n)}
 ''',encoding='utf-8')
     positive('overload_modules', '''import^ lib.calls
-print^(lib.calls.choose(2),lib.calls.choose("s"))
+print^(lib.calls.choose(2),lib.calls.choose("s"),lib.calls.choose(true^))
 print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
-''', '3 40\n3 4\n')
+''', '3 40 9\n3 4\n')
     for value in ('lib.calls.small', '-lib.calls.small'):
         negative('overload_typed_constant_'+('negative' if value.startswith('-') else 'positive'),
                  numeric_overloads+'import^lib.calls\nprint^(min(i64^(1),'+value+'))',
@@ -361,6 +370,12 @@ print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
         ('pure_calls_procedure_arm', 'let^ f=f^ x:i32^ {1} & p^ x:string^ {} let^ bad=f^ {f("s")} bad()', 'f^ cannot call p^'),
         ('missing_overload_marker', 'def^ V {m=f^ self^,x:i32^ {1} m=f^ self^,x:string^ {2}}', 'requires overload^'),
         ('overload_nothing', 'def^ V {overload^ m=f^ self^ {1}}', 'overload^ has no'),
+        ('overload_function_nothing', 'overload^ f=f^ x:i32^ {x}', 'overload^ has no existing function'),
+        ('overload_function_overlap', 'let^ f=f^ x:i32^ {x} overload^ f=f^ y:i32^ {y}', 'overlapping overload'),
+        ('overload_function_public', 'let^ f=f^ x:i32^ {x} public^ overload^ f=f^ x:bool^ {1}', 'visibility of their let^'),
+        ('overload_function_let', 'let^ f=f^ x:i32^ {x} overload^ let^ f=f^ x:bool^ {1}', 'overload^ takes NAME ='),
+        ('overload_function_value', 'let^ f=f^ x:i32^ {x} overload^ f=f^ x:bool^ {1}(true^)', 'not a value'),
+        ('overload_function_local', 'let^ g=p^ { overload^ f=f^ x:i32^ {x} } g()', 'top-level functions only'),
         ('method_overlap', 'def^ V {m=f^ self^,x:i32^ {1} overload^ m=f^ self^,x:i32^ {2}}', 'overlapping overload'),
         ('operator_procedure', 'def^ V {op^+ =p^ self^,x:i32^ {}}', 'operator requires a pure f^'),
         ('operator_mutable', 'def^ V {op^+ =f^mutable^ self^,x:i32^ {1}}', 'operator requires a pure f^'),
