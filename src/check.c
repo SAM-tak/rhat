@@ -1459,7 +1459,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             Type *type = e->test_spec ? type_spec(c->p, e->test_spec)
                                       : array_literal_type(c->p, e, expected, NULL);
             for (int j = 0; j < e->args.n; j++) {
-                infer_expr(c, e->args.v[j], array_form_hint(c->p, e, type, j));
+                Type *actual = infer_expr(c, e->args.v[j], array_form_hint(c->p, e, type, j));
+                if (!type && !expected && !j) {
+                    type = repeat_type(c->p, e, actual);
+                }
             }
             return c->terminated ? type_builtin(c->p, T_NEVER) : type;
         }
@@ -2763,7 +2766,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, want, NULL);
         if (e->text) {
             for (int j = 0; j < e->args.n; j++) {
-                body_expr(c, e->args.v[j], array_form_hint(c->p, e, n->type, j));
+                BodyNode *arg = body_expr(c, e->args.v[j], array_form_hint(c->p, e, n->type, j));
+                if (!n->type && !want && !j) {
+                    n->type = repeat_type(c->p, e, arg->type);
+                }
             }
             break;
         }

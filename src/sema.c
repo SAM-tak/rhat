@@ -2150,12 +2150,19 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     if (!t) {
         fail(e->loc, "array construction needs a type; write T[...]{...} or annotate the binding");
     }
-    if (t->kind != T_GROW || reserve != (t->count == ARRAY_CAPPED)) {
+    bool fixed = repeat && t->kind == T_ARRAY;
+    if (!fixed && (t->kind != T_GROW || reserve != (t->count == ARRAY_CAPPED))) {
         fail(e->loc,
-             reserve
-                 ? "{max^ capacity} builds a T[max^], not '%s'"
-                 : "repeat^ and source... build owning arrays such as T[] and T[grow^], not '%s'",
+             reserve ? "{max^ capacity} builds a T[max^], not '%s'"
+                     : "repeat^ builds T[N], T[] and T[grow^], and source... owning arrays, not "
+                       "'%s'",
              type_name(t));
+    }
+    if (fixed && (e->repeat_count != t->count || t->elem->owned)) {
+        fail(e->loc,
+             t->elem->owned ? "repeat^ cannot copy owned elements into '%s'"
+                            : "'%s' is built by repeat^ with the constant count %d",
+             type_name(t), t->count);
     }
     layout(t, e->loc);
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
@@ -2169,7 +2176,7 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
             fail(e->loc, "array initial value must be '%s'", type_name(t->elem));
         }
     }
-    if (repeat || reserve) {
+    if ((repeat && !fixed) || reserve) {
         count = snapshot(c, expression(c, e->args.v[repeat], type_builtin(c->p, T_I64)), e->loc);
         if (dead(count)) {
             return count;
@@ -2205,6 +2212,13 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
         return source;
     }
     out.deps = t->elem->refs && !reserve ? source.deps : (Roots){0};
+    if (fixed) {
+        Instr *fill = emit(c, I_FILL, e->loc);
+        fill->type = t;
+        fill->dst = out.id;
+        fill->b = source.id;
+        return out;
+    }
     Instr *region = emit(c, I_REGION, e->loc);
     region->dst = out.id;
     region->type = t;
@@ -2219,6 +2233,15 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
         fill->a = out.id;
     }
     return out;
+}
+
+Type *repeat_type(Program *p, Expr *e, Type *elem)
+{
+    if (!elem || strcmp(e->text, "repeat")) {
+        return NULL;
+    }
+    return e->repeat_count && !elem->owned ? type_wrap(p, T_ARRAY, elem, e->repeat_count)
+                                           : type_wrap(p, T_GROW, elem, ARRAY_SIZED);
 }
 
 Type *array_form_hint(Program *p, Expr *e, Type *t, int index)
@@ -2633,6 +2656,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (e->text) {
             Type *named =
                 e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, t, NULL);
+            if (!named && !t) {
+                named = repeat_type(c->p, e, expression_type(c, e->args.v[0], NULL));
+            }
             if (t && named && t != named) {
                 fail(e->loc, "'%s' cannot initialize '%s'", type_name(named), type_name(t));
             }

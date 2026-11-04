@@ -1114,6 +1114,8 @@ static int self_type_depth(const char *text)
     return text[4 + count] ? 0 : (int)count;
 }
 
+static Expr *expr(Parser *p, int min);
+
 // Parse an array type's bracket contents, leaving the closing ']' unread.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
@@ -1147,10 +1149,18 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
             w->count = ARRAY_CAPPED;
             return w;
         }
-        Token *n = next(p);
-        if (n->kind != TOK_INT) {
-            fail(n->loc, "expected an array length, .., grow^, flex^ or max^");
+        w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
+        Token *n = tok(p);
+        if (n->kind != TOK_INT || p->at + 1 >= p->tokens.n ||
+            strcmp(((Token *)p->tokens.v[p->at + 1])->text, "]")) {
+            // A constant expression such as WIDTH * DEPTH; modules.c folds it.
+            bool header = p->header;
+            p->header = false;
+            w->length = expr(p, 0);
+            p->header = header;
+            return w;
         }
+        next(p);
         errno = 0;
         long k = strtol(n->text, NULL, 10);
         if (errno || k <= 0 || k > 1000000) {
@@ -1362,7 +1372,6 @@ static Spec *result_spec(Parser *p)
     return spec(p);
 }
 
-static Expr *expr(Parser *p, int min);
 static Expr *operation(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);

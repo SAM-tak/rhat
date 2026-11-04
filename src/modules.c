@@ -416,12 +416,96 @@ static void apply_definition(Module *m, Spec *s, Def *source)
     s->type_args = (List){0};
 }
 
+static Stmt *top_binding(const char *name);
+static Function *top_user; // The function whose body is being resolved.
+static char *path_of(Expr *e);
+static char *resolve(Module *m, char *name, Loc loc, Constant **constant);
+
+// The value of an integer constant expression: literals, unary -, + - * / %,
+// and names of entry-file top-level let^ bindings or module constants bound to
+// such expressions. Names in locals (when given) are not constants.
+static bool constant_integer(Module *m, List *locals, Expr *e, int depth, long long *out)
+{
+    const long long limit = 1LL << 40;
+    if (!e || depth > 64) {
+        return false;
+    }
+    if (e->kind == E_INT) {
+        errno = 0;
+        char *end = NULL;
+        *out = strtoll(e->text, &end, 10);
+        return !errno && end && !*end && *out <= limit;
+    }
+    if (e->kind == E_UNARY && !strcmp(e->text, "-")) {
+        if (!constant_integer(m, locals, e->a, depth + 1, out)) {
+            return false;
+        }
+        *out = -*out;
+        return true;
+    }
+    if (e->kind == E_BIN) {
+        long long a = 0, b = 0;
+        if (!constant_integer(m, locals, e->a, depth + 1, &a) ||
+            !constant_integer(m, locals, e->b, depth + 1, &b)) {
+            return false;
+        }
+        const char *op = e->text;
+        if ((!strcmp(op, "/") || !strcmp(op, "%")) && !b) {
+            return false;
+        }
+        *out = !strcmp(op, "+")   ? a + b
+               : !strcmp(op, "-") ? a - b
+               : !strcmp(op, "*") ? a * b
+               : !strcmp(op, "/") ? a / b
+               : !strcmp(op, "%") ? a % b
+                                  : limit + 1;
+        return *out >= -limit && *out <= limit;
+    }
+    char *path = path_of(e);
+    if (!path) {
+        return false;
+    }
+    Stmt *binding = m->root ? top_binding(path) : NULL;
+    // The top level's own names list its bindings; any other entry is a local.
+    int seen = 0;
+    for (int j = 0; locals && j < locals->n; j++) {
+        seen += !strcmp(locals->v[j], path);
+    }
+    if (seen > (binding && !top_user ? 1 : 0)) {
+        return false;
+    }
+    if (binding) {
+        int kind = binding->spec && binding->spec->kind == SPEC_NAME
+                       ? numeric_kind(binding->spec->name)
+                       : -1;
+        if (binding->mut || (binding->spec && !kind_integer(kind))) {
+            return false;
+        }
+        return constant_integer(m, NULL, binding->a, depth + 1, out);
+    }
+    Constant *c = NULL;
+    if (visible_declaration(m, path)) {
+        resolve(m, path, e->loc, &c);
+    }
+    return c && constant_integer(m, NULL, c->binding->a, depth + 1, out);
+}
+
 static void resolve_spec_unchecked(Module *m, Spec *s)
 {
     if (!s || s->resolved) {
         return;
     }
     s->resolved = true;
+    if (s->length) {
+        long long n = 0;
+        if (!constant_integer(m, NULL, s->length, 0, &n)) {
+            fail(s->length->loc, "array length must be a constant integer expression");
+        }
+        if (n <= 0 || n > 1000000) {
+            fail(s->length->loc, "array length out of range (1..1000000)");
+        }
+        s->count = (int)n;
+    }
     if (s->self_type && s->type_args.n) {
         fail(s->loc, "Self^ does not accept type arguments");
     }
@@ -521,7 +605,6 @@ typedef struct {
 } TopCall;
 
 static List top_bindings;   // S_BIND statements of the entry's top level.
-static Function *top_user;  // The function whose body is being resolved.
 static List top_calls;      // TopCall pointers.
 static List top_references; // Function names used other than as a callee.
 
@@ -776,6 +859,11 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
 {
     if (!e) {
         return;
+    }
+    long long count = 0;
+    if (e->kind == E_ARRAY && e->text && !strcmp(e->text, "repeat") && e->args.n == 2 &&
+        constant_integer(m, names, e->args.v[1], 0, &count) && count > 0 && count <= 1000000) {
+        e->repeat_count = (int)count;
     }
     if (e->kind == E_TYPE) {
         resolve_spec(m, e->type_expr);

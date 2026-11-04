@@ -82,6 +82,7 @@ struct Spec {
     char *name;
     Spec *elem, *other; // Binary type operands; elem holds a callable result.
     int kind, count;
+    Expr *length;   // A constant expression for count, evaluated during name resolution.
     List params;    // Parameter specifications of a callable signature.
     bool procedure; // A p^ signature carries the procedure effect.
     bool foreign;   // externC^ before a signature: a C function pointer.
@@ -142,6 +143,7 @@ struct Expr {
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
     bool top_binding;    // ref^ of a top-level let^ for its hidden parameter: read only.
+    int repeat_count;    // {v repeat^ n}: n when a constant expression of 1..1000000, else 0.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec;     // The type operand of fits^, or the type of a T[](...)
                          // construction; never evaluated as a value.

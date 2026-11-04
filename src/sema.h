@@ -316,6 +316,8 @@ Function *this_function(Program *p, Instance *in, Expr *target);
 // The expected type of argument index of an array construction form (e->text
 // is repeat, copy or reserve) building t, or NULL when it takes any.
 Type *array_form_hint(Program *p, Expr *e, Type *t, int index);
+// The type of an unannotated {v repeat^ n} of elem: T[n] for a constant n, else T[].
+Type *repeat_type(Program *p, Expr *e, Type *elem);
 // Turn {} into an empty array literal where t, the expected type, is an array.
 void empty_array_braces(Expr *e, Type *t);
 // The def^ whose static member a Type.name call target names, or NULL.

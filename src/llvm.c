@@ -1083,6 +1083,11 @@ static void instruction(Output *o, Instr *i)
         break;
     }
     case I_FILL:
+        if (t->kind == T_ARRAY) {
+            fprintf(f, "  call void @rh_fill_repeat(ptr %%p%d, ptr %%p%d, i64 %d, i64 %zu)\n",
+                    i->dst, i->b, t->count, t->elem->size);
+            break;
+        }
         a = load(o, i->a);
         if (i->b < 0) {
             fprintf(f, "  call void @rh_reserve(ptr %%p%d, i64 %%t%d, i64 %zu, i32 %d)\n", i->dst,

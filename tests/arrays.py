@@ -154,15 +154,32 @@ g.push(5) e.push(6) m.push(1) k.push(2)
 print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
 ''', '7 4 2 7 2 4 1 2\n')
     for name,source,error in [
-        ('untyped','let^a={0 repeat^ 3}', 'array construction needs a type'),
-        ('fixed','let^a:i32^[3]={0 repeat^ 3}', 'build owning arrays'),
-        ('capped','var^a:i32^[max^]={1 repeat^ 2}', 'build owning arrays'),
+        ('untyped_copy','let^b:i32^[]={1}\nlet^a={b...}', 'array construction needs a type'),
+        ('fixed_count','let^a:i32^[3]={0 repeat^ 2}', 'built by repeat^ with the constant count 3'),
+        ('capped','var^a:i32^[max^]={1 repeat^ 2}', 'repeat^ builds T[N], T[] and T[grow^]'),
+        ('variable_length','var^n:i64^=2\nlet^a:i32^[n]={}', 'constant integer expression'),
+        ('zero_length','let^N:i64^=1\nlet^a:i32^[N - 1]={}', 'out of range'),
         ('capacity_owner','let^a:i32^[]={max^ 3}', 'builds a T[max^]'),
         ('pair','let^a=i32^[](3,0)', 'write T[]{value repeat^ n}'),
         ('mixed','let^a:i32^[]={1, 2 repeat^ 3}', "expected '}'"),
         ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'array or slice'),
     ]:
         negative('form_'+name,source,error)
+    positive('constant_lengths', '''
+let^W:i64^=8
+let^H:i64^=W / 2
+var^runtime:i64^=3
+var^grid={0 repeat^ W * H}
+var^table:i64^[W + 1]={7 repeat^ W + 1}
+var^capped:u8^[max^H]={}
+var^owned={1.5 repeat^ runtime}
+let^last=f^ -> i64^ {
+    let^local:i64^[H]={5 repeat^ H}
+    return^ local[H - 1] + table[W]
+}
+grid[31]:=4 capped.push(1) owned[0]:=2.0
+print^(grid.len,grid[31],table[8],capped.len,owned.len,last())
+''', '32 4 7 1 3 12\n')
     positive('sized_empty_typed_value', '''
 var^a=i32^[]{}
 var^b:i32^[]={1,2}

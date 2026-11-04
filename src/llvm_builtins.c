@@ -274,6 +274,25 @@ static void flex_release(FILE *f)
           f);
 }
 
+// Copy one element into each of n slots of a fixed array.
+static void fill_helper(FILE *f)
+{
+    fputs("define internal void @rh_fill_repeat(ptr %dst, ptr %elem, i64 %n, i64 %size) {\n"
+          "entry:\n  br label %loop\n"
+          "loop:\n"
+          "  %i = phi i64 [0, %entry], [%next, %body]\n"
+          "  %more = icmp ult i64 %i, %n\n"
+          "  br i1 %more, label %body, label %done\n"
+          "body:\n"
+          "  %offset = mul i64 %i, %size\n"
+          "  %to = getelementptr i8, ptr %dst, i64 %offset\n"
+          "  call void @llvm.memcpy.p0.p0.i64(ptr %to, ptr %elem, i64 %size, i1 false)\n"
+          "  %next = add i64 %i, 1\n"
+          "  br label %loop\n"
+          "done:\n  ret void\n}\n",
+          f);
+}
+
 void emit_llvm_builtins(FILE *f)
 {
     fputs("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n"
@@ -284,6 +303,7 @@ void emit_llvm_builtins(FILE *f)
     append_helper(f, false);
     append_helper(f, 2);
     reserve_helper(f);
+    fill_helper(f);
     growth_fail(f);
     fp8_decode(f);
     fp8_encode(f, false);
