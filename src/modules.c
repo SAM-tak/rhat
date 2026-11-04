@@ -921,7 +921,9 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                         Loc loc = e->name_loc.file ? e->name_loc : e->loc;
                         tool_record(p, loc, value->binding->loc, canonical(d->module, member), NULL,
                                     NULL, NULL, 14, false);
+                        Loc use = e->loc;
                         *e = *copy_expr(value->binding->a);
+                        e->loc = use;
                         e->constant_spec = s;
                         return;
                     }
@@ -1008,6 +1010,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                         NULL, NULL, 14, false);
             Expr *r = copy_expr(c->binding->a);
             r->constant_spec = c->binding->spec;
+            r->loc = e->loc;
             *e = *r;
             return;
         }

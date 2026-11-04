@@ -170,6 +170,9 @@ print^(box.run(42))
         'lib/a.rh': 'module^ lib.a\npublic^ def^ Item { self^{ value:i32^=1 } }',
         'lib/b.rh': 'module^ lib.b\npublic^ def^ Item { self^{ value:i32^=2 } }',
         'main.rh': 'import^ lib.a\nimport^ lib.b\nlet^ a:lib.a.Item=lib.b.Item{}'}, 'nominal')
+    negative('module_constant_use_site', {'lib/k.rh': 'module^ lib.k\npublic^ let^ K:u8^ = 1',
+                                          'main.rh': 'import^ lib.k\nlet^ w:i64^ = lib.k.K'},
+             'main.rh:2:15: error: constant type mismatch')
     negative('module_name_mismatch', {'lib/a.rh': 'module^ wrong.name', 'main.rh': 'import^ lib.a'}, 'must declare')
     negative('module_declaration_required', {'lib/a.rh': 'public^ let^ a=f^ { 1 }', 'main.rh': 'import^ lib.a'}, 'must declare')
     negative('module_cycle', {'lib/a.rh': 'module^ lib.a\nimport^ lib.b',

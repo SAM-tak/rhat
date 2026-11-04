@@ -848,6 +848,7 @@ print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
         ('enum_from_integer', 'enum^ Mode { Idle, Walk }\nlet^ m:Mode = 1', "expected 'Mode'"),
         ('enum_order', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle < Mode.Walk)', "operator '<' is not defined for 'Mode'"),
         ('enum_arithmetic', 'enum^ Mode { Idle, Walk }\nprint^(Mode.Idle + Mode.Walk)', "operator '+' is not defined for 'Mode'"),
+        ('enum_member_use_site', 'enum^ Mode : u8^ {\n    Idle,\n    Walk\n}\nlet^ b:u8^ = Mode.Walk', '5:14: error: constant type mismatch'),
         ('ref_repeated_expression', 'var^ x=1 let^ r=ref^^ x', 'cannot borrow a temporary'),
         ('ref_repeated_expanded_expression', 'var^ x=1 let^ r=ref^ ref^ x', 'cannot borrow a temporary'),
 
