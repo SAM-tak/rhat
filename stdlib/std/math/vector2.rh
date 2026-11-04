@@ -14,21 +14,21 @@ public^def^Vec2<T> {
     UP = Self^{ x = T.ZERO, y = -T.ONE }
     DOWN = Self^{ x = T.ZERO, y = T.ONE }
 
-    op^+ = f^self^, other:Self^-> Self^{ Self^{ x = self^.x + other.x, y = self^.y + other.y } }
-    op^- = f^self^, other:Self^-> Self^{ Self^{ x = self^.x - other.x, y = self^.y - other.y } }
-    overload^op^- = f^self^-> Self^{ Self^{ x = -self^.x, y = -self^.y } }
-    op^* = f^self^, scale:T -> Self^{ Self^{ x = self^.x * scale, y = self^.y * scale } }
-    overload^op^* = f^scale:T, self^-> Self^{ Self^{ x = scale * self^.x, y = scale * self^.y } }
-    overload^op^* = f^self^, other:Self^-> Self^{
+    op^+ = f^self^, other:Self^{ Self^{ x = self^.x + other.x, y = self^.y + other.y } }
+    op^- = f^self^, other:Self^{ Self^{ x = self^.x - other.x, y = self^.y - other.y } }
+    overload^op^- = f^self^{ Self^{ x = -self^.x, y = -self^.y } }
+    op^* = f^self^, scale:T { Self^{ x = self^.x * scale, y = self^.y * scale } }
+    overload^op^* = f^scale:T, self^{ Self^{ x = scale * self^.x, y = scale * self^.y } }
+    overload^op^* = f^self^, other:Self^{
         Self^{ x = self^.x * other.x, y = self^.y * other.y }
     }
-    op^/ = f^self^, scale:T -> Self^{ Self^{ x = self^.x / scale, y = self^.y / scale } }
-    overload^op^/ = f^self^, other:Self^-> Self^{
+    op^/ = f^self^, scale:T { Self^{ x = self^.x / scale, y = self^.y / scale } }
+    overload^op^/ = f^self^, other:Self^{
         Self^{ x = self^.x / other.x, y = self^.y / other.y }
     }
-    op^dot^= f^self^, other:Self^-> T{ self^.x * other.x + self^.y * other.y }
+    op^dot^= f^self^, other:Self^-> T { self^.x * other.x + self^.y * other.y }
     # The z component of the 3D cross product: the signed parallelogram area.
-    op^cross^= f^self^, other:Self^-> T{ self^.x * other.y - self^.y * other.x }
+    op^cross^= f^self^, other:Self^-> T { self^.x * other.y - self^.y * other.x }
 
     length = f^self^-> T{ math.sqrt(*self^dot^*self^) }
     # The zero vector stays zero.
@@ -40,27 +40,27 @@ public^def^Vec2<T> {
         return^Self^{ x = self^.x / n, y = self^.y / n }
     }
     # Unclamped: t outside 0..1 extrapolates.
-    lerp = f^self^, other:Self^, t:T -> Self^{ *self^+ (other - *self^) * t }
-    rotate = f^self^, radians:T -> Self^{
+    lerp = f^self^, other:Self^, t:T { *self^+ (other - *self^) * t }
+    rotate = f^self^, radians:T {
         let^c = math.cos(radians)
         let^s = math.sin(radians)
         return^Self^{ x = self^.x * c - self^.y * s, y = self^.x * s + self^.y * c }
     }
     # atan2(y, x) in -pi..pi; the zero vector answers 0.
-    angle = f^self^-> T{
+    angle = f^self^-> T {
         if^self^.x = T.ZERO and^self^.y = T.ZERO {
             return^T.ZERO
         }
         return^math.atan2(self^.y, self^.x)
     }
-    abs = f^self^-> Self^{ Self^{ x = math.abs(self^.x), y = math.abs(self^.y) } }
-    clamp = f^self^, low:T, high:T -> Self^{
+    abs = f^self^{ Self^{ x = math.abs(self^.x), y = math.abs(self^.y) } }
+    clamp = f^self^, low:T, high:T {
         Self^{ x = def^.limit(self^.x, low, high), y = def^.limit(self^.y, low, high) }
     }
     overload^clamp = f^self^, low:Self^, high:Self^-> Self^{
-        Self^{ x = def^.limit(self^.x, low.x, high.x), y = def^.limit(self^.y, low.y, high.y) }
+        { x = def^.limit(self^.x, low.x, high.x), y = def^.limit(self^.y, low.y, high.y) }
     }
-    distance = f^a:Self^, b:Self^-> T{ (a - b).length() }
+    distance = f^a:Self^, b:Self^-> T { (a - b).length() }
 
     private^limit = f^value:T, low:T, high:T -> T{
         if^value < low {

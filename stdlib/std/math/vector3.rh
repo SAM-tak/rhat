@@ -16,31 +16,31 @@ public^def^Vec3<T> {
     BACK = Self^{ x = T.ZERO, y = T.ZERO, z = -T.ONE }
 
     op^+ = f^self^, other:Self^-> Self^{
-        Self^{ x = self^.x + other.x, y = self^.y + other.y, z = self^.z + other.z }
+        { x = self^.x + other.x, y = self^.y + other.y, z = self^.z + other.z }
     }
     op^- = f^self^, other:Self^-> Self^{
-        Self^{ x = self^.x - other.x, y = self^.y - other.y, z = self^.z - other.z }
+        { x = self^.x - other.x, y = self^.y - other.y, z = self^.z - other.z }
     }
-    overload^op^- = f^self^-> Self^{ Self^{ x = -self^.x, y = -self^.y, z = -self^.z } }
+    overload^op^- = f^self^-> Self^{ { x = -self^.x, y = -self^.y, z = -self^.z } }
     op^* = f^self^, scale:T -> Self^{
-        Self^{ x = self^.x * scale, y = self^.y * scale, z = self^.z * scale }
+        { x = self^.x * scale, y = self^.y * scale, z = self^.z * scale }
     }
     overload^op^* = f^scale:T, self^-> Self^{
-        Self^{ x = scale * self^.x, y = scale * self^.y, z = scale * self^.z }
+        { x = scale * self^.x, y = scale * self^.y, z = scale * self^.z }
     }
     overload^op^* = f^self^, other:Self^-> Self^{
-        Self^{ x = self^.x * other.x, y = self^.y * other.y, z = self^.z * other.z }
+        { x = self^.x * other.x, y = self^.y * other.y, z = self^.z * other.z }
     }
     op^/ = f^self^, scale:T -> Self^{
-        Self^{ x = self^.x / scale, y = self^.y / scale, z = self^.z / scale }
+        { x = self^.x / scale, y = self^.y / scale, z = self^.z / scale }
     }
     overload^op^/ = f^self^, other:Self^-> Self^{
-        Self^{ x = self^.x / other.x, y = self^.y / other.y, z = self^.z / other.z }
+        { x = self^.x / other.x, y = self^.y / other.y, z = self^.z / other.z }
     }
-    op^dot^= f^self^, other:Self^-> T{
+    op^dot^= f^self^, other:Self^-> T {
         self^.x * other.x + self^.y * other.y + self^.z * other.z
     }
-    op^cross^= f^self^, other:Self^-> Self^{
+    op^cross^= f^self^, other:Self^{
         Self^{
             x = self^.y * other.z - self^.z * other.y,
             y = self^.z * other.x - self^.x * other.z,
@@ -62,23 +62,23 @@ public^def^Vec3<T> {
     abs = f^self^-> Self^{
         Self^{ x = math.abs(self^.x), y = math.abs(self^.y), z = math.abs(self^.z) }
     }
-    clamp = f^self^, low:T, high:T -> Self^{
+    clamp = f^self^, low:T, high:T {
         Self^{
             x = def^.limit(self^.x, low, high),
             y = def^.limit(self^.y, low, high),
             z = def^.limit(self^.z, low, high)
         }
     }
-    overload^clamp = f^self^, low:Self^, high:Self^-> Self^{
+    overload^clamp = f^self^, low:Self^, high:Self^{
         Self^{
             x = def^.limit(self^.x, low.x, high.x),
             y = def^.limit(self^.y, low.y, high.y),
             z = def^.limit(self^.z, low.z, high.z)
         }
     }
-    distance = f^a:Self^, b:Self^-> T{ (a - b).length() }
+    distance = f^a:Self^, b:Self^-> T { (a - b).length() }
 
-    private^limit = f^value:T, low:T, high:T -> T{
+    private^limit = f^value:T, low:T, high:T -> T {
         if^value < low {
             return^low
         }
