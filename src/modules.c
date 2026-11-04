@@ -3,6 +3,7 @@
 #endif
 #include "rhat.h"
 #include "tooling.h"
+#include <errno.h>
 #ifndef RH_STDLIB_PATH
 #define RH_STDLIB_PATH "stdlib"
 #endif
