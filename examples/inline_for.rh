@@ -1,7 +1,5 @@
 # Expand each iteration with the argument's concrete type.
-let^write = p^x:i32^{ print^("integer", x) }
-overload^write = p^x:string^{ print^("string", x) }
-overload^write = p^x:bool^{ print^("boolean", x) }
+let^write = p^x { print^(typeof^(x).signature^, x) }
 
 let^show = template^p^... {
     inline^for^x in^... { write(x) }
