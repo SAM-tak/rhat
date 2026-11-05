@@ -329,28 +329,25 @@ static char *spec_text(Spec *s)
                *refs && *kind ? " " : "", kind);
 }
 
-static char *signature(Program *p, Function *f)
+// One callable shape; a concrete instance supplies the types left to call sites.
+static char *signature_arm(Function *f, Instance *in)
 {
-    char *out = fmt("%s : %s%s", short_name(f->name), f->templ ? "template^" : "",
-                    f->procedure ? "p^" : "f^");
+    char *out = fmt("%s%s", f->templ ? "template^" : "", f->procedure ? "p^" : "f^");
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
-        Type *t = a->self && f->owner ? f->owner->type : a->inferred;
+        Type *t = a->self && f->owner ? f->owner->type
+                  : a->inferred       ? a->inferred
+                  : in                ? in->params.v[j]
+                                      : NULL;
         out = fmt("%s%s%s:%s", out, j ? ", " : "", a->name,
                   a->spec && !strcmp(a->name, "...") ? spec_text(a->spec->elem)
                   : a->spec                          ? spec_text(a->spec)
                   : t                                ? type_name(t)
                                                      : "?");
     }
-    Type *result = f->required_result;
-    if (!result) {
-        for (int j = 0; j < p->instances.n; j++) {
-            Instance *in = p->instances.v[j];
-            if (in->fn == f && in->result) {
-                result = in->result;
-                break;
-            }
-        }
+    Type *result = in ? in->result : f->required_result;
+    for (int j = 0; !in && !result && j < f->instances.n; j++) {
+        result = ((Instance *)f->instances.v[j])->result;
     }
     if (!f->result && result && result->kind == T_VOID) {
         return out;
@@ -359,6 +356,35 @@ static char *signature(Program *p, Function *f)
                f->result ? spec_text(f->result)
                : result  ? type_name(result)
                          : "?");
+}
+
+// Parameters left to call sites list each distinct specialization as an intersection.
+static char *signature(Function *f)
+{
+    List arms = {0};
+    for (int j = 0; inferred_parameter(f) && j < f->instances.n; j++) {
+        Instance *in = f->instances.v[j];
+        if (in->invalid || in->params.n != f->params.n) {
+            continue;
+        }
+        char *arm = signature_arm(f, in);
+        bool seen = false;
+        for (int k = 0; k < arms.n; k++) {
+            seen |= !strcmp(arms.v[k], arm);
+        }
+        if (!seen) {
+            add(&arms, arm);
+        }
+    }
+    if (arms.n < 2) {
+        return fmt("%s : %s", short_name(f->name),
+                   arms.n ? (char *)arms.v[0] : signature_arm(f, NULL));
+    }
+    char *out = fmt("%s : %s;", short_name(f->name), (char *)arms.v[0]);
+    for (int j = 1; j < arms.n; j++) {
+        out = fmt("%s & %s;", out, (char *)arms.v[j]);
+    }
+    return out;
 }
 
 static size_t reference_hash(const char *key)
@@ -550,7 +576,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddItemToObject(out, "use", use);
     cJSON_AddItemToObject(out, "target", decl);
     char *detail = r->function
-                       ? signature(p, r->function)
+                       ? signature(r->function)
                        : fmt("%s: %s", short_name(use_name), r->type ? type_name(r->type) : "?");
     cJSON_AddStringToObject(out, "detail", detail);
     if (callable_type(r->type)) {

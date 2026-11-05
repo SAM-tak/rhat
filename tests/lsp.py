@@ -892,6 +892,19 @@ def^F2 { self^{ x:f32^ } }
     diagnostics=client.diagnostics(path,160)
     assert len(diagnostics) == 1 and 'needs {elements}' in diagnostics[0]['message'], diagnostics
     print('PASS a broken function body does not cascade into capture inference',flush=True)
+    specialized='''let^write=p^x {print^("v",x)}
+let^pair=f^a,b {a}
+write(1) write("s") write(true^) write(2)
+print^(pair(1,"s"),pair("a",2))
+'''
+    client.change(path,specialized,161)
+    assert client.diagnostics(path,161) == []
+    for needle in ('write=p^','write("s")'):
+        hover=request('hover',needle,text=specialized)['contents']['value']
+        assert hover == 'write : p^x:i32^; & p^x:string^; & p^x:bool^;', hover
+    hover=request('hover','pair=f^',text=specialized)['contents']['value']
+    assert hover == 'pair : f^a:i32^, b:string^ -> i32^; & f^a:string^, b:i32^ -> string^;', hover
+    print('PASS call-site specializations listed as hover intersections',flush=True)
 
     readonly_path = work/'readonly.rh'
     readonly_text = ('def^Cell{self^{x:i32^=1}}\n'
