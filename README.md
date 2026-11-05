@@ -15,6 +15,9 @@ Clang によるネイティブ実行ファイルの生成までを実装して�
 R^ のソースを C に変換する処理もありません。生成した LLVM IR と小さな C ランタイムを
 Clang でコンパイル・リンクします。Windows x86-64 で検証しています。
 
+- [ゲームのサンプル実装](https://github.com/SAM-tak/rhat-gfx)
+- [VSCode拡張（言語サポート）](https://marketplace.visualstudio.com/items?itemName=SAMtak.rhat)
+
 ## 特徴
 
 ### 予約語が存在しない
