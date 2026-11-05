@@ -928,6 +928,76 @@ def^F2 { self^{ x:f32^ } }
     client.send('textDocument/didClose',dict(textDocument=dict(uri=inline_path.as_uri())))
     print('PASS inline expansion diagnostics and recovery',flush=True)
 
+    template_path = work/'template_diagnostics.rh'
+    template_def = ('let^max=template^p^... {\n'
+                    ' var^best=...[0]\n'
+                    ' inline^for^x in^... {if^x>best {best:=x}}\n'
+                    ' return^best\n}\n')
+    template_calls = ('print^(max(2,3,5))\n'
+                      'print^(max(2,""))\n'
+                      'print^(max(2,""))\n'
+                      'print^(max(2,true^))\n')
+    template_text = template_def+template_calls
+    client.open(template_path,template_text)
+    diagnostics = client.diagnostics(template_path,1)
+    calls = [d for d in diagnostics if 'in instantiation' in d['message']]
+    assert {d['range']['start']['line'] for d in calls} == {6,7,8}, diagnostics
+    assert all(d['range']['start']['character'] == 7 for d in calls), calls
+    primary = [d for d in diagnostics if 'in instantiation' not in d['message']]
+    assert len(primary) == 1 and primary[0]['range']['start']['line'] == 2, diagnostics
+    for d in calls:
+        related = d['relatedInformation'][0]
+        assert related['location']['uri'].lower() == template_path.as_uri().lower(), related
+        assert related['location']['range'] == primary[0]['range'], related
+    assert len(primary[0]['relatedInformation']) == 3, primary
+
+    nested = template_def+('let^outer=template^p^... {return^max(...)}\n'
+                          'print^(outer(2,""))\n')
+    client.change(template_path,nested,2)
+    diagnostics = client.diagnostics(template_path,2)
+    calls = [d for d in diagnostics if 'in instantiation' in d['message']]
+    assert {d['range']['start']['line'] for d in calls} == {5,6}, diagnostics
+
+    inference = 'let^bad=template^f^x {x+1}\nprint^(bad("oops"))\n'
+    client.change(template_path,inference,3)
+    diagnostics = client.diagnostics(template_path,3)
+    assert any('in instantiation' in d['message'] and d['range']['start']['line'] == 1
+               for d in diagnostics), diagnostics
+    client.change(template_path,template_def+'print^(max(2,3,5))\n',4)
+    assert client.diagnostics(template_path,4) == []
+
+    recursive = template_def+('let^outer=template^p^n:i32^,... ->i32^ {\n'
+                             ' if^n>0 {return^this^(n-1,...)}\n'
+                             ' return^max(...)\n}\n'
+                             'print^(outer(1,2,""))\n')
+    client.change(template_path,recursive,5)
+    diagnostics = client.diagnostics(template_path,5)
+    calls = [d for d in diagnostics if 'in instantiation' in d['message']]
+    assert {d['range']['start']['line'] for d in calls} == {6,7,9}, diagnostics
+
+    template_module = work/'lib'/'template_diagnostics.rh'
+    template_module.write_text('module^lib.template_diagnostics\npublic^'+template_def,encoding='utf-8')
+    imported = ('let^lib=import^lib.template_diagnostics\n'
+                'print^(lib.max(2,""))\n')
+    client.change(template_path,imported,6)
+    diagnostics = client.diagnostics(template_path,6)
+    assert len(diagnostics) == 1 and 'in instantiation' in diagnostics[0]['message'], diagnostics
+    related = diagnostics[0]['relatedInformation'][0]['location']
+    assert related['uri'].lower() == template_module.as_uri().lower(), related
+    assert related['range']['start']['line'] == 3, related
+    client.change(template_path,imported.replace('""','3'),7)
+    assert client.diagnostics(template_path,7) == []
+    normal = template_def+('let^outer=p^n:i32^ {return^max(n,"")}\n'
+                          'print^(outer(2))\n')
+    client.change(template_path,normal,8)
+    diagnostics = client.diagnostics(template_path,8)
+    calls = [d for d in diagnostics if 'in instantiation' in d['message']]
+    assert len(calls) == 2, diagnostics
+    assert {tuple(d['range']['start'].values()) for d in calls} == {
+        tuple(at(normal,'max(n').values()), tuple(at(normal,'outer(2)').values())}, diagnostics
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=template_path.as_uri())))
+    print('PASS template call-site diagnostics, cached instances, nesting and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

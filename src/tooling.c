@@ -7,12 +7,61 @@ static _Thread_local ToolRecovery *recovery;
 void tool_enter(ToolRecovery *next)
 {
     next->previous = recovery;
+    next->instance = recovery ? recovery->instance : NULL;
     recovery = next;
 }
 
 void tool_leave(ToolRecovery *current)
 {
     recovery = current->previous;
+}
+
+Instance *tool_current_instance(void)
+{
+    return recovery ? recovery->instance : NULL;
+}
+
+void tool_instance_use(Instance *in, Loc loc)
+{
+    Instance *caller = tool_current_instance();
+    if (!caller || !loc.file) {
+        return;
+    }
+    for (int j = 0; j < in->callers.n; j++) {
+        ToolInstantiation *use = in->callers.v[j];
+        if (use->caller == caller && use->loc.line == loc.line && use->loc.col == loc.col &&
+            source_same_path(use->loc.file, loc.file)) {
+            return;
+        }
+    }
+    ToolInstantiation *use = mem(sizeof(*use));
+    *use = (ToolInstantiation){caller, in, loc};
+    add(&in->callers, use);
+}
+
+List tool_instantiation_trace(Instance *in)
+{
+    List trace = {0}, pending = {0};
+    if (!in || !in->fn->templ) {
+        return trace;
+    }
+    add(&pending, in);
+    for (int j = 0; j < pending.n; j++) {
+        Instance *next = pending.v[j];
+        for (int k = 0; k < next->callers.n; k++) {
+            ToolInstantiation *use = next->callers.v[k];
+            add(&trace, use);
+            bool seen = false;
+            for (int n = 0; n < pending.n; n++) {
+                seen |= pending.v[n] == use->caller;
+            }
+            if (!seen) {
+                add(&pending, use->caller);
+            }
+        }
+    }
+    mem_free(pending.v);
+    return trace;
 }
 
 _Noreturn void tool_abort(void)

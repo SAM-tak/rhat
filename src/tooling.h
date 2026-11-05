@@ -9,6 +9,7 @@ typedef struct ToolRecovery ToolRecovery;
 struct ToolRecovery {
     jmp_buf escape;
     ToolRecovery *previous;
+    Instance *instance; // Diagnostic context, inherited by nested recovery boundaries.
 };
 
 // Push/pop a boundary in the same stack frame that calls setjmp.
@@ -16,6 +17,19 @@ void tool_enter(ToolRecovery *recovery);
 void tool_leave(ToolRecovery *recovery);
 // Abandon a dependent unit without reporting a second, cascading error.
 _Noreturn void tool_abort(void);
+
+// One concrete specialization requested by another instance at a source location.
+typedef struct {
+    Instance *caller, *callee;
+    Loc loc;
+} ToolInstantiation;
+
+// The concrete body currently being inferred or checked, if any.
+Instance *tool_current_instance(void);
+// Record a call before checking a new or cached specialization.
+void tool_instance_use(Instance *instance, Loc loc);
+// Collect template instantiation requests and their callers, without recursive cycles.
+List tool_instantiation_trace(Instance *instance);
 
 // Snapshot mutable analysis state, preserving live list buffers on rollback.
 typedef struct ToolState ToolState;

@@ -224,6 +224,21 @@ inline^for^x in^items {let^r:ref^read^C=ref^a out:=r}
 var^items:i32^[2]={1,2}
 inline^for^x in^items {var^local=x out:=ref^local}
 ''', 'outlive its owner')
+
+    def instantiation_trace():
+        source = '''let^max=template^p^... {
+ var^best=...[0]
+ inline^for^x in^... {if^x>best {best:=x}}
+ return^best
+}
+let^outer=template^p^... {return^max(...)}
+print^(outer(2,""))
+'''
+        result = suite.run([suite.compiler, 'check', suite.source('instantiation_trace', source)], False)
+        assert ':3:' in result.stderr and 'binary operands have different types' in result.stderr, result.stderr
+        assert ':6:' in result.stderr and ':7:' in result.stderr, result.stderr
+        assert result.stderr.count('note: in instantiation') == 2, result.stderr
+    suite.case('instantiation_trace', instantiation_trace)
     suite.finish()
 
 

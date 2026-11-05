@@ -87,6 +87,12 @@ _Noreturn void fail(Loc l, const char *s, ...)
     vfprintf(stderr, s, a);
     va_end(a);
     fputc('\n', stderr);
+    List trace = tool_instantiation_trace(tool_current_instance());
+    for (int j = 0; j < trace.n; j++) {
+        ToolInstantiation *use = trace.v[j];
+        fprintf(stderr, "%s:%d:%d: note: in instantiation of '%s' requested here\n", use->loc.file,
+                use->loc.line, use->loc.col, use->callee->fn->name);
+    }
     exit(1);
 }
 

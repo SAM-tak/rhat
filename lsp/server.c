@@ -874,6 +874,10 @@ static void publish(Server *s, Job *job, cJSON *indexes, cJSON **published)
             cJSON_AddStringToObject(d, "message", text(error, "message"));
             cJSON_AddStringToObject(d, "source", "rhat");
             cJSON_AddNumberToObject(d, "severity", 1);
+            cJSON *related = cJSON_GetObjectItem(error, "relatedInformation");
+            if (related) {
+                cJSON_AddItemToObject(d, "relatedInformation", copy(related));
+            }
             cJSON_AddItemToArray(list, d);
         }
     }

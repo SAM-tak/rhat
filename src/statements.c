@@ -1392,9 +1392,9 @@ static void return_names(List *body, char **name, bool *valid, bool others)
     }
 }
 
-static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List *actual, Loc at)
+static Instance *instantiate_unchecked(Program *p, Instance *in)
 {
-    Instance *in = instance_for(p, f, self, actual, at);
+    Function *f = in->fn;
     if (in->state < 0 || (in->invalid && !in->result)) {
         tool_abort();
     }
@@ -1446,7 +1446,7 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
                 fail(a->loc, "duplicate parameter '%s'", a->name);
             }
         }
-        Type *t = actual->v[j];
+        Type *t = in->params.v[j];
         layout(t, a->loc);
         if (t->kind == T_VOID) {
             fail(a->loc, "parameter cannot have void type");
@@ -1505,19 +1505,17 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
 
 Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
 {
-    if (!p->tooling) {
-        return instantiate_unchecked(p, f, self, actual, at);
-    }
     Instance *in = instance_for(p, f, self, actual, at);
     ToolRecovery recovery;
     tool_enter(&recovery);
+    recovery.instance = in;
     if (setjmp(recovery.escape)) {
         in->invalid = true;
         in->state = -1;
         tool_leave(&recovery);
         tool_abort();
     }
-    Instance *result = instantiate_unchecked(p, f, self, actual, at);
+    Instance *result = instantiate_unchecked(p, in);
     tool_leave(&recovery);
     return result;
 }

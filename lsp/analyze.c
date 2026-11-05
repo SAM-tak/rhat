@@ -27,6 +27,7 @@ typedef struct {
 typedef struct {
     Loc loc;
     char *message;
+    List instances;
 } Diagnostic;
 
 typedef struct {
@@ -96,6 +97,7 @@ static void *resize(void *pointer, size_t size)
 
 static void diagnostic(Loc loc, const char *message)
 {
+    Diagnostic *d = NULL;
     // Inference and concrete checking may encounter the same mistake.
     for (int j = 0; j < session->diagnostics.n; j++) {
         Diagnostic *old = session->diagnostics.v[j];
@@ -103,13 +105,25 @@ static void diagnostic(Loc loc, const char *message)
             (old->loc.file == loc.file ||
              (old->loc.file && loc.file && source_same_path(old->loc.file, loc.file))) &&
             !strcmp(old->message, message)) {
-            tool_abort();
+            d = old;
+            break;
         }
     }
-    if (session->diagnostics.n < 100) {
-        Diagnostic *d = mem(sizeof(*d));
-        *d = (Diagnostic){loc, str(message)};
+    if (!d && session->diagnostics.n < 100) {
+        d = mem(sizeof(*d));
+        d->loc = loc;
+        d->message = str(message);
         add(&session->diagnostics, d);
+    }
+    Instance *in = tool_current_instance();
+    if (d && in) {
+        bool seen = false;
+        for (int j = 0; j < d->instances.n; j++) {
+            seen |= d->instances.v[j] == in;
+        }
+        if (!seen) {
+            add(&d->instances, in);
+        }
     }
     tool_abort();
 }
@@ -570,6 +584,49 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddItemToArray(array, out);
 }
 
+static void related_diagnostic(cJSON *diagnostic, cJSON *where, const char *message)
+{
+    cJSON *related = cJSON_GetObjectItem(diagnostic, "relatedInformation");
+    if (!related) {
+        related = cJSON_AddArrayToObject(diagnostic, "relatedInformation");
+    }
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddItemToObject(item, "location", where);
+    cJSON_AddStringToObject(item, "message", message);
+    cJSON_AddItemToArray(related, item);
+}
+
+static void export_diagnostic(Program *p, cJSON *errors, Diagnostic *d)
+{
+    cJSON *primary = location(p, d->loc, NULL);
+    cJSON_AddStringToObject(primary, "message", d->message);
+    cJSON_AddItemToArray(errors, primary);
+    List seen = {0};
+    for (int j = 0; j < d->instances.n; j++) {
+        List trace = tool_instantiation_trace(d->instances.v[j]);
+        for (int k = 0; k < trace.n; k++) {
+            ToolInstantiation *use = trace.v[k];
+            bool duplicate = false;
+            for (int n = 0; n < seen.n; n++) {
+                duplicate |= seen.v[n] == use;
+            }
+            if (duplicate) {
+                continue;
+            }
+            add(&seen, use);
+            char *message =
+                fmt("in instantiation of '%s': %s", short_name(use->callee->fn->name), d->message);
+            cJSON *call = location(p, use->loc, NULL);
+            cJSON_AddStringToObject(call, "message", message);
+            related_diagnostic(call, location(p, d->loc, NULL), d->message);
+            related_diagnostic(primary, location(p, use->loc, NULL), message);
+            cJSON_AddItemToArray(errors, call);
+        }
+        mem_free(trace.v);
+    }
+    mem_free(seen.v);
+}
+
 static cJSON *export_index(Session *s)
 {
     Program *p = &s->program;
@@ -720,10 +777,7 @@ static cJSON *export_index(Session *s)
     }
     cJSON *errors = cJSON_AddArrayToObject(out, "diagnostics");
     for (int j = 0; j < s->diagnostics.n; j++) {
-        Diagnostic *d = s->diagnostics.v[j];
-        cJSON *e = location(p, d->loc, NULL);
-        cJSON_AddStringToObject(e, "message", d->message);
-        cJSON_AddItemToArray(errors, e);
+        export_diagnostic(p, errors, s->diagnostics.v[j]);
     }
     return out;
 }

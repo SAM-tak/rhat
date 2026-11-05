@@ -2315,7 +2315,13 @@ void infer_results(Program *p)
         int count = p->instances.n;
         for (int j = first; j < p->instances.n; j++) {
             Instance *in = p->instances.v[j];
-            TOOL_CHECK(p, changed |= infer_instance_result(p, in););
+            ToolRecovery recovery;
+            tool_enter(&recovery);
+            recovery.instance = in;
+            if (!setjmp(recovery.escape)) {
+                changed |= infer_instance_result(p, in);
+            }
+            tool_leave(&recovery);
         }
         if (count != p->instances.n) {
             changed = true;
@@ -2372,6 +2378,7 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
             }
         }
         if (same) {
+            tool_instance_use(in, at);
             if (in->invalid && !in->result) {
                 tool_abort();
             }
@@ -2402,6 +2409,7 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
     in->result_slot = -1;
     add(&f->instances, in);
     add(&p->instances, in);
+    tool_instance_use(in, at);
     return in;
 }
 

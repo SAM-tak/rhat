@@ -524,6 +524,7 @@ struct Instance {
     uint64_t shrinks;            // Parameters through which this may shrink flex^ storage.
     uint64_t read_conflicts[64]; // A read loan of parameter i overlaps a potential write via j.
     List read_calls; // Call-site provenance used to propagate read conflicts through recursion.
+    List callers;    // ToolInstantiation records for every use of this concrete specialization.
 };
 
 // The methods of def iface specialized for concrete, by iface method index;
