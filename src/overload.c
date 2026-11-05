@@ -624,13 +624,14 @@ Function *operator_select(Program *p, const char *op, Type *a, Type *b, Loc loc)
 Type *operator_result(Program *p, Function *f, Type *a, Type *b, Loc loc)
 {
     Type *base = f->right_receiver ? b : a;
+    bool read = read_reference(base);
     if (base->kind == T_REF) {
         base = base->elem;
     }
     List actual = {0};
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
-        add(&actual, param->self ? type_wrap(p, T_REF, base, 0)
+        add(&actual, param->self ? type_wrap(p, T_REF, base, read)
                                  : operator_argument(p, parameter_type(p, param),
                                                      f->right_receiver ? a : b));
     }
@@ -641,7 +642,7 @@ Type *operator_argument(Program *p, Type *want, Type *actual)
 {
     if (want && actual && want->kind == T_REF && actual->kind != T_REF &&
         parameter_accepts(want->elem, actual)) {
-        return type_wrap(p, T_REF, actual, 0);
+        return type_wrap(p, T_REF, actual, want->count);
     }
     return actual;
 }

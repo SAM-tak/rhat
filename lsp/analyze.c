@@ -291,13 +291,14 @@ static char *spec_text(Spec *s)
         return fmt("%s)", out);
     }
     if (s->kind == SPEC_REF) {
-        return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION) ? "ref^ (%s)"
-                                                                                       : "ref^ %s",
-                   spec_text(s->elem));
+        return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION)
+                       ? "ref^%s (%s)"
+                       : "ref^%s %s",
+                   s->count ? "read^" : "", spec_text(s->elem));
     }
     Spec *elem = s->elem;
     char *refs = "";
-    while (elem->kind == SPEC_REF && elem->elem->kind != SPEC_DYN) {
+    while (elem->kind == SPEC_REF && !elem->count && elem->elem->kind != SPEC_DYN) {
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }

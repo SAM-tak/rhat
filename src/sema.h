@@ -13,6 +13,7 @@ typedef struct {
     int depth;
     bool external;
     const char *readonly; // The top-level let^ a hidden parameter refers to, or NULL.
+    bool read_borrow;     // A lexical read-borrow boundary carried with reference provenance.
 } Root;
 
 // A set of roots, an immutable array in the compiler's arena; empty with n 0.
@@ -50,7 +51,8 @@ typedef struct {
     Roots deps, storage;
     Var *var;
     bool addressable, guarded_copy;
-    bool held; // An owned part of a value no binding releases: copying it moves it.
+    bool held;     // An owned part of a value no binding releases: copying it moves it.
+    bool readonly; // This place was reached through a read-only reference.
 } Value;
 
 // Loop targets and scope boundaries used by control-flow analysis.
@@ -111,8 +113,33 @@ typedef struct {
     List inflight;             // Values a statement still uses while evaluating later ones.
     Roots param_deps[64];      // The external root of each reference parameter.
     List root_keys, root_list; // Roots by the source node that made them (see root).
-    int result_part;           // One past the slot of the owned result part built in place.
+    List read_borrows;         // Active lexical read loans; their boundaries also occur in deps.
+    Expr *read_call;           // A read conversion for this call initially lasts only for the call.
+    bool read_return; // A direct returned borrow of caller storage is anchored at the caller.
+    int result_part;  // One past the slot of the owned result part built in place.
 } Context;
+
+// Whether this is a read-only reference (including dynamic references).
+bool read_reference(Type *type);
+// Whether a value carries read-reference capabilities, through by-value fields too.
+bool type_reads(Type *type);
+// Whether a value carries potentially writable reference capabilities.
+bool type_writes(Type *type);
+
+// Start a read loan or preserve the protecting boundaries of an existing loan.
+Value read_borrow(Context *c, Value value, Loc loc);
+// Reject a potential write to storage overlapping an active read loan.
+void read_write_check(Context *c, Roots storage, Loc loc);
+// End argument-only loans, or retain them when a call returns references.
+void read_call_end(Context *c, Expr *call, bool escapes);
+// Release loans belonging to exited lexical scopes.
+void read_scope_end(Context *c, int depth);
+// Retain argument aliases and their relation to the current function's parameters.
+void read_call_check(Context *c, Instance *callee, List *values, Loc loc);
+// Retain the same provenance for each possible implementation of a dynamic call.
+void read_dyn_call_check(Context *c, Def *iface, int method, List *values, Loc loc);
+// Solve interprocedural read/write conflicts and reject aliased call arguments.
+void read_validate(Program *p);
 
 // Retain a failed declaration in its scope without cascading errors at its uses.
 void tool_failed_binding(Program *p, List *vars, Stmt *statement, int depth, int lexical);

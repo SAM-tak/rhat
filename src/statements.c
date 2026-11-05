@@ -145,6 +145,7 @@ static void loop_code(Context *c, Stmt *s)
     if (c->terminated) {
         c->vars.n = scope;
         c->depth--;
+        read_scope_end(c, c->depth);
         restore_facts(&c->vars, entry_facts);
         return;
     }
@@ -236,6 +237,7 @@ static void loop_code(Context *c, Stmt *s)
             }
             c->vars.n = persistent;
             c->depth--;
+            read_scope_end(c, c->depth);
             if (updates) {
                 c->terminated = false;
                 label_at(c, update, s->loc);
@@ -259,6 +261,7 @@ static void loop_code(Context *c, Stmt *s)
             }
             c->vars.n = scope;
             c->depth--;
+            read_scope_end(c, c->depth);
             c->loops.n--;
             restore_facts(&c->vars, entry_facts);
             return;
@@ -327,6 +330,7 @@ static void loop_code(Context *c, Stmt *s)
         }
         c->vars.n = persistent;
         c->depth--;
+        read_scope_end(c, c->depth);
         c->terminated = false;
         label_at(c, update, s->loc);
         c->lexical--;
@@ -349,6 +353,7 @@ static void loop_code(Context *c, Stmt *s)
         cleanup(c, persistent, s->loc);
         c->vars.n = saved;
         c->depth--;
+        read_scope_end(c, c->depth);
         branch_to(c, finish, s->loc);
         restore_facts(&c->vars, turn_facts);
         bool changed = false;
@@ -391,6 +396,7 @@ static void loop_code(Context *c, Stmt *s)
     }
     c->vars.n = scope;
     c->depth--;
+    read_scope_end(c, c->depth);
     restore_facts(&c->vars, entry_facts);
 }
 
@@ -666,6 +672,7 @@ void handle_statements(Context *c, Stmt *s)
         c->vars.n = base;
         if (s->scoped_handlers) {
             c->depth--;
+            read_scope_end(c, c->depth);
             c->lexical--;
         }
         for (int j = 0; j < base; j++) {
@@ -1088,6 +1095,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             }
         }
         else if (s->kind == S_RETURN) {
+            bool old_read_return = c->read_return;
+            c->read_return = true;
             Type *t = c->in->result;
             Value v = {.id = -1, .type = type_builtin(c->p, T_VOID)};
             if (s->a) {
@@ -1153,8 +1162,12 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     fail(s->loc, "missing return value");
                 }
             }
+            c->read_return = old_read_return;
             for (int j = 0; j < v.deps.n; j++) {
                 if (!v.deps.v[j]->external) {
+                    if (v.deps.v[j]->read_borrow) {
+                        fail(s->loc, "read^ borrow cannot escape its protecting scope");
+                    }
                     fail(s->loc, "cannot return a reference rooted in a local owner");
                 }
             }
@@ -1252,6 +1265,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
         }
         c->vars.n = start;
         c->depth--;
+        read_scope_end(c, c->depth);
         c->lexical--;
     }
 }
@@ -1263,9 +1277,10 @@ static void statement_checked(Context *c, Stmt *statement)
         offsetof(Context, loops),          offsetof(Context, handlers),
         offsetof(Context, pending_owners), offsetof(Context, flow.guards),
         offsetof(Context, inflight),       offsetof(Context, root_keys),
-        offsetof(Context, root_list)};
+        offsetof(Context, root_list),      offsetof(Context, read_borrows)};
     static const size_t instance_lists[] = {offsetof(Instance, params), offsetof(Instance, slots),
-                                            offsetof(Instance, code)};
+                                            offsetof(Instance, code),
+                                            offsetof(Instance, read_calls)};
     ToolState *state = tool_save(c, sizeof(*c), lists, sizeof(lists) / sizeof(*lists));
     ToolState *vars = tool_save_objects(&c->vars, sizeof(Var));
     ToolState *handlers = tool_save_objects(&c->handlers, sizeof(ErrorTarget));
@@ -1306,8 +1321,11 @@ static void statement_checked(Context *c, Stmt *statement)
 
 void statements(Context *c, List *body, bool scope)
 {
+    bool returning = c->read_return;
+    c->read_return = false;
     if (!c->p->tooling) {
         statements_unchecked(c, body, scope);
+        c->read_return = returning;
         return;
     }
     int start = c->vars.n;
@@ -1326,8 +1344,10 @@ void statements(Context *c, List *body, bool scope)
         }
         c->vars.n = start;
         c->depth--;
+        read_scope_end(c, c->depth);
         c->lexical--;
     }
+    c->read_return = returning;
 }
 
 // The local every return^ gives as the owned result; returns of another
@@ -1440,6 +1460,11 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
         if (t->refs) {
             v->deps = root(&c, &a->name, 0, true);
             v->deps.v[0]->readonly = a->capture && !a->capture->mut ? a->capture->name : NULL;
+            if (type_reads(t)) {
+                c.read_return = true;
+                v->deps = read_borrow(&c, variable(v), a->loc).deps;
+                c.read_return = false;
+            }
         }
         if (j < 64) {
             c.param_deps[j] = v->deps;
@@ -1671,6 +1696,7 @@ void analyze(Program *p)
         }
     }
     if (p->tooling) {
+        TOOL_CHECK(p, read_validate(p););
         return;
     }
     // fits^ dyn^ D needs D's table for each concrete type it may find; building
@@ -1721,4 +1747,5 @@ void analyze(Program *p)
             }
         }
     }
+    read_validate(p);
 }

@@ -634,6 +634,17 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
 
 static Type *infer_expr(Infer *c, Expr *e, Type *expected);
 
+// Preserve read capabilities when taking a reference to a projected place.
+static bool infer_read_place(Infer *c, Expr *e)
+{
+    if (e->kind == E_MEMBER || e->kind == E_INDEX ||
+        (e->kind == E_UNARY && !strcmp(e->text, "*"))) {
+        Type *base = infer_expr(c, e->a, NULL);
+        return (base && read_reference(base)) || infer_read_place(c, e->a);
+    }
+    return false;
+}
+
 static Type *infer_lookup(Infer *c, const char *name)
 {
     for (int j = c->vars.n - 1; j >= 0; j--) {
@@ -897,7 +908,9 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
                 fail(target->name_loc.file ? target->name_loc : e->loc, "'%s' has no method '%s'",
                      self->name, target->text);
             }
-            add(&actual, type_wrap(c->p, T_REF, base, 0));
+            Type *receiver = infer_expr(c, target->a, NULL);
+            bool read = (receiver && read_reference(receiver)) || infer_read_place(c, target->a);
+            add(&actual, type_wrap(c->p, T_REF, base, read));
         }
     }
     if (!f && target->kind != E_NAME && target->kind != E_MEMBER) {
@@ -960,6 +973,10 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
             (sum_accepts(want, t) || c_function_arm(want, t) ||
              (want->kind == T_DYN && parameter_accepts(want, t)))) {
             actual.v[j] = want;
+        }
+        else if (param->spec && t && want && read_reference(want) && t->kind == T_REF &&
+                 parameter_accepts(want, t)) {
+            actual.v[j] = type_wrap(c->p, T_REF, t->elem, 1);
         }
     }
     if (f->procedure || f->mutable_self) {
@@ -1317,8 +1334,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         if (type && type->kind == T_DYN) {
             Context scope = {.p = c->p, .vars = c->vars, .lexical = c->lexical};
-            remember_test(&c->flow, &scope, e, e->a, dyn_fits_target(c->p, e->test_spec, e->loc),
-                          type);
+            Type *yes = dyn_fits_target(c->p, e->test_spec, e->loc);
+            if (read_reference(type)) {
+                yes = type_wrap(c->p, yes->kind, yes->elem, 1);
+            }
+            remember_test(&c->flow, &scope, e, e->a, yes, type);
             return type_builtin(c->p, T_BOOL);
         }
         Type *target = type_spec(c->p, e->test_spec);
@@ -1656,7 +1676,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             return NULL;
         }
         if (!strcmp(e->text, "ref^")) {
-            return type_wrap(c->p, T_REF, a, 0);
+            return type_wrap(c->p, T_REF, a, infer_read_place(c, e->a));
         }
         if (!strcmp(e->text, "*")) {
             return a->kind == T_REF ? a->elem : NULL;
@@ -2312,10 +2332,14 @@ bool parameter_accepts(Type *want, Type *actual)
         return true;
     }
     if (want->kind == T_DYN) {
-        return actual->kind == T_REF && actual->elem->kind == T_STRUCT &&
-               !actual->elem->def->abstract && derives(actual->elem->def, want->elem->def);
+        return (!read_reference(actual) || read_reference(want)) && actual->kind == T_REF &&
+               actual->elem->kind == T_STRUCT && !actual->elem->def->abstract &&
+               derives(actual->elem->def, want->elem->def);
     }
     if (want->kind == T_REF && actual->kind == T_REF) {
+        if (read_reference(actual) && !read_reference(want)) {
+            return false;
+        }
         want = want->elem;
         actual = actual->elem;
     }
@@ -2371,6 +2395,7 @@ typedef struct {
 
 struct BodyNode {
     Type *type;
+    bool readonly;
     BodyParam *param;
     BodyNode *a, *b;
     int kind;
@@ -2525,12 +2550,13 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         }
         else if (!strcmp(e->text, "ref^")) {
             if (n->a->type) {
-                n->type = type_wrap(c->p, T_REF, n->a->type, 0);
+                n->type = type_wrap(c->p, T_REF, n->a->type, n->a->readonly);
             }
         }
         else if (!strcmp(e->text, "*")) {
             if (n->a->type && n->a->type->kind == T_REF) {
                 n->type = n->a->type->elem;
+                n->readonly = n->a->readonly || read_reference(n->a->type);
             }
         }
         else if (!strcmp(e->text, "-") && n->a->type &&
@@ -2616,6 +2642,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_MEMBER: {
         n->a = body_expr(c, e->a, NULL);
         Type *base = n->a->type;
+        n->readonly = n->a->readonly || (base && read_reference(base));
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
@@ -2654,6 +2681,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         BodyNode *index = body_expr(c, e->b, NULL);
         body_require(c, index, NULL, body_numbers(true));
         Type *base = n->a->type;
+        n->readonly = n->a->readonly || (base && read_reference(base));
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
@@ -2693,6 +2721,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         else if (e->a->kind == E_MEMBER) {
             BodyNode *receiver = body_expr(c, e->a->a, NULL);
             Type *base = receiver->type;
+            bool read = receiver->readonly || (base && read_reference(base));
             if (base && base->kind == T_REF) {
                 base = base->elem;
             }
@@ -2700,7 +2729,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
                 candidates = overload_candidates(c->p, base->def, e->a->text, e->args.n + 1);
                 f = candidates.n ? candidates.v[0] : method(base->def, e->a->text);
                 offset = 1;
-                add(&actual, type_wrap(c->p, T_REF, base, 0));
+                add(&actual, type_wrap(c->p, T_REF, base, read));
             }
             else if (base && (base->kind == T_GROW || base->kind == T_BOUNDED ||
                               base->kind == T_ARRAY || base->kind == T_SLICE)) {

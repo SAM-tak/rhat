@@ -350,7 +350,7 @@ static char *spec_identity(Spec *s)
     char *elem = s->elem ? spec_identity(s->elem) : "";
     switch (s->kind) {
     case SPEC_REF:
-        return fmt("ref^ (%s)", elem);
+        return fmt("ref^%s (%s)", s->count ? "read^" : "", elem);
     case SPEC_DYN:
         return fmt("dyn^ (%s)", elem);
     case SPEC_ARRAY:

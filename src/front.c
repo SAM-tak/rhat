@@ -1124,9 +1124,11 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     *references = refs;
     if (refs) {
         Token *token = next(p);
+        bool read = take(p, "read^");
         while (refs--) {
             Spec *ref = mem(sizeof(*ref));
-            *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = elem};
+            *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = elem, .count = read};
+            read = false;
             elem = ref;
         }
     }
@@ -1216,6 +1218,7 @@ static Spec *spec_part(Parser *p)
     if (refs) {
         next(p);
         s->kind = SPEC_REF;
+        s->count = take(p, "read^") ? 1 : 0;
         s->elem = spec_part(p);
         while (--refs) {
             Spec *outer = mem(sizeof(*outer));

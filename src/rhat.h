@@ -82,6 +82,7 @@ struct Spec {
     char *name;
     Spec *elem, *other; // Binary type operands; elem holds a callable result.
     int kind, count;
+    // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
     Expr *length;   // A constant expression for count, evaluated during name resolution.
     List params;    // Parameter specifications of a callable signature.
     bool procedure; // A p^ signature carries the procedure effect.
@@ -344,6 +345,7 @@ struct Type {
     bool invalid; // Storage layout failed during editor analysis.
     char *symbol;
     int kind, id, count;
+    // T_REF and T_DYN use count 1 for read^; the representation is unchanged.
     Type *elem;
     List wrappers; // Canonical ref/array/etc. types whose element is this type.
     Def *def;
@@ -517,7 +519,9 @@ struct Instance {
     int stack_own, stack_need;
     int callback_need; // exportC^ entries: stacks used before any callback.
     bool may_shrink, emitted, cross_module;
-    uint64_t shrinks; // Parameters through which this may shrink flex^ storage.
+    uint64_t shrinks;            // Parameters through which this may shrink flex^ storage.
+    uint64_t read_conflicts[64]; // A read loan of parameter i overlaps a potential write via j.
+    List read_calls; // Call-site provenance used to propagate read conflicts through recursion.
 };
 
 // The methods of def iface specialized for concrete, by iface method index;

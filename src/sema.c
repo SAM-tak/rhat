@@ -528,6 +528,7 @@ Value deref(Context *c, Value v, Loc l)
     r.storage = v.deps;
     r.deps = r.type->refs ? v.deps : (Roots){0};
     r.addressable = true;
+    r.readonly = v.readonly || read_reference(v.type);
     Instr *i = emit(c, I_DEREF, l);
     i->dst = r.id;
     i->a = v.id;
@@ -537,6 +538,10 @@ Value deref(Context *c, Value v, Loc l)
 
 void store_check(Context *c, Value dst, Value src, Loc l)
 {
+    if (dst.readonly) {
+        fail(l, "cannot modify through a read^ reference");
+    }
+    read_write_check(c, dst.storage, l);
     if (dst.var && !dst.var->mut) {
         fail(l, "cannot modify let^ binding '%s'", dst.var->name);
     }
@@ -551,6 +556,9 @@ void store_check(Context *c, Value dst, Value src, Loc l)
         }
         for (int j = 0; j < src.deps.n; j++) {
             if (src.deps.v[j]->depth > owner->depth) {
+                if (src.deps.v[j]->read_borrow) {
+                    fail(l, "read^ borrow cannot escape its protecting scope");
+                }
                 fail(l, "reference would outlive its owner (scope %d into scope %d)",
                      src.deps.v[j]->depth, owner->depth);
             }
@@ -591,6 +599,9 @@ Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
     }
     if (dst.type != src.type && sum_accepts(dst.type, src.type)) {
         src = convert_value(c, src, dst.type, -1, l);
+    }
+    if (src.readonly && type_writes(src.type)) {
+        fail(l, "cannot copy writable references through a read^ access; use a read^ reference");
     }
     if (dst.type != src.type) {
         fail(l, "expected '%s', found '%s'", type_name(dst.type), type_name(src.type));
@@ -714,6 +725,11 @@ Value case_value(Context *c, Value src, Type *arm, Loc loc)
 Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
 {
     layout(to, loc);
+    if (read_reference(src.type) && (to->kind == T_REF || to->kind == T_DYN) &&
+        !read_reference(to)) {
+        fail(loc, "cannot drop read^ from a reference; expected '%s', found '%s'", type_name(to),
+             type_name(src.type));
+    }
     if (src.type == to && dst < 0) {
         return src;
     }
@@ -722,6 +738,15 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
                  .deps = to->refs ? src.deps : (Roots){0}};
     if (src.type == to) {
         return copy_to(c, out, src, loc, true);
+    }
+    if (read_reference(to) && src.type->kind == to->kind && src.type->elem == to->elem) {
+        src = read_borrow(c, src, loc);
+        out.deps = src.deps;
+        Instr *i = emit(c, I_COPY, loc);
+        i->dst = out.id;
+        i->a = src.id;
+        i->type = to;
+        return out;
     }
     Type *pointer = c_function_arm(to, src.type);
     if (pointer) {
@@ -733,13 +758,23 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         i->text = fmt("@%s", c_function_symbol(src.type->function));
         return pointer == to ? out : convert_value(c, address, to, out.id, loc);
     }
-    if (src.type->kind == T_DYN) {
+    if (src.type->kind == T_DYN && (to->kind == T_DYN || to->kind == T_REF)) {
         // A fits^ test on the dyn^ value proved its concrete type or composer.
         Instr *i = emit(c, to->kind == T_DYN ? I_DYNCAST : I_DYNDATA, loc);
         i->dst = out.id;
         i->a = src.id;
         i->type = to;
         return out;
+    }
+    if (to->kind == T_UNION && src.type->kind != T_UNION && union_alternative(to, src.type) < 0) {
+        for (int j = 0; j < to->def->alternatives.n; j++) {
+            Type *arm = to->def->alternatives.v[j];
+            if (sum_accepts(arm, src.type)) {
+                src = convert_value(c, src, arm, -1, loc);
+                out.deps = src.deps;
+                break;
+            }
+        }
     }
     int tag = union_alternative(to, src.type);
     if (tag >= 0) {
@@ -764,7 +799,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     List selected = {0};
     for (int j = 0; j < src.type->def->alternatives.n; j++) {
         Type *arm = src.type->def->alternatives.v[j];
-        if (arm == to || union_alternative(to, arm) >= 0) {
+        if (sum_accepts(to, arm)) {
             add(&selected, arm);
         }
     }
@@ -792,7 +827,8 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
             i->label = yes;
         }
         Value part = case_value(c, src, arm, loc);
-        convert_value(c, part, to, out.id, loc);
+        Value converted = convert_value(c, part, to, out.id, loc);
+        out.deps = roots_union(out.deps, converted.deps);
         Instr *i = emit(c, I_BR, loc);
         i->label = end;
         if (next) {
@@ -944,6 +980,9 @@ Value fits_value(Context *c, Expr *e)
     if (src.type->kind == T_DYN) {
         // Only the yes branch narrows; the remaining types are not expressible.
         Type *yes = dyn_fits_target(c->p, e->test_spec, e->loc);
+        if (read_reference(src.type)) {
+            yes = type_wrap(c->p, yes->kind, yes->elem, 1);
+        }
         remember_test(&c->flow, c, e, e->a, yes, src.type);
         Value out = value(c, type_builtin(c->p, T_BOOL));
         Instr *i = emit(c, I_DYNIS, e->loc);
@@ -1110,6 +1149,7 @@ Value field_value(Context *c, Value base, Field *f, Loc l)
     r.var = base.var;
     r.addressable = base.addressable;
     r.guarded_copy = base.guarded_copy;
+    r.readonly = base.readonly;
     Instr *i = emit(c, I_FIELD, l);
     i->dst = r.id;
     i->a = base.id;
@@ -1522,6 +1562,15 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
     if (dead(v) || v.type == dyn) {
         return v;
     }
+    if (read_reference(v.type) && !read_reference(dyn)) {
+        fail(loc, "cannot drop read^ from a reference");
+    }
+    if (read_reference(dyn)) {
+        v = read_borrow(c, v, loc);
+    }
+    if (v.type->kind == T_DYN && v.type->elem == dyn->elem) {
+        return convert_value(c, v, dyn, -1, loc);
+    }
     Type *t = v.type->kind == T_REF ? v.type->elem : NULL;
     if (!t || t->kind != T_STRUCT || t->def->abstract || !derives(t->def, dyn->elem->def)) {
         fail(loc, "'%s' cannot become '%s'; pass a reference to a concrete type composing '%s'",
@@ -1535,6 +1584,38 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
     i->label = table->id;
     i->type = dyn;
     return out;
+}
+
+// Argument-only read conversions expire at the call unless its result borrows
+// them. Evaluate nested expressions first so their lexical loans stay lexical.
+static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint, Expr *call)
+{
+    if (want && want->kind == T_DYN) {
+        hint = arg->kind == E_UNARY && !strcmp(arg->text, "ref^")
+                   ? type_wrap(c->p, T_REF, want->elem, want->count)
+                   : NULL;
+    }
+    Value v = expression(c, arg, hint);
+    if (dead(v)) {
+        return v;
+    }
+    Expr *old_call = c->read_call;
+    c->read_call = call;
+    if (want && want->kind == T_DYN) {
+        v = dyn_value(c, v, want, arg->loc);
+    }
+    else if (want && v.type != want && type_reads(want) && sum_accepts(want, v.type)) {
+        v = convert_value(c, v, want, -1, arg->loc);
+    }
+    else if (want && read_reference(want) && v.type->kind == T_REF &&
+             parameter_accepts(want, v.type)) {
+        v = convert_value(c, v, type_wrap(c->p, T_REF, v.type->elem, 1), -1, arg->loc);
+    }
+    if (type_reads(v.type)) {
+        v = read_borrow(c, v, arg->loc);
+    }
+    c->read_call = old_call;
+    return v;
 }
 
 // Call a method through the table carried by a ref^ dyn^ receiver.
@@ -1566,16 +1647,22 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     }
     if (f->procedure || f->mutable_self) {
         // The same mutation rules as a static call to a receiver in that storage.
-        store_check(c, (Value){.storage = receiver.deps}, (Value){0}, e->loc);
+        store_check(c, (Value){.storage = receiver.deps, .readonly = read_reference(receiver.type)},
+                    (Value){0}, e->loc);
     }
     Instr *i = mem(sizeof(*i));
     i->op = I_DYNCALL;
     i->loc = e->loc;
     add(&i->args, (void *)(intptr_t)(receiver.id + 1));
     Roots deps = receiver.deps;
+    List writable = {0}, arguments = {0};
+    add(&arguments, &receiver);
+    if ((f->procedure || f->mutable_self) && !read_reference(receiver.type)) {
+        add(&writable, &receiver);
+    }
     for (int j = 0; j < e->args.n; j++) {
         Type *want = parameter_type(p, f->params.v[j + 1]);
-        Value v = expression(c, e->args.v[j], want);
+        Value v = call_argument_value(c, e->args.v[j], want, want, e);
         if (c->terminated) {
             return abrupt(c);
         }
@@ -1585,10 +1672,23 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                  type_name(want), type_name(v.type));
         }
         v = snapshot(c, v, e->loc);
+        Value *saved = mem(sizeof(*saved));
+        *saved = v;
+        add(&arguments, saved);
+        if (f->procedure && type_writes(v.type)) {
+            add(&writable, saved);
+        }
         deps = roots_union(deps, v.deps);
         add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     Type *t = dyn_result(p, f);
+    if (read_reference(receiver.type) && type_writes(t)) {
+        fail(e->loc, "a read^ dyn^ receiver cannot expose writable references");
+    }
+    for (int j = 0; j < writable.n; j++) {
+        read_write_check(c, ((Value *)writable.v[j])->deps, e->loc);
+    }
+    read_dyn_call_check(c, iface, index, &arguments, e->loc);
     if (expected && expected != t) {
         fail(e->loc, "call returns '%s', expected '%s'", type_name(t), type_name(expected));
     }
@@ -1597,6 +1697,10 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                        : destination >= 0 ? destination
                                           : slot(c, t, false),
                  .deps = t->refs ? deps : (Roots){0}};
+    read_call_end(c, e, t->refs);
+    if (type_reads(t)) {
+        out = read_borrow(c, out, e->loc);
+    }
     i->dst = out.id;
     i->type = t;
     i->label = index;
@@ -1654,10 +1758,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     // handled before it reaches a destination of the plain type.
     bool parse = target->kind == E_MEMBER && !strcmp(target->text, "parse") &&
                  target->a->kind == E_NAME && numeric_kind(target->a->text) >= 0;
-    Type *cast = target->kind == E_TYPE
-                     ? enum_cast_type(p, type_spec(p, target->type_expr), e->loc)
-                 : parse                    ? parse_type(p, numeric_kind(target->a->text), e->loc)
-                 : target->kind != E_NAME   ? NULL
+    Type *cast = target->kind == E_TYPE ? enum_cast_type(p, type_spec(p, target->type_expr), e->loc)
+                 : parse                ? parse_type(p, numeric_kind(target->a->text), e->loc)
+                 : target->kind != E_NAME           ? NULL
                  : !strcmp(target->text, "char^")   ? char_cast_type(p, e->loc)
                  : !strcmp(target->text, "string^") ? text_cast_type(p, e->loc)
                                                     : NULL;
@@ -1974,7 +2077,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (f->procedure || f->mutable_self) {
             store_check(c, base, (Value){0}, e->loc);
         }
-        Value ref = value(c, type_wrap(p, T_REF, base.type, 0));
+        Value ref = value(c, type_wrap(p, T_REF, base.type, base.readonly));
         Instr *i = emit(c, I_ADDR, e->loc);
         i->dst = ref.id;
         i->a = base.id;
@@ -2054,7 +2157,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     for (int j = 0; j < e->args.n; j++) {
         Param *param = f->params.v[right_self ? j : j + offset];
         Type *want = parameter_type(p, param);
-        Value v = expression(c, e->args.v[j], parameter_hint(p, param, e->args.v[j]));
+        Value v =
+            call_argument_value(c, e->args.v[j], want, parameter_hint(p, param, e->args.v[j]), e);
         if (c->terminated) {
             c->inflight.n = inflight;
             return abrupt(c);
@@ -2095,7 +2199,17 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         add(&values, right_self);
         add(&actual, right_self->type);
     }
+    // Check after all arguments too: a later read argument may overlap an
+    // earlier writable receiver or argument. Pure calls do not mutate them.
+    for (int j = 0; j < values.n; j++) {
+        Param *param = f->params.v[j];
+        Value *arg = values.v[j];
+        if ((f->procedure || (f->mutable_self && param->self)) && type_writes(arg->type)) {
+            read_write_check(c, arg->deps, e->loc);
+        }
+    }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
+    read_call_check(c, in, &values, e->loc);
     // A callee still being lowered has no summary yet; assume it shrinks.
     for (int j = 0; j < values.n && j < 64; j++) {
         Value *v = values.v[j];
@@ -2119,6 +2233,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     if (t->refs) {
         out.deps = deps;
+    }
+    read_call_end(c, e, t->refs);
+    if (type_reads(t)) {
+        out = read_borrow(c, out, e->loc);
     }
     if (t->owned && destination < 0) {
         fail(e->loc, "owned return requires a binding or return destination");
@@ -2409,6 +2527,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (dead(out)) {
             c->vars.n = begin;
             c->depth = depth;
+            read_scope_end(c, depth);
             c->lexical--;
             return out;
         }
@@ -2423,6 +2542,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         cleanup(c, begin, e->loc);
         c->vars.n = begin;
         c->depth = depth;
+        read_scope_end(c, depth);
         c->lexical--;
         return out;
     }
@@ -2847,7 +2967,7 @@ Value invoke_operator(Context *c, Function *f, Value a, Value b, Expr *origin)
     Loc loc = origin->loc;
     Value receiver = deref(c, f->right_receiver ? b : a, loc);
     access_check(c, f->priv, f->owner, loc, f->name);
-    Value ref = value(c, type_wrap(c->p, T_REF, receiver.type, 0));
+    Value ref = value(c, type_wrap(c->p, T_REF, receiver.type, receiver.readonly));
     Instr *address = emit(c, I_ADDR, loc);
     address->dst = ref.id;
     address->a = receiver.id;
@@ -3381,6 +3501,7 @@ Value expression(Context *c, Expr *e, Type *expected)
                                    : roots_union(base.deps, base.storage);
         out.var = base.var;
         out.addressable = base.addressable;
+        out.readonly = base.readonly;
         out.guarded_copy = base.guarded_copy;
         Instr *i = emit(c, I_INDEX, e->loc);
         i->dst = out.id;
@@ -3407,16 +3528,17 @@ Value expression(Context *c, Expr *e, Type *expected)
             if (!a.addressable) {
                 fail(e->loc, "cannot borrow a temporary; bind it first");
             }
-            if (a.var && !a.var->mut && !e->top_binding) {
+            bool reading = expected && read_reference(expected);
+            if (a.var && !a.var->mut && !e->top_binding && !reading) {
                 fail(e->loc, "borrowing storage requires var^, found let^ '%s'", a.var->name);
             }
             for (int n = 0; n < a.storage.n; n++) {
-                if (a.storage.v[n]->readonly) {
+                if (a.storage.v[n]->readonly && !reading) {
                     fail(e->loc, "borrowing storage requires var^, found let^ '%s'",
                          a.storage.v[n]->readonly);
                 }
             }
-            out = value(c, type_wrap(p, T_REF, a.type, 0));
+            out = value(c, type_wrap(p, T_REF, a.type, a.readonly));
             out.deps = roots_union(a.storage, a.deps);
             Instr *i = emit(c, I_ADDR, e->loc);
             i->dst = out.id;

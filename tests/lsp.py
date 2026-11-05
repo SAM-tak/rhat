@@ -893,6 +893,25 @@ def^F2 { self^{ x:f32^ } }
     assert len(diagnostics) == 1 and 'needs {elements}' in diagnostics[0]['message'], diagnostics
     print('PASS a broken function body does not cascade into capture inference',flush=True)
 
+    readonly_path = work/'readonly.rh'
+    readonly_text = ('def^Cell{self^{x:i32^=1}}\n'
+                     'let^view=f^x:ref^Cell ->ref^read^Cell {x}\n'
+                     'var^a=Cell{}\n'
+                     'let^r=view(ref^a)\n'
+                     'print^(r.x)\n')
+    client.open(readonly_path,readonly_text)
+    assert client.diagnostics(readonly_path,1) == []
+    hover = client.request('textDocument/hover',dict(
+        textDocument=dict(uri=readonly_path.as_uri()),position=at(readonly_text,'r=view')))
+    assert 'ref^read^' in hover['contents']['value'], hover
+    client.change(readonly_path,readonly_text+'a.x:=2\n',2)
+    diagnostics = client.diagnostics(readonly_path,2)
+    assert len(diagnostics) == 1 and 'read^ borrow' in diagnostics[0]['message'], diagnostics
+    client.change(readonly_path,readonly_text,3)
+    assert client.diagnostics(readonly_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=readonly_path.as_uri())))
+    print('PASS read-reference hover, lexical borrow diagnostics and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

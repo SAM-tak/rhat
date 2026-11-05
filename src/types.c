@@ -305,7 +305,7 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         if (t->kind != T_STRUCT) {
             fail(s->loc, "dyn^ needs a def^ type, found '%s'", type_name(t));
         }
-        return type_wrap(p, T_DYN, t, 0);
+        return type_wrap(p, T_DYN, t, s->count);
     }
     if (s->kind != SPEC_NAME) {
         return type_wrap(p,
@@ -397,14 +397,15 @@ char *type_name(Type *t)
         return t->def->name;
     }
     if (t->kind == T_REF) {
-        return fmt(t->elem->kind == T_UNION ? "ref^ (%s)" : "ref^ %s", type_name(t->elem));
+        return fmt(t->elem->kind == T_UNION ? "ref^%s (%s)" : "ref^%s %s", t->count ? "read^" : "",
+                   type_name(t->elem));
     }
     if (t->kind == T_DYN) {
-        return fmt("ref^ dyn^ %s", type_name(t->elem));
+        return fmt("ref^%s dyn^ %s", t->count ? "read^" : "", type_name(t->elem));
     }
     Type *elem = t->elem;
     char *refs = "";
-    while (elem->kind == T_REF) {
+    while (elem->kind == T_REF && !elem->count) {
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
@@ -463,14 +464,24 @@ bool enum_backs(Type *to, Type *from)
 
 bool sum_accepts(Type *to, Type *from)
 {
+    if (read_reference(to) && from->kind == to->kind && from->elem == to->elem) {
+        return true;
+    }
     if (to == from || union_alternative(to, from) >= 0) {
         return true;
+    }
+    if (to->kind == T_UNION && from->kind != T_UNION) {
+        for (int j = 0; j < to->def->alternatives.n; j++) {
+            if (sum_accepts(to->def->alternatives.v[j], from)) {
+                return true;
+            }
+        }
     }
     if (to->kind != T_UNION || from->kind != T_UNION || (!to->structural && !from->structural)) {
         return false;
     }
     for (int j = 0; j < from->def->alternatives.n; j++) {
-        if (union_alternative(to, from->def->alternatives.v[j]) < 0) {
+        if (!sum_accepts(to, from->def->alternatives.v[j])) {
             return false;
         }
     }
@@ -517,6 +528,9 @@ Type *without_nil(Program *p, Type *t, Loc loc)
 
 bool fits_type(Type *from, Type *to)
 {
+    if (read_reference(from) && !read_reference(to) && from->kind == to->kind) {
+        return false;
+    }
     if (sum_accepts(to, from) || callable_accepts(to, from)) {
         return true;
     }
