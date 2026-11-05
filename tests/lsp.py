@@ -905,6 +905,17 @@ print^(pair(1,"s"),pair("a",2))
     hover=request('hover','pair=f^',text=specialized)['contents']['value']
     assert hover == 'pair : f^a:i32^, b:string^ -> i32^; & f^a:string^, b:i32^ -> string^;', hover
     print('PASS call-site specializations listed as hover intersections',flush=True)
+    typed='''def^ Box {self^{n:i32^=0}}
+let^x=1
+print^(typeof^(x).signature^,i32^.signature^,Box.signature^)
+'''
+    client.change(path,typed,162)
+    assert client.diagnostics(path,162) == []
+    for needle in ('(x).sig','i32^.sig','Box.sig'):
+        labels=[x['label'] for x in request('completion',needle,shift=len(needle)-3,text=typed)]
+        assert labels == ['signature^'], (needle,labels)
+    assert request('hover','(x).',shift=1,text=typed)['contents']['value'] == 'x: i32^'
+    print('PASS signature^ completion after type expressions and typeof^ operand hover',flush=True)
 
     readonly_path = work/'readonly.rh'
     readonly_text = ('def^Cell{self^{x:i32^=1}}\n'

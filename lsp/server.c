@@ -375,6 +375,29 @@ static bool inside_owner(cJSON *index, const char *uri, const char *buffer, size
     return false;
 }
 
+// typeof^(...) written just before the member dot at `at` names a type.
+static bool typeof_before(const char *buffer, size_t at)
+{
+    while (at && isspace((unsigned char)buffer[at - 1])) {
+        at--;
+    }
+    if (!at || buffer[at - 1] != ')') {
+        return false;
+    }
+    int depth = 0;
+    while (at--) {
+        depth += buffer[at] == ')' ? 1 : buffer[at] == '(' ? -1 : 0;
+        if (!depth) {
+            break;
+        }
+    }
+    while (at && at != (size_t)-1 && isspace((unsigned char)buffer[at - 1])) {
+        at--;
+    }
+    return !depth && at >= 7 && !strncmp(buffer + at - 7, "typeof^", 7) &&
+           (at == 7 || !identifier((unsigned char)buffer[at - 8]));
+}
+
 static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size_t cursor)
 {
     cJSON *out = cJSON_CreateArray();
@@ -428,6 +451,18 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
     const char *base = type;
     while (!strncmp(base, "ref^ ", 5)) {
         base += 5;
+    }
+    // signature^ is the one member of every type, and all a typeof^ type offers.
+    bool typeof_type = member && typeof_before(buffer, dot - 1);
+    bool type_expression = type_receiver || typeof_type;
+    for (int k = T_BOOL; member && k < T_STRUCT; k++) {
+        type_expression |= !strcmp(receiver, builtin_name(k));
+    }
+    if (member && type_expression && !strncmp("signature^", buffer + begin, cursor - begin)) {
+        completion_item(out, "signature^", "the type's canonical spelling, as string^", 10);
+    }
+    if (typeof_type) {
+        return out;
     }
     cJSON *s;
     cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
