@@ -497,6 +497,9 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
         return;
     }
     s->resolved = true;
+    if (s->kind == SPEC_TYPEOF) {
+        return; // The operand is resolved with the enclosing expression's locals.
+    }
     if (s->length) {
         long long n = 0;
         if (!constant_integer(m, NULL, s->length, 0, &n)) {
@@ -867,6 +870,9 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         e->repeat_count = (int)count;
     }
     if (e->kind == E_TYPE) {
+        if (e->type_expr->kind == SPEC_TYPEOF) {
+            resolve_expr(p, m, names, e->type_expr->operand);
+        }
         resolve_spec(m, e->type_expr);
         return;
     }
@@ -890,6 +896,21 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     if (e->kind == E_MEMBER && !e->optional) {
         char *path = path_of(e->a);
         Spec *s = path && local(names, path) ? NULL : expression_type(m, e->a);
+        if (!strcmp(e->text, "signature^")) {
+            if (!s) {
+                fail(e->loc, "signature^ is a member of types; write typeof^(value).signature^");
+            }
+            if (e->a->kind != E_TYPE) {
+                Expr *type = mem(sizeof(*type));
+                *type = (Expr){.kind = E_TYPE, .loc = e->a->loc, .type_expr = s};
+                e->a = type;
+            }
+            resolve_expr(p, m, names, e->a);
+            return;
+        }
+        if (s && s->kind == SPEC_TYPEOF) {
+            fail(e->loc, "a typeof^ type provides only signature^");
+        }
         if (s) {
             resolve_spec(m, s);
             int kind = s->kind == SPEC_NAME ? numeric_kind(s->name) : -1;
@@ -1044,6 +1065,9 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         e->text = s.self_type ? canonical(s.self_type->module, s.self_type->name) : s.name;
     }
     if (e->kind == E_RECORD && e->type_expr) {
+        if (e->type_expr->kind == SPEC_TYPEOF) {
+            fail(e->loc, "a typeof^ type cannot construct values; name the type");
+        }
         resolve_spec(m, e->type_expr);
         Spec *s = e->type_expr;
         e->text = s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;

@@ -7,6 +7,9 @@ typedef struct {
     List functions, copies;
 } Clone;
 
+static Expr *copy_expr(Clone *, Expr *);
+static List copy_body(Clone *, List *);
+
 static Spec *copy_spec(Clone *c, Spec *s)
 {
     if (!s) {
@@ -28,6 +31,7 @@ static Spec *copy_spec(Clone *c, Spec *s)
     r->resolved = false;
     r->elem = copy_spec(c, s->elem);
     r->other = copy_spec(c, s->other);
+    r->operand = copy_expr(c, s->operand);
     r->params = r->type_args = (List){0};
     if (r->self_type == c->source) {
         r->self_type = c->target;
@@ -40,9 +44,6 @@ static Spec *copy_spec(Clone *c, Spec *s)
     }
     return r;
 }
-
-static Expr *copy_expr(Clone *, Expr *);
-static List copy_body(Clone *, List *);
 
 static Function *copy_function(Clone *c, Function *f)
 {

@@ -73,6 +73,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/nil-tests")
   add_test(NAME fits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fits.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/fits-tests")
+  add_test(NAME typeof COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/typeof.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/typeof-tests")
   add_test(NAME lsp COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.py"
     --server $<TARGET_FILE:rhat> --work "${CMAKE_CURRENT_BINARY_DIR}/lsp-tests")
   add_test(NAME inference COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inference.py"

@@ -3188,8 +3188,19 @@ Value expression(Context *c, Expr *e, Type *expected)
         c->type_constant = constant;
         return result;
     }
+    if (type_signature(e)) {
+        char *text = type_name(context_type(c, e->a->type_expr));
+        Value out = value(c, type_builtin(c->p, T_STRING));
+        Instr *i = emit(c, I_STRING, e->loc);
+        i->dst = out.id;
+        i->type = out.type;
+        i->text = text;
+        i->length = strlen(text);
+        return out;
+    }
     if (e->kind == E_TYPE) {
-        fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
+        fail(e->loc, "'%s' names a type, not a value",
+             e->type_expr->name ? e->type_expr->name : "typeof^");
     }
     if (e->kind == E_STATIC) {
         fail(e->loc, "static member '%s' must be called", e->text);

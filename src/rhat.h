@@ -84,6 +84,7 @@ struct Spec {
     int kind, count;
     // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
     Expr *length;   // A constant expression for count, evaluated during name resolution.
+    Expr *operand;  // SPEC_TYPEOF: the unevaluated expression whose static type this names.
     List params;    // Parameter specifications of a callable signature.
     bool procedure; // A p^ signature carries the procedure effect.
     bool foreign;   // externC^ before a signature: a C function pointer.
@@ -100,7 +101,8 @@ enum {
     SPEC_FUNCTION,     // A callable signature ending in a semicolon.
     SPEC_INTERSECTION, // A value satisfying every callable signature.
     SPEC_DYN,          // dyn^ D, valid only as ref^ dyn^ D.
-    SPEC_TUPLE         // -> (A, B): multiple results, params holding each.
+    SPEC_TUPLE,        // -> (A, B): multiple results, params holding each.
+    SPEC_TYPEOF        // typeof^ e: the static type of operand in each specialization.
 };
 
 enum {

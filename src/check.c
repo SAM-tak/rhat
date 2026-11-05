@@ -1277,9 +1277,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (guarded_chain(e)) {
         return infer_chain(c, e, true);
     }
+    if (type_signature(e)) {
+        return type_builtin(c->p, T_STRING);
+    }
     switch (e->kind) {
     case E_TYPE:
-        fail(e->loc, "'%s' names a type, not a value", e->type_expr->name);
+        fail(e->loc, "'%s' names a type, not a value",
+             e->type_expr->name ? e->type_expr->name : "typeof^");
     case E_STATIC:
         fail(e->loc, "static member '%s' must be called", e->text);
     case E_TRY: {
@@ -2355,6 +2359,58 @@ Type *chain_place_type(Context *c, Expr *e)
     return infer_chain(&in, e, false);
 }
 
+bool type_signature(Expr *e)
+{
+    return e->kind == E_MEMBER && e->a && e->a->kind == E_TYPE && !strcmp(e->text, "signature^");
+}
+
+// A function whose parameter types are left to call sites has no single type.
+static bool open_callable(Type *t)
+{
+    for (int j = 0; t->kind == T_INTERSECTION && j < t->arms.n; j++) {
+        if (open_callable(t->arms.v[j])) {
+            return true;
+        }
+    }
+    return t->kind == T_FUNCTION && t->function && inferred_parameter(t->function);
+}
+
+// The typeof^ operand emits no code; still show editors which locals it names.
+static void record_operand(Context *c, Expr *e)
+{
+    if (!e) {
+        return;
+    }
+    Var *v = (e->kind == E_NAME || e->kind == E_SELF) && e->text ? selected(c, e) : NULL;
+    if (v) {
+        tool_record(c->p, e->loc, v->declaration, v->name, v->type, NULL, NULL,
+                    v->parameter ? TOOL_PARAMETER : 13, false);
+    }
+    record_operand(c, e->a);
+    record_operand(c, e->b);
+    record_operand(c, e->c);
+    for (int j = 0; j < e->args.n; j++) {
+        record_operand(c, e->args.v[j]);
+    }
+}
+
+Type *context_type(Context *c, Spec *s)
+{
+    if (s->kind != SPEC_TYPEOF) {
+        return type_spec(c->p, s);
+    }
+    Type *t = expression_type(c, s->operand, NULL);
+    record_operand(c, s->operand);
+    if (!t || t->kind == T_NEVER) {
+        fail(s->loc, "typeof^ cannot determine the type of its operand");
+    }
+    if (open_callable(t)) {
+        fail(s->loc, "typeof^ of a function with parameters left to call sites; each "
+                     "specialization has its own type");
+    }
+    return t;
+}
+
 Type *expression_type(Context *c, Expr *e, Type *expected)
 {
     Infer inference = infer_context(c);
@@ -2735,6 +2791,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         break;
     }
     case E_MEMBER: {
+        if (type_signature(e)) {
+            n->type = type_builtin(c->p, T_STRING);
+            break;
+        }
         n->a = body_expr(c, e->a, NULL);
         Type *base = n->a->type;
         n->readonly = n->a->readonly || (base && read_reference(base));

@@ -192,6 +192,10 @@ Type *chain_place_type(Context *c, Expr *e);
 
 // Infer an expression from a snapshot without generating IR.
 Type *expression_type(Context *c, Expr *e, Type *expected);
+// Type.signature^: the canonical spelling of a type, a string constant per specialization.
+bool type_signature(Expr *e);
+// A written type, or the static type a typeof^ operand has in this specialization.
+Type *context_type(Context *c, Spec *s);
 
 // Infer the persistent bindings reserved for a loop first section.
 List first_types(Context *c, Stmt *s);

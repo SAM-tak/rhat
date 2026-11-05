@@ -1803,6 +1803,22 @@ static Expr *primary(Parser *p)
             refs--;
         }
     }
+    else if (!strcmp(t->text, "typeof^")) {
+        // typeof^(e) delimits its operand, so typeof^(x).signature^ asks about x.
+        e = node(E_TYPE, t->loc);
+        e->type_expr = mem(sizeof(Spec));
+        *e->type_expr = (Spec){.kind = SPEC_TYPEOF, .loc = t->loc};
+        if (take(p, "(")) {
+            bool header = p->header;
+            p->header = false;
+            e->type_expr->operand = expr(p, 0);
+            p->header = header;
+            need(p, ")");
+        }
+        else {
+            e->type_expr->operand = expr(p, 9);
+        }
+    }
     else if (!strcmp(t->text, "for^")) {
         e = for_expression(p, t->loc);
     }
