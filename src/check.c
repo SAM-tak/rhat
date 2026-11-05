@@ -640,6 +640,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
 }
 
 static Type *infer_expr(Infer *c, Expr *e, Type *expected);
+static Type *infer_type(Infer *c, Spec *s);
 
 // Preserve read capabilities when taking a reference to a projected place.
 static bool infer_read_place(Infer *c, Expr *e)
@@ -1173,7 +1174,7 @@ static void cover_arm(Infer *c, Expr *e, Cover *cover)
         cover_arm(c, e->b, cover);
     }
     else if (e->kind == E_FITS && cover->rest) {
-        cover->rest = fits_subset(c->p, cover->rest, type_spec(c->p, e->test_spec), false, e->loc);
+        cover->rest = fits_subset(c->p, cover->rest, infer_type(c, e->test_spec), false, e->loc);
     }
     else if (e->kind == E_BIN && !strcmp(e->text, "=") && cover_key(e->b)) {
         add(&cover->values, cover_key(e->b));
@@ -1280,6 +1281,11 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (type_signature(e)) {
         return type_builtin(c->p, T_STRING);
     }
+    if (type_comparison(e)) {
+        Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+        compare_types(&scope, &c->flow, e);
+        return type_builtin(c->p, T_BOOL);
+    }
     switch (e->kind) {
     case E_TYPE:
         fail(e->loc, "'%s' names a type, not a value",
@@ -1352,7 +1358,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             remember_test(&c->flow, &scope, e, e->a, yes, type);
             return type_builtin(c->p, T_BOOL);
         }
-        Type *target = type_spec(c->p, e->test_spec);
+        Type *target = infer_type(c, e->test_spec);
         if (type && type->kind == T_VOID) {
             fail(e->loc, "fits^ requires a value type");
         }
@@ -1916,7 +1922,7 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             infer_handle(c, s);
         }
         else if (s->kind == S_BIND) {
-            Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
+            Type *t = infer_type(c, s->spec);
             Type *actual = infer_expr(c, s->a, t);
             if (c->terminated && !t) {
                 break;
@@ -1942,7 +1948,7 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             List pending = {0};
             for (int k = 0; k < s->body.n; k++) {
                 Stmt *b = s->body.v[k];
-                Type *t = b->spec ? type_spec(c->p, b->spec) : NULL;
+                Type *t = infer_type(c, b->spec);
                 Type *actual = infer_expr(c, b->a, t);
                 Var *v = mem(sizeof(*v));
                 v->name = b->name;
@@ -2394,21 +2400,81 @@ static void record_operand(Context *c, Expr *e)
     }
 }
 
+bool dependent_spec(Spec *s)
+{
+    if (!s) {
+        return false;
+    }
+    bool found = s->kind == SPEC_TYPEOF || dependent_spec(s->elem) || dependent_spec(s->other);
+    for (int j = 0; !found && j < s->params.n; j++) {
+        found = dependent_spec(s->params.v[j]);
+    }
+    for (int j = 0; !found && j < s->type_args.n; j++) {
+        found = dependent_spec(s->type_args.v[j]);
+    }
+    return found;
+}
+
+// Specs are shared by every specialization, so a typeof^ inside one is fixed
+// on a private copy rather than in the spec's cached type.
+static Spec *fixed_spec(Context *c, Spec *s)
+{
+    if (!dependent_spec(s)) {
+        return s;
+    }
+    Spec *r = mem(sizeof(*r));
+    *r = *s;
+    r->type = NULL;
+    if (s->kind == SPEC_TYPEOF) {
+        r->type = expression_type(c, s->operand, NULL);
+        record_operand(c, s->operand);
+        if (!r->type || r->type->kind == T_NEVER) {
+            fail(s->loc, "typeof^ cannot determine the type of its operand");
+        }
+        if (open_callable(r->type)) {
+            fail(s->loc, "typeof^ of a function with parameters left to call sites; each "
+                         "specialization has its own type");
+        }
+        return r;
+    }
+    r->elem = fixed_spec(c, s->elem);
+    r->other = fixed_spec(c, s->other);
+    r->params = r->type_args = (List){0};
+    for (int j = 0; j < s->params.n; j++) {
+        add(&r->params, fixed_spec(c, s->params.v[j]));
+    }
+    for (int j = 0; j < s->type_args.n; j++) {
+        add(&r->type_args, fixed_spec(c, s->type_args.v[j]));
+    }
+    return r;
+}
+
 Type *context_type(Context *c, Spec *s)
 {
-    if (s->kind != SPEC_TYPEOF) {
-        return type_spec(c->p, s);
-    }
-    Type *t = expression_type(c, s->operand, NULL);
-    record_operand(c, s->operand);
-    if (!t || t->kind == T_NEVER) {
-        fail(s->loc, "typeof^ cannot determine the type of its operand");
-    }
-    if (open_callable(t)) {
-        fail(s->loc, "typeof^ of a function with parameters left to call sites; each "
-                     "specialization has its own type");
-    }
-    return t;
+    return s ? type_spec(c->p, fixed_spec(c, s)) : NULL;
+}
+
+bool type_comparison(Expr *e)
+{
+    return e->kind == E_BIN && (!strcmp(e->text, "=") || !strcmp(e->text, "!=")) &&
+           e->a->kind == E_TYPE && e->b->kind == E_TYPE;
+}
+
+bool compare_types(Context *c, NilFlow *flow, Expr *e)
+{
+    bool same = context_type(c, e->a->type_expr) == context_type(c, e->b->type_expr);
+    bool truth = same == !strcmp(e->text, "=");
+    // Like a static fits^, a decided comparison prunes the branch it rules out.
+    Type *known = type_builtin(c->p, T_BOOL);
+    remember_test(flow, c, e, e, truth ? known : NULL, truth ? NULL : known);
+    return truth;
+}
+
+// Annotations inside an inferred body may name typeof^ types.
+static Type *infer_type(Infer *c, Spec *s)
+{
+    Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+    return context_type(&scope, s);
 }
 
 Type *expression_type(Context *c, Expr *e, Type *expected)
@@ -2721,6 +2787,12 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         }
         break;
     case E_BIN: {
+        if (type_comparison(e)) {
+            // Each specialization decides it, so later demands are conditional.
+            n->type = type_builtin(c->p, T_BOOL);
+            c->blocked = true;
+            break;
+        }
         bool logical = !strcmp(e->text, "and^") || !strcmp(e->text, "or^") ||
                        !strcmp(e->text, "&&") || !strcmp(e->text, "||");
         bool compare = !strcmp(e->text, "=") || !strcmp(e->text, "!=") || !strcmp(e->text, "<") ||
@@ -3033,7 +3105,7 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
     for (int j = 0; j < list->n && !c->blocked && !c->ended; j++) {
         Stmt *s = list->v[j];
         if (s->kind == S_BIND) {
-            Type *hint = s->spec ? type_spec(c->p, s->spec) : NULL;
+            Type *hint = s->spec && !dependent_spec(s->spec) ? type_spec(c->p, s->spec) : NULL;
             BodyNode *n = body_expr(c, s->a, hint);
             if (hint && !callable_type(n->type)) {
                 n = body_node(hint);
@@ -3048,7 +3120,7 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
             List pending = {0};
             for (int k = 0; k < s->body.n; k++) {
                 Stmt *b = s->body.v[k];
-                Type *hint = b->spec ? type_spec(c->p, b->spec) : NULL;
+                Type *hint = b->spec && !dependent_spec(b->spec) ? type_spec(c->p, b->spec) : NULL;
                 BodyNode *n = body_expr(c, b->a, hint);
                 if (hint) {
                     n = body_node(hint);

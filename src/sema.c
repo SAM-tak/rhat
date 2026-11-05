@@ -424,7 +424,7 @@ int condition_truth(NilFlow *flow, Expr *e)
         return a > 0 || b > 0 ? 1 : a < 0 && b < 0 ? -1 : 0;
     }
     // Keep existing non-fits condition checking unchanged.
-    if (e->kind == E_FITS) {
+    if (e->kind == E_FITS || type_comparison(e)) {
         for (int j = flow->guards.n - 1; j >= 0; j--) {
             NilGuard *g = flow->guards.v[j];
             if (g->test == e) {
@@ -991,7 +991,7 @@ Value fits_value(Context *c, Expr *e)
         i->type = yes;
         return out;
     }
-    Type *target = type_spec(c->p, e->test_spec);
+    Type *target = context_type(c, e->test_spec);
     if (src.type->kind == T_VOID) {
         fail(e->loc, "fits^ requires a value type");
     }
@@ -3196,6 +3196,14 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->type = out.type;
         i->text = text;
         i->length = strlen(text);
+        return out;
+    }
+    if (type_comparison(e)) {
+        Value out = value(c, type_builtin(c->p, T_BOOL));
+        Instr *i = emit(c, I_CONST, e->loc);
+        i->dst = out.id;
+        i->type = out.type;
+        i->text = compare_types(c, &c->flow, e) ? "1" : "0";
         return out;
     }
     if (e->kind == E_TYPE) {

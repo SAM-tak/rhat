@@ -1217,10 +1217,32 @@ static Spec *array_spec(Parser *p, Spec *s, int *refs)
     return s;
 }
 
+// typeof^(e) delimits its operand, so typeof^(x).signature^ asks about x.
+static Spec *typeof_spec(Parser *p, Loc loc)
+{
+    Spec *s = mem(sizeof(*s));
+    *s = (Spec){.kind = SPEC_TYPEOF, .loc = loc};
+    if (take(p, "(")) {
+        bool header = p->header;
+        p->header = false;
+        s->operand = expr(p, 0);
+        p->header = header;
+        need(p, ")");
+    }
+    else {
+        s->operand = expr(p, 9);
+    }
+    return s;
+}
+
 static Spec *spec_part(Parser *p)
 {
     Spec *s = mem(sizeof(*s));
     s->loc = tok(p)->loc;
+    if (take(p, "typeof^")) {
+        int none = 0;
+        return array_spec(p, typeof_spec(p, s->loc), &none);
+    }
     int refs = reference_depth(tok(p)->text);
     if (refs) {
         next(p);
@@ -1804,20 +1826,8 @@ static Expr *primary(Parser *p)
         }
     }
     else if (!strcmp(t->text, "typeof^")) {
-        // typeof^(e) delimits its operand, so typeof^(x).signature^ asks about x.
         e = node(E_TYPE, t->loc);
-        e->type_expr = mem(sizeof(Spec));
-        *e->type_expr = (Spec){.kind = SPEC_TYPEOF, .loc = t->loc};
-        if (take(p, "(")) {
-            bool header = p->header;
-            p->header = false;
-            e->type_expr->operand = expr(p, 0);
-            p->header = header;
-            need(p, ")");
-        }
-        else {
-            e->type_expr->operand = expr(p, 9);
-        }
+        e->type_expr = typeof_spec(p, t->loc);
     }
     else if (!strcmp(t->text, "for^")) {
         e = for_expression(p, t->loc);

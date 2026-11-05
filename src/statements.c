@@ -786,7 +786,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 continue;
             }
             binding_name(c, s);
-            Type *t = s->spec ? type_spec(c->p, s->spec) : NULL;
+            Type *t = context_type(c, s->spec);
             if (!t) {
                 t = expression_type(c, s->a, NULL);
             }

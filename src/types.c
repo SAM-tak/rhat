@@ -286,6 +286,9 @@ bool range_type(Type *t)
 
 static Type *resolve_spec_type(Program *p, Spec *s)
 {
+    if (s->kind == SPEC_TYPEOF) {
+        fail(s->loc, "typeof^ types are allowed only in annotations inside a function body");
+    }
     if (s->kind == SPEC_NAME && !strcmp(s->name, "range^")) {
         return type_range(p);
     }

@@ -859,6 +859,24 @@ static bool module_function(Module *m, const char *name)
     return false;
 }
 
+// A local annotation's typeof^ operands see the same locals as expressions.
+static void resolve_local_spec(Program *p, Module *m, List *names, Spec *s)
+{
+    if (!s) {
+        return;
+    }
+    resolve_expr(p, m, names, s->operand);
+    resolve_local_spec(p, m, names, s->elem);
+    resolve_local_spec(p, m, names, s->other);
+    for (int j = 0; j < s->params.n; j++) {
+        resolve_local_spec(p, m, names, s->params.v[j]);
+    }
+    for (int j = 0; j < s->type_args.n; j++) {
+        resolve_local_spec(p, m, names, s->type_args.v[j]);
+    }
+    resolve_spec(m, s);
+}
+
 static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
 {
     if (!e) {
@@ -870,10 +888,28 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         e->repeat_count = (int)count;
     }
     if (e->kind == E_TYPE) {
-        if (e->type_expr->kind == SPEC_TYPEOF) {
-            resolve_expr(p, m, names, e->type_expr->operand);
+        resolve_local_spec(p, m, names, e->type_expr);
+        return;
+    }
+    if (e->kind == E_BIN && (!strcmp(e->text, "=") || !strcmp(e->text, "!=")) &&
+        (e->a->kind == E_TYPE || e->b->kind == E_TYPE)) {
+        // typeof^(x) = i32^ compares types; the name side is read as a type.
+        Expr **sides[] = {&e->a, &e->b};
+        for (int j = 0; j < 2; j++) {
+            Expr *side = *sides[j];
+            char *path = path_of(side);
+            Spec *s = side->kind == E_TYPE         ? side->type_expr
+                      : path && local(names, path) ? NULL
+                                                   : expression_type(m, side);
+            if (!s) {
+                fail(side->loc, "a type comparison needs a type on both sides");
+            }
+            if (side->kind != E_TYPE) {
+                *sides[j] = mem(sizeof(Expr));
+                **sides[j] = (Expr){.kind = E_TYPE, .loc = side->loc, .type_expr = s};
+            }
+            resolve_expr(p, m, names, *sides[j]);
         }
-        resolve_spec(m, e->type_expr);
         return;
     }
     if (e->kind == E_CALL) {
@@ -1072,10 +1108,8 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         Spec *s = e->type_expr;
         e->text = s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;
     }
-    if (e->test_spec) {
-        resolve_spec(m, e->test_spec);
-    }
-    resolve_spec(m, e->array_literal);
+    resolve_local_spec(p, m, names, e->test_spec);
+    resolve_local_spec(p, m, names, e->array_literal);
     if (e->kind == E_FUNCTION) {
         resolve_function(p, m, e->function);
         return;
@@ -1213,7 +1247,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             }
             for (int k = 0; k < s->body.n; k++) {
                 Stmt *b = s->body.v[k];
-                resolve_spec(m, b->spec);
+                resolve_local_spec(p, m, names, b->spec);
                 resolve_expr(p, m, names, b->a);
             }
             for (int k = 0; k < s->body.n; k++) {
@@ -1221,7 +1255,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             }
             continue;
         }
-        resolve_spec(m, s->spec);
+        resolve_local_spec(p, m, names, s->spec);
         if (s->kind == S_ASSIGN && s->targets.n) {
             for (int k = 0; k < s->targets.n; k++) {
                 resolve_expr(p, m, names, s->targets.v[k]);

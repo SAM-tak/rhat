@@ -241,7 +241,7 @@ print^(f^ n:i64^ {
 | 数値キャスト `u8^(value)` | 維持。`as^` は追加しない |
 | `do^{...}` | 単独のブロック。焦点式の `do^:` は別 |
 | `fits^`、`when^ fits^ T:` | 実装済み。[適合判定・型の絞り込み](fits.md) |
-| `typeof^`・`.signature` | `typeof^` は型そのものを返す。綴りは L^ と異なりハット付きの `型.signature^`。型の位置は未対応。[typeof^](typeof.md) |
+| `typeof^`・`.signature` | `typeof^` は型そのものを返す。綴りは L^ と異なりハット付きの `型.signature^`。本体の注釈と厳密一致 `=` に対応。[typeof^](typeof.md) |
 | `enum^` | 実装済み。C 互換の整数列挙体で、メンバの型化・`.value` は未対応。[列挙体](enums.md) |
 | `try^` / `catch^` | 実装済み。[エラー値・伝播・捕捉](errors.md) |
 | `is^` | 値の同一性の規則と合わせて後続で扱う |
