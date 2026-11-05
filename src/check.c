@@ -514,7 +514,7 @@ typedef struct {
     Program *p;
     Instance *in;
     List vars;
-    List handlers, loops, initializers;
+    List handlers, loops, initializers, inline_flows;
     Type *propagated;
     Type *returned;
     Expr *return_expr;
@@ -524,7 +524,14 @@ typedef struct {
     bool raw_name;
     Expr *raw_place;
     bool terminated;
+    int inline_steps;
 } Infer;
+
+// Jumps can make an expanded iteration reachable even when its body terminates.
+typedef struct {
+    int level;
+    bool next, stop;
+} InlineFlow;
 
 static Infer infer_context(Context *c)
 {
@@ -1523,6 +1530,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             base = base->elem;
         }
         base = error_view(base, e->text);
+        if (argument_pack(base)) {
+            if (strcmp(e->text, "len")) {
+                fail(e->loc,
+                     "argument packs only support .len, constant indexing and inline^ for^");
+            }
+            return type_builtin(c->p, T_I64);
+        }
         if (error_site(base, e->text) >= 0) {
             return type_builtin(c->p, error_site(base, e->text) % 3 ? T_U32 : T_STRING);
         }
@@ -1602,15 +1616,38 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return c->terminated ? type_builtin(c->p, T_NEVER) : type_range(c->p);
     case E_PACK:
         if (e->a) {
-            infer_expr(c, e->a, NULL);
+            Type *t = infer_expr(c, e->a, NULL);
+            if (!t || c->terminated) {
+                return c->terminated ? type_builtin(c->p, T_NEVER) : NULL;
+            }
+            if (expected) {
+                return expected;
+            }
+            t = t->kind == T_REF ? t->elem : t;
+            if (argument_pack(t)) {
+                return t;
+            }
+            int count = inline_length(t, e->loc);
+            if (count > 4096) {
+                fail(e->loc, "heterogeneous argument pack exceeds 4096 elements");
+            }
+            List elems = {0};
+            for (int j = 0; j < count; j++) {
+                add(&elems, inline_element(t, j));
+            }
+            return type_pack(c->p, &elems, e->loc);
         }
-        for (int j = 0; !e->a && j < e->args.n; j++) {
-            infer_expr(c, e->args.v[j], expected ? expected->elem : NULL);
+        else {
+            List elems = {0};
+            for (int j = 0; j < e->args.n; j++) {
+                Type *t = infer_expr(c, e->args.v[j], expected ? expected->elem : NULL);
+                if (!t || c->terminated) {
+                    return c->terminated ? type_builtin(c->p, T_NEVER) : NULL;
+                }
+                add(&elems, t);
+            }
+            return expected ? expected : type_pack(c->p, &elems, e->loc);
         }
-        if (c->terminated) {
-            return type_builtin(c->p, T_NEVER);
-        }
-        return expected;
     case E_SLICE: {
         Type *base = infer_expr(c, e->a, NULL);
         if (base && base->kind == T_REF) {
@@ -1635,6 +1672,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         if (base && base->kind == T_REF) {
             base = base->elem;
+        }
+        if (argument_pack(base)) {
+            return inline_element(base, argument_index(&c->vars, base, e->b, e->loc));
         }
         Type *index = infer_expr(c, e->b, type_builtin(c->p, T_I64));
         if (c->terminated) {
@@ -1884,6 +1924,8 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             v->name = s->name;
             v->lexical = c->lexical;
             v->type = callable_type(actual) ? actual : t ? t : actual;
+            v->constant = !s->mut && v->type && kind_integer(v->type->kind) &&
+                          static_integer(&c->vars, s->a, &v->integer);
             v->alias = infer_alias(c, s->a);
             if (s->flow_alias && s->a->kind == E_NAME) {
                 v->source = infer_variable(c, s->a);
@@ -1975,6 +2017,51 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
                 c->return_expr = s->a;
             }
             c->terminated = true;
+        }
+        else if (s->kind == S_INLINE) {
+            Type *t = infer_expr(c, s->a, NULL);
+            t = t && t->kind == T_REF ? t->elem : t;
+            if (!t || c->terminated) {
+                continue;
+            }
+            int count = inline_length(t, s->loc), iteration_mark = c->vars.n;
+            if (count > 4096 - c->inline_steps) {
+                fail(s->loc, "inline^ expansion limit exceeded (4096 iterations per function)");
+            }
+            c->inline_steps += count;
+            add(&c->loops, (void *)(intptr_t)(iteration_mark + 1));
+            InlineFlow flow = {.level = c->loops.n};
+            add(&c->inline_flows, &flow);
+            for (int k = 0; k < count; k++) {
+                Var *v = mem(sizeof(*v));
+                v->name = s->name;
+                v->type = inline_element(t, k);
+                v->lexical = c->lexical + 1;
+                add(&c->vars, v);
+                flow.next = false;
+                List expanded = inline_body(&s->body);
+                infer_statements(c, &expanded, true);
+                c->vars.n = iteration_mark;
+                if (c->terminated && !flow.next) {
+                    break;
+                }
+                c->terminated = false;
+            }
+            if (flow.stop) {
+                c->terminated = false;
+            }
+            c->inline_flows.n--;
+            c->loops.n--;
+        }
+        else if (s->kind == S_BREAK || s->kind == S_NEXT) {
+            for (int k = 0; k < c->inline_flows.n; k++) {
+                InlineFlow *flow = c->inline_flows.v[k];
+                if (flow->level == c->loops.n - s->depth + 1) {
+                    flow->next |= s->kind == S_NEXT;
+                    flow->stop |= s->kind == S_BREAK;
+                }
+            }
+            c->terminated = c->inline_flows.n != 0;
         }
         else if (s->kind == S_WHILE) {
             int begin = c->vars.n;
@@ -2079,9 +2166,9 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
 // Roll back only the failed statement, including nested scopes and flow facts.
 static void infer_statement_checked(Infer *c, Stmt *statement)
 {
-    static const size_t lists[] = {offsetof(Infer, vars), offsetof(Infer, handlers),
-                                   offsetof(Infer, loops), offsetof(Infer, initializers),
-                                   offsetof(Infer, flow.guards)};
+    static const size_t lists[] = {offsetof(Infer, vars),         offsetof(Infer, handlers),
+                                   offsetof(Infer, loops),        offsetof(Infer, initializers),
+                                   offsetof(Infer, inline_flows), offsetof(Infer, flow.guards)};
     ToolState *state = tool_save(c, sizeof(*c), lists, sizeof(lists) / sizeof(*lists));
     ToolState *vars = tool_save_objects(&c->vars, sizeof(Var));
     ToolState *handlers = tool_save_objects(&c->handlers, sizeof(ErrorTarget));
@@ -2936,6 +3023,11 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
                 c->scope.lexical++;
             }
             body_statements(c, &s->update, true);
+        }
+        else if (s->kind == S_INLINE) {
+            body_expr(c, s->a, NULL);
+            // The element's shape belongs to the concrete specialization.
+            c->blocked = true;
         }
         else if (s->kind == S_WHILE) {
             int loop_mark = c->scope.vars.n;

@@ -1,0 +1,27 @@
+# Expand each iteration with the argument's concrete type.
+let^write = p^x:i32^{ print^("integer", x) }
+overload^write = p^x:string^{ print^("string", x) }
+overload^write = p^x:bool^{ print^("boolean", x) }
+
+let^show = template^p^... {
+    inline^for^x in^... { write(x) }
+}
+show(1, "two", true^)
+
+# Fixed arrays use the same syntax, with ordinary loop jumps.
+var^values:i32^[4] = {1, 2, 3, 4}
+var^total = 0
+inline^for^x in^values {
+    if^x = 2 { next^}
+    total += x
+}
+print^("total", total)
+
+let^max = template^p^... {
+    var^max = ...[0]
+    inline^for^x in^... {
+        if^x > max { max := x }
+    }
+    return^max
+}
+print^("max", max(2, 3, 5, 6, 7, 9, 2, 4, 1))

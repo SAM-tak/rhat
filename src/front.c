@@ -280,7 +280,8 @@ static void synchronize(Parser *p, int start, int failed, bool outer)
                        is(p, "struct^") || is(p, "import^") || is(p, "public^") ||
                        is(p, "exportC^") || is(p, "exportL^") || is(p, "if^") || is(p, "for^") ||
                        is(p, "while^") || is(p, "print^") || is(p, "op^") || is(p, "private^") ||
-                       is(p, "abstract^") || is(p, "override^") || is(p, "overload^");
+                       is(p, "abstract^") || is(p, "override^") || is(p, "overload^") ||
+                       is(p, "inline^");
         if (t->kind == TOK_WORD && p->at + 2 < p->tokens.n) {
             Token *equal = p->tokens.v[p->at + 1], *value = p->tokens.v[p->at + 2];
             starter |= (!strcmp(equal->text, "=") || !strcmp(equal->text, ":=")) &&
@@ -2092,8 +2093,8 @@ static int loop_section(Parser *p);
 // Whether word can only begin a statement, never a literal's first element.
 static bool statement_word(const char *word)
 {
-    const char *words[] = {"let^",   "var^",  "return^", "if^",  "for^",  "repeat^",
-                           "break^", "next^", "do^",     "def^", "print^"};
+    const char *words[] = {"let^",   "var^",  "return^", "if^",  "for^",   "repeat^",
+                           "break^", "next^", "do^",     "def^", "print^", "inline^"};
     for (size_t j = 0; j < sizeof(words) / sizeof(*words); j++) {
         if (!strcmp(word, words[j])) {
             return true;
@@ -2823,6 +2824,17 @@ static Stmt *stmt_unchecked(Parser *p)
             s->body = bindings;
         }
     }
+    else if (take(p, "inline^")) {
+        need(p, "for^");
+        s->kind = S_INLINE;
+        s->name = take(p, "it^") ? "it^" : take(p, "_^") ? "_^" : decl_word(p);
+        need(p, "in^");
+        bool header = p->header;
+        p->header = true;
+        s->a = expr(p, 0);
+        p->header = header;
+        block(p, &s->body);
+    }
     else if (take(p, "for^") || take(p, "repeat^")) {
         s = loop_statement(p, !strcmp(t->text, "repeat^"), t->loc);
     }
@@ -3079,13 +3091,19 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
             }
             if (!strcmp(a->name, "...")) {
                 if (!a->spec) {
-                    fail(a->loc, "variadic parameter needs an element type, as in ...:T");
+                    if (!templ) {
+                        fail(a->loc, "variadic parameter needs an element type, as in ...:T; "
+                                     "untyped ... requires template^");
+                    }
+                    f->heterogeneous = true;
                 }
-                Spec *slice = mem(sizeof(*slice));
-                slice->kind = SPEC_SLICE;
-                slice->loc = a->spec->loc;
-                slice->elem = a->spec;
-                a->spec = slice;
+                else {
+                    Spec *slice = mem(sizeof(*slice));
+                    slice->kind = SPEC_SLICE;
+                    slice->loc = a->spec->loc;
+                    slice->elem = a->spec;
+                    a->spec = slice;
+                }
                 f->variadic = true;
             }
             if (!a->self && !a->spec && abstr && !templ) {

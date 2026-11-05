@@ -1173,6 +1173,14 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             names->n = begin;
             continue;
         }
+        if (s->kind == S_INLINE) {
+            resolve_expr(p, m, names, s->a);
+            int begin = names->n;
+            add(names, s->name);
+            resolve_body(p, m, names, &s->body);
+            names->n = begin;
+            continue;
+        }
         if (s->kind == S_BIND_MANY) {
             for (int k = 0; k < s->prolog.n; k++) {
                 Stmt *b = s->prolog.v[k];

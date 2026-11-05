@@ -2188,6 +2188,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (v.type->owned) {
             fail(e->loc, "pass owned values by reference with 'ref^'");
         }
+        if (argument_pack(v.type) && (!f->heterogeneous || strcmp(param->name, "..."))) {
+            fail(e->loc, "argument packs must be forwarded to a variadic parameter");
+        }
         v = snapshot(c, v, e->loc);
         Value *saved = mem(sizeof(*saved));
         *saved = v;
@@ -3077,6 +3080,61 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
 static Value pack_value(Context *c, Expr *e, Type *expected)
 {
     Program *p = c->p;
+    if (!expected) {
+        expected = expression_type(c, e, NULL);
+        if (!expected) {
+            fail(e->loc, "cannot infer heterogeneous argument types");
+        }
+    }
+    if (argument_pack(expected) || (e->a && argument_pack(expression_type(c, e->a, NULL)))) {
+        Value source = {0};
+        List args = e->args;
+        if (e->a) {
+            source = snapshot(c, deref(c, expression(c, e->a, NULL), e->loc), e->loc);
+            if (dead(source)) {
+                return source;
+            }
+            if (source.type == expected) {
+                return source;
+            }
+            args = (List){0};
+            int count = inline_length(source.type, e->loc);
+            if (count > 4096) {
+                fail(e->loc, "heterogeneous argument pack exceeds 4096 elements");
+            }
+            for (int j = 0; j < count; j++) {
+                Value item;
+                if (argument_pack(source.type)) {
+                    item = field_value(c, source, source.type->def->fields.v[j], e->loc);
+                }
+                else {
+                    Expr base = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &source};
+                    Expr index = {.kind = E_INT, .loc = e->loc, .text = fmt("%d", j)};
+                    Expr at = {.kind = E_INDEX, .loc = e->loc, .a = &base, .b = &index};
+                    item = expression(c, &at, NULL);
+                }
+                add(&args, saved_value(item, e->loc));
+            }
+        }
+        if (!argument_pack(expected)) {
+            Expr packed = {.kind = E_PACK, .loc = e->loc, .args = args};
+            return pack_value(c, &packed, expected);
+        }
+        Value out = value(c, expected);
+        Instr *zero = emit(c, I_ZERO, e->loc);
+        zero->dst = out.id;
+        zero->type = expected;
+        for (int j = 0; j < args.n; j++) {
+            Field *field = expected->def->fields.v[j];
+            Value dest = field_value(c, out, field, e->loc);
+            Value item = construct(c, args.v[j], field->type, dest.id);
+            if (dead(item)) {
+                return item;
+            }
+            out.deps = roots_union(out.deps, item.deps);
+        }
+        return out;
+    }
     if (e->a) {
         Expr view = {.kind = E_SLICE, .loc = e->a->loc, .a = e->a, .text = ".."};
         return slice_view(c, &view, expected);
@@ -3357,6 +3415,13 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(base)) {
             return base;
         }
+        if (argument_pack(base.type)) {
+            if (strcmp(e->text, "len")) {
+                fail(e->loc,
+                     "argument packs only support .len, constant indexing and inline^ for^");
+            }
+            return constant(c, T_I64, fmt("%d", base.type->def->fields.n), e->loc);
+        }
         if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
              base.type->kind == T_BOUNDED || base.type->kind == T_STRING ||
              base.type->kind == T_SLICE) &&
@@ -3475,6 +3540,10 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(base)) {
             return base;
         }
+        if (argument_pack(base.type)) {
+            int index = argument_index(&c->vars, base.type, e->b, e->loc);
+            return field_value(c, base, base.type->def->fields.v[index], e->loc);
+        }
         if (base.type->kind == T_STRING) {
             fail(e->loc,
                  "string^ has no []; read bytes with s.bytes[i], or characters with s.decode(at)");
@@ -3525,6 +3594,9 @@ Value expression(Context *c, Expr *e, Type *expected)
             return a;
         }
         if (!strcmp(e->text, "ref^")) {
+            if (argument_pack(a.type)) {
+                fail(e->loc, "cannot take a reference to an argument pack");
+            }
             if (!a.addressable) {
                 fail(e->loc, "cannot borrow a temporary; bind it first");
             }

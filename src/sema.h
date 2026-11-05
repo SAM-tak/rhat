@@ -42,6 +42,8 @@ struct Var {
     bool path_sensitive; // Guards on this root can depend on aliased storage.
     Var *source;         // Match snapshots only: valid until the original changes.
     unsigned source_version;
+    bool constant; // An immutable integer binding known at specialization time.
+    int64_t integer;
 };
 
 // A checked or inference-only saved value with borrow provenance.
@@ -117,7 +119,25 @@ typedef struct {
     Expr *read_call;           // A read conversion for this call initially lasts only for the call.
     bool read_return; // A direct returned borrow of caller storage is anchored at the caller.
     int result_part;  // One past the slot of the owned result part built in place.
+    int inline_steps; // Cumulative expansion budget for this concrete function body.
 } Context;
+
+// Heterogeneous packs use a private record layout, never a user-storable tuple.
+Type *type_pack(Program *p, List *elems, Loc loc);
+// Whether a type represents a heterogeneous argument pack.
+bool argument_pack(Type *type);
+// Resolve immutable integer expressions without executing user code.
+bool static_integer(List *vars, Expr *expr, int64_t *out);
+// Static iteration shape and constant indexing, checked during specialization.
+int inline_length(Type *type, Loc loc);
+// The concrete element type at a checked static iteration position.
+Type *inline_element(Type *type, int index);
+// Resolve and bounds-check a heterogeneous pack's constant index.
+int argument_index(List *vars, Type *type, Expr *index, Loc loc);
+// Clone each expanded body so contextual AST rewrites do not affect another element.
+List inline_body(List *body);
+// Emit one concrete inline loop with ordinary break^/next^ targets.
+void inline_loop(Context *c, Stmt *statement);
 
 // Whether this is a read-only reference (including dynamic references).
 bool read_reference(Type *type);

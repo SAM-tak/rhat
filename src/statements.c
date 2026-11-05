@@ -866,6 +866,10 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             if (s->integer && !kind_integer(t->kind)) {
                 fail(s->loc, "counted loops require an integer type");
             }
+            if (argument_pack(t)) {
+                fail(s->loc,
+                     "argument packs cannot be bound; use inline^ for^ or constant indexing");
+            }
             Var *var = mem(sizeof(*var));
             var->declaration = s->loc;
             var->name = s->name;
@@ -876,6 +880,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             var->mut = s->mut;
             var->root = root(c, s, c->depth, false);
             var->deps = v.deps;
+            var->constant =
+                !s->mut && kind_integer(t->kind) && static_integer(&c->vars, s->a, &var->integer);
             if (s->flow_alias && s->a->kind == E_NAME) {
                 var->source = selected(c, s->a);
                 var->source_version = var->source ? var->source->version : 0;
@@ -1255,6 +1261,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 i->label = end;
             }
         }
+        else if (s->kind == S_INLINE) {
+            inline_loop(c, s);
+        }
         else if (s->kind == S_WHILE) {
             loop_code(c, s);
         }
@@ -1400,6 +1409,9 @@ static Instance *instantiate_unchecked(Program *p, Function *f, Def *self, List 
              f->name);
     }
     layout(in->result, f->loc);
+    if (argument_pack(in->result)) {
+        fail(f->loc, "argument packs cannot be returned");
+    }
     if (f->constant_value && in->result->owned) {
         fail(f->loc, "type constant cannot own a data stack region");
     }

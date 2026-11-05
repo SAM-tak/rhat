@@ -178,11 +178,12 @@ Type *type_union(Program *p, Type *a, Type *b, Loc loc)
     return t;
 }
 
-Type *type_tuple(Program *p, List *elems, Loc loc)
+static Type *record_sequence(Program *p, List *elems, Loc loc, bool pack)
 {
     for (int j = 0; j < p->types.n; j++) {
         Type *t = p->types.v[j];
-        if (t->kind != T_STRUCT || !t->def->tuple || t->def->fields.n != elems->n) {
+        if (t->kind != T_STRUCT || (pack ? !t->def->pack : !t->def->tuple) ||
+            t->def->fields.n != elems->n) {
             continue;
         }
         bool same = true;
@@ -202,13 +203,18 @@ Type *type_tuple(Program *p, List *elems, Loc loc)
     d->loc = loc;
     d->state = 2;
     d->public = true;
-    d->tuple = true;
-    char *identity = str("tuple");
-    d->name = str("(");
+    d->tuple = !pack;
+    d->pack = pack;
+    char *identity = str(pack ? "arguments" : "tuple");
+    d->name = str(pack ? "arguments(" : "(");
     for (int j = 0; j < elems->n; j++) {
         Type *elem = elems->v[j];
+        layout(elem, loc);
         if (elem->kind == T_VOID || elem->kind == T_NEVER) {
             fail(loc, "a result cannot have void type");
+        }
+        if (argument_pack(elem) || (pack && elem->owned)) {
+            fail(loc, "argument pack elements cannot own storage or contain packs; use ref^");
         }
         char *name = type_name(elem);
         identity = fmt("%s:%d:%zu:%s", identity, elem->kind, strlen(name), name);
@@ -227,6 +233,19 @@ Type *type_tuple(Program *p, List *elems, Loc loc)
     add(&p->types, t);
     layout(t, loc);
     return t;
+}
+
+Type *type_tuple(Program *p, List *elems, Loc loc)
+{
+    return record_sequence(p, elems, loc, false);
+}
+
+Type *type_pack(Program *p, List *elems, Loc loc)
+{
+    if (elems->n > 4096) {
+        fail(loc, "heterogeneous argument pack exceeds 4096 elements");
+    }
+    return record_sequence(p, elems, loc, true);
 }
 
 Type *type_range(Program *p)
@@ -422,6 +441,9 @@ char *type_name(Type *t)
 
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
 {
+    if (argument_pack(first)) {
+        fail(e->loc, "argument packs cannot be stored in arrays");
+    }
     Spec *attrs = e->array_literal;
     if (!attrs) {
         return expected ? expected : first ? type_wrap(p, T_ARRAY, first, e->args.n) : NULL;

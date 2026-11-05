@@ -9,7 +9,7 @@ target_include_directories(rhat_json PUBLIC vendor/cjson)
 target_compile_definitions(rhat_json PUBLIC CJSON_HIDE_SYMBOLS)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
   src/front.c src/format.c src/modules.c src/generics.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
-  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c src/borrow.c
+  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c src/borrow.c src/inline.c
   lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c lsp/uri.c lsp/position.c lsp/port/thread.c)
 target_include_directories(rhat PRIVATE src lsp)
 target_compile_definitions(rhat PRIVATE RH_VERSION="${PROJECT_VERSION}")
@@ -89,6 +89,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/flex-tests")
   add_test(NAME read COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/read.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/read-tests")
+  add_test(NAME inline COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inline.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/inline-tests")
   add_test(NAME overloads COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/overloads.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/overload-tests")
   add_test(NAME arrays COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/arrays.py"

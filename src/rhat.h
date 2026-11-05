@@ -184,7 +184,8 @@ enum {
     S_NEXT,
     S_INIT,
     S_INIT_MANY,
-    S_HANDLE // A physical block body with ordered error handling arms.
+    S_HANDLE, // A physical block body with ordered error handling arms.
+    S_INLINE  // Compile-time expansion over a fixed array or heterogeneous arguments.
 };
 
 // One ordered, typed or default arm of a physical block's catch^ clause.
@@ -252,8 +253,8 @@ struct Function {
     bool static_member; // A def^ member without self^, called as Type.name(...).
     bool exported;      // exportC^: callable from C under its own name.
     bool lhat_export;   // exportL^: registered as an L^ host function.
-    bool variadic;      // The last parameter "..." collects trailing arguments as a
-                        // slice.
+    bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
+    bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.
     List uses;          // Top-level bindings of the entry file the body reaches (Stmt *).
 };
 
@@ -296,6 +297,7 @@ struct Def {
     bool lhat_data;  // exportL^ ref^ def^: an L^ host data type over ref^ to it.
     bool lhat_error; // exportL^ errordef^: an L^ error kind; L^ sees no fields.
     bool tuple;      // The anonymous struct of multiple results, fields 0, 1, ...
+    bool pack;       // Compiler-only heterogeneous arguments, with numbered fields.
     Spec *backing;   // enum^: the integer type its values lay out as; NULL for other defs.
     List members;    // enum^: EnumMember, in declaration order.
 };

@@ -912,6 +912,22 @@ def^F2 { self^{ x:f32^ } }
     client.send('textDocument/didClose',dict(textDocument=dict(uri=readonly_path.as_uri())))
     print('PASS read-reference hover, lexical borrow diagnostics and recovery',flush=True)
 
+    inline_path = work/'inline.rh'
+    inline_text = ('let^show=template^p^... {\n'
+                   ' inline^for^x in^... {print^(x)}\n'
+                   '}\nshow(1,"two",true^)\n')
+    client.open(inline_path,inline_text)
+    assert client.diagnostics(inline_path,1) == []
+    invalid_inline = inline_text.replace('print^(x)', 'x.missing()')
+    client.change(inline_path,invalid_inline,2)
+    diagnostics = client.diagnostics(inline_path,2)
+    assert diagnostics and any('method call requires a structure' in d['message']
+                               for d in diagnostics), diagnostics
+    client.change(inline_path,inline_text,3)
+    assert client.diagnostics(inline_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=inline_path.as_uri())))
+    print('PASS inline expansion diagnostics and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
