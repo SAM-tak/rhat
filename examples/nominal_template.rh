@@ -14,7 +14,7 @@ def^File {
 
 let^nominal = p^item:Named { item.greet() }
 
-let^structural = template^p^item { print^item.name() }
+let^structural = p^item { print^item.name() }
 
 var^person = Person.new()
 let^file = File.new()
