@@ -18,14 +18,14 @@ R^ は L^ の構文を基本とし、固定幅の型、公称構造体、借用�
 `errordef^` のバリアント本体では、そのバリアントのインスタンス型です。
 
 ```rhat
-def^ Point {
-    self^{ x:i32^=0, y:i32^=0 }
-    copy = f^self^ -> Self^ { *self^ }
-    op^+ = f^self^, other:Self^ -> Self^ {
-        Point{x=self^.x+other.x, y=self^.y+other.y}
+def^Point {
+    self^{ x:i32^= 0, y:i32^= 0 }
+    copy = f^self^-> Self^{ *self^}
+    op^+ = f^self^, other:Self^-> Self^{
+        Point{ x = self^.x + other.x, y = self^.y + other.y }
     }
 }
-struct^ Node { next:ref^ Self^|nil^=nil^, value:i32^=0 }
+struct^Node { next:ref^Self^ | nil^= nil^, value:i32^= 0 }
 ```
 
 `self^` は受け手の値、`Self^` は型です。`Self^{x=1, y=2}` の構築や `Self^.ZERO` の型メンバ参照にも使えます。
@@ -41,13 +41,13 @@ struct^ Node { next:ref^ Self^|nil^=nil^, value:i32^=0 }
 `do^{...}` は文であり、値を返す式ではありません。焦点式の `for^ ... do^: ...;` とは別です。
 
 ```rhat
-def^ Point { self^{ x:i32^=0,y:i32^=0 } }
-let^ show=p^ point:Point { print^(point.x,point.y) }
-show({x=1,y=2})
-let^ point:Point={x=3,y=4}
+def^Point { self^{ x:i32^= 0, y:i32^= 0 } }
+let^show=p^point:Point { print^(point.x, point.y) }
+show({ x = 1, y = 2 })
+let^point:Point = { x = 3, y = 4 }
 
 do^{
-    let^ local=Point{x=5,y=6}
+    let^local = Point{ x = 5, y = 6 }
     show(local)
 }
 ```
@@ -70,15 +70,15 @@ do^{
 ## 分岐・代入
 
 ```rhat
-if^ value = 0 {
+if^value = 0 {
     print^(0)
-elseif^ value < 10:
+elseif^value < 10:
     print^(1)
 else^:
     print^(2)
 }
 
-let^ sign = if^ value < 0: -1 el^ value > 0: 1 el^: 0;
+let^sign = if^value < 0: -1 el^value > 0: 1 el^: 0;
 ```
 
 分岐全体で波括弧は一組です。条件付きの別表記は `else^if^`、`elsif^`、`elif^`、`ei^`、`el^ condition:`。既定の腕は `else^:` または `el^:` です。式形には最後の既定の腕と終端の `;` が必要です。
@@ -86,11 +86,11 @@ let^ sign = if^ value < 0: -1 el^ value > 0: 1 el^: 0;
 `:=` に加えて `+=`、`-=`、`*=`、`/=`、`%=` を使えます。複合代入では左辺の場所と古い値を一度だけ取得します。並列代入では全左辺の場所と全右辺を取得してから書き込みます。
 
 ```rhat
-var^ a,b = 1,2
-a,b := b,a
-a,b += 10,20
-let^ ignored,value = 0,a
-var^ counter := 0
+var^a, b = 1, 2
+a, b := b, a
+a, b += 10, 20
+let^ignored, value = 0, a
+var^counter := 0
 ```
 
 宣言と値の個数は一致させます。右辺が式一つなら複数の返り値の分解です（[複数の返り値](results.md)）。`let^ x := ...` は認めません。`_^` は読み出せない破棄先で、繰り返して使えます。破棄した所有値もデータスタックの回収対象になります。
@@ -100,18 +100,18 @@ var^ counter := 0
 ## ループと各節
 
 ```rhat
-for^ var^ pass:i32^=0 while^ pass < 8 next^ pass += 1 {
+for^var^pass:i32^= 0 while^pass < 8 next^pass += 1 {
     print^(pass)
 }
 
-for^ i from^ 1 to^ 10 step^ 2 { print^(i) }
-for^ i:u8^ from^ 3 downto^ 0 { print^(i) }
-for^ 2 to^ 4 { print^(it^) }
+for^i from^1 to^10 step^2 { print^(i) }
+for^i:u8^ from^3 downto^0 { print^(i) }
+for^2 to^4 { print^(it^) }
 
-repeat^ 3 { print^(1) }
-repeat^ while^ condition { work() }
-repeat^ until^ finished { work() }
-repeat^ { break^ }
+repeat^3 { print^(1) }
+repeat^while^condition { work() }
+repeat^until^finished { work() }
+repeat^{ break^}
 ```
 
 単独の `while^ condition { ... }` は廃止しました。`until^` も条件を先に調べます。後判定が必要なら `pre^` で処理してから条件を調べます。
@@ -121,18 +121,18 @@ repeat^ { break^ }
 既存変数を使う `for^ i := 0 while^ ...`、複数焦点の `for^ var^ i=0 for^ var^ j=0 while^ ...`、カンマ区切りの更新も使えます。数える形と `repeat^` に明示的な `next^` 更新節は付けられません。
 
 ```rhat
-for^ var^ i=0 while^ i<3 next^ i+=1 {
+for^var^i = 0 while^i < 3 next^i += 1 {
 prolog^:
-    var^ total=0
+    var^total = 0
 pre^:
     print^(i)
 first^:
-    var^ values:i32^[grow^]={}
+    var^values:i32^[grow^] = {}
 main^:
     values.push(i)
     total+=i
 last^:
-    print^(i,values.len,total)
+    print^(i, values.len,total)
 epilog^:
     print^(total)
 }
@@ -158,25 +158,26 @@ R^ では未初期化値を読めません。ゼロ回の可能性がある `epi
 ## 焦点スコープ・値マッチ
 
 ```rhat
-for^ let^ n=read() if^ n>0 {
+for^let^n = read()
+if^n>0 {
     print^(n)
 else^:
     print^(0)
 }
 
-let^ twice=for^ let^ n=5 do^: n*2;
-let^ answer=for^ let^ n=5 if^ n>0: n el^: 0;
+let^twice = for^let^n = 5 do^: n * 2;
+let^answer = for^let^n = 5 if^n>0: n el^: 0;
 
-for^ value {
-when^ 0,1:
+for^value {
+when^0, 1:
     print^(it^)
-when^ 2 to^ 5:
+when^2 to^5:
     print^(2)
 other^:
     print^(3)
 }
 
-let^ answer=for^ value: when^ 0: 10 when^ 1 to^ 3: 20 other^: 30;
+let^answer = for^value: when^0: 10 when^1 to^3: 20 other^: 30;
 ```
 
 マッチの対象は一度だけ評価します。腕は順に調べ、成立した一つだけを実行します。範囲の両端を含みます。現在の値マッチの対象は既存の等値・順序比較ができる型です。文字列比較や構造体の等値比較を新設したわけではありません。
@@ -216,8 +217,8 @@ let^ answer=for^ value: when^ 0: 10 when^ 1 to^ 3: 20 other^: 30;
 関数・手続きリテラルの入れ子だけを数えます。トップレベルの暗黙のエントリー関数は対象に含めません。
 
 ```rhat
-print^(f^ n:i64^ {
-    if^ n<2: 1 el^: n * f^ m:i64^ { this^^(m) }(n-1);
+print^(f^n:i64^{
+    if^n < 2: 1 el^: n * f^m:i64^{ this^^(m) }(n-1);
 }(6))  # 720
 ```
 

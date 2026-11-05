@@ -5,15 +5,15 @@
 複数の返り値は名指せる型 `(A, B)` を持ち、書ける場所は返り値だけです。
 
 ```rhat
-let^ divmod = f^ a:i64^, b:i64^ -> (i64^, i64^) {
-    return^ a / b, a % b
+let^divmod = f^a:i64^, b:i64^-> i64^, i64^{
+    return^a / b, a % b
 }
-let^ swap = f^ a:string^, b:string^ { b, a }   # 本体が式一つなら注釈も省ける
+let^swap = f^a:string^, b:string^{ b, a }   # 本体が式一つなら注釈も省ける
 
-let^ q, r = divmod(17, 5)      # 分解束縛
-var^ x, y = swap("a", "b")
+let^q, r = divmod(17, 5)      # 分解束縛
+var^x, y = swap("a", "b")
 x, y := swap(x, y)             # 再代入
-let^ _^, rest = divmod(9, 4)   # 使わない値は _^
+let^_^, rest = divmod(9, 4)   # 使わない値は _^
 ```
 
 ## 書き方
@@ -50,15 +50,15 @@ L^ の 13.8改2 と同じく、`-> (A, B) | E` の括弧は「合併が全体を
 `(A, B)` 全体が一つの選択肢になり、エラーや `nil^` と並びます。
 
 ```rhat
-errordef^ Error { Zero }
-let^ divmod = f^ a:i64^, b:i64^ -> (i64^, i64^) | Error.Zero {
-    if^ b = 0 { return^ Error.Zero{} }
-    return^ a / b, a % b
+errordef^Error { Zero }
+let^divmod = f^a:i64^, b:i64^-> (i64^, i64^) | Error.Zero {
+    if^b = 0 { return^Error.Zero{} }
+    return^a / b, a % b
 }
 
-let^ q, r = divmod(7, 0) catch^ (0, 0)   # エラーなら代替の値
-let^ s, t = try^ divmod(7, 2)           # エラーなら伝播
-let^ a, b = find(n) ?? (0, "none")      # -> (i64^, string^) | nil^ の場合
+let^q, r = divmod(7, 0) catch^(0, 0)   # エラーなら代替の値
+let^s, t = try^divmod(7, 2)            # エラーなら伝播
+let^a, b = find(n) ?? (0, "none")      # -> (i64^, string^) | nil^ の場合
 ```
 
 - 合併のままでは分解できません。`try^`・`catch^`・`??` で取り出します。

@@ -99,9 +99,9 @@ R^ はこれを採りません。
 `s.bytes` は同じ記憶を指す `u8^[..]` のビューです（確保なし）。バイト数・個々のバイト・バイト範囲はこれで扱います。
 
 ```rhat
-let^ size = s.bytes.len        # バイト数
-let^ first = s.bytes[0]        # u8^
-let^ raw = s.bytes[0 .. 4]     # u8^[..]
+let^size = s.bytes.len        # バイト数
+let^first = s.bytes[0]        # u8^
+let^raw = s.bytes[0 .. 4]     # u8^[..]
 ```
 
 `string^` 自身は `[]` と `len` を持ちません。文字とバイトの取り違えを、書く時点で防ぐためです。
@@ -119,16 +119,16 @@ let^ raw = s.bytes[0 .. 4]     # u8^[..]
 ### 文字単位の操作
 
 ```rhat
-let^ s = "aあ😀"
-var^ at = 0
-repeat^ while^ at < s.bytes.len {
-    let^ c, next = s.decode(at)      # 文字と、次の文字のバイト位置
-    print^(c, s.slice(at .. next))    # char^ と、その1文字分のビュー
+let^s = "aあ😀"
+var^at = 0
+repeat^while^at < s.bytes.len {
+    let^c, next = s.decode(at)       # 文字と、次の文字のバイト位置
+    print^(c, s.slice(at .. next))   # char^ と、その1文字分のビュー
     at := next
 }
 
-let^ cs = s.chars()                   # char^[grow^]: 一度だけ O(n) で変換して確保
-print^(cs[2], cs.len)                 # 以後は O(1)
+let^cs = s.chars()                   # char^[grow^]: 一度だけ O(n) で変換して確保
+print^(cs[2], cs.len)                # 以後は O(1)
 ```
 
 - `s.decode(at:i64^) -> (char^, i64^)`: バイト位置 `at` から1文字を解読し、文字と次の位置を返します。
@@ -153,13 +153,13 @@ print^(cs[2], cs.len)                 # 以後は O(1)
 追記の手段を UTF-8 を保つものに限るため、任意のバイトを追記できる素の `u8^[grow^]` と区別します。
 
 ```rhat
-import^ std.text
-var^ out = std.text.Builder{}
+import^std.text
+var^out = std.text.Builder{}
 out.append("x = ")
-(42).write_text(ref^ out)
+(42).write_text(ref^out)
 out.append_char(char^"!")
 print^(out.text())           # x = 42!
-let^ s = (0.1).tostring()    # 新しい Builder
+let^s = (0.1).tostring()     # 新しい Builder
 print^(s.text())
 ```
 
@@ -191,7 +191,7 @@ print^(s.text())
 L^ の 01 の 5.4 と同じく `$"..."` と書きます。穴は `{式}` か `{式:書式}` です。
 
 ```rhat
-print^($"n = {n}, pi = {pi:%.2f}, hex {n:%04x}")   # print^ はそのまま表示する
+print^($"n = {n}, pi = {pi:%.2f}, hex {n:%04x}") # print^ はそのまま表示する
 out.append($"[{n:%5d}]")                         # Builder にはそのまま追記する
 let^ s = $"x = {x}"                              # それ以外は新しい Builder を作る
 print^(s.text())

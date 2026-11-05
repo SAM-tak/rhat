@@ -6,9 +6,9 @@
 `nil^` は単位型でも値でもあり、整数のゼロ、`false^`、空文字列とは区別します。
 
 ```rhat
-var^ count:i32^ | nil^ = nil^
+var^count:i32^ | nil^ = nil^
 count := 12
-let^ read=f^ value:i32^ | nil^ ->i32^ { value ?? 0 }
+let^read=f^value:i32^| nil^->i32^{ value ?? 0 }
 ```
 
 無名の合併型は選択肢の集合で同一性を決めます。順序と重複は問いません。
@@ -36,8 +36,8 @@ let^ read=f^ value:i32^ | nil^ ->i32^ { value ?? 0 }
 参照値自体は常に存在します。参照先の不在を調べる場合は `(*ref)?` と書きます。
 
 ```rhat
-var^ value:i32^ | nil^ = 12
-if^ value? {
+var^value:i32^| nil^= 12
+if^value? {
     print^(value + 1)
 else^:
     print^("absent")
@@ -56,12 +56,12 @@ else^:
 ## ニル伝播と代替値
 
 ```rhat
-def^ Point { self^{ x:i32^=0 } }
-let^ point:Point | nil^ = Point{x=42}
+def^Point { self^{ x:i32^= 0 } }
+let^point:Point | nil^= Point{ x = 42 }
 print^(point?.x ?? 0)
 
-var^ items:i32^[2] = {10,20}
-let^ view:ref^ i32^[2] | nil^ = ref^ items
+var^items:i32^[2] = { 10, 20 }
+let^view:ref^i32^[2] | nil^= ref^items
 print^(view?[1] ?? 0)
 ```
 
@@ -90,7 +90,7 @@ print^(view?[1] ?? 0)
 非 nullable な左辺では通常の代入と同じです。
 
 ```rhat
-var^ n:i32^ | nil^ = 1
+var^n:i32^| nil^= 1
 n ?+= 2
 n ?:= nil^
 n ?:= 99  # 不在のまま

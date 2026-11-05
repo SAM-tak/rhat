@@ -1,32 +1,32 @@
 # 型パラメータ・型別名・型定数
 
-`def^ Vec2<T>` の型パラメータ、`let^ Float2 = Vec2<f32^>` の型別名、
+`def^Vec2<T>` の型パラメータ、`let^Float2 = Vec2<f32^>` の型別名、
 型に属する `ZERO` などの定数を実装しています。
 
 ```rhat
-def^ Vec2<T> {
+def^Vec2<T> {
     self^{ x:T, y:T }
     ZERO = Self^{ x=T.ZERO, y=T.ZERO }
     ONE = Self^{ x=T.ONE, y=T.ONE }
-    op^+ = f^ self^, other:Self^ -> Self^ {
+    op^+ = f^self^, other:Self^-> Self^{
         Self^{ x=self^.x+other.x, y=self^.y+other.y }
     }
-    dot = f^ self^, other:Self^ -> T {
+    op^dot^= f^self^, other:Self^-> T {
         self^.x*other.x + self^.y*other.y
     }
 }
 
-let^ Float2 = Vec2<f32^>
-let^ a = Float2{ x=2.0, y=3.0 }
-let^ b:Vec2<f32^> = a + Float2.ONE
-print^(b.x, b.y, a.dot(b))
+let^Float2 = Vec2<f32^>
+let^a = Float2{ x=2.0, y=3.0 }
+let^b:Vec2<f32^> = a + Float2.ONE
+print^(b.x, b.y, a dot^b)
 ```
 
 ## 型定義の具体化
 
 型引数は `<...>` に明示します。複数の型引数、入れ子の具体化、参照型・配列型・合併型も指定できます。
 型パラメータはフィールド、引数、返り値、基底型、初期化子、メソッド本体で使えます。
-`struct^ Box<T> { value:T }` や `def^ Result<T> = T | nil^` も同じ規則です。
+`struct^Box<T> { value:T }` や `def^Result<T> = T | nil^` も同じ規則です。
 
 定義の同一性と型引数の組で具体型を共有します。型別名やインポートの別名は別の具体型を作りません。
 `Vec2<f32^>` と `Vec2<i32^>` は異なる公称型です。
@@ -46,18 +46,18 @@ print^(b.x, b.y, a.dot(b))
 トップレベルの `let^` は、右辺が型ならコンパイル時の型別名になります。実行時の保存領域は持ちません。
 
 ```rhat
-let^ Float2 = Vec2<f32^>
-let^ AnotherName = Float2
-def^ Position : Float2 {}
-def^ Velocity : Float2 {}
-def^ Choice = Float2 | nil^
+let^Float2 = Vec2<f32^>
+let^AnotherName = Float2
+def^Position : Float2 {}
+def^Velocity : Float2 {}
+def^Choice = Float2 | nil^
 ```
 
 `Float2`・`AnotherName`・`Vec2<f32^>` は同じ型です。型注釈、構築式、型メンバの参照、合成元で使えます。
 `Position` と `Velocity` は別の公称型で、`Choice` も独立した名前付き合併型です。
-`def^ Name = Type` は一種類だけを選択肢に持つ公称の合併型であり、型別名にはなりません。
+`def^Name = Type` は一種類だけを選択肢に持つ公称の合併型であり、型別名にはなりません。
 
-ライブラリでは `public^ let^ Float2 = Vec2<f32^>` として公開できます。
+ライブラリでは `public^let^Float2 = Vec2<f32^>` として公開できます。
 別のモジュールから同じ具体型を参照しても、元の定義にある具体化を共有します。
 
 ## 型に属する定数
@@ -82,14 +82,14 @@ def^ Choice = Float2 | nil^
 受け手を取らず、`Type.name(...)` のように型名から呼びます。
 
 ```rhat
-def^ Vec2<T> {
+def^Vec2<T> {
     self^{ x:T, y:T }
-    make = f^ x:T, y:T -> Self^ { Self^{ x=x, y=y } }
-    distance = f^ a:Self^, b:Self^ -> T { (a - b).length() }
+    make = f^x:T, y:T -> Self^{ Self^{ x=x, y=y } }
+    distance = f^a:Self^, b:Self^-> T { (a - b).length() }
 }
 
-let^ a = Float2.make(1.0, 2.0)
-let^ d = Vec2<f32^>.distance(a, Float2.ONE)
+let^a = Float2.make(1.0, 2.0)
+let^d = Vec2<f32^>.distance(a, Float2.ONE)
 ```
 
 - 型別名・具体化した型・モジュール修飾（`v.Float2.make(...)`）から呼べます。

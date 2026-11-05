@@ -4,11 +4,11 @@
 パスは UTF-8 で、Windows では UTF-16 に変換して `_wfopen_s` / `_wremove` で開くので、日本語などのパスも使えます。
 
 ```rhat
-let^ fs = import^ std.fs
+let^fs = import^std.fs
 
-var^ wad:u8^[grow^] = {}
-let^ loaded = fs.read("freedoom1-e1m1.wad", ref^ wad)       # 全体を wad の末尾に追加
-for^ loaded { when^ fits^ fs.Error: print^("cannot read") other^: print^(wad.len) }
+var^wad:u8^[grow^] = {}
+let^loaded = fs.read("freedoom1-e1m1.wad", ref^ wad)       # 全体を wad の末尾に追加
+for^loaded { when^fits^fs.Error: print^("cannot read") other^: print^(wad.len) }
 
 fs.write("out.bin", wad[0 .. 16])                            # 作成または置換
 fs.append("log.bin", wad[0 .. 4])                            # 末尾に追加（無ければ作成）

@@ -6,14 +6,14 @@
 数値変換や構造的なメンバ比較は行いません。
 
 ```rhat
-def^ Point { self^{ x:i32^=0 } }
-var^ value:Point | i32^ | nil^ = Point{x=42}
-if^ value fits^ Point {
+def^Point { self^{ x:i32^=0 } }
+var^value:Point | i32^| nil^= Point{x=42}
+if^value fits^Point {
     print^(value.x)
-elseif^ value fits^ i32^:
+elseif^value fits^i32^:
     print^(value + 1)
 else^:
-    print^(value fits^ nil^)
+    print^(value fits^nil^)
 }
 ```
 
@@ -28,7 +28,7 @@ else^:
 名前付き合併型は選択肢の集合を問い、名前付き合併型を選択肢にした入れ子は
 独立した値として保持します。入れ子の合併型を暗黙に再帰展開する判定は行いません。
 
-静的合成 `def^ Derived : Base` による明示的な派生も、`Base` への適合として認めます。
+静的合成 `def^Derived : Base` による明示的な派生も、`Base` への適合として認めます。
 絞り込みは具体的な選択肢を保持し、値を基底の配置へ切り詰めません。
 複数の具体型が残る場合は合併型のままであり、共通フィールドを構造的に引く操作は追加しません。
 参照は参照として判定します。`ref^ T` と `T` を暗黙に同一視しません。
@@ -59,9 +59,9 @@ else^:
 片方の枝の変更によって、もう片方の枝に入る時点の情報を失うことはありません。
 
 ```rhat
-def^ Holder { self^{ item:Point | nil^ = nil^ } }
-var^ holder = Holder{ item=Point{ x = 7 } }
-if^ holder.item fits^ Point {
+def^Holder { self^{ item:Point | nil^= nil^ } }
+var^holder = Holder{ item=Point{ x = 7 } }
+if^holder.item fits^Point {
     print^(holder.item.x)
 }
 ```
@@ -78,17 +78,17 @@ if^ holder.item fits^ Point {
 途中の `break^` があるため、ループを抜けた後に終了条件による絞り込みは残しません。
 
 ```rhat
-for^ let^ result=value {
-when^ fits^ Point:
+for^let^result=value {
+when^fits^Point:
     print^(result.x, it^.x)
-when^ fits^ i32^:
+when^fits^i32^:
     print^(result + 1)
 other^:
     print^("absent")
 }
 ```
 
-`when^ fits^ T:` は条件付きの型パターンです。`it^` と、変更されていない元の
+`when^fits^T:` は条件付きの型パターンです。`it^` と、変更されていない元の
 名前付き焦点にも情報を渡します。主語の評価は一度だけです。
 式形でも使用できます。`other^:` を省くときは、腕で対象の合併型のすべての選択肢を尽くさなければなりません（[構文](syntax.md#パターンマッチの網羅)）。尽くしていない選択肢は、`other^:` の中の `it^` の型として残ります。
 

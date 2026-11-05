@@ -19,8 +19,8 @@ R^ でも、トークンを書き換える汎用マクロではなく、型検�
 ## 構文
 
 ```rhat
-let^ show = template^ p^ ... {
-    inline^ for^ x in^ ... { write(x) }   # 型ごとの write はオーバーロードで選ぶ
+let^show = template^p^... {
+    inline^for^x in^... { write(x) }   # 型ごとの write はオーバーロードで選ぶ
 }
 show(1, "two", 3.0, true^)
 ```

@@ -4,12 +4,12 @@
 境界でもそのまま整数として渡せます。
 
 ```rhat
-enum^ Mode { Idle, Walk, Dash = 10, Stop }     # Idle=0, Walk=1, Dash=10, Stop=11
-enum^ Small : u8^ { A, B = 255 }               # 基底型を指定
-enum^ Sign : i16^ { Minus = -1, Zero, Plus }
+enum^Mode { Idle, Walk, Dash = 10, Stop }     # Idle=0, Walk=1, Dash=10, Stop=11
+enum^Small : u8^{ A, B = 255 }                # 基底型を指定
+enum^Sign : i16^{ Minus = -1, Zero, Plus }
 
-let^ m = Mode.Dash
-print^(m, m = Mode.Dash, i32^(m))              # Dash true 10
+let^m = Mode.Dash
+print^(m, m = Mode.Dash, i32^(m))             # Dash true 10
 ```
 
 ## 宣言
@@ -42,12 +42,12 @@ print^(m, m = Mode.Dash, i32^(m))              # Dash true 10
 
 ## パターンマッチの網羅
 
-`for^ m { when^ Mode.Idle: ... }` の腕でメンバをすべて名指しすれば、`other^` は要りません。
+`for^m { when^Mode.Idle: ... }` の腕でメンバをすべて名指しすれば、`other^` は要りません。
 一つでも欠けると、式形はエラーです。文形は網羅を検査せず、当たらなければ何もしません。
 
 ```rhat
-let^ weight = f^ m:Mode -> i32^ {
-    for^ m: when^ Mode.Idle: 1 when^ Mode.Walk: 2 when^ Mode.Dash, Mode.Stop: 3;
+let^weight = f^m:Mode -> i32^{
+    for^m: when^Mode.Idle: 1 when^Mode.Walk: 2 when^Mode.Dash, Mode.Stop: 3;
 }
 ```
 

@@ -1,13 +1,13 @@
 # 可変長引数とコマンド引数
 
 ```rhat
-let^ sum = f^ ...:i64^ -> i64^ {
-    var^ total:i64^ = 0
-    for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { total += ...{i} }
-    return^ total
+let^sum = f^...:i64^-> i64^{
+    var^total:i64^= 0
+    for^var^i:i64^= 0 while^i < ....len next^i += 1 { total += ...{i} }
+    return^total
 }
-let^ label = f^ name:string^, ...:i64^ -> i64^ { sum(...) + ....len }
-var^ values:i64^[3] = {1, 2, 3}
+let^label = f^name:string^, ...:i64^-> i64^{ sum(...) + ....len }
+var^values:i64^[3] = {1, 2, 3}
 print^(sum(), sum(1, 2, 3), label("x", 10, 20), sum(values...))   # 0 6 32 6
 ```
 
@@ -26,9 +26,9 @@ L^ と同じく、引数リストの末尾に `...:T` を置くと、固定引�
 呼び出し式の中では使えますが、束縛したり return^ で持ち出したりはできません。
 
 ```rhat
-let^ id = f^ ...:i32^ -> i32^[..] { return^ ... }
-print^(id(4, 8)[1])        # 8
-let^ kept = id(4, 8)      # 拒否: reference would outlive its owner
+let^id = f^...:i32^-> i32^[..] { return^... }
+print^(id(4, 8)[1])      # 8
+let^kept = id(4, 8)      # 拒否: reference would outlive its owner
 ```
 
 要素型 `T` に所有値（`T[grow^]` など）は使えません。参照 `...:ref^ T` は使えます。
@@ -39,8 +39,8 @@ let^ kept = id(4, 8)      # 拒否: reference would outlive its owner
 `f(...)` のように `...` を単独で書いたときも、集めた引数の転送です。
 
 ```rhat
-let^ twice = f^ xs:i64^[..] -> i64^ { sum(xs...) * 2 }
-let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return^ this^(n - 1, ...) }
+let^twice = f^xs:i64^[..] -> i64^{ sum(xs...) * 2 }
+let^depth = f^n:i64^, ...:i64^-> i64^{ if^n = 0 { return^sum(...) } return^this^(n - 1, ...) }
 ```
 
 転送する列は可変長の枠のただ一つの引数でなければなりません（`sum(1, xs...)` は未対応）。
@@ -57,11 +57,11 @@ let^ depth = f^ n:i64^, ...:i64^ -> i64^ { if^ n = 0 { return^ sum(...) } return
 
 ## コマンド引数
 
-エントリーファイルのトップレベルは `p^ ...:string^` の本体で、`...` はプログラム名を除いたコマンド引数です。
+エントリーファイルのトップレベルは `p^...:string^` の本体で、`...` はプログラム名を除いたコマンド引数です。
 
 ```rhat
 print^(....len)
-for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...{i}) }
+for^var^i:i64^= 0 while^i < ....len next^i += 1 { print^(...{i}) }
 ```
 
 `rhat run SOURCE [OPTIONS] -- ARGS...` では `--` より後ろがプログラムへの引数です。

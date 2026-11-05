@@ -51,10 +51,10 @@ main という名前に特別な意味はなく、main 関数は必須ではあ�
 プログラム全体で共有するグローバル変数ではありません。
 
 ```rhat
-var^ points:V[grow^] = {}
-var^ count:i64^ = 0
-let^ add = p^ x:f32^ {
-    points.push(V{x=x, y=1.0})
+var^points:V[grow^] = {}
+var^count:i64^= 0
+let^add = p^x:f32^{
+    points.push(V{ x = x, y = 1.0 })
     count += 1
 }
 add(1.0)
@@ -62,8 +62,8 @@ add(1.0)
 
 - 実装は、関数が（呼び出し先を通じて間接的にでも）使う束縛を、隠れた先頭の引数として渡す書き換えです。
   どちらも `ref^` で渡り、コピーしません。`let^` の参照は読み取り専用で、関数の中から要素・フィールドへの代入、
-  `ref^` での借用、`p^ self^` メソッドの呼び出しはいずれも `let^` への変更として拒否します。
-  参照先はファイル実行全体で生きる束縛なので、`let^ names:string^[3]` の要素や `let^` 配列のスライスも関数から返せます。
+  `ref^` での借用、`p^self^` メソッドの呼び出しはいずれも `let^` への変更として拒否します。
+  参照先はファイル実行全体で生きる束縛なので、`let^names:string^[3]` の要素や `let^` 配列のスライスも関数から返せます。
   所有型（`T[grow^]` など）の `let^` も使えます。寿命・縮小・別名・絞り込み・効果の検査は、普通の引数と同じく働きます。
   たとえば `f^` からは書き込めず（`p^` が必要）、呼び出し先が縮めうる `flex^` の要素への参照を持ったまま呼ぶことはできず、
   呼び出しを挟むとその束縛への `nil^` の絞り込みは消えます。
@@ -107,11 +107,11 @@ C が新しく定義したメソッドにはそのアクセス権がありませ
 
 ## テンプレートと引数
 
-型定義の `def^ Vec2<T>`、`let^ Float2 = Vec2<f32^>` による型別名、
+型定義の `def^Vec2<T>`、`let^Float2 = Vec2<f32^>` による型別名、
 型に属する `ZERO` などの定数、`Type.make(...)` で呼ぶ静的メンバ関数は [型パラメータと型定数](generics.md) を参照してください。
 
 `template^` は `template^f^` / `template^p^` として関数・手続きリテラルを修飾します。
-`let^ name = template^p^ ...`、メソッドの `name = template^f^ ...`、
+`let^name = template^p^ ...`、メソッドの `name = template^f^ ...`、
 無名リテラルの直接呼び出しに共通の規則です。宣言の前に置く旧構文は受け付けません。
 通常の `f^` / `p^` も、無注釈引数があれば同一モジュール内の呼び出しが渡す実型の並びで
 本体を検査します。呼び出し形ごとに返り値も推論し、複数の形を合併して一つの署名にはしません。
@@ -216,12 +216,12 @@ LLVM の範囲外変換に到達して poison を生成することはありま�
 ## 公称・無名の合併型
 
 ```rhat
-def^ Num { self^{ value:i32^ } }
-def^ Pair { self^{ left:u32^, right:u32^ } }
-def^ Expr = Num | Pair
-var^ values=Expr[grow^]{Num{value=42},Pair{left=1,right=2}}
-let^ value=values[0]
-if^ value fits^ Num { print^(value.value) }
+def^Num { self^{ value:i32^} }
+def^Pair { self^{ left:u32^, right:u32^} }
+def^Expr = Num | Pair
+var^values=Expr[grow^]{Num{value=42},Pair{left=1,right=2}}
+let^value=values[0]
+if^value fits^Num { print^(value.value) }
 ```
 
 名前付き合併型自身は公称型です。同じ選択肢の組を持つ別宣言も別の型であり、相互に暗黙変換しません。
@@ -231,11 +231,11 @@ if^ value fits^ Num { print^(value.value) }
 名前付き合併型では重複・不明な型・循環した値配置を拒否します。
 入れ子の合併型も選択肢にできます。所有領域を含む選択肢も置けます（[所有値を含む合併](errors.md#所有値を含む合併)）。
 
-`value fits^ Type` は適合を判定して bool^ を返し、分岐内で値の型を絞り込みます。
-`if^ value fits^ Num { print^(value.value) }` と書けます。
+`value fits^Type` は適合を判定して bool^ を返し、分岐内で値の型を絞り込みます。
+`if^value fits^Num { print^(value.value) }` と書けます。
 型の判別・取り出し用の組み込みメソッドはありません。
 型を証明せずに合併型の選択肢固有のメンバへアクセスすることはコンパイル時に拒否します。
-`assert^(value fits^ Num)` も、正常に続く経路では型の証明になります。
+`assert^(value fits^Num)` も、正常に続く経路では型の証明になります。
 取り出した構造体の private^ メンバへのアクセスは通常の規則に従います。
 合併型自体から可変のペイロード参照は公開しません。値全体の再代入で選択肢を変更します。
 

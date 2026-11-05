@@ -2,12 +2,12 @@
 
 ![R^ logo](./media/rhat-logo.png)
 
-R^ `(rhat)` は L^ の構文を基にした、GC を使わないシステム言語の実装です。
+R^ `(rhat)` は [L^](https://github.com/SAM-tak/lhat) の構文を基にした、GC を使わないシステム言語の実装です。
 
 [Goose(プログラミング言語)](https://github.com/aardappel/goose)の強い影響を受けて誕生しました。
 無注釈型安全を実現するアイデア（データスタックによるメモリモデル）はほぼ `Goose` からの借用です。
 
-現在は **0.1 の実行可能な言語サブセット**です。構文解析・名前解決・公称型・合成・テンプレート具体化・
+現在は **0.3 の実行可能な言語サブセット**です。構文解析・名前解決・公称型・合成・テンプレート具体化・
 型推論・寿命検査・データスタック計画・テキスト LLVM IR の生成から、
 Clang によるネイティブ実行ファイルの生成までを実装しています。
 
@@ -50,8 +50,39 @@ R^ は非純粋関数型言語なのではなく手続き型とのハイブリ�
 
 ### 注釈無しでメモリ安全性を得られる
 
-Goose のメモリモデルを採用することで、R^ もまた一切ライフタイムアノテーションを書くことなく
-メモリ安全性を達成しています。
+Goose のメモリモデルを採用することで、R^ もまた一切ライフタイムアノテーションを書くことなくメモリ安全性を達成しています。
+
+### かつ、オブジェクト指向プログラミング言語
+
+しかし、 Goose は最近のトレンドを汲んでオブジェクト指向プログラミング機能のサポートにやや消極的です。（メンバメソッド
+という概念がなく、単に 第一引数の型が一致するなら、メソッド呼び出しの構文を採用することもできる、という程度に留まっている）
+
+R^ ははっきりとオブジェクト指向プログラミング言語です。クラスベースではありませんがメンバメソッドを定義でき、演算子の
+オーバーロードができ、順序付きミックスインと委譲によって安全で強力なオブジェクトの継承機能を提供します。
+
+```rhat
+def^Vec2<T> {
+    self^{ x:T, y:T }
+    ZERO = Self^{ x = T.ZERO, y = T.ZERO }
+    ONE = Self^{ x = T.ONE, y = T.ONE }
+    RIGHT = Self^{ x = T.ONE, y = T.ZERO }
+    LEFT = Self^{ x = -T.ONE, y = T.ZERO }
+    UP = Self^{ x = T.ZERO, y = T.ONE }
+    DOWN = Self^{ x = T.ZERO, y = -T.ONE }
+    op^+ = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x + other.x, y = self^.y + other.y }
+    }
+    op^- = f^self^, other:Self^-> Self^{
+        Self^{ x = self^.x - other.x, y = self^.y - other.y }
+    }
+    op^* = f^self^, scale:T -> Self^{
+        Self^{ x = self^.x * scale, y = self^.y * scale }
+    }
+    op^dot^= f^self^, other:Self^-> T {
+        self^.x * other.x + self^.y * other.y
+    }
+}
+```
 
 ## ビルドと実行
 

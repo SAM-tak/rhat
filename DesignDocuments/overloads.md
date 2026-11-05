@@ -132,14 +132,14 @@ def^ Vec {
 自動借用を含めて引数の型域が重なる演算子定義も、宣言時に重複として拒否します。
 
 ```rhat
-def^ F2 {
+def^F2 {
     self^{x:f32^=0.0,y:f32^=0.0}
-    op^- = f^self^,other:ref^Self^ {F2{x=self^.x-other.x,y=self^.y-other.y}}
-    op^dot^ = f^self^,other:ref^Self^ {self^.x*other.x+self^.y*other.y}
-    square_length = f^self^ {self^ dot^ self^}
+    op^- = f^self^,other:ref^Self^{ F2{ x = self^.x - other.x, y = self^.y - other.y } }
+    op^dot^ = f^self^,other:ref^Self^ { self^.x * other.x + self^.y * other.y }
+    square_length = f^self^ { self^ dot^ self^}
 }
-let^a=F2{x=3.0,y=4.0}
-let^b=F2{}
+let^a = F2{ x = 3.0, y = 4.0 }
+let^b = F2{}
 print^((a-b).square_length())
 ```
 

@@ -4,16 +4,16 @@
 
 `errordef^` の各種別は独立した公称型です。宣言名は種別の合併型となります。
 成功値と同じく、タグ付き共用体の値として返します。ネイティブの例外機構は使いません。
-構築は通常の構造体と同じ `Error.Invalid{}` です。エラーの合併は `for^ r { when^ fits^ Error.Invalid: ... }` で受けられ、式形で `other^:` を省くなら全種別を尽くす必要があります（[網羅](syntax.md#パターンマッチの網羅)）。構築接頭辞の `error^` は廃止しました。
+構築は通常の構造体と同じ `Error.Invalid{}` です。エラーの合併は `for^r { when^fits^Error.Invalid: ... }` で受けられ、式形で `other^:` を省くなら全種別を尽くす必要があります（[網羅](syntax.md#パターンマッチの網羅)）。構築接頭辞の `error^` は廃止しました。
 エラーかどうかは `errordef^` の宣言元の型で決まり、構築の綴りには依存しません。
 具体的な種別型が期待される位置では `{}` も使えますが、合併型の文脈から裸の `{}` で
 エラー種別を暗黙に選ぶことはしません。その場合は種別名を明示します。
 
 ```rhat
-errordef^ Error { Invalid, Missing }
-let^ read=f^ n:i32^ ->i32^ | Error.Invalid {
-    if^ n<0 { return^ Error.Invalid{} }
-    return^ n
+errordef^Error { Invalid, Missing }
+let^read=f^n:i32^->i32^| Error.Invalid {
+    if^n<0 { return^Error.Invalid{} }
+    return^n
 }
 ```
 
@@ -22,15 +22,15 @@ let^ read=f^ n:i32^ ->i32^ | Error.Invalid {
 種別の本体は `def^` と同じ形で、フィールドは `self^{ ... }` に、メソッドはその外に書きます。
 
 ```rhat
-errordef^ ParseError {
+errordef^ParseError {
     Syntax {
-        self^{ at:i64^ = 0, near:string^ = "" }
-        message = f^ self^ -> string^ { self^.near }
+        self^{ at:i64^= 0, near:string^= "" }
+        message = f^self^-> string^{ self^.near }
     },
     Eof,
 }
-return^ ParseError.Syntax{ at = 3, near = s }
-return^ ParseError.Eof{ message = "no input" }
+return^ParseError.Syntax{ at = 3, near = s }
+return^ParseError.Eof{ message = "no input" }
 ```
 
 どの種別も次を持ちます。宣言に書く必要はありません。
@@ -68,8 +68,8 @@ L^ はエラー値に生成位置を刻まず、`std.debug.traceback()` を `mes
 エラーを含まない型に対しては、そのままの値となります。
 
 ```rhat
-let^ increment=f^ n:i32^ {
-    return^ try^ read(n)+1
+let^increment=f^n:i32^{
+    return^try^read(n)+1
 }
 ```
 
@@ -79,13 +79,13 @@ let^ increment=f^ n:i32^ {
 `R^ runtime error at line N: unhandled error E.Bad` のようにエラー種別名を表示し、終了コード 1 で終了します。
 
 `try^` は単項演算子と同じ優先順位です。式全体を対象にするときは `try^ (expression)` と書きます。
-エラーだけの値に対する `try^` は通常経路へ戻らず、`catch^ try^ it^` のような再送出にも使えます。
+エラーだけの値に対する `try^` は通常経路へ戻らず、`catch^try^it^` のような再送出にも使えます。
 
 ## 二項 `catch^`
 
 ```rhat
-let^ value=read(-1) catch^ 0
-let^ selective=read(-1) catch^ if^ it^ fits^ Error.Invalid: 0 el^: try^ it^;
+let^value = read(-1) catch^0
+let^selective = read(-1) catch^if^it^fits^Error.Invalid: 0 el^: try^it^;
 ```
 
 左辺を一度だけ評価し、成功ならその値を、エラーなら右辺を評価した値を返します。
@@ -101,9 +101,9 @@ let^ selective=read(-1) catch^ if^ it^ fits^ Error.Invalid: 0 el^: try^ it^;
 
 ```rhat
 do^{
-    let^ value=try^ read(-1)
+    let^value=try^read(-1)
     print^(value)
-catch^ Error.Invalid:
+catch^Error.Invalid:
     print^("invalid")
 catch^:
     print^("other error")
@@ -127,8 +127,8 @@ catch^:
 ## `panic^`
 
 ```rhat
-panic^ "not implemented"
-let^ value=read(-1) catch^ panic^ it^
+panic^"not implemented"
+let^value = read(-1) catch^panic^it^
 ```
 
 `panic^ 値` は文字列か、エラー値の種別名を `R^ runtime error at line N: panic: ...` として表示し、
@@ -164,16 +164,16 @@ let^ value=read(-1) catch^ panic^ it^
 出力の受け先として `ref^ T[grow^]` を渡す必要はありません。
 
 ```rhat
-errordef^ IoError { Missing }
-let^ read = p^ path:string^ -> u8^[grow^] | IoError.Missing {
-    if^ !exists(path) { return^ IoError.Missing{} }
-    var^ bytes:u8^[grow^] = {}
+errordef^IoError { Missing }
+let^read = p^path:string^-> u8^[grow^] | IoError.Missing {
+    if^!exists(path) { return^IoError.Missing{} }
+    var^bytes:u8^[grow^] = {}
     ...
-    return^ bytes
+    return^bytes
 }
-var^ data = try^ read("a.txt")       # 呼び出し元へ伝播
-let^ text = read("b.txt") catch^ u8^[grow^]{0}
-let^ found = lookup(key) ?? {}   # -> T[grow^] | nil^ の場合、期待型から空配列
+var^data = try^read("a.txt")       # 呼び出し元へ伝播
+let^text = read("b.txt") catch^u8^[grow^]{0}
+let^found = lookup(key) ?? {}   # -> T[grow^] | nil^ の場合、期待型から空配列
 ```
 
 - 合併は固定長の値で、所有値の選択肢はその記述子を中身に持ちます。データは合併を持つ束縛のデータスタックにあり、

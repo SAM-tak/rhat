@@ -1,28 +1,37 @@
 # C 関数の呼び出し（externC^）
 
 ```rhat
-externC^ hypot:f^ x:f64^, y:f64^ ->f64^;
-externC^ frexp:p^ x:f64^, exponent:ref^ i32^ ->f64^;
-externC^ memset:p^ s:u8^[..], c:i32^, n:u64^;
-externC^ puts:p^ s:string^ ->i32^;
+externC^hypot:f^x:f64^, y:f64^->f64^;
+externC^frexp:p^x:f64^, exponent:ref^i32^->f64^;
+externC^memset:p^s:u8^[..], c:i32^, n:u64^;
+externC^puts:p^s:string^->i32^;
 
-var^ exponent:i32^=0
-print^(hypot(3.0, 4.0), frexp(8.0, ref^ exponent), exponent)   # 5 0.5 4
+var^exponent:i32^=0
+print^(hypot(3.0, 4.0), frexp(8.0, ref^exponent), exponent)   # 5 0.5 4
 ```
 
-`externC^ 名前:署名;` は、本体のない関数を C の関数へ結び付けます。名前がそのまま C のシンボル名になり、
+`externC^名前:署名;` は、本体のない関数を C の関数へ結び付けます。名前がそのまま C のシンボル名になり、
 呼び出しは C の呼び出し規約による直接呼び出しになります。データスタックの位置や結果の書き込み先は渡しません。
 
-R^ 側の名前とシンボル名を分けるときは、関数リテラルの代わりに `externC^ シンボル:署名;` を束縛します。
-裸の `externC^ 名前:署名;` は、シンボル名と同じ名前で束縛する省略形です。
+R^ 側の名前とシンボル名を分けるときは、関数リテラルの代わりに `externC^シンボル:署名;` を束縛します。
+裸の `externC^名前:署名;` は、シンボル名と同じ名前で束縛する省略形です。
 
 ```rhat
-public^ let^ sqrt = externC^ sqrtf:f^ x:f32^ ->f32^;
-                  & externC^ sqrt:f^ x:f64^ ->f64^;
+public^let^sqrt = externC^sqrtf:f^x:f32^->f32^;
+                & externC^sqrt:f^x:f64^->f64^;
 ```
 
 トップレベルの関数と同じく、同名の候補は一つの `let^` 宣言で `&` を使ってつなぎます。
-後から同名の関数を宣言することはできません。`overload^` は要りません。
+（ただし、この構文は廃止される可能性があります）
+
+または、
+
+```rhat
+public^let^sqrt = externC^sqrtf:f^x:f32^->f32^;
+overload^sqrt = externC^sqrt:f^x:f64^->f64^;
+```
+
+と `overload^` を使って書けます。`let^` は必要なく、可視情報は `let^` で宣言された元の宣言を引き継ぎます。
 
 署名は関数リテラルと同じく `f^` / `p^`、名前付きの引数、`->` の後の結果型で書き、末尾の `;` で終わります。
 すべての引数に型注釈が必要です。結果を省略すると C の `void` です。`template^` と本体は書けません。
@@ -45,9 +54,9 @@ C 以外の呼び出し規約が必要になった場合は、文字列で規約
 NUL 終端を保証するのは文字列リテラルだけです。部分スライスなど、それ以外の終端は呼び出し側の責任です。
 
 ```rhat
-def^ LLDiv { self^{ quot:i64^ = 0, rem:i64^ = 0 } }
-externC^ lldiv:f^ n:i64^, d:i64^ -> LLDiv;
-let^ q = lldiv(17, 5)            # q.quot = 3, q.rem = 2
+def^LLDiv { self^{ quot:i64^ = 0, rem:i64^ = 0 } }
+externC^lldiv:f^ n:i64^, d:i64^ -> LLDiv;
+let^q = lldiv(17, 5)            # q.quot = 3, q.rem = 2
 ```
 
 ### 構造体の値渡しと C の中継コード
@@ -65,11 +74,11 @@ R^ の署名から作ります（ポインタは型なしの `void *`）。中�
 ### C のヘッダーと型（includeC^ / externC^ def^）
 
 ```rhat
-includeC^ "lhat.h"                                          # このモジュールの中継コードが読むヘッダー
-externC^ def^ LhatMachine;                                  # 不透明な C 型: ref^ としてだけ使える
-externC^ def^ LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } } # C の LhatValue と同じ配置
-externC^ lhat_integer:f^ i:i64^ -> LhatValue;               # static inline 関数も呼べる
-externC^ lhat_machine_new:p^ -> ref^ LhatMachine | nil^;
+includeC^"lhat.h"                                          # このモジュールの中継コードが読むヘッダー
+externC^def^LhatMachine;                                   # 不透明な C 型: ref^ としてだけ使える
+externC^def^LhatValue { self^{ as:u64^= 0, tag:i32^= 0 } } # C の LhatValue と同じ配置
+externC^lhat_integer:f^i:i64^-> LhatValue;                 # static inline 関数も呼べる
+externC^lhat_machine_new:p^-> ref^LhatMachine | nil^;
 ```
 
 - `includeC^ "file"` を書いたモジュールの `externC^` は、すべてそのヘッダーを読む中継コード経由で呼びます。
@@ -88,8 +97,8 @@ externC^ lhat_machine_new:p^ -> ref^ LhatMachine | nil^;
 ## C から R^ を呼ぶ（exportC^）
 
 ```rhat
-exportC^ let^ r_twice = f^ x:i64^ -> i64^ { x * 2 }       # C からは int64_t r_twice(int64_t)
-exportC^ let^ r_mid = f^ a:Point, b:Point -> Point { ... } # 構造体の値渡しも可
+exportC^let^r_twice = f^x:i64^-> i64^{ x * 2 }          # C からは int64_t r_twice(int64_t)
+exportC^let^r_mid = f^a:Point, b:Point -> Point { ... } # 構造体の値渡しも可
 ```
 
 - `exportC^` を付けたトップレベルの関数は、宣言した名前（モジュールの修飾を除く）の C 関数として呼べます。
@@ -114,14 +123,14 @@ R^ から `externC^` を呼ぶ直前に、呼び出し元がその時点で使�
 ### C の関数ポインタ
 
 ```rhat
-externC^ qsort:p^ base:i32^[..], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;
-exportC^ let^ descending = f^ a:ref^ i32^, b:ref^ i32^ -> i32^ { *b - *a }
+externC^qsort:p^base:i32^[..], n:u64^, size:u64^, compare:externC^f^ref^i32^, ref^i32^ -> i32^;;
+exportC^let^descending = f^a:ref^i32^, b:ref^i32^ -> i32^{ *b - *a }
 qsort(xs[0 .. 5], 5, 4, descending)        # 名前を呼ばずに書くと C のアドレス
 
-externC^ lhat_program_new:p^ strict:bool^,
-    load:externC^ p^ ref^ LhatContext | nil^, string^, ref^ u64^ -> ref^ u8^ | nil^;,
-    context:ref^ LhatContext | nil^ -> ref^ LhatProgram;
-let^ program = lhat_program_new(true^, lhat_load_file, nil^)
+externC^lhat_program_new:p^ strict:bool^,
+    load:externC^p^ref^LhatContext | nil^, string^, ref^u64^ -> ref^u8^ | nil^;,
+    context:ref^LhatContext | nil^ -> ref^LhatProgram;
+let^program = lhat_program_new(true^, lhat_load_file, nil^)
 ```
 
 - 型の位置で関数の署名（`f^ ... ;` / `p^ ... ;`）の前に `externC^` を付けると C の関数ポインタ型になります。
@@ -137,12 +146,12 @@ let^ program = lhat_program_new(true^, lhat_load_file, nil^)
 ## L^ に R^ を公開する（exportL^）
 
 ```rhat
-includeC^ "lhat.h"
-externC^ def^ LhatProgram;
-externC^ rhat_lhat_register:p^ program:ref^ LhatProgram, module:string^ -> bool^;
-exportL^ let^ add = f^ a:i64^, b:i64^ -> i64^ { a + b }      # L^ からは rhat.add(40, 2)
-exportL^ let^ greet = f^ name:string^ -> string^ { name }
-exportL^ let^ shout = p^ text:string^ { print^("R^ says:", text) }
+includeC^"lhat.h"
+externC^def^ LhatProgram;
+externC^rhat_lhat_register:p^program:ref^LhatProgram, module:string^-> bool^;
+exportL^let^add = f^a:i64^, b:i64^-> i64^{ a + b }      # L^ からは rhat.add(40, 2)
+exportL^let^greet = f^name:string^-> string^{ name }
+exportL^let^shout = p^text:string^{ print^("R^ says:", text) }
 
 rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
 ```
@@ -166,14 +175,14 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
 ### 値として渡す型（exportL^ def^）
 
 ```rhat
-exportL^ def^ Vec3 {
+exportL^def^Vec3 {
   self^{ x:f32^ = 0.0, y:f32^ = 0.0, z:f32^ = 0.0 }
-  length = f^ self^ -> f64^ { ... }                 # L^ からは v.length()
+  length = f^self^-> f64^{ ... }                 # L^ からは v.length()
 }
-exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { ... } # L^ からは rhat.sum(a, b)
+exportL^let^sum = f^a:Vec3, b:Vec3 -> Vec3 { ... } # L^ からは rhat.sum(a, b)
 ```
 
-- `exportL^ def^` は L^ の host value 型（`lhat_register_hostvalue_type`）として登録します。L^ はその値を
+- `exportL^def^` は L^ の host value 型（`lhat_register_hostvalue_type`）として登録します。L^ はその値を
   バイト列としてスタックに持ち、寿命の管理はありません。フラットな `def^` で、248 バイト以下に限ります。
 - `f32^` / `f64^` / `i8^`〜`i64^` / `u8^`〜`u32^` のフィールドは `lhat_register_hostvalue_field` で登録し、
   L^ から `v.x` で直接読み書きできます。`bool^`・`u64^`・入れ子の `def^`・配列・`private^` のフィールドは
@@ -188,17 +197,20 @@ exportL^ let^ sum = f^ a:Vec3, b:Vec3 -> Vec3 { ... } # L^ からは rhat.sum(a,
 ### 参照として渡す型（exportL^ ref^ def^）
 
 ```rhat
-exportL^ ref^ def^ Counter {
-  self^{ n:i64^ = 0 }
-  bump = p^ self^, by:i64^ -> i64^ { self^.n += by return^ self^.n }
+exportL^ref^def^Counter {
+    self^{ n:i64^ = 0 }
+    bump = p^self^, by:i64^-> i64^{
+        self^.n += by
+        return^self^.n
+    }
 }
-exportL^ ref^ externC^ def^ Box {                    # C の不透明型にメソッドを付けて公開
-  get = f^ self^ -> i64^ { box_get(self^) }
-  dispose = p^ self^ { box_free(self^) }            # L^ の GC が手放すときに呼ぶ
+exportL^ref^externC^def^Box {                    # C の不透明型にメソッドを付けて公開
+    get = f^self^ -> i64^{ box_get(self^) }
+    dispose = p^self^{ box_free(self^) }         # L^ の GC が手放すときに呼ぶ
 }
-exportL^ let^ box = p^ n:i64^ -> ref^ Box { return^ box_new(n) }
-externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Counter,
-                                  out:ref^ LhatValue -> bool^;
+exportL^let^box = p^n:i64^-> ref^Box { return^box_new(n) }
+externC^rhat_lhat_wrap_Counter:p^machine:ref^LhatMachine | nil^, c:ref^Counter,
+                               out:ref^LhatValue -> bool^;
 ```
 
 - `exportL^ ref^ def^` は L^ の host data 型（`lhat_register_hostdata_type`）として登録し、`ref^ T` /
@@ -229,10 +241,10 @@ externC^ rhat_lhat_wrap_Counter:p^ machine:ref^ LhatMachine | nil^, c:ref^ Count
 ### エラーとして渡す型（exportL^ errordef^）
 
 ```rhat
-exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
-exportL^ let^ check = f^ k:i64^ -> i64^ | Error { ... }       # L^ の署名は -> number^|rhat.Error
-exportL^ let^ split = f^ k:i64^ -> (i64^, string^) | Error.Bad { ... }
-                                    # L^ の署名は -> (number^, string^)|rhat.Error.Bad
+exportL^errordef^Error { Zero, Bad { self^{ code:i32^= 0 } } }
+exportL^let^check = f^k:i64^-> i64^| Error { ... }       # L^ の署名は -> number^|rhat.Error
+exportL^let^split = f^k:i64^-> (i64^, string^) | Error.Bad { ... }
+                               # L^ の署名は -> (number^, string^)|rhat.Error.Bad
 ```
 
 - `exportL^ errordef^` は L^ のエラー種別（`lhat_register_error_kind`）として `<module>.<名前>` に登録し、

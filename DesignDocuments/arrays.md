@@ -25,10 +25,10 @@ var^ queue:Job[flex^] = {}
 let^ make = p^ pool:ref^ Node[grow^] -> i32^ { ... }
 ```
 
-外側の `ref^` は後続する型全体への参照です。`ref^ Node[grow^]` は伸長配列全体への参照、
-`Node[ref^ grow^]` は参照の伸長配列です。`[]` 内では要素の `ref^`、次に種類・容量の順に書きます。
-`Node[ref^ max^10]` は `(ref^ Node)[max^10]` と同じ型です。
-参照の重ね掛けは `Node[ref^^ max^10]`、配列の入れ子は `Node[3][grow^]` と書けます。
+外側の `ref^` は後続する型全体への参照です。`ref^Node[grow^]` は伸長配列全体への参照、
+`Node[ref^grow^]` は参照の伸長配列です。`[]` 内では要素の `ref^`、次に種類・容量の順に書きます。
+`Node[ref^max^10]` は `(ref^Node)[max^10]` と同じ型です。
+参照の重ね掛けは `Node[ref^^max^10]`、配列の入れ子は `Node[3][grow^]` と書けます。
 
 ## 配列リテラル
 
@@ -36,17 +36,17 @@ L^ と同じく、要素を位置で並べた波括弧が配列です。`{name =
 旧来の角括弧のリテラル `[a, b]` / `[grow^; a, b]` は受け付けません。
 
 ```rhat
-let^ fixed = {0, 1, 2}                    # i32^[3]
-var^ growing = i32^[grow^]{0, 1, 2}
-var^ bounded = u32^[max^10]{0, 1, 2}
-let^ sized = i32^[]{4, 5, 6}              # 構築後に長さを変えない所有配列
-let^ exact = u32^[3]{0, 1, 2}
-var^ empty:i64^[grow^] = {}
-var^ also = i64^[grow^]{}
-let^ grid = {{1, 2}, {3, 4}}              # i32^[2][2]
-var^ values:i32^[4] = {0, 1, 2, 3}
-let^ refs = i32^[ref^ 2]{values[0], values[1]}
-var^ held = i32^[ref^ max^10]{values[0], ref^ values[1]}
+let^fixed = {0, 1, 2}                    # i32^[3]
+var^growing = i32^[grow^]{0, 1, 2}
+var^bounded = u32^[max^10]{0, 1, 2}
+let^sized = i32^[]{4, 5, 6}              # 構築後に長さを変えない所有配列
+let^exact = u32^[3]{0, 1, 2}
+var^empty:i64^[grow^] = {}
+var^also = i64^[grow^]{}
+let^grid = {{1, 2}, {3, 4}}              # i32^[2][2]
+var^values:i32^[4] = {0, 1, 2, 3}
+let^refs = i32^[ref^ 2]{values[0], values[1]}
+var^held = i32^[ref^ max^10]{values[0], ref^ values[1]}
 ```
 
 - `T[...]{...}` は型を前に置いて明示します。型注釈もあるときは、両者が一致しなければエラーです

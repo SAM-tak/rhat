@@ -50,7 +50,7 @@ let^inspect = p^input:ref^read^Data, output:ref^Buffer {
 ```rhat
 # 概念例。view は a に由来する読み取り専用参照を返す。
 do^{
-    let^ r = view(ref^ a)
+    let^r = view(ref^ a)
     a.change()            # エラー：読み取り借用中
     use(r)
     a.change()            # エラー：最終使用後も保護を継続
@@ -69,10 +69,10 @@ a.change()                # 保護が終わったので許可
 
 ```rhat
 # T と view が定義されている場合の例
-var^ outer:ref^read^T | nil^ = nil^
+var^outer:ref^read^T | nil^ = nil^
 do^{
-    let^ r = view(ref^ a)
-    outer := r            # エラー：保護スコープ外への保存
+    let^r = view(ref^ a)
+    outer := r           # エラー：保護スコープ外への保存
 }
 ```
 
