@@ -24,4 +24,4 @@ let^max = template^p^... {
     }
     return^max
 }
-print^("max", max(2, 3, 5, 6, 7, 9, 2, 4, 1))
+print^("max", max(2, 3, 5, values[1], 7, 9, 2, values[3], values[0]))
