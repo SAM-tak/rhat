@@ -513,7 +513,14 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
     if (s->self_type && s->type_args.n) {
         fail(s->loc, "Self^ does not accept type arguments");
     }
-    if (s->kind == SPEC_NAME && !s->self_type) {
+    if (s->kind == SPEC_NAME && !strcmp(s->name, "range^") && s->type_args.n) {
+        if (s->type_args.n != 1) {
+            fail(s->loc, "type 'range^' expects 1 type argument, got %d", s->type_args.n);
+        }
+        resolve_spec(m, s->type_args.v[0]);
+        s->name = fmt("range^<%s>", spec_identity(s->type_args.v[0]));
+    }
+    else if (s->kind == SPEC_NAME && !s->self_type) {
         s->name = resolve_type_name(m, s->name, s->loc);
         TypeAlias *a = named_alias(m->program, s->name);
         if (a) {

@@ -1,22 +1,43 @@
 #include "sema.h"
 
-// r.end (i64^ | nil^, nil^ when open) or r.len.
+// v as another integer type; ranges only narrow values they widened themselves.
+static Value number_as(Context *c, Value v, int kind, Loc loc)
+{
+    Value out = value(c, type_builtin(c->p, kind));
+    Instr *i = emit(c, I_CONVERT, loc);
+    i->dst = out.id;
+    i->a = v.id;
+    i->type = out.type;
+    return out;
+}
+
+Value range_widen(Context *c, Value v, Loc loc)
+{
+    return v.type->kind == T_I64 ? v : number_as(c, v, T_I64, loc);
+}
+
+// r.start, r.end (nil^ when open) in the range's element type, or r.len.
 Value range_member(Context *c, Value r, const char *name, Loc loc)
 {
     Type *range = r.type, *whole = type_builtin(c->p, T_I64);
+    Type *bound = range_bound(c->p, range);
     Value start = field_value(c, r, range->def->fields.v[0], loc);
+    if (strstr(name, "start")) {
+        return bound == whole ? start : number_as(c, start, bound->kind, loc);
+    }
     Value end = field_value(c, r, range->def->fields.v[1], loc);
     Value open = operate(c, "=", end, constant(c, T_I64, RANGE_OPEN, loc), loc);
     int yes = ++c->in->labels, no = ++c->in->labels, done = ++c->in->labels;
     if (!strcmp(name, "end")) {
-        Type *t = type_union(c->p, whole, type_builtin(c->p, T_NIL), loc);
+        Type *t = type_union(c->p, bound, type_builtin(c->p, T_NIL), loc);
         Value out = value(c, t);
         nil_branch(c, open, yes, no, loc);
         nil_label(c, yes, loc);
         convert_value(c, nil_literal(c, loc), t, out.id, loc);
         nil_jump(c, done, loc);
         nil_label(c, no, loc);
-        convert_value(c, end, t, out.id, loc);
+        convert_value(c, bound == whole ? end : number_as(c, end, bound->kind, loc), t, out.id,
+                      loc);
         nil_jump(c, done, loc);
         nil_label(c, done, loc);
         return out;
@@ -192,7 +213,8 @@ Value enum_cast(Context *c, Expr *e, int destination)
     for (int j = 0; j < mode->def->members.n; j++) {
         EnumMember *member = mode->def->members.v[j];
         int yes = ++c->in->labels, no = ++c->in->labels;
-        Value same = operate(c, "=", v, constant(c, mode->elem->kind, member->value, e->loc), e->loc);
+        Value same =
+            operate(c, "=", v, constant(c, mode->elem->kind, member->value, e->loc), e->loc);
         nil_branch(c, same, yes, no, e->loc);
         nil_label(c, yes, e->loc);
         Value found = value(c, mode);
@@ -204,8 +226,8 @@ Value enum_cast(Context *c, Expr *e, int destination)
         nil_jump(c, done, e->loc);
         nil_label(c, no, e->loc);
     }
-    construct_error(c, "std.sys.Error.CastFail", fmt("no %s member has this value", type_name(mode)),
-                    t, out.id, e->loc);
+    construct_error(c, "std.sys.Error.CastFail",
+                    fmt("no %s member has this value", type_name(mode)), t, out.id, e->loc);
     nil_jump(c, done, e->loc);
     nil_label(c, done, e->loc);
     return out;
@@ -447,14 +469,14 @@ Value text_method(Context *c, Expr *e, int destination)
     if (e->args.n != !unary) {
         fail(e->loc, "s.%s takes %s", name, unary ? "no arguments" : "one argument");
     }
-    Type *want = !strcmp(name, "slice")    ? type_range(p)
+    Type *want = !strcmp(name, "slice")    ? type_range(p, NULL, e->loc)
                  : !strcmp(name, "decode") ? whole
                                            : type_builtin(p, T_STRING);
     Value arg = unary ? s : expression(c, e->args.v[0], want);
     if (dead(arg)) {
         return arg;
     }
-    if (!unary && arg.type != want) {
+    if (!unary && !sum_accepts(want, arg.type)) {
         fail(e->loc, "s.%s takes '%s', found '%s'", name, type_name(want), type_name(arg.type));
     }
     Value both[2] = {s, arg};

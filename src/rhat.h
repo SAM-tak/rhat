@@ -411,6 +411,8 @@ int bits_kind(int kind);
 bool plain_data(Type *t);
 int numeric_bits(int kind);
 bool integer_fits(const char *text, int kind);
+// The largest value of an integer type, in decimal.
+const char *integer_max(int kind);
 // Whether a decimal literal rounds to a finite value of the floating type.
 bool float_fits(const char *text, int kind);
 char *float_constant(const char *text, int kind, Loc loc);

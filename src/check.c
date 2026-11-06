@@ -759,10 +759,12 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
                                  : text_method_type(c->p, target->text, e->loc);
         }
     }
-    if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
-        range_type(infer_expr(c, target->a, NULL))) {
-        infer_expr(c, e->args.v[0], type_builtin(c->p, T_I64));
-        return type_builtin(c->p, T_BOOL);
+    if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1) {
+        Type *range = infer_expr(c, target->a, NULL);
+        if (range_type(range)) {
+            infer_expr(c, e->args.v[0], range_bound(c->p, range));
+            return type_builtin(c->p, T_BOOL);
+        }
     }
     Function *f = NULL;
     Def *self = NULL;
@@ -1556,15 +1558,21 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             }
             return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
         }
-        if (range_type(base) && strcmp(e->text, "start")) {
-            Type *whole = type_builtin(c->p, T_I64);
+        if (base && !range_type(base) && !strcmp(e->text, "\001start")) {
+            fail(e->loc, "expected 'range^', found '%s'", type_name(base));
+        }
+        if (range_type(base)) {
+            Type *bound = range_bound(c->p, base);
+            if (strstr(e->text, "start")) {
+                return bound;
+            }
             if (strcmp(e->text, "end") && strcmp(e->text, "len")) {
                 fail(e->name_loc.file ? e->name_loc : e->loc,
                      "range^ has start, end, len and contains(i)");
             }
             return !strcmp(e->text, "len")
-                       ? whole
-                       : type_union(c->p, whole, type_builtin(c->p, T_NIL), e->loc);
+                       ? type_builtin(c->p, T_I64)
+                       : type_union(c->p, bound, type_builtin(c->p, T_NIL), e->loc);
         }
         if (!base) {
             return NULL;
@@ -1620,10 +1628,30 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         Def *builder = lookup_def(c->p, "std.text.Builder");
         return c->terminated ? type_builtin(c->p, T_NEVER) : builder ? builder->type : NULL;
     }
-    case E_RANGE:
-        infer_expr(c, e->a, type_builtin(c->p, T_I64));
-        infer_expr(c, e->b, type_builtin(c->p, T_I64));
-        return c->terminated ? type_builtin(c->p, T_NEVER) : type_range(c->p);
+    case E_RANGE: {
+        // An expected element wins; otherwise a typed bound decides and literals follow it.
+        bool wanted = range_type(expected);
+        Type *elem = wanted ? expected->elem : NULL;
+        Expr *ends[2] = {e->a, e->b};
+        bool unknown = false;
+        for (int j = 0; j < 2; j++) {
+            if (!elem && ends[j] && !integer_literal(ends[j])) {
+                elem = infer_expr(c, ends[j], NULL);
+                elem = elem && elem->kind == T_REF ? elem->elem : elem;
+                unknown = !elem;
+            }
+        }
+        if (c->terminated) {
+            return type_builtin(c->p, T_NEVER);
+        }
+        if (unknown) {
+            return NULL;
+        }
+        elem = elem ? elem : type_builtin(c->p, wanted ? T_I64 : T_I32);
+        infer_expr(c, e->a, elem);
+        infer_expr(c, e->b, elem);
+        return c->terminated ? type_builtin(c->p, T_NEVER) : type_range(c->p, elem, e->loc);
+    }
     case E_PACK:
         if (e->a) {
             Type *t = infer_expr(c, e->a, NULL);
@@ -3019,11 +3047,13 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_PANIC:
         body_expr(c, e->a, NULL);
         break;
-    case E_RANGE:
-        body_expr(c, e->a, type_builtin(c->p, T_I64));
-        body_expr(c, e->b, type_builtin(c->p, T_I64));
-        n->type = type_range(c->p);
+    case E_RANGE: {
+        Type *elem = range_type(want) ? want->elem : NULL;
+        body_expr(c, e->a, elem);
+        body_expr(c, e->b, elem);
+        n->type = range_type(want) ? want : NULL;
         break;
+    }
     case E_PACK:
         if (e->a) {
             body_expr(c, e->a, NULL);

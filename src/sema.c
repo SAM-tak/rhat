@@ -739,6 +739,13 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     if (src.type == to) {
         return copy_to(c, out, src, loc, true);
     }
+    if (range_type(to) && range_type(src.type)) {
+        for (int j = 0; j < 2; j++) {
+            copy_to(c, field_value(c, out, to->def->fields.v[j], loc),
+                    field_value(c, src, src.type->def->fields.v[j], loc), loc, true);
+        }
+        return out;
+    }
     if (read_reference(to) && src.type->kind == to->kind && src.type->elem == to->elem) {
         src = read_borrow(c, src, loc);
         out.deps = src.deps;
@@ -1734,14 +1741,15 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
         range_type(expression_type(c, target->a, NULL))) {
         Value r = deref(c, expression(c, target->a, NULL), e->loc);
-        Value i = dead(r) ? r : expression(c, e->args.v[0], type_builtin(p, T_I64));
+        Type *bound = range_bound(p, r.type);
+        Value i = dead(r) ? r : expression(c, e->args.v[0], bound);
         if (dead(i)) {
             return i;
         }
-        if (i.type->kind != T_I64) {
-            fail(e->loc, "range^ contains an i64^");
+        if (i.type != bound) {
+            fail(e->loc, "%s contains a %s", type_name(r.type), type_name(bound));
         }
-        return range_contains(c, r, i, e->loc);
+        return range_contains(c, r, range_widen(c, i, e->loc), e->loc);
     }
     if (target->kind == E_MEMBER &&
         error_messages(p, target, e->args.n, expression_type(c, target->a, NULL))) {
@@ -2484,29 +2492,31 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         return c->terminated ? abrupt(c) : out;
     }
     if (e->kind == E_RANGE) {
-        Type *range = type_range(c->p);
-        if (t && t != range) {
+        if (t && !range_type(t)) {
             fail(e->loc, "a range is 'range^', expected '%s'", type_name(t));
         }
+        Type *natural = expression_type(c, e, t), *bound = range_bound(c->p, natural);
+        Type *range = t ? t : natural;
         Value out = {.id = dst >= 0 ? dst : slot(c, range, false), .type = range};
         Value ends[2];
         for (int j = 0; j < 2; j++) {
             Expr *end = j ? e->b : e->a;
-            ends[j] = end ? expression(c, end, type_builtin(c->p, T_I64))
+            ends[j] = end ? deref(c, expression(c, end, bound), e->loc)
                           : constant(c, T_I64, j ? RANGE_OPEN : "0", e->loc);
             if (c->terminated) {
                 return abrupt(c);
             }
-            if (ends[j].type->kind != T_I64) {
-                fail(end->loc, "range bounds must be i64^");
+            if (end && ends[j].type != bound) {
+                fail(end->loc, "range bounds must both be %s, found '%s'", type_name(bound),
+                     type_name(ends[j].type));
             }
         }
         if (!strcmp(e->text, "to^")) {
             int bad = ++c->in->labels, good = ++c->in->labels;
-            nil_branch(
-                c,
-                operate(c, "=", ends[1], constant(c, T_I64, "9223372036854775807", e->loc), e->loc),
-                bad, good, e->loc);
+            nil_branch(c,
+                       operate(c, "=", ends[1],
+                               constant(c, bound->kind, integer_max(bound->kind), e->loc), e->loc),
+                       bad, good, e->loc);
             nil_label(c, bad, e->loc);
             Expr text = {.kind = E_STRING,
                          .loc = e->loc,
@@ -2515,10 +2525,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             terminate(c, expression(c, &text, type_builtin(c->p, T_STRING)), true, e->loc);
             c->terminated = false;
             nil_label(c, good, e->loc);
+            ends[1] = range_widen(c, ends[1], e->loc);
             ends[1] = operate(c, "+", ends[1], constant(c, T_I64, "1", e->loc), e->loc);
         }
         for (int j = 0; j < 2; j++) {
-            copy_to(c, field_value(c, out, range->def->fields.v[j], e->loc), ends[j], e->loc, true);
+            copy_to(c, field_value(c, out, range->def->fields.v[j], e->loc),
+                    range_widen(c, ends[j], e->loc), e->loc, true);
         }
         return out;
     }
@@ -3034,7 +3046,7 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     Expr *ends[2] = {e->b, e->c};
     bool ranged = e->kind == E_INDEX;
     if (ranged) {
-        Value r = expression(c, e->b, type_range(p));
+        Value r = expression(c, e->b, type_range(p, NULL, e->loc));
         if (c->terminated) {
             return abrupt(c);
         }
@@ -3047,14 +3059,15 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
         if (!ends[j]) {
             continue;
         }
-        Value v = snapshot(c, expression(c, ends[j], type_builtin(p, T_I64)), e->loc);
+        Value v =
+            snapshot(c, deref(c, expression(c, ends[j], type_builtin(p, T_I64)), e->loc), e->loc);
         if (c->terminated) {
             return abrupt(c);
         }
-        if (v.type->kind != T_I64) {
-            fail(ends[j]->loc, "slice bounds must be i64^");
+        if (!range_element(v.type)) {
+            fail(ends[j]->loc, "slice bounds must be integers that fit i64^");
         }
-        bounds[j] = v.id;
+        bounds[j] = range_widen(c, v, e->loc).id;
     }
     Type *elem = base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
     Type *t = type_wrap(p, T_SLICE, elem, 0);
@@ -3452,7 +3465,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             i->type = base.type;
             return out;
         }
-        if (range_type(base.type) && strcmp(e->text, "start")) {
+        if (range_type(base.type)) {
             return range_member(c, base, e->text, e->loc);
         }
         if (kind_float(base.type->kind) && !strcmp(e->text, "bits")) {

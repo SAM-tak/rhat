@@ -66,12 +66,18 @@ int numeric_bits(int k)
     return k == T_CHAR ? 32 : k >= T_VOID && k <= T_F64 ? widths[k] : 0;
 }
 
+static const char *umax[] = {"255", "65535", "4294967295", "18446744073709551615",
+                             "340282366920938463463374607431768211455"};
+static const char *imax[] = {"127", "32767", "2147483647", "9223372036854775807",
+                             "170141183460469231731687303715884105727"};
+
+const char *integer_max(int kind)
+{
+    return kind_unsigned(kind) ? umax[kind - T_U8] : imax[kind - T_I8];
+}
+
 bool integer_fits(const char *text, int kind)
 {
-    static const char *umax[] = {"255", "65535", "4294967295", "18446744073709551615",
-                                 "340282366920938463463374607431768211455"};
-    static const char *imax[] = {"127", "32767", "2147483647", "9223372036854775807",
-                                 "170141183460469231731687303715884105727"};
     static const char *imin[] = {"128", "32768", "2147483648", "9223372036854775808",
                                  "170141183460469231731687303715884105728"};
     bool negative = *text == '-';

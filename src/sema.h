@@ -388,11 +388,17 @@ Def *static_owner(Program *p, Expr *target);
 Type *type_union(Program *p, Type *a, Type *b, Loc loc);
 // The multiple result type of elems, one per distinct element list.
 Type *type_tuple(Program *p, List *elems, Loc loc);
-// The built-in range^: [start, end) over i64^, an open end held as the
-// minimum i64^.
-Type *type_range(Program *p);
-// Whether t is range^.
+// The built-in range^<elem>: [start, end) held in i64^ whatever elem is, an open
+// end held as the minimum i64^. A NULL elem is range^, the top of every range^<T>.
+Type *type_range(Program *p, Type *elem, Loc loc);
+// Whether t is range^ or a range^<T>.
 bool range_type(Type *t);
+// Whether t can be the T of range^<T>: an integer that fits i64^.
+bool range_element(Type *t);
+// The type a range's bounds are read in; i64^ for range^.
+Type *range_bound(Program *p, Type *range);
+// A bound of a range element type as the i64^ a range holds.
+Value range_widen(Context *c, Value v, Loc loc);
 // What char^(x) casts to: char^ | std.text.Error.Invalid.
 Type *char_cast_type(Program *p, Loc loc);
 // What T(n) converts to for enum^ t: t | std.sys.Error.CastFail.

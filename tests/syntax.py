@@ -653,7 +653,8 @@ for^i in^0..xs.len {print^(xs[i])}
 for^i in^3..3 {print^("empty")}
 for^i in^5..2 {print^("empty")}
 for^i in^(7 ..) {if^ i>8 {break^} print^(i)}
-for^i in^9223372036854775806..9223372036854775807 {print^(i)}
+let^top:i64^=9223372036854775807
+for^i in^top-1..top {print^(i)}
 let^make=p^ ->range^ {print^("made") return^ 0..2}
 for^i in^make() {print^(i)}
 let^walk=p^ q:range^ {for^i in^q {print^(i)}}
@@ -665,8 +666,55 @@ first^: print^("first",i)
 main^: print^("main",i)
 last^: print^("last",i)
 }
-''', 'i64^ 0\ni64^ 1\n1\n2\n10\n20\n7\n8\n9223372036854775806\nmade\n0\n1\n4\n0\n'
+''', 'i32^ 0\ni32^ 1\n1\n2\n10\n20\n7\n8\n9223372036854775806\nmade\n0\n1\n4\n0\n'
          'first 0\nmain 0\nmain 1\nlast 1\n')
+
+    positive('range_elements', '''
+let^n=2
+for^i in^0..n {print^(typeof^(i).signature^,i*n)}
+let^big:i64^=2
+let^a:u8^=250
+let^xs=i64^[]{10,20,30}
+let^r=a to^ 251
+let^s=0..n
+let^t=0..big
+print^(typeof^(r).signature^,typeof^(s).signature^,typeof^(t).signature^)
+print^(typeof^(r.start).signature^,r.start,r.end ?? 0,r.len,r.contains(251),r.contains(252))
+for^i in^r {print^(typeof^(i).signature^,i)}
+let^len=f^q:range^ ->i64^ {q.len}
+print^(len(s),len(t),len(r),len(0..5000000000))
+print^(xs[s].len,xs[t].len,xs[n..3].len,"abc".slice(s))
+let^top:range^=s
+print^(typeof^(top).signature^,typeof^(top.start).signature^,top.len)
+for^i in^top {print^(typeof^(i).signature^)}
+let^exact:range^<u16^>=1..3
+for^i in^exact {print^(typeof^(i).signature^,i)}
+let^maybe:range^|nil^=s
+print^(maybe fits^ range^,s fits^ range^,top fits^ range^<i32^>)
+def^Box<T> {self^{r:range^<T>}}
+print^(typeof^(Box<u8^>{r=1..2}.r).signature^)
+print^(typeof^((5 ..)).signature^,(5 ..).end ?? -1)
+var^ c=1
+let^ walk=p^ q:ref^ i32^ {for^i in^0..q {print^(typeof^(i).signature^,i,xs[0 .. q].len)}}
+walk(ref^ c)
+''', '''i32^ 0
+i32^ 2
+range^<u8^> range^<i32^> range^<i64^>
+u8^ 250 252 2 true false
+u8^ 250
+u8^ 251
+2 2 2 5000000000
+2 2 1 ab
+range^ i64^ 2
+i64^
+i64^
+u16^ 1
+u16^ 2
+true true false
+range^<u8^>
+range^<i32^> -1
+i32^ 0 1
+''')
 
     positive('for_range_proof', '''
 var^ values:i32^[4]={1,2,3,4}
@@ -1010,8 +1058,14 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('char_cast_wide', 'let^ n:u128^=65\nlet^ c=char^(n)', 'at most 64 bits'),
         ('range_open_end', 'let^ r=0 ..\nprint^(r)', 'goes right before ), ] or ,'),
         ('for_in_array', 'let^ xs=i64^[]{1,2} for^ x in^ xs {print^(x)}', "expected 'range^'"),
-        ('for_in_narrow_bound', 'let^ n:i32^=2 for^ i in^ 0..n {print^(i)}', 'range bounds must be i64^'),
-        ('for_in_float', 'for^ i in^ 0.0..1.0 {print^(i)}', 'range bounds must be i64^'),
+        ('for_in_float', 'for^ i in^ 0.0..1.0 {print^(i)}', 'a range counts in an integer'),
+        ('range_mixed_bounds', 'let^ a:i32^=1 let^ b:i64^=2 let^ r=a..b', "range bounds must both be i32^, found 'i64^'"),
+        ('range_wrong_element', 'let^ a:i32^=1 let^ r:range^<i64^>=0..a', "range bounds must both be i64^, found 'i32^'"),
+        ('range_wide_element', 'let^ a:u64^=1 let^ r=0..a', "not 'u64^'"),
+        ('range_bad_argument', 'let^ r:range^<f64^>=0..1', "not 'f64^'"),
+        ('range_two_arguments', 'let^ r:range^<i32^,i32^>=0..1', 'expects 1 type argument'),
+        ('range_narrow_contains', 'let^ b:i64^=1 let^ r=0..2 print^(r.contains(b))', 'range^<i32^> contains a i32^'),
+        ('range_no_downcast', 'let^ r:range^=0..1 let^ s:range^<i32^>=r', "expected 'range^<i32^>'"),
         ('for_in_annotation', 'for^ i:u8^ in^ 0..3 {print^(i)}', 'use from^ to choose another type'),
         ('for_in_step', 'for^ i in^ 0..9 step^ 2 {print^(i)}', 'use from^ for step^'),
         ('for_in_downto', 'for^ i in^ 3 downto^ 0 {print^(i)}', 'use from^ for downto^'),
@@ -1019,7 +1073,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('for_in_readonly', 'for^ i in^ 0..3 {i:=2}', "cannot modify let^ binding 'i'"),
         ('range_open_start', 'let^ r=.. 3', 'goes right after (, [ or ,'),
         ('range_inclusive_open', 'let^ r=(1 to^)', 'needs both bounds'),
-        ('range_bounds', 'let^ r=1.5 .. 2.0', 'must be i64^'),
+        ('range_bounds', 'let^ r=1.5 .. 2.0', 'a range counts in an integer'),
         ('range_member', 'let^ r=0 .. 2\nprint^(r.size)', 'range^ has start, end, len'),
         ('results_not_multiple', 'var^ x,y=1', "'i32^' is not multiple results"),
         ('results_count', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a,b,c=f()', '3 names for the 2 results'),
@@ -1063,7 +1117,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     suite.runtime_failure('bounded_full', 'var^ a:i64^[max^2]={7,8}\na.push(9)', 'bounded array is full')
     suite.runtime_failure('bounded_index', 'var^ a:i64^[max^4]={7}\nprint^(a[1])', 'array index out of bounds')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ..)\nprint^(r.len)', 'an open range has no length')
-    suite.runtime_failure('range_inclusive_overflow', 'let^ r=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
+    suite.runtime_failure('range_inclusive_overflow', 'let^ r:range^<i64^>=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
+    suite.runtime_failure('range_narrow_inclusive_overflow', 'let^ a:u8^=255 let^ r=0 to^ a', 'the end of a to^ range overflows')
     suite.runtime_failure('range_slice_bounds', 'let^ xs={1,2}\nlet^ r=1 .. 5\nprint^(xs[r].len)', 'slice range out of bounds')
     suite.runtime_failure('dynamic_step', 'var^ step=0 for^ i from^ 1 to^ 0 step^ step {}', 'assert')
     suite.finish()

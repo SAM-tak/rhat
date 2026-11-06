@@ -121,7 +121,7 @@ repeat^{ break^}
 
 既存変数を使う `for^ i := 0 while^ ...`、複数焦点の `for^ var^ i=0 for^ var^ j=0 while^ ...`、カンマ区切りの更新も使えます。数える形と `repeat^` に明示的な `next^` 更新節は付けられません。
 
-`for^ i in^ 範囲` は `range^` の値を始端から一つずつ回します。焦点は `i64^` で読み取り専用です。[範囲](ranges.md)を参照してください。
+`for^ i in^ 範囲` は `range^` の値を始端から一つずつ回します。焦点の型は範囲の要素型で、読み取り専用です。[範囲](ranges.md)を参照してください。
 
 ```rhat
 for^var^i = 0 while^i < 3 next^i += 1 {

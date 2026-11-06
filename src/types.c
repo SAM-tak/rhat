@@ -248,11 +248,15 @@ Type *type_pack(Program *p, List *elems, Loc loc)
     return record_sequence(p, elems, loc, true);
 }
 
-Type *type_range(Program *p)
+Type *type_range(Program *p, Type *elem, Loc loc)
 {
+    if (elem && !range_element(elem)) {
+        fail(loc, "a range counts in an integer that fits i64^, not '%s'", type_name(elem));
+    }
     for (int j = 0; j < p->types.n; j++) {
-        if (range_type(p->types.v[j])) {
-            return p->types.v[j];
+        Type *t = p->types.v[j];
+        if (range_type(t) && t->elem == elem) {
+            return t;
         }
     }
     Type *t = mem(sizeof(*t));
@@ -260,14 +264,15 @@ Type *type_range(Program *p)
     t->kind = T_STRUCT;
     t->id = p->types.n;
     t->def = d;
-    t->symbol = "%rh_range";
+    t->elem = elem;
+    t->symbol = elem ? fmt("%%rh_range_%d", elem->kind) : "%rh_range";
     d->type = t;
-    d->name = "range^";
+    d->name = elem ? fmt("range^<%s>", type_name(elem)) : "range^";
     d->state = 2;
     d->public = true;
     for (int j = 0; j < 2; j++) {
         Field *f = mem(sizeof(*f));
-        f->name = j ? "\001end" : "start";
+        f->name = j ? "\001end" : "\001start";
         f->type = type_builtin(p, T_I64);
         f->owner = d;
         f->index = j;
@@ -281,7 +286,17 @@ Type *type_range(Program *p)
 
 bool range_type(Type *t)
 {
-    return t && t->kind == T_STRUCT && !strcmp(t->def->name, "range^");
+    return t && t->kind == T_STRUCT && !strncmp(t->def->name, "range^", 6);
+}
+
+bool range_element(Type *t)
+{
+    return t->kind == T_I64 || (kind_integer(t->kind) && numeric_bits(t->kind) < 64);
+}
+
+Type *range_bound(Program *p, Type *range)
+{
+    return range->elem ? range->elem : type_builtin(p, T_I64);
 }
 
 static Type *resolve_spec_type(Program *p, Spec *s)
@@ -289,8 +304,8 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (s->kind == SPEC_TYPEOF) {
         fail(s->loc, "typeof^ types are allowed only in annotations inside a function body");
     }
-    if (s->kind == SPEC_NAME && !strcmp(s->name, "range^")) {
-        return type_range(p);
+    if (s->kind == SPEC_NAME && !strncmp(s->name, "range^", 6)) {
+        return type_range(p, s->type_args.n ? type_spec(p, s->type_args.v[0]) : NULL, s->loc);
     }
     if (s->kind == SPEC_TUPLE) {
         List elems = {0};
@@ -493,6 +508,9 @@ bool sum_accepts(Type *to, Type *from)
         return true;
     }
     if (to == from || union_alternative(to, from) >= 0) {
+        return true;
+    }
+    if (range_type(to) && !to->elem && range_type(from)) {
         return true;
     }
     if (to->kind == T_UNION && from->kind != T_UNION) {

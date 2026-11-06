@@ -570,7 +570,7 @@ negative("slice_write", "var^ a:i32^[grow^]={1}; var^ v=a[.. 1]; v[0] := 2", "no
 negative("slice_borrow_element", "var^ a:i32^[grow^]={1}; let^ v=a[.. 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
 negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[grow^]={Item{x=1}}; a[.. 1][0].x := 2", "not addressable")
 negative("slice_temporary", "let^ v={1,2}[.. 2]", "slice source needs a binding")
-negative("slice_index_type", "let^ a:i32^[1]={1}; let^ n:i32^=0; a[n .. n+1]", "must be i64^")
+negative("slice_index_type", "let^ a:i32^[1]={1}; let^ n:u64^=0; a[n .. n+1]", "integers that fit i64^")
 negative("slice_initializer", "def^ Box { self^{ view:i32^[..] } } let^ b=Box{}", "needs an initializer")
 negative("append_mismatch", 'var^ a:i32^[grow^]={}; a.append("hello")', "same element type")
 negative("append_immutable", 'let^ a:u8^[grow^]={}; a.append("hello")', "cannot modify let^")

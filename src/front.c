@@ -2682,13 +2682,10 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
         }
         char *range = fmt("\001range%d", ++p->serial);
         counter = fmt("\001counter%d", p->serial);
-        Stmt *held = binding(range, value, false);
-        held->spec = mem(sizeof(Spec));
-        *held->spec = (Spec){.kind = SPEC_NAME, .loc = value->loc, .name = "range^"};
-        add(&scope->body, held);
-        Expr *start = node(E_MEMBER, loc), *contains = node(E_MEMBER, loc);
+        add(&scope->body, binding(range, value, false));
+        Expr *start = node(E_MEMBER, value->loc), *contains = node(E_MEMBER, loc);
         start->a = contains->a = named(range, loc);
-        start->text = "start";
+        start->text = "\001start"; // Unlike .start, rejects anything but a range^.
         contains->text = "contains";
         add(&scope->body, binding(counter, start, true));
         add(&scope->body, binding(focus, named(counter, loc), false));
@@ -2718,7 +2715,8 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
                 annotation = spec(p);
             }
             if (is(p, "in^")) {
-                fail(tok(p)->loc, "for^ in^ counts in i64^; use from^ to choose another type");
+                fail(tok(p)->loc,
+                     "for^ in^ counts in the range's type; use from^ to choose another type");
             }
             need(p, "from^");
             start = expr(p, 0);
