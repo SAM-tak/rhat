@@ -164,6 +164,7 @@ print^(s.text())
 ```
 
 - `append(s:string^)`・`append_char(c:char^)`: UTF-8 として追記します。`clear()` は空にします。
+- `add(s:string^) -> string^`: 追記した部分のビューを返します。領域は動かないので、追記を続けても有効です。文字列の置き場（[HashMap](collections.md) のキーの本体など）に使います。
 - `text() -> string^`: 組み立てた内容のビュー。寿命は builder の借用です。今は `string^(bytes)` と同じ検査を通します。
 - 組み立てた文字列を返す関数は `-> std.text.Builder` と書けます。
 

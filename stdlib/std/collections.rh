@@ -1,0 +1,141 @@
+module^std.collections
+import^std.text
+let^hash = import^std.hash
+
+# One key and value. head, next and code belong to the table: a bucket's first entry
+# is kept in the head of the entry at the bucket's own position.
+public^def^Entry<K, V> {
+    self^{ key:K, value:V, code:u32^, head:i32^, next:i32^ }
+}
+
+# A hash table in one grow^ array, needing no second array or spare slots. Entries are
+# packed in insertion order until a removal moves the last one into the gap.
+# There are never more buckets than entries, so every bucket's head has a slot.
+# A string^ key is a view: its text must outlive the map and must not change.
+public^def^HashMap<K, V> {
+    self^{ private^buckets:i64^ = 0, private^entries:Entry<K, V>[grow^] = {} }
+
+    private^code_of = f^self^, key:K -> u32^ {
+        return^u32^(hash.of(key) bitand^ 0xFFFFFFFF)
+    }
+    private^bucket_of = f^self^, i:i64^ -> i64^ {
+        return^i64^(self^.entries[i].code) bitand^ (self^.buckets - 1)
+    }
+    private^find = f^self^, key:K, code:u32^ -> i64^ {
+        if^self^.buckets = 0 { return^-1 }
+        var^i = i64^(self^.entries[i64^(code) bitand^ (self^.buckets - 1)].head)
+        repeat^while^i >= 0 {
+            if^self^.entries[i].code = code and^ self^.entries[i].key = key { return^i }
+            i := i64^(self^.entries[i].next)
+        }
+        return^-1
+    }
+    private^link = p^self^, i:i64^ {
+        let^b = self^.bucket_of(i)
+        self^.entries[i].next := self^.entries[b].head
+        self^.entries[b].head := i32^(i)
+    }
+    private^unlink = p^self^, i:i64^ {
+        let^b = self^.bucket_of(i)
+        if^i64^(self^.entries[b].head) = i {
+            self^.entries[b].head := self^.entries[i].next
+            return^
+        }
+        var^at = i64^(self^.entries[b].head)
+        repeat^while^i64^(self^.entries[at].next) != i { at := i64^(self^.entries[at].next) }
+        self^.entries[at].next := self^.entries[i].next
+    }
+    private^rebuild = p^self^, buckets:i64^ {
+        self^.buckets := buckets
+        for^i in^0 .. self^.entries.len { self^.entries[i].head := -1 }
+        for^i in^0 .. self^.entries.len { self^.link(i) }
+    }
+
+    len = f^self^ -> i64^ { self^.entries.len }
+    # Every entry, for walking with for^ i in^ 0 .. items.len.
+    items = f^self^ -> Entry<K, V>[..] { self^.entries[..] }
+    has = f^self^, key:K -> bool^ { self^.find(key, self^.code_of(key)) >= 0 }
+    get = f^self^, key:K -> V | nil^ {
+        let^i = self^.find(key, self^.code_of(key))
+        if^i < 0 { return^nil^ }
+        return^self^.entries[i].value
+    }
+    # The key the map holds that equals key: for a string^, the view of the stored text.
+    stored_key = f^self^, key:K -> K | nil^ {
+        let^i = self^.find(key, self^.code_of(key))
+        if^i < 0 { return^nil^ }
+        return^self^.entries[i].key
+    }
+    # A reference to the value. It stays valid across set, but remove can move an entry into it.
+    get_mut = p^self^, key:K -> ref^V | nil^ {
+        let^i = self^.find(key, self^.code_of(key))
+        if^i < 0 { return^nil^ }
+        return^ref^self^.entries[i].value
+    }
+    set = p^self^, key:K, value:V {
+        let^code = self^.code_of(key)
+        let^i = self^.find(key, code)
+        if^i >= 0 {
+            self^.entries[i].value := value
+            return^
+        }
+        self^.entries.push(Entry<K, V>{key = key, value = value, code = code, head = -1, next = -1})
+        let^count = self^.entries.len
+        if^self^.buckets = 0 {
+            self^.rebuild(1)
+        el^count > self^.buckets * 3:
+            self^.rebuild(self^.buckets * 2)
+        else^:
+            self^.link(count - 1)
+        }
+    }
+    remove = p^self^, key:K -> bool^ {
+        let^i = self^.find(key, self^.code_of(key))
+        if^i < 0 { return^false^ }
+        let^last = self^.entries.len - 1
+        self^.unlink(i)
+        if^i != last {
+            # A position keeps its head: that belongs to the bucket, not the entry.
+            self^.unlink(last)
+            self^.entries[i].key := self^.entries[last].key
+            self^.entries[i].value := self^.entries[last].value
+            self^.entries[i].code := self^.entries[last].code
+            self^.link(i)
+        }
+        self^.entries.truncate(last)
+        if^last < self^.buckets { self^.rebuild(self^.buckets / 2) }
+        return^true^
+    }
+    clear = p^self^ {
+        self^.entries.clear()
+        self^.buckets := 0
+    }
+}
+
+public^def^HashSet<T> {
+    self^{ private^map:HashMap<T, bool^> = {} }
+
+    len = f^self^ -> i64^ { self^.map.len() }
+    # Every entry; each one's key is a member.
+    items = f^self^ -> Entry<T, bool^>[..] { self^.map.items() }
+    has = f^self^, value:T -> bool^ { self^.map.has(value) }
+    # The member that equals value: for a string^, the view of the stored text.
+    get = f^self^, value:T -> T | nil^ { self^.map.stored_key(value) }
+    # Whether value was new.
+    add = p^self^, value:T -> bool^ {
+        if^self^.map.has(value) { return^false^ }
+        self^.map.set(value, true^)
+        return^true^
+    }
+    remove = p^self^, value:T -> bool^ { return^self^.map.remove(value) }
+    clear = p^self^ { self^.map.clear() }
+}
+
+# The one copy of s in pool, adding it only if keys does not have it yet.
+public^let^intern = p^keys:ref^HashSet<string^>, pool:ref^std.text.Builder, s:string^ -> string^ {
+    let^found = keys.get(s)
+    if^found fits^ string^ { return^found }
+    let^kept = pool.add(s)
+    keys.add(kept)
+    return^kept
+}

@@ -25,6 +25,12 @@ public^def^Builder {
             self^.bytes.push(u8^(n / unit % 64 + 128))
         }
     }
+    # Appends s and views the part it added, which stays valid as more is appended.
+    add = p^self^, s:string^ -> string^ {
+        let^start = self^.bytes.len
+        self^.bytes.append(s)
+        return^string^(self^.bytes[start ..]) catch^ ""
+    }
     text = f^self^{ string^(self^.bytes[..]) catch^ "" }
     clear = p^self^{ self^.bytes.clear() }
 }

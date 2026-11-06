@@ -1,0 +1,55 @@
+module^std.hash
+
+# Spreads every input bit over the result (the MurmurHash3 finalizer).
+public^let^mix = f^x:u64^ -> u64^ {
+    var^h = x
+    h := (h bitxor^ (h bitshift^ -33)) * 0xFF51AFD7ED558CCD
+    h := (h bitxor^ (h bitshift^ -33)) * 0xC4CEB9FE1A85EC53
+    return^h bitxor^ (h bitshift^ -33)
+}
+
+# FNV-1a over the bytes, then mixed.
+public^let^bytes = f^data:u8^[..] -> u64^ {
+    var^h:u64^ = 0xCBF29CE484222325
+    for^i in^0 .. data.len {
+        h := (h bitxor^ u64^(data[i])) * 0x100000001B3
+    }
+    return^mix(h)
+}
+
+# Folds the hash of one more field into seed. Hash a def^ key with this:
+# hash = f^self^ -> u64^ { combine(of(self^.a), of(self^.b)) }
+public^let^combine = f^seed:u64^, h:u64^ -> u64^ {
+    return^mix(seed * 31 + h)
+}
+
+# The hash of a string^, an integer, a char^, a bool^, or a value with a hash method.
+# Floats have none: NaN differs from itself and -0.0 equals 0.0.
+public^let^of = template^f^x -> u64^ {
+    if^typeof^(x) = string^ {
+        return^bytes(x.bytes)
+    el^typeof^(x) = bool^:
+        if^x { return^mix(1) }
+        return^mix(0)
+    el^typeof^(x) = char^:
+        return^mix(u64^(u32^(x)))
+    el^typeof^(x) = u8^:
+        return^mix(u64^(x))
+    el^typeof^(x) = u16^:
+        return^mix(u64^(x))
+    el^typeof^(x) = u32^:
+        return^mix(u64^(x))
+    el^typeof^(x) = u64^:
+        return^mix(x)
+    el^typeof^(x) = i8^:
+        return^mix(u64^(i64^(x)))
+    el^typeof^(x) = i16^:
+        return^mix(u64^(i64^(x)))
+    el^typeof^(x) = i32^:
+        return^mix(u64^(i64^(x)))
+    el^typeof^(x) = i64^:
+        return^mix(u64^(x))
+    else^:
+        return^x.hash()
+    }
+}
