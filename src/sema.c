@@ -139,8 +139,26 @@ bool roots_meet(Roots a, Roots b)
         if (roots_has(b, a.v[j])) {
             return true;
         }
+        if (a.v[j]->inner && roots_has(b, a.v[j]->inner)) {
+            return true;
+        }
+        for (int k = 0; k < b.n; k++) {
+            if (b.v[k]->inner == a.v[j]) {
+                return true;
+            }
+        }
     }
     return false;
+}
+
+Roots roots_inner(Roots a)
+{
+    Roots out = {0};
+    for (int j = 0; j < a.n; j++) {
+        Roots one = {a.v[j]->inner ? &a.v[j]->inner : &a.v[j], 1};
+        out = roots_union(out, one);
+    }
+    return out;
 }
 
 bool roots_equal(Roots a, Roots b)
@@ -526,7 +544,7 @@ Value deref(Context *c, Value v, Loc l)
     r.type = v.type->elem;
     r.id = slot(c, r.type, true);
     r.storage = v.deps;
-    r.deps = r.type->refs ? v.deps : (Roots){0};
+    r.deps = r.type->refs ? roots_inner(v.deps) : (Roots){0};
     r.addressable = true;
     r.readonly = v.readonly || read_reference(v.type);
     Instr *i = emit(c, I_DEREF, l);
@@ -562,7 +580,7 @@ void store_check(Context *c, Value dst, Value src, Loc l)
                 fail(l, "reference would outlive its owner (scope %d into scope %d)",
                      src.deps.v[j]->depth, owner->depth);
             }
-            if (owner->external) {
+            if (owner->external && !flow_store(c, owner, src.deps.v[j])) {
                 fail(l, "cannot store nonstatic references through borrowed storage");
             }
         }
@@ -1352,6 +1370,7 @@ void check_callable(Program *p, Type *want, Type *actual, Loc loc)
         }
     }
     Instance *in = instantiate(p, f, self, &want->params, loc);
+    in->indirect = true;
     if (want->result && !parameter_accepts(want->result, in->result)) {
         fail(loc, "callable result '%s' does not satisfy '%s'", type_name(in->result),
              type_name(want->result));
@@ -1405,7 +1424,7 @@ static bool contains(Type *whole, Type *part)
 
 // Whether a value of type t may refer to a location inside an element of
 // type elem.
-static bool may_reference(Type *t, Type *elem)
+bool may_reference(Type *t, Type *elem)
 {
     if (!t->refs) {
         return false;
@@ -1552,6 +1571,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
                 add(&actual, parameter_type(p, impl->params.v[j]));
             }
             in = instantiate(p, impl, concrete, &actual, loc);
+            in->indirect = true;
             if (in->result != dyn_result(p, f)) {
                 fail(loc, "'%s.%s' returns '%s', but dyn^ %s expects '%s'; annotate its result",
                      concrete->name, f->name, type_name(in->result), iface->name,
@@ -2091,6 +2111,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         i->a = base.id;
         i->type = ref.type;
         ref.deps = roots_union(base.storage, base.deps);
+        ref.target = base.storage;
+        ref.contents = base.deps;
         if (!base.addressable) {
             ref.deps = roots_union(ref.deps, root(c, e, c->depth + 1, false));
         }
@@ -2242,8 +2264,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         Value *v = values.v[j];
         deps = roots_union(deps, v->deps);
     }
+    Roots returned = flow_call(c, in, &values, e->loc);
     if (t->refs) {
-        out.deps = deps;
+        out.deps = returned;
     }
     read_call_end(c, e, t->refs);
     if (type_reads(t)) {
@@ -3644,6 +3667,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             }
             out = value(c, type_wrap(p, T_REF, a.type, a.readonly));
             out.deps = roots_union(a.storage, a.deps);
+            out.target = a.storage;
+            out.contents = a.deps;
             Instr *i = emit(c, I_ADDR, e->loc);
             i->dst = out.id;
             i->a = a.id;

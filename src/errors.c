@@ -260,6 +260,7 @@ void route_error(Context *c, Value error, Loc loc)
                 fail(loc, "cannot return a reference rooted in a local owner");
             }
         }
+        flow_return(c, out.deps);
         escape_cleanup(c, 0, 0, loc);
         Instr *i = emit(c, I_RETURN, loc);
         i->type = c->in->result;

@@ -1177,6 +1177,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     fail(s->loc, "cannot return a reference rooted in a local owner");
                 }
             }
+            flow_return(c, v.deps);
             cleanup(c, 0, s->loc);
             Instr *i = emit(c, I_RETURN, s->loc);
             i->type = t;
@@ -1469,6 +1470,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         v->mut = true;
         v->parameter = true;
         v->root = root(&c, a, 1, false);
+        Roots contents = {0};
         if (t->refs) {
             v->deps = root(&c, &a->name, 0, true);
             v->deps.v[0]->readonly = a->capture && !a->capture->mut ? a->capture->name : NULL;
@@ -1477,12 +1479,17 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
                 v->deps = read_borrow(&c, variable(v), a->loc).deps;
                 c.read_return = false;
             }
+            else if (t->kind == T_REF && t->elem->refs) {
+                contents = root(&c, &a->loc, 0, true);
+                contents.v[0]->readonly = v->deps.v[0]->readonly;
+                v->deps.v[0]->inner = contents.v[0];
+            }
         }
         if (j < 64) {
-            c.param_deps[j] = v->deps;
+            c.param_deps[j] = roots_union(v->deps, contents);
         }
         if (a->self) {
-            c.self_roots = v->deps;
+            c.self_roots = roots_union(v->deps, contents);
         }
         add(&c.vars, v);
     }

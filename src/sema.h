@@ -9,11 +9,14 @@ typedef struct Var Var;
 
 // A borrow root: a binding, parameter or temporary whose storage a reference
 // may point into, at a lexical depth, or storage from outside the function.
-typedef struct {
+typedef struct Root {
     int depth;
     bool external;
     const char *readonly; // The top-level let^ a hidden parameter refers to, or NULL.
     bool read_borrow;     // A lexical read-borrow boundary carried with reference provenance.
+    // What references held in this storage point at, when a reference parameter tells the two
+    // apart. They may still be the same storage, so overlap tests treat them as one.
+    struct Root *inner;
 } Root;
 
 // A set of roots, an immutable array in the compiler's arena; empty with n 0.
@@ -55,6 +58,8 @@ typedef struct {
     bool addressable, guarded_copy;
     bool held;     // An owned part of a value no binding releases: copying it moves it.
     bool readonly; // This place was reached through a read-only reference.
+    // A reference made from a place knows where it points and what is held there.
+    Roots target, contents;
 } Value;
 
 // Loop targets and scope boundaries used by control-flow analysis.
@@ -155,6 +160,15 @@ void read_call_end(Context *c, Expr *call, bool escapes);
 // Release loans belonging to exited lexical scopes.
 void read_scope_end(Context *c, int depth);
 // Retain argument aliases and their relation to the current function's parameters.
+// Whether a value of type t may hold a reference into storage of type elem.
+bool may_reference(Type *t, Type *elem);
+// Records that a reference rooted at src is stored into a parameter's owner; false unless both
+// roots belong to parameters, in which case the callers must check the store.
+bool flow_store(Context *c, Root *owner, Root *src);
+// Records which parameters the references in a returned value come from.
+void flow_return(Context *c, Roots deps);
+// Applies a callee's stores to its arguments and answers the roots of its result.
+Roots flow_call(Context *c, Instance *in, List *values, Loc loc);
 void read_call_check(Context *c, Instance *callee, List *values, Loc loc);
 // Retain the same provenance for each possible implementation of a dynamic call.
 void read_dyn_call_check(Context *c, Def *iface, int method, List *values, Loc loc);
@@ -470,6 +484,8 @@ bool dead(Value v);
 // storage from outside. The same node gives the same root, so that a loop
 // analysed again until its roots settle meets the same ones.
 Roots root(Context *c, const void *key, int depth, bool external);
+// What references held in storage under these roots may point at.
+Roots roots_inner(Roots a);
 // Both sets of roots together.
 Roots roots_union(Roots a, Roots b);
 // Whether the sets share a root.

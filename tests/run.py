@@ -576,7 +576,7 @@ negative("append_mismatch", 'var^ a:i32^[grow^]={}; a.append("hello")', "same el
 negative("append_immutable", 'let^ a:u8^[grow^]={}; a.append("hello")', "cannot modify let^")
 negative("append_pure_borrow", 'let^ bad=f^ a:ref^ u8^[grow^] { a.append("hello") }', "cannot mutate borrowed storage")
 negative("append_inner_owner", "var^ a:i32^[ref^ grow^]={}; do^{ var^ x:i32^=1; var^ b:i32^[ref^ grow^]={ref^ x}; a.append(b[.. 1]) }", "reference would outlive its owner")
-negative("append_borrowed_references", "let^ bad=p^ a:ref^ i32^[ref^ grow^], b:i32^[ref^ ..] { a.append(b) }", "cannot store nonstatic references through borrowed storage")
+negative("append_borrowed_references", "let^ add=p^ a:ref^ i32^[ref^ grow^], b:i32^[ref^ ..] { a.append(b) }\nvar^ a:i32^[ref^ grow^]={}\ndo^{ var^ x:i32^=1; var^ b:i32^[ref^ grow^]={ref^ x}; add(ref^ a,b[.. 1]) }", "reference would outlive its owner")
 
 def direct_pop_ir(ir, ll):
     assert "array.pop" in ir and "pop_ok_" in ll
@@ -814,8 +814,10 @@ let^ bad=p^ source:ref^ i32^ -> ref^ i32^ {
 }
 '''.replace("TYPE",annotation), "cannot return a reference")
 negative("push_through_borrowed_reference_array", '''
-let^ bad=p^ refs:ref^ i32^[ref^ grow^], x:ref^ i32^ { refs.push(x) }
-''', "cannot store nonstatic references through borrowed storage")
+let^ add=p^ refs:ref^ i32^[ref^ grow^], x:ref^ i32^ { refs.push(x) }
+var^ refs:i32^[ref^ grow^]={}
+do^{ var^ x:i32^=1; add(ref^ refs,ref^ x) }
+''', "reference would outlive its owner")
 negative("push_immutable", "let^ a:i32^[grow^]={}; a.push(1)", "cannot modify let^")
 negative("push_wrong_result", "var^ a:i32^[grow^]={}; let^ x:i32^=a.push(1)", "push returns")
 negative("grow_owned_elements", "var^ a:(i32^[grow^])[grow^]={}", "fixed-size")
@@ -1866,8 +1868,150 @@ negative("private_abstract_field", 'def^ A { self^{ private^ abstract^ n:i32^ } 
 negative("indirect_borrow_store", """
 def^ View { self^{ p:ref^ i32^ } }
 def^ Context { self^{ view:ref^ View, source:ref^ i32^ } }
-let^ bad=p^ c:ref^ Context { c.view.p := c.source }
-
+let^ link=p^ c:ref^ Context { c.view.p := c.source }
+var^ outer:i32^=0
+var^ view=View{p=ref^ outer}
+do^{
+    var^ x:i32^=1
+    var^ c=Context{view=ref^ view,source=ref^ x}
+    link(ref^ c)
+}
+""", "reference would outlive its owner")
+flow_holder = """
+import^std.text
+def^ H<K> {
+    self^{ items:K[grow^] = {} }
+    add = p^self^, s:K { self^.items.push(s) }
+    move = p^self^ { self^.items[0] := self^.items[1] }
+    first = f^self^ -> K { self^.items[0] }
+    pick = f^self^, key:string^ -> K { self^.items[0] }
+}
+let^ wrap = p^h:ref^ H<string^>, s:string^ { h.add(s) }
+let^ text_of = p^b:ref^ std.text.Builder, s:string^ { b.append(s) }
+"""
+positive("flow_store_through_arguments", flow_holder + """
+var^ text = std.text.Builder{}
+text.append("outer")
+do^{
+    var^ pool = std.text.Builder{}
+    pool.append("inner")
+    var^ h = H<string^>{}
+    h.add(text.text())
+    h.add(pool.text())
+    wrap(ref^ h, text.text())
+    print^(h.first(), h.items[1], h.items[2], h.items.len)
+    h.move()
+    print^(h.first())
+}
+""", "outer inner outer 3\ninner\n")
+positive("flow_result_ignores_unreturned_argument", flow_holder + """
+let^ find = p^h:ref^ H<string^>, name:string^ -> string^ {
+    var^ key = std.text.Builder{}
+    key.append(name)
+    return^ h.pick(key.text())
+}
+var^ h = H<string^>{}
+h.add("stored")
+var^ found = "none"
+do^{
+    let^ name = "tmp"
+    found := find(ref^ h, name)
+}
+print^(found)
+""", "stored\n")
+negative("flow_short_value_into_long_holder", flow_holder + """
+var^ h = H<string^>{}
+do^{
+    var^ b = std.text.Builder{}
+    b.append("x")
+    h.add(b.text())
+}
+""", "reference would outlive its owner")
+negative("flow_short_value_through_two_calls", flow_holder + """
+var^ h = H<string^>{}
+do^{
+    var^ b = std.text.Builder{}
+    b.append("x")
+    wrap(ref^ h, b.text())
+}
+""", "reference would outlive its owner")
+negative("flow_through_recursion", flow_holder + """
+let^ deep = p^h:ref^ H<string^>, s:string^, n:i32^ {
+    if^ n > 0 { this^(h, s, n - 1) else^: h.add(s) }
+}
+var^ h = H<string^>{}
+do^{
+    var^ b = std.text.Builder{}
+    b.append("x")
+    deep(ref^ h, b.text(), 1)
+}
+""", "reference would outlive its owner")
+negative("flow_recursion_through_byte_view", """
+def^ H {
+    self^{ items:u8^[..][grow^] = {} }
+    add = p^self^, s:u8^[..] { self^.items.push(s) }
+}
+let^ deep = p^h:ref^ H, x:ref^ i32^[1], n:i32^ {
+    if^ n > 0 {
+        var^ local:i32^[1] = {1}
+        this^(h, ref^ local, n - 1)
+    }
+    h.add(x.bytes)
+}
+""", "reference would outlive its owner")
+negative("flow_recursion_through_nested_holder", """
+def^ X { self^{ v:i32^ = 0 } }
+def^ N { self^{ p:ref^ X } }
+def^ D { self^{ next:ref^ N } }
+let^ deep = p^h:ref^ D, x:ref^ X, n:i32^ {
+    if^ n > 0 {
+        var^ local = X{v = 1}
+        this^(h, ref^ local, n - 1)
+    }
+    h.next.p := x
+}
+""", "reference would outlive its owner")
+flow_pair = """
+import^std.text
+def^ P { self^{ s:string^ = "a" } }
+let^ swap_in = p^a:ref^ P, b:ref^ P, s:string^ -> string^ {
+    a.s := s
+    return^ b.s
+}
+"""
+negative("flow_result_sees_store_through_alias", flow_pair + """
+var^ r = "none"
+do^{
+    var^ b = std.text.Builder{}
+    b.append("x")
+    var^ p = P{}
+    r := swap_in(ref^ p, ref^ p, b.text())
+}
+""", "reference would outlive its owner")
+negative("flow_holder_keeps_stored_provenance", flow_pair + """
+var^ r = "none"
+do^{
+    var^ b = std.text.Builder{}
+    b.append("x")
+    var^ p = P{}
+    var^ q = P{}
+    let^ ignored = swap_in(ref^ p, ref^ q, b.text())
+    r := p.s
+}
+""", "reference would outlive its owner")
+negative("flow_not_through_dyn", """
+def^ Sink { abstract^ add:p^ self^, s:string^; }
+def^ Keep : Sink {
+    self^{ s:string^ = "a" }
+    override^ add = p^self^, s:string^ { self^.s := s }
+}
+var^ k = Keep{}
+let^ d:ref^ dyn^ Sink = ref^ k
+d.add("x")
+""", "cannot be called through dyn^")
+negative("flow_keeps_read_loans_in_their_scope", """
+def^ R { self^{ p:ref^ read^ i32^ } }
+let^ keep = p^h:ref^ R, x:ref^ read^ i32^ { h.p := x }
 """, "cannot store nonstatic references through borrowed storage")
 negative("pure_mutable_call", """
 def^ Counter {
