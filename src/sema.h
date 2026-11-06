@@ -206,6 +206,8 @@ Type *chain_place_type(Context *c, Expr *e);
 
 // Infer an expression from a snapshot without generating IR.
 Type *expression_type(Context *c, Expr *e, Type *expected);
+// The form an E_LOOP_PART takes when its a has type t: a range^, an array or a cursor.
+Expr *loop_part(Program *p, Expr *e, Type *t);
 // Type.signature^: the canonical spelling of a type, a string constant per specialization.
 bool type_signature(Expr *e);
 // A written type, or the static type a typeof^ operand has in this specialization.

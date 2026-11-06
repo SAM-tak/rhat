@@ -138,7 +138,8 @@ enum {
     E_CHAR,     // char^"x": the Unicode scalar value in text, as decimal digits.
     E_INTERP,   // $"...": text and holes in args, each hole's format in names.
     E_TYPE,     // Compile-time type expression, eliminated by module resolution.
-    E_STATIC    // Type.text naming a static member: a is the E_TYPE; only called.
+    E_STATIC,   // Type.text naming a static member: a is the E_TYPE; only called.
+    E_LOOP_PART // Compiler-only: a piece of for^ in^ (text) whose form follows the type of a.
 };
 
 struct Expr {
@@ -158,6 +159,7 @@ struct Expr {
     bool spread;          // A trailing ... forwards this sequence to a variadic
                           // parameter.
     void *compiler_value; // Internal full Value, retaining borrow provenance.
+    Expr *forms[3];       // E_LOOP_PART: its form for a range^, an array and a cursor.
     int kind;
     Loc loc;
     char *text;

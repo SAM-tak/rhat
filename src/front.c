@@ -2612,6 +2612,83 @@ static Expr *loop_range(Parser *p)
     return r;
 }
 
+// for^ names in^, with one or more names.
+static bool for_in_ahead(Parser *p)
+{
+    for (int at = p->at; at + 1 < p->tokens.n; at += 2) {
+        Token *name = p->tokens.v[at], *after = p->tokens.v[at + 1];
+        if (name->kind != TOK_WORD) {
+            return false;
+        }
+        if (strcmp(after->text, ",")) {
+            return !strcmp(after->text, "in^");
+        }
+    }
+    return false;
+}
+
+static Expr *for_in_part(char *op, char *source, Expr *value, char *other, Loc loc)
+{
+    Expr *e = node(E_LOOP_PART, loc);
+    e->text = op;
+    e->a = value ? value : named(source, loc);
+    e->b = other ? named(other, loc) : NULL;
+    return e;
+}
+
+static Stmt *for_in_stop(Expr *condition, Loc loc)
+{
+    Stmt *stop = mem(sizeof(*stop)), *out = mem(sizeof(*out));
+    stop->kind = S_BREAK;
+    stop->loc = loc;
+    stop->depth = 1;
+    out->kind = S_IF;
+    out->loc = loc;
+    out->a = condition;
+    add(&out->body, stop);
+    return out;
+}
+
+// for^ names in^ value, whatever value turns out to be. A cursor answers nil^ when it runs out;
+// a range or an array is walked by a counter. Each turn takes an item, stops if there is none and
+// binds the names, so what differs by type is left to E_LOOP_PART.
+static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, Expr *value, Loc loc)
+{
+    char *source = fmt("\001source%d", ++p->serial), *counter = fmt("\001counter%d", p->serial);
+    char *item = fmt("\001item%d", p->serial);
+    add(&scope->body, binding(source, for_in_part("iter", NULL, value, NULL, value->loc), true));
+    add(&scope->body, binding(counter, for_in_part("start", source, NULL, NULL, loc), true));
+    add(&loop->pre, binding(item, for_in_part("next", source, NULL, counter, loc), false));
+    Expr *none = node(E_FITS, loc);
+    none->a = named(item, loc);
+    none->test_spec = mem(sizeof(Spec));
+    *none->test_spec = (Spec){.kind = SPEC_NAME, .loc = loc, .name = "nil^"};
+    add(&loop->pre, for_in_stop(none, loc));
+    add(&loop->pre, for_in_stop(for_in_part("done", source, NULL, item, loc), loc));
+    if (names->n == 1) {
+        add(&loop->pre, binding(names->v[0], for_in_part("item", source, NULL, item, loc), false));
+    }
+    else {
+        // let^ k, v = item: the same shape a written destructuring parses to.
+        List values = {0};
+        add(&values, named(item, loc));
+        Stmt *many = mem(sizeof(*many));
+        many->kind = S_BIND_MANY;
+        many->loc = loc;
+        add(&many->prolog, results(p, &values, names->n, loc));
+        for (int j = 0; j < names->n; j++) {
+            Stmt *part = binding(names->v[j], values.v[j], false);
+            part->loc = loc;
+            add(&many->body, part);
+        }
+        add(&loop->pre, many);
+    }
+    add(&loop->update,
+        assignment(named(counter, loc), contextual(number("1", loc), named(counter, loc)), "+"));
+    loop->a = node(E_BOOL, loc);
+    loop->a->text = "true^";
+}
+
 static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
 {
     Stmt *scope = mem(sizeof(*scope));
@@ -2670,16 +2747,34 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
         add(&scope->body, focus);
         add(&loop->focuses, focus->a->text);
     }
-    else if (!repeat && tok(p)->kind == TOK_WORD && p->at + 1 < p->tokens.n &&
-             !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "in^")) {
-        // for^ i in^ r walks a range^ value; the range decides where it stops.
-        char *focus = decl_word(p);
+    else if (!repeat && for_in_ahead(p)) {
+        List names = {0};
+        do {
+            add(&names, take(p, "_^") ? "_^" : decl_word(p));
+        } while (take(p, ","));
         need(p, "in^");
         Expr *value = loop_range(p);
         if (is(p, "step^") || is(p, "downto^")) {
             fail(tok(p)->loc, "for^ in^ walks a range^ upward by one; use from^ for %s",
                  tok(p)->text);
         }
+        if (value->kind != E_RANGE) {
+            for_in_statement(p, scope, loop, &names, value, loc);
+            p->header = header;
+            loop_body(p, loop);
+            if (loop->last.n) {
+                // The names are bound per turn, and running out leaves by break^, which skips last^.
+                fail(loc,
+                     "last^ needs a range written in the header; for^ in^ over a value has none");
+            }
+            add(&scope->body, loop);
+            return scope;
+        }
+        if (names.n != 1) {
+            fail(loc, "a range^ gives one value at a time, not %d", names.n);
+        }
+        char *focus = names.v[0];
+        // A range written here keeps the plain counting shape the optimizer knows.
         char *range = fmt("\001range%d", ++p->serial);
         counter = fmt("\001counter%d", p->serial);
         add(&scope->body, binding(range, value, false));

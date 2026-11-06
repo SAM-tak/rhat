@@ -669,6 +669,109 @@ last^: print^("last",i)
 ''', 'i32^ 0\ni32^ 1\n1\n2\n10\n20\n7\n8\n9223372036854775806\nmade\n0\n1\n4\n0\n'
          'first 0\nmain 0\nmain 1\nlast 1\n')
 
+    positive('for_in_collections', '''
+let^xs=i64^[]{1,2}
+for^x in^xs {print^(typeof^(x).signature^,x)}
+var^grown:string^[grow^]={"a","b"}
+for^s in^grown {print^(s)}
+let^fixed={7,8}
+for^x in^fixed {print^(x)}
+for^x in^fixed[1 ..] {print^(x)}
+let^empty:i32^[]={}
+for^x in^empty {print^("never")}
+var^maybes:(i32^|nil^)[]={1,nil^,3}
+for^x in^maybes {print^(x ?? -1)}
+let^r=1..3
+for^i in^r {print^(i)}
+let^walk=p^seq {for^x in^seq {print^(x)}}
+walk(xs[..])
+walk(0..1)
+def^Count {
+    self^{n:i32^=0}
+    iter=f^self^ ->Up {Up{left=self^.n}}
+}
+def^Up {
+    self^{left:i32^}
+    next=f^mutable^self^ ->i32^|nil^ {
+        if^self^.left=0 {return^nil^}
+        self^.left-=1
+        return^self^.left
+    }
+}
+var^c=Count{n=2}
+for^x in^c {print^(x)}
+def^Pairs {iter=f^self^ ->PairUp {PairUp{}}}
+def^PairUp {
+    self^{at:i32^=0}
+    next=f^mutable^self^ ->(i32^,string^)|nil^ {
+        if^self^.at=2 {return^nil^}
+        self^.at+=1
+        return^self^.at,"p"
+    }
+}
+var^ps=Pairs{}
+for^a,b in^ps {print^(a,b)}
+for^_^,b in^ps {print^(b)}
+for^x in^fixed {
+first^: print^("first",x)
+main^: if^x=7 {next^} print^("main",x)
+}
+for^a,b in^ps {
+first^: print^("first",a)
+main^: print^("main",a)
+epilog^: print^("done")
+}
+for^x in^fixed {if^x=7 {break^} print^(x)}
+''', '''i64^ 1
+i64^ 2
+a
+b
+7
+8
+8
+1
+-1
+3
+1
+2
+1
+2
+0
+1
+0
+1 p
+2 p
+p
+p
+first 7
+main 8
+first 1
+main 1
+main 2
+done
+''')
+
+    positive('narrowing_after_a_jump', '''
+let^two=f^n:i32^ ->(i32^,string^)|nil^ {
+    if^n>1 {return^nil^}
+    return^n,"p"
+}
+var^i=0
+repeat^ {
+    let^h=two(i)
+    i+=1
+    if^h fits^ nil^ {break^}
+    let^a,b=h
+    print^(a,b)
+}
+for^j from^0 to^2 {
+    let^h=two(j)
+    if^h fits^ nil^ {next^}
+    let^a,b=h
+    print^(a)
+}
+''', '0 p\n1 p\n0\n1\n')
+
     positive('range_elements', '''
 let^n=2
 for^i in^0..n {print^(typeof^(i).signature^,i*n)}
@@ -1057,7 +1160,10 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('char_arithmetic', 'let^ a=char^"a"+char^"b"', "operator '+' is not defined for 'char^'"),
         ('char_cast_wide', 'let^ n:u128^=65\nlet^ c=char^(n)', 'at most 64 bits'),
         ('range_open_end', 'let^ r=0 ..\nprint^(r)', 'goes right before ), ] or ,'),
-        ('for_in_array', 'let^ xs=i64^[]{1,2} for^ x in^ xs {print^(x)}', "expected 'range^'"),
+        ('for_in_number', 'let^ n=3 for^ x in^ n {print^(x)}', "for^ in^ needs a range^, an array or a type with iter(), found 'i32^'"),
+        ('for_in_no_iter', 'def^ A {} var^ a=A{} for^ x in^ a {print^(1)}', "'A' has no method 'iter'"),
+        ('for_in_last', 'let^ r=0..3 for^ i in^ r {main^: print^(i) last^: print^(i)}', 'last^ needs a range written in the header'),
+        ('for_in_two_on_range', 'for^ a, b in^ 0..3 {print^(a)}', 'a range^ gives one value at a time, not 2'),
         ('for_in_float', 'for^ i in^ 0.0..1.0 {print^(i)}', 'a range counts in an integer'),
         ('range_mixed_bounds', 'let^ a:i32^=1 let^ b:i64^=2 let^ r=a..b', "range bounds must both be i32^, found 'i64^'"),
         ('range_wrong_element', 'let^ a:i32^=1 let^ r:range^<i64^>=0..a', "range bounds must both be i64^, found 'i32^'"),

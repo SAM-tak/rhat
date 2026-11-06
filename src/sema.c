@@ -2461,6 +2461,9 @@ void empty_array_braces(Expr *e, Type *t)
 
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
+    if (e->kind == E_LOOP_PART) {
+        return construct(c, loop_part(c->p, e, expression_type(c, e->a, NULL)), t, dst);
+    }
     empty_array_braces(e, t);
     if (e->constant_owner) {
         Expr copy = *e;
@@ -3212,6 +3215,9 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
 
 Value expression(Context *c, Expr *e, Type *expected)
 {
+    if (e->kind == E_LOOP_PART) {
+        return expression(c, loop_part(c->p, e, expression_type(c, e->a, NULL)), expected);
+    }
     if (e->constant_owner) {
         Expr copy = *e;
         copy.constant_owner = NULL;

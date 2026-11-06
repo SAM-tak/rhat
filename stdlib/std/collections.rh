@@ -8,6 +8,29 @@ public^def^Entry<K, V> {
     self^{ key:K, value:V, code:u32^, head:i32^, next:i32^ }
 }
 
+# Walks the keys and values of a table as it was when the walk began: for^ k, v in^ map.
+public^def^MapCursor<K, V> {
+    self^{ private^items:Entry<K, V>[..], private^at:i64^ = 0 }
+    over = f^items:Entry<K, V>[..] -> Self^ { Self^{items = items} }
+    next = f^mutable^self^ -> (K, V) | nil^ {
+        if^self^.at >= self^.items.len { return^nil^ }
+        let^e = self^.items[self^.at]
+        self^.at += 1
+        return^e.key, e.value
+    }
+}
+
+# Walks the members of a set the same way: for^ x in^ set.
+public^def^SetCursor<T> {
+    self^{ private^items:Entry<T, bool^>[..], private^at:i64^ = 0 }
+    over = f^items:Entry<T, bool^>[..] -> Self^ { Self^{items = items} }
+    next = f^mutable^self^ -> T | nil^ {
+        if^self^.at >= self^.items.len { return^nil^ }
+        self^.at += 1
+        return^self^.items[self^.at - 1].key
+    }
+}
+
 # A hash table in one grow^ array, needing no second array or spare slots. Entries are
 # packed in insertion order until a removal moves the last one into the gap.
 # There are never more buckets than entries, so every bucket's head has a slot.
@@ -52,8 +75,9 @@ public^def^HashMap<K, V> {
     }
 
     len = f^self^ -> i64^ { self^.entries.len }
-    # Every entry, for walking with for^ i in^ 0 .. items.len.
+    # Every entry. Removing during a walk can show moved or stale entries.
     items = f^self^ -> Entry<K, V>[..] { self^.entries[..] }
+    iter = f^self^ -> MapCursor<K, V> { MapCursor<K, V>.over(self^.entries[..]) }
     has = f^self^, key:K -> bool^ { self^.find(key, self^.code_of(key)) >= 0 }
     get = f^self^, key:K -> V | nil^ {
         let^i = self^.find(key, self^.code_of(key))
@@ -118,6 +142,7 @@ public^def^HashSet<T> {
     len = f^self^ -> i64^ { self^.map.len() }
     # Every entry; each one's key is a member.
     items = f^self^ -> Entry<T, bool^>[..] { self^.map.items() }
+    iter = f^self^ -> SetCursor<T> { SetCursor<T>.over(self^.map.items()) }
     has = f^self^, value:T -> bool^ { self^.map.has(value) }
     # The member that equals value: for a string^, the view of the stored text.
     get = f^self^, value:T -> T | nil^ { self^.map.stored_key(value) }

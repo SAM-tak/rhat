@@ -1258,6 +1258,65 @@ static void match_cover(Infer *c, Expr *subject, List *arms, Loc loc)
     }
 }
 
+static Expr *part_node(int kind, Loc loc, char *text, Expr *a, Expr *b)
+{
+    Expr *e = mem(sizeof(*e));
+    e->kind = kind;
+    e->loc = e->name_loc = loc;
+    e->text = text;
+    e->a = a;
+    e->b = b;
+    return e;
+}
+
+static Expr *part_call(Loc loc, Expr *base, char *method)
+{
+    return part_node(E_CALL, loc, NULL, part_node(E_MEMBER, loc, method, base, NULL), NULL);
+}
+
+Expr *loop_part(Program *p, Expr *e, Type *t)
+{
+    (void)p;
+    t = t && t->kind == T_REF ? t->elem : t;
+    bool array = t && (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED ||
+                       t->kind == T_SLICE);
+    int form = range_type(t) ? 0 : array ? 1 : 2;
+    if (e->forms[form]) {
+        return e->forms[form];
+    }
+    if (form == 2 && (!t || t->kind != T_STRUCT)) {
+        fail(e->loc, "for^ in^ needs a range^, an array or a type with iter(), found '%s'",
+             type_name(t));
+    }
+    Loc l = e->loc;
+    Expr *zero = part_node(E_INT, l, "0", NULL, NULL), *out;
+    Expr *len = part_node(E_MEMBER, l, "len", e->a, NULL);
+    if (!strcmp(e->text, "iter")) {
+        out = form == 0   ? e->a
+              : form == 1 ? part_node(E_SLICE, l, "..", e->a, NULL)
+                          : part_call(l, e->a, "iter");
+    }
+    else if (!strcmp(e->text, "start")) {
+        out = form == 0   ? part_node(E_MEMBER, l, "\001start", e->a, NULL)
+              : form == 1 ? part_node(E_EXPECT, l, NULL, zero, len)
+                          : zero;
+    }
+    else if (!strcmp(e->text, "next")) {
+        out = form == 2 ? part_call(l, e->a, "next") : e->b;
+    }
+    else if (!strcmp(e->text, "done")) {
+        Expr *contains = part_call(l, e->a, "contains");
+        add(&contains->args, e->b);
+        out = form == 0   ? part_node(E_UNARY, l, "!", contains, NULL)
+              : form == 1 ? part_node(E_BIN, l, ">=", e->b, len)
+                          : part_node(E_BOOL, l, "false^", NULL, NULL);
+    }
+    else {
+        out = form == 1 ? part_node(E_INDEX, l, NULL, e->a, e->b) : e->b;
+    }
+    return e->forms[form] = out;
+}
+
 static Type *infer_expr(Infer *c, Expr *e, Type *expected)
 {
     if (c->terminated) {
@@ -1265,6 +1324,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     if (!e) {
         return type_builtin(c->p, T_VOID);
+    }
+    if (e->kind == E_LOOP_PART) {
+        Type *t = infer_expr(c, e->a, NULL);
+        if (c->terminated) {
+            return type_builtin(c->p, T_NEVER);
+        }
+        return t ? infer_expr(c, loop_part(c->p, e, t), expected) : NULL;
     }
     if (e->invalid) {
         tool_abort();
@@ -1935,6 +2001,19 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
 }
 
+// Whether control always leaves body by break^ or next^. Inference does not treat those as ending
+// the statements around them, but what follows an if^ is reached only from the arm that falls out.
+static bool ends_in_jump(List *body)
+{
+    if (!body->n) {
+        return false;
+    }
+    Stmt *s = body->v[body->n - 1];
+    return s->kind == S_BREAK || s->kind == S_NEXT ||
+           (s->kind == S_BLOCK && ends_in_jump(&s->body)) ||
+           (s->kind == S_IF && ends_in_jump(&s->body) && ends_in_jump(&s->other));
+}
+
 static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
 {
     int mark = c->vars.n;
@@ -2167,19 +2246,21 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             }
             refine_condition(c->p, &c->vars, &c->flow, s->a, true);
             infer_statements(c, &s->body, true);
-            bool a = c->terminated;
+            bool yes_ended = c->terminated;
+            bool a = yes_ended || ends_in_jump(&s->body);
             c->terminated = false;
             List after_yes = save_facts(&c->vars);
             rewind_facts(&c->vars, facts);
             refine_condition(c->p, &c->vars, &c->flow, s->a, false);
             infer_statements(c, &s->other, true);
-            if (!a && c->terminated) {
+            bool b = c->terminated || ends_in_jump(&s->other);
+            if (!a && b) {
                 rewind_facts(&c->vars, after_yes);
             }
-            else if (!a && !c->terminated) {
+            else if (!a && !b) {
                 merge_facts(&c->vars, facts, after_yes);
             }
-            c->terminated &= a;
+            c->terminated &= yes_ended;
             if (s->internal) {
                 c->lexical++;
             }
@@ -3045,6 +3126,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         break;
     }
     case E_PANIC:
+        body_expr(c, e->a, NULL);
+        break;
+    case E_LOOP_PART:
         body_expr(c, e->a, NULL);
         break;
     case E_RANGE: {

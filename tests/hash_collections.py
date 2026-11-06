@@ -136,14 +136,31 @@ if^value fits^ ref^ i32^ {
 print^(m.get(0) ?? -1, m.get_mut(5000) fits^ nil^)
 ''', '11 true\n')
 
-    positive('map_items_in_insertion_order', PRELUDE + '''
+    positive('map_walks_in_insertion_order', PRELUDE + '''
 var^m:c.HashMap<string^, i32^> = {}
+for^k, v in^ m { print^("never") }
 m.set("a", 1)
 m.set("b", 2)
 m.set("c", 3)
+for^k, v in^ m { print^(k, v) }
+for^_^, v in^ m { print^(v) }
 let^items = m.items()
-for^i in^0 .. items.len { print^(items[i].key, items[i].value) }
-''', 'a 1\nb 2\nc 3\n')
+for^e in^ items { print^(e.key) }
+let^total = f^map:ref^ c.HashMap<string^, i32^> -> i32^ {
+    var^sum = 0
+    for^k, v in^ map { sum += v }
+    return^sum
+}
+print^(total(ref^ m))
+''', 'a 1\nb 2\nc 3\n1\n2\n3\na\nb\nc\n6\n')
+
+    positive('set_walks', PRELUDE + '''
+var^s:c.HashSet<string^> = {}
+s.add("x")
+s.add("y")
+s.add("x")
+for^v in^ s { print^(v) }
+''', 'x\ny\n')
 
     # The live key count swells and shrinks, crossing bucket boundaries up and down:
     # the small range reaches the first few, including an empty table.
@@ -180,6 +197,10 @@ let^two = b.add("bc")
 print^(one, two, b.text(), one.bytes.len)
 ''', 'あ bc あbc 3\n')
 
+    negative('map_walk_takes_two_names', PRELUDE + '''
+var^m:c.HashMap<i32^, i32^> = {}
+for^a, b, d in^ m { print^(a) }
+''', '3 names for the 2 results')
     negative('map_key_outlives_its_text', PRELUDE + '''
 var^m:c.HashMap<string^, i32^> = {}
 do^{

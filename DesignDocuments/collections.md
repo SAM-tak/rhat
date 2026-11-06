@@ -23,9 +23,10 @@ print^(counts.get("the") ?? 0)
 - `get_mut(key) -> ref^ V | nil^`: 値への参照。
 - `has(key) -> bool^`・`remove(key) -> bool^`・`len() -> i64^`・`clear()`
 - `stored_key(key) -> K | nil^`: 保持しているキー。`string^` なら保存済みの本体を指すビュー。
-- `items() -> Entry<K, V>[..]`: 全エントリのスライス。`key`・`value` を読みます。削除するまでは挿入順です。
+- `for^k, v in^ m`: キーと値のコピーを回します。削除するまでは挿入順です。
+- `items() -> Entry<K, V>[..]`: 全エントリのスライス。`key`・`value` を読みます。
 
-`HashSet<T>` は `add(value) -> bool^`（新規なら `true^`）・`has`・`get`・`remove`・`len`・`clear`・`items` を持ちます。
+`HashSet<T>` は `add(value) -> bool^`（新規なら `true^`）・`has`・`get`・`remove`・`len`・`clear`・`items` を持ち、`for^v in^ s` で回せます。
 中身は `HashMap<T, bool^>` です。
 
 ## 文字列のキー
@@ -99,5 +100,6 @@ def^Point {
 
 - 構造体に置ける map は一つで、末尾のフィールドだけです。固定容量版には `def^` の値パラメータが要ります。
 - 値に伸長配列は入れられません。別の配列への添字を値にします。
-- `op^[]` はないので、`m[k]` は書けません。`for^ x in^ m` もありません。`items()` と添字で回します。
+- `op^[]` はないので、`m[k]` は書けません。
+- `for^k, v in^ m` の値はコピーです。書き換えるには `get_mut` を使います。反復中の変更は文書上の禁止で、検査はしません。
 - `enum^` のキーは未対応です。
