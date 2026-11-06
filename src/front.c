@@ -2594,6 +2594,24 @@ static Stmt *matched_statement(Parser *p, Stmt *scope, Expr *subject)
     return s;
 }
 
+// A loop header ends at {, so its range is read here rather than by expr.
+static Expr *loop_range(Parser *p)
+{
+    Expr *e = expr(p, 0);
+    if (!is(p, "..") && !is(p, "to^")) {
+        return e;
+    }
+    Token *t = next(p);
+    if (is(p, "{")) {
+        fail(t->loc, "a range without its end goes in parentheses; write (n ..)");
+    }
+    Expr *r = node(E_RANGE, e->loc);
+    r->text = t->text;
+    r->a = e;
+    r->b = operation(p, 0);
+    return r;
+}
+
 static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
 {
     Stmt *scope = mem(sizeof(*scope));
@@ -2652,6 +2670,38 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
         add(&scope->body, focus);
         add(&loop->focuses, focus->a->text);
     }
+    else if (!repeat && tok(p)->kind == TOK_WORD && p->at + 1 < p->tokens.n &&
+             !strcmp(((Token *)p->tokens.v[p->at + 1])->text, "in^")) {
+        // for^ i in^ r walks a range^ value; the range decides where it stops.
+        char *focus = decl_word(p);
+        need(p, "in^");
+        Expr *value = loop_range(p);
+        if (is(p, "step^") || is(p, "downto^")) {
+            fail(tok(p)->loc, "for^ in^ walks a range^ upward by one; use from^ for %s",
+                 tok(p)->text);
+        }
+        char *range = fmt("\001range%d", ++p->serial);
+        counter = fmt("\001counter%d", p->serial);
+        Stmt *held = binding(range, value, false);
+        held->spec = mem(sizeof(Spec));
+        *held->spec = (Spec){.kind = SPEC_NAME, .loc = value->loc, .name = "range^"};
+        add(&scope->body, held);
+        Expr *start = node(E_MEMBER, loc), *contains = node(E_MEMBER, loc);
+        start->a = contains->a = named(range, loc);
+        start->text = "start";
+        contains->text = "contains";
+        add(&scope->body, binding(counter, start, true));
+        add(&scope->body, binding(focus, named(counter, loc), false));
+        add(&loop->focuses, focus);
+        loop->a = node(E_CALL, loc);
+        loop->a->a = contains;
+        add(&loop->a->args, named(counter, loc));
+        Stmt *refresh = assignment(named(focus, loc), named(counter, loc), NULL);
+        refresh->internal = true;
+        add(&loop->pre, refresh);
+        add(&loop->update, assignment(named(counter, loc),
+                                      contextual(number("1", loc), named(counter, loc)), "+"));
+    }
     else if (!is(p, "{") && !is(p, "while^") && !is(p, "until^")) {
         char *focus = "it^";
         Spec *annotation = NULL;
@@ -2666,6 +2716,9 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
             focus = decl_word(p);
             if (take(p, ":")) {
                 annotation = spec(p);
+            }
+            if (is(p, "in^")) {
+                fail(tok(p)->loc, "for^ in^ counts in i64^; use from^ to choose another type");
             }
             need(p, "from^");
             start = expr(p, 0);

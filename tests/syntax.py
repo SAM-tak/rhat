@@ -645,6 +645,29 @@ for^ i from^ 9 to^ 1 { print^(99) }
 for^ i from^ 1 downto^ 9 { print^(98) }
 ''', '340282366920938463463374607431768211454\n340282366920938463463374607431768211455\n-170141183460469231731687303715884105728\n-170141183460469231731687303715884105727\n-127\n0\n127\n')
 
+    positive('for_in_range', '''
+for^i in^0..2 {print^(typeof^(i).signature^,i)}
+for^i in^1 to^2 {print^(i)}
+let^xs=i64^[]{10,20}
+for^i in^0..xs.len {print^(xs[i])}
+for^i in^3..3 {print^("empty")}
+for^i in^5..2 {print^("empty")}
+for^i in^(7 ..) {if^ i>8 {break^} print^(i)}
+for^i in^9223372036854775806..9223372036854775807 {print^(i)}
+let^make=p^ ->range^ {print^("made") return^ 0..2}
+for^i in^make() {print^(i)}
+let^walk=p^ q:range^ {for^i in^q {print^(i)}}
+walk(4..5)
+let^bound=p^ n {for^i in^0..n {print^(i)}}
+bound(1)
+for^i in^0..2 {
+first^: print^("first",i)
+main^: print^("main",i)
+last^: print^("last",i)
+}
+''', 'i64^ 0\ni64^ 1\n1\n2\n10\n20\n7\n8\n9223372036854775806\nmade\n0\n1\n4\n0\n'
+         'first 0\nmain 0\nmain 1\nlast 1\n')
+
     positive('for_range_proof', '''
 var^ values:i32^[4]={1,2,3,4}
 var^ total=0
@@ -986,6 +1009,14 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('char_arithmetic', 'let^ a=char^"a"+char^"b"', "operator '+' is not defined for 'char^'"),
         ('char_cast_wide', 'let^ n:u128^=65\nlet^ c=char^(n)', 'at most 64 bits'),
         ('range_open_end', 'let^ r=0 ..\nprint^(r)', 'goes right before ), ] or ,'),
+        ('for_in_array', 'let^ xs=i64^[]{1,2} for^ x in^ xs {print^(x)}', "expected 'range^'"),
+        ('for_in_narrow_bound', 'let^ n:i32^=2 for^ i in^ 0..n {print^(i)}', 'range bounds must be i64^'),
+        ('for_in_float', 'for^ i in^ 0.0..1.0 {print^(i)}', 'range bounds must be i64^'),
+        ('for_in_annotation', 'for^ i:u8^ in^ 0..3 {print^(i)}', 'use from^ to choose another type'),
+        ('for_in_step', 'for^ i in^ 0..9 step^ 2 {print^(i)}', 'use from^ for step^'),
+        ('for_in_downto', 'for^ i in^ 3 downto^ 0 {print^(i)}', 'use from^ for downto^'),
+        ('for_in_open', 'for^ i in^ 0.. {print^(i)}', 'write (n ..)'),
+        ('for_in_readonly', 'for^ i in^ 0..3 {i:=2}', "cannot modify let^ binding 'i'"),
         ('range_open_start', 'let^ r=.. 3', 'goes right after (, [ or ,'),
         ('range_inclusive_open', 'let^ r=(1 to^)', 'needs both bounds'),
         ('range_bounds', 'let^ r=1.5 .. 2.0', 'must be i64^'),
