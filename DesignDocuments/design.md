@@ -424,7 +424,7 @@ IR にはスタック番号、構築先の所有者、呼び出し先の基準�
 ## 数値と実行時検査
 
 組み込み型名の `^` は必須です。`bool` / `u8` / `string` などは通常のユーザー識別子です。
-`def^ bool { self^{ value:bool^=true^ } }` のようにユーザーの型と組み込み型を区別します。
+`def^bool { self^{ value:bool^= true^} }` のようにユーザーの型と組み込み型を区別します。
 組み込み型そのものの名前（`bool^` など）は再宣言できません。
 
 符号なし整数は u8^ / u16^ / u32^ / u64^ / u128^、符号付き整数は
@@ -470,16 +470,16 @@ f128^ は保留です。binary128 の保存・演算・入出力を実装する�
 
 ```rhat
 # lib/example.rh
-module^ lib.example
-public^ def^ Item { self^{ value:i64^ } }
-public^ let^ twice=f^ x:i64^ ->i64^ { x*2 }
-public^ let^ answer:i64^=40+2
+module^lib.example
+public^def^Item { self^{ value:i64^} }
+public^let^twice = f^x:i64^->i64^{ x*2 }
+public^let^answer:i64^= 40 + 2
 ```
 
 ```rhat
-import^ lib.example
-let^ lib=import^ lib.example
-let^ item:lib.Item=lib.Item{value=lib.answer}
+import^lib.example
+let^lib = import^lib.example
+let^item:lib.Item = lib.Item{ value = lib.answer }
 print^(lib.example.twice(item.value))
 ```
 
@@ -489,6 +489,11 @@ print^(lib.example.twice(item.value))
 非公開名、名前の衝突、依存循環、宣言名と要求名の不一致は拒否します。
 
 `public^` を付けた型・関数・テンプレート・定数だけを公開します。メンバの `private^` は従来どおり定義所有者に従います。
+`module^` のないファイルの `public^` は効果がありませんが、エラーにも警告にもしません。
+モジュールから持ってきたコードの `public^` を外して回る作業を強制せず、再びモジュールへ戻す場合の指定も残せるようにするためです。
+Swift も、より狭いアクセスの型の中で広いアクセスレベルを書いても警告しないと定めています（SE-0025）。
+Rust の `unreachable_pub` と C# の CA1515 も、同様の指定を検出できますが既定では無効です。
+将来、警告の仕組みを入れる場合も、任意の lint として扱います。
 ライブラリのトップレベルは宣言だけです。定数はスカラー・文字列のリテラルとその演算に限り、
 関数呼び出し、他の定数の参照、実行文、可変グローバルは許可しません。
 注釈付き定数は使用先の期待型に左右されず宣言型を保ちます。エントリーファイルはトップレベルの文を実行します。
@@ -521,14 +526,14 @@ C の関数は [externC^](ffi.md) で宣言して呼び出し、追加のライ�
 ## エラー値と標準乱数
 
 ```rhat
-errordef^ Error { Invalid }
-def^ Result = i64^ | Error.Invalid | nil^
-let^ calculate=f^ x:i64^ ->Result {
-    if^ x < 0 { return^ Error.Invalid{} }
-    return^ x
+errordef^Error { Invalid }
+def^Result = i64^| Error.Invalid | nil^
+let^calculate = f^x:i64^->Result {
+    if^x < 0 { return^Error.Invalid{} }
+    return^x
 }
-let^ result=calculate(42)
-if^ result fits^ i64^ { print^(result) }
+let^result = calculate(42)
+if^result fits^i64^{ print^(result) }
 ```
 
 各種別は独立した公称型、宣言名は種別の公称合併型です。値は `Error.Invalid{}` で構築します。
@@ -564,10 +569,10 @@ next/rangeint/uniform/normalとloadは `f^ mutable^ self^`、reseedは `p^ self^
 PRNGはR^、数学処理は `std.math`、`nextafter` とOS seed取得は [externC^](ffi.md) によるCの呼び出しで実装します。
 暗号用乱数生成器ではなく、数学ライブラリの丸めが異なる環境間でnormalのビット一致は保証しません。
 
-## 標準数学
+## 標準数学ライブラリ
 
 ```rhat
-let^ m = import^ std.math
+let^m = import^std.math
 print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 ```
 
@@ -580,7 +585,7 @@ print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 - 丸め・符号: `floor`、`ceil`、`trunc`、`round`（中間値は0から遠い側）、`abs`、`copysign`、`fma`（一度だけ丸める）
 - 判定: `isnan`、`isinf`、`isfinite`（R^ で実装）
 
-組み込み関数は `public^ let^ sin = externLLVM^ llvm.sin.f64:f^ x:f64^ ->f64^;` の形で宣言します。
+組み込み関数は `public^let^sin = externLLVM^llvm.sin.f64:f^x:f64^->f64^;` の形で宣言します。
 `externLLVM^` は標準ライブラリ（`std.*`）の `llvm.*` シンボル専用です。渡せる型と効果の規則は [externC^](ffi.md) と同じです。
 
 ### ベクトル
@@ -589,9 +594,9 @@ print^(m.sqrt(2.0), m.sin(m.pi / 2.0), m.atan2(1.0, 1.0), m.isnan(0.0 / 0.0))
 浮動小数点型 `T` の `Vec2<T>`・`Vec3<T>`・`Vec4<T>` と、f32^ 版の別名 `Vector2`・`Vector3`・`Vector4` を公開します。
 
 ```rhat
-let^ v3 = import^ std.math.vector3
-let^ V = v3.Vector3
-let^ a = V{ x = 1.0, y = 2.0, z = 2.0 }
+let^v3 = import^std.math.vector3
+let^V = v3.Vector3
+let^a = V{ x = 1.0, y = 2.0, z = 2.0 }
 print^(a.length(), (2.0 * a).z, (V.RIGHT cross^ V.UP).z, V.distance(a, V.ZERO))
 ```
 
@@ -622,10 +627,10 @@ print^(a.length(), (2.0 * a).z, (V.RIGHT cross^ V.UP).z, V.distance(a, V.ZERO))
 すべての数値型が、型の側のメソッド `T.parse(s)` を持ちます。
 
 ```rhat
-var^ disc:i64^ = 3
-if^ (...).len > 0 {
-    let^ parsed = i64^.parse(...[0])
-    if^ parsed fits^ i64^ { disc := parsed else^: print^("usage: hanoi [DISCS]") return^ }
+var^disc:i64^ = 3
+if^(...).len > 0 {
+    let^parsed = i64^.parse(...[0])
+    if^parsed fits^i64^ { disc := parsed else^: print^("usage: hanoi [DISCS]") return^}
 }
 print^(disc)
 ```

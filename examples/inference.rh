@@ -1,5 +1,5 @@
-let^identity = f^value {value}
-let^double = f^value {value * 2}
+let^identity = f^value { value }
+let^double = f^value { value * 2 }
 
 print^(identity(42), identity("hello"))
 print^(double(21), double(i64^(22)))

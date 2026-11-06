@@ -7,7 +7,7 @@ let^show = template^p^... {
 show(1, "two", true^)
 
 # Fixed arrays use the same syntax, with ordinary loop jumps.
-var^values:i32^[4] = {1, 2, 3, 4}
+var^values = { 1, 2, 3, 4 }
 var^total = 0
 inline^for^x in^values {
     if^x = 2 { next^}
@@ -15,7 +15,7 @@ inline^for^x in^values {
 }
 print^("total", total)
 
-let^max = template^p^... {
+public^let^max = template^p^... {
     var^max = ...[0]
     inline^for^x in^... {
         if^x > max { max := x }
@@ -23,3 +23,4 @@ let^max = template^p^... {
     return^max
 }
 print^("max", max(2, 3, 5, values[1], 7, 9, 2, values[3], values[0]))
+print^("max", max(1.0, 2.0, 4.0, 3.2, 1.2))
