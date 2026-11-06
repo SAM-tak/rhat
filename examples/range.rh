@@ -1,0 +1,12 @@
+let^n = 5
+for^i in^0..n {
+    print^i
+}
+
+for^i in^0 to^n {
+    print^i
+}
+
+for^i from^0 to^n {
+    print^i
+}
