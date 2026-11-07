@@ -362,7 +362,7 @@ static char *spec_identity(Spec *s)
                    : s->count                 ? "flex^"
                                               : "grow^");
     case SPEC_SLICE:
-        return fmt("(%s)[..]", elem);
+        return fmt("%s(%s)[..]", s->count ? "read^ " : "", elem);
     case SPEC_BOUNDED:
         return fmt("(%s)[max^%d]", elem, s->count);
     default:

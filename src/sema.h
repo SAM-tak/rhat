@@ -45,8 +45,10 @@ struct Var {
     bool path_sensitive; // Guards on this root can depend on aliased storage.
     Var *source;         // Match snapshots only: valid until the original changes.
     unsigned source_version;
-    bool dispose;  // Its Disposable parts are disposed when its scope ends, however it ends.
-    bool constant; // An immutable integer binding known at specialization time.
+    bool dispose;      // Its Disposable parts are disposed when its scope ends, however it ends.
+    bool constant;     // An immutable integer binding known at specialization time.
+    bool let_bound;    // A let^ binding, whose storage slices only as read^.
+    bool captured_let; // The hidden reference to a top-level let^.
     int64_t integer;
 };
 

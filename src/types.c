@@ -453,8 +453,9 @@ char *type_name(Type *t)
                                                                       : "grow^")
                  : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
                                         : fmt("%d", t->count);
-    return fmt(elem->kind == T_UNION || elem->kind == T_DYN ? "(%s)[%s%s%s]" : "%s[%s%s%s]",
-               type_name(elem), refs, *refs && *kind ? " " : "", kind);
+    return fmt(elem->kind == T_UNION || elem->kind == T_DYN ? "%s(%s)[%s%s%s]" : "%s%s[%s%s%s]",
+               read_reference(t) ? "read^ " : "", type_name(elem), refs, *refs && *kind ? " " : "",
+               kind);
 }
 
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)

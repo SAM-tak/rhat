@@ -478,7 +478,7 @@ print^(read_late(), last())
 let^ names:string^[3] = {"a", "b", "c"}
 let^ table:i64^[grow^] = {10, 20, 30}
 let^ name = f^ i:i64^ -> string^ { return^ names[i] }
-let^ tail = f^ -> i64^[..] { return^ table[1 .. 3] }
+let^ tail = f^ -> read^ i64^[..] { return^ table[1 .. 3] }
 print^(name(1), tail().len, tail()[1])
 ''', '3 3 16.0 40\n7 2\nb 2 30\n')
 
@@ -531,7 +531,7 @@ let^ d=xs[all]
 print^(a.len,a[2],b.len,b[0],c.len,c[2],d.len)
 print^(head.start,head.len,both.len,tail.end ?? -1,head.end ?? -1)
 print^(head.contains(2),head.contains(3),tail.contains(1000),tail.contains(2))
-let^ pick=f^ v:i32^[..],r:range^ ->i32^[..] { v[r] }
+let^ pick=f^ v:i32^[..],r:range^ ->read^ i32^[..] { v[r] }
 let^ ys=xs[..]
 print^(pick(ys,2 .. 4)[1],pick(ys,.. 2).len)
 let^ e=3 to^ 2

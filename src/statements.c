@@ -911,6 +911,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             var->depth = c->depth;
             var->lexical = c->lexical;
             var->mut = s->mut;
+            var->let_bound = !s->mut;
             var->root = root(c, s, c->depth, false);
             var->deps = v.deps;
             layout(t, s->loc);
@@ -1552,6 +1553,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         v->lexical = c.lexical;
         v->mut = true;
         v->parameter = true;
+        v->captured_let = a->capture && !a->capture->mut;
         v->root = root(&c, a, 1, false);
         Roots contents = {0};
         if (t->refs) {

@@ -215,7 +215,7 @@ def main():
         path.write_bytes((suite.repo / 'bench/rhat/sexp.rh').read_bytes())
         suite.run([suite.compiler, 'format', path])
         text = path.read_text(encoding='utf-8')
-        assert ('let^parse_node = p^text:u8^[..], c:ref^Cursor, pool:ref^Node[grow^], '
+        assert ('let^parse_node = p^text:read^u8^[..], c:ref^Cursor, pool:ref^Node[grow^], '
                 'symbols:ref^u8^[grow^],\n'
                 '    prev:u32^-> ParseResult {') in text, text
         suite.run([suite.compiler, 'format-check', path])

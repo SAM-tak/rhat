@@ -32,7 +32,7 @@ let^ total = f^ ...:ref^ i32^ -> i32^ {
     for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { t += *...[i] }
     return^ t
 }
-let^ id = f^ ...:i32^ -> i32^[..] { return^ ... }
+let^ id = f^ ...:i32^ -> read^ i32^[..] { return^ ... }
 var^ box = Box{}
 var^ a:i32^ = 2
 var^ b:i32^ = 5
@@ -59,8 +59,8 @@ for^ var^ i:i64^ = 0 while^ i < ....len next^ i += 1 { print^(...[i], ...[i].byt
     negative('variadic_element_type', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nprint^(s(1, "x"))', "expected 'i32^'")
     negative('variadic_mixed_forward', 'let^ s = f^ ...:i32^ -> i64^ { ....len }\nvar^ a:i32^[1] = {1}\nprint^(s(1, a...))', 'only variadic argument')
     negative('variadic_forward_plain', 'let^ g = f^ x:i32^ -> i32^ { x }\nvar^ a:i32^[1] = {1}\nprint^(g(a...))', 'forwards only into a variadic parameter')
-    negative('variadic_escape_binding', 'let^ id = f^ ...:i32^ -> i32^[..] { return^ ... }\nlet^ s = id(1, 2)\nprint^(s[0])', 'outlive its owner')
-    negative('variadic_escape_return', 'let^ id = f^ ...:i32^ -> i32^[..] { return^ ... }\nlet^ wrap = f^ -> i32^[..] { return^ id(1, 2) }\nprint^(wrap()[0])', 'cannot return a reference')
+    negative('variadic_escape_binding', 'let^ id = f^ ...:i32^ -> read^ i32^[..] { return^ ... }\nlet^ s = id(1, 2)\nprint^(s[0])', 'outlive its owner')
+    negative('variadic_escape_return', 'let^ id = f^ ...:i32^ -> read^ i32^[..] { return^ ... }\nlet^ wrap = f^ -> read^ i32^[..] { return^ id(1, 2) }\nprint^(wrap()[0])', 'cannot return a reference')
     negative('variadic_owned_elements', 'let^ s = f^ ...:i32^[grow^] -> i64^ { ....len }\nprint^(s(i32^[grow^]{}))', 'cannot own storage')
     negative('variadic_extern', 'externC^ printf:p^ format:string^, ...:i32^ ->i32^;', 'variadic')
     suite.finish()

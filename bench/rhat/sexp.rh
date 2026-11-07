@@ -47,10 +47,10 @@ let^gen = p^text:ref^u8^[grow^], depth:i64^, seed:u64^-> u64^{
     text.push(32)
     return^r
 }
-let^skip_space = p^text:u8^[..], c:ref^Cursor {
+let^skip_space = p^text:read^u8^[..], c:ref^Cursor {
     repeat^while^c.pos < text.len and^text[c.pos] = 32 { c.pos += 1 }
 }
-let^parse_node = p^text:u8^[..], c:ref^Cursor, pool:ref^Node[grow^], symbols:ref^u8^[grow^],
+let^parse_node = p^text:read^u8^[..], c:ref^Cursor, pool:ref^Node[grow^], symbols:ref^u8^[grow^],
     prev:u32^-> ParseResult {
     skip_space(text, c)
     if^c.pos >= text.len { return^ParseError{code = 1} }
@@ -92,7 +92,7 @@ let^parse_node = p^text:u8^[..], c:ref^Cursor, pool:ref^Node[grow^], symbols:ref
     pool.push(Sym{start = u32^(offset), len = u32^(len), next = prev})
     return^Parsed{index = u32^(pool.len - 1)}
 }
-let^parse_all = p^text:u8^[..], pool:ref^Node[grow^], symbols:ref^u8^[grow^],
+let^parse_all = p^text:read^u8^[..], pool:ref^Node[grow^], symbols:ref^u8^[grow^],
     roots:ref^u32^[grow^] -> i64^{
     var^c = Cursor{}
     repeat^while^true^{

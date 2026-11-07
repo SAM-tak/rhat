@@ -3,7 +3,7 @@ import^std.random
 # Fixed-capacity vocabulary, copied packed word list and borrowed slice keys.
 def^WordList { self^{ count:i64^= 0, data:u8^[grow^] } }
 
-let^split = p^text:u8^[..] -> WordList {
+let^split = p^text:read^u8^[..] -> WordList {
     var^out = WordList{}
     var^i:i64^= 0
     repeat^while^i < text.len {

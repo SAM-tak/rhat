@@ -212,7 +212,7 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
 
 bool read_reference(Type *t)
 {
-    return (t->kind == T_REF || t->kind == T_DYN) && t->count != 0;
+    return (t->kind == T_REF || t->kind == T_DYN || t->kind == T_SLICE) && t->count != 0;
 }
 
 static bool capability(Type *t, bool write, List *seen)
@@ -220,8 +220,9 @@ static bool capability(Type *t, bool write, List *seen)
     if (!t || !t->refs) {
         return false;
     }
-    // Procedures (including C functions) can write through a slice's data
-    // pointer even though ordinary scalar slice indexing yields a value.
+    if (t->kind == T_SLICE && read_reference(t)) {
+        return !write;
+    }
     if (write && t->kind == T_SLICE) {
         return true;
     }

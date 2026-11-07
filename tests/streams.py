@@ -148,7 +148,9 @@ do^{
     var^dynamic = io.MemoryReader.over(text.bytes)
     var^out = io.MemoryWriter{}
     try^copy_any(ref^ dynamic, ref^ out)
-    print^(out.data().len)
+    do^{
+        print^(out.data().len)
+    }
     var^r = try^fs.open(path)
     out.clear()
     try^copy_any(ref^ r, ref^ out)

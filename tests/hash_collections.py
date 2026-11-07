@@ -171,8 +171,10 @@ for^v in^ s { print^(v) }
 var^s:c.HashSet<i32^> = {}
 print^(s.add(1), s.add(1), s.add(2), s.len(), s.has(1), s.has(3))
 print^(s.remove(1), s.remove(1), s.len(), s.has(1))
-let^items = s.items()
-print^(items.len, items[0].key)
+do^{
+    let^items = s.items()
+    print^(items.len, items[0].key)
+}
 s.clear()
 print^(s.len())
 ''', 'true false true 2 true false\ntrue false 1 false\n1 2\n0\n')

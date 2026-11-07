@@ -18,7 +18,7 @@ public^def^Reader {
 
 public^def^Writer {
     # Writes all of data; it is copied, not kept.
-    abstract^write:p^self^, data:u8^[..] -> nil^| Error;
+    abstract^write:p^self^, data:read^u8^[..] -> nil^| Error;
     flush = p^self^-> nil^| Error { return^nil^}
 }
 
@@ -26,7 +26,7 @@ public^def^Stream : Reader, Writer {}
 
 # Reads a view of bytes the caller keeps.
 public^def^MemoryReader : Reader {
-    self^{ private^data:u8^[..], private^at:i64^= 0 }
+    self^{ private^data:read^u8^[..], private^at:i64^= 0 }
     over = f^data:u8^[..] -> Self^{ Self^{data = data} }
     read = p^self^, out:ref^u8^[grow^], max:i64^-> i64^| Error {
         var^n = self^.data.len - self^.at
@@ -41,9 +41,9 @@ public^def^MemoryReader : Reader {
 # Collects what is written.
 public^def^MemoryWriter : Writer {
     self^{ private^bytes:u8^[grow^] = {} }
-    data = f^self^-> u8^[..] { self^.bytes[..] }
+    data = f^self^-> read^u8^[..] { self^.bytes[..] }
     clear = p^self^{ self^.bytes.clear() }
-    write = p^self^, data:u8^[..] -> nil^| Error {
+    write = p^self^, data:read^u8^[..] -> nil^| Error {
         self^.bytes.append(data)
         return^nil^
     }

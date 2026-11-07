@@ -1124,6 +1124,18 @@ static int self_type_depth(const char *text)
 
 static Expr *expr(Parser *p, int min);
 
+// A slice that f^ takes is read^ as written: it can change nothing through it anyway.
+static void read_view(Spec *s)
+{
+    if (s->kind == SPEC_SLICE) {
+        s->count = 1;
+    }
+    else if (s->kind == SPEC_UNION) {
+        read_view(s->elem);
+        read_view(s->other);
+    }
+}
+
 // Parse an array type's bracket contents, leaving the closing ']' unread.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
@@ -1243,6 +1255,15 @@ static Spec *spec_part(Parser *p)
         int none = 0;
         return array_spec(p, typeof_spec(p, s->loc), &none);
     }
+    if (take(p, "read^")) {
+        s = spec_part(p);
+        if (s->kind != SPEC_SLICE) {
+            fail(s->loc,
+                 "read^ here needs a slice, as in read^ T[..]; a reference is ref^ read^ T");
+        }
+        s->count = 1;
+        return s;
+    }
     int refs = reference_depth(tok(p)->text);
     if (refs) {
         next(p);
@@ -1263,7 +1284,11 @@ static Spec *spec_part(Parser *p)
         s->procedure = !strcmp(((Token *)p->tokens.v[p->at - 1])->text, "p^");
         if (!is(p, "->") && !is(p, ";")) {
             do {
-                add(&s->params, spec(p));
+                Spec *param = spec(p);
+                if (!s->procedure) {
+                    read_view(param);
+                }
+                add(&s->params, param);
             } while (take(p, ","));
         }
         if (take(p, "->")) {
@@ -3290,6 +3315,9 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
             }
             if (take(p, ":")) {
                 a->spec = spec(p);
+                if (!f->procedure) {
+                    read_view(a->spec);
+                }
             }
             if (!strcmp(a->name, "...")) {
                 if (!a->spec) {
@@ -3302,6 +3330,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
                 else {
                     Spec *slice = mem(sizeof(*slice));
                     slice->kind = SPEC_SLICE;
+                    slice->count = 1; // The elements are a temporary or someone else's.
                     slice->loc = a->spec->loc;
                     slice->elem = a->spec;
                     a->spec = slice;
@@ -4010,7 +4039,7 @@ void parse_file(Program *p, const char *path, Module *module)
         // The entry file is the body of p^ ...:string^ over the command arguments.
         Spec *text = mem(sizeof(*text)), *slice = mem(sizeof(*slice));
         *text = (Spec){.kind = SPEC_NAME, .loc = p->entry->loc, .name = "string^"};
-        *slice = (Spec){.kind = SPEC_SLICE, .loc = p->entry->loc, .elem = text};
+        *slice = (Spec){.kind = SPEC_SLICE, .count = 1, .loc = p->entry->loc, .elem = text};
         Param *arguments = mem(sizeof(*arguments));
         *arguments = (Param){.loc = p->entry->loc, .name = "...", .spec = slice};
         add(&p->entry->params, arguments);

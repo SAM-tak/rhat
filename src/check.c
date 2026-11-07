@@ -654,6 +654,42 @@ static bool infer_read_place(Infer *c, Expr *e)
     return false;
 }
 
+static Var *infer_variable(Infer *c, Expr *e);
+
+// Whether e is a place in a let^ binding's own storage, not behind a reference or slice.
+// A function reaches a top-level binding through a hidden reference, written *name.
+static bool infer_let_place(Infer *c, Expr *e)
+{
+    if (e->kind == E_UNARY && !strcmp(e->text, "*")) {
+        Var *hidden = e->a->kind == E_NAME ? infer_variable(c, e->a) : NULL;
+        return hidden && hidden->captured_let;
+    }
+    if (e->kind == E_MEMBER || e->kind == E_INDEX) {
+        Type *base = infer_expr(c, e->a, NULL);
+        return base && base->kind != T_REF && base->kind != T_SLICE && infer_let_place(c, e->a);
+    }
+    Var *v = e->kind == E_NAME ? infer_variable(c, e) : NULL;
+    return v && v->let_bound;
+}
+
+// The slice of source, whose type without its reference is base; slice_view decides the same.
+static Type *infer_view(Infer *c, Expr *source, Type *base)
+{
+    if (base && base->kind == T_STRING) {
+        return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
+    }
+    if (!base || (base->kind != T_ARRAY && base->kind != T_GROW && base->kind != T_BOUNDED &&
+                  base->kind != T_SLICE)) {
+        return NULL;
+    }
+    Type *raw = infer_expr(c, source, NULL);
+    bool read = read_reference(base) || (raw && read_reference(raw)) || infer_read_place(c, source);
+    if (base->kind != T_SLICE) {
+        read |= infer_let_place(c, source);
+    }
+    return type_wrap(c->p, T_SLICE, base->elem, read);
+}
+
 static Type *infer_lookup(Infer *c, const char *name)
 {
     for (int j = c->vars.n - 1; j >= 0; j--) {
@@ -1657,7 +1693,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             if (strcmp(e->text, "bytes")) {
                 text_bytes_only(base, e->text, e->name_loc.file ? e->name_loc : e->loc);
             }
-            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
         }
         if (base && !range_type(base) && !strcmp(e->text, "\001start")) {
             fail(e->loc, "expected 'range^', found '%s'", type_name(base));
@@ -1689,7 +1725,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             if (!plain_data(base->elem)) {
                 fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
             }
-            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
         }
         if (kind_float(base->kind) && !strcmp(e->text, "bits")) {
             return type_builtin(c->p, bits_kind(base->kind));
@@ -1797,12 +1833,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (c->terminated) {
             return type_builtin(c->p, T_NEVER);
         }
-        return base && base->kind == T_STRING
-                   ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
-               : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
-                          base->kind == T_BOUNDED || base->kind == T_SLICE)
-                   ? type_wrap(c->p, T_SLICE, base->elem, 0)
-                   : NULL;
+        return infer_view(c, e->a, base);
     }
     case E_INDEX: {
         Type *base = infer_expr(c, e->a, NULL);
@@ -1821,12 +1852,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         text_bytes_only(base, "[]", e->loc);
         if (range_type(index)) {
-            return base && base->kind == T_STRING
-                       ? type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0)
-                   : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
-                              base->kind == T_BOUNDED || base->kind == T_SLICE)
-                       ? type_wrap(c->p, T_SLICE, base->elem, 0)
-                       : NULL;
+            return infer_view(c, e->a, base);
         }
         return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
                : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
@@ -2079,6 +2105,7 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             v->constant = !s->mut && v->type && kind_integer(v->type->kind) &&
                           static_integer(&c->vars, s->a, &v->integer);
             v->alias = infer_alias(c, s->a);
+            v->let_bound = !s->mut;
             if (s->flow_alias && s->a->kind == E_NAME) {
                 v->source = infer_variable(c, s->a);
                 v->source_version = v->source ? v->source->version : 0;
@@ -2430,6 +2457,7 @@ static bool infer_instance_result(Program *p, Instance *in)
         v->name = param->name;
         v->lexical = c.lexical;
         v->type = in->params.v[k];
+        v->captured_let = param->capture && !param->capture->mut;
         add(&c.vars, v);
     }
     infer_statements(&c, &in->fn->body, false);
@@ -3068,11 +3096,11 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             base = base->elem;
         }
         if (base && base->kind == T_STRING) {
-            n->type = type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 0);
+            n->type = type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
         }
         else if (base && (base->kind == T_ARRAY || base->kind == T_GROW ||
                           base->kind == T_BOUNDED || base->kind == T_SLICE)) {
-            n->type = type_wrap(c->p, T_SLICE, base->elem, 0);
+            n->type = type_wrap(c->p, T_SLICE, base->elem, read_reference(base) || n->a->readonly);
         }
         break;
     }

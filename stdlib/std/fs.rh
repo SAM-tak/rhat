@@ -5,12 +5,12 @@ module^std.fs
 
 let^io = import^std.io
 
-externC^rh_fs_open:p^path:u8^[..], length:i64^, mode:string^-> i64^;
+externC^rh_fs_open:p^path:read^u8^[..], length:i64^, mode:string^-> i64^;
 externC^rh_fs_read:p^file:i64^, buffer:u8^[..], capacity:i64^-> i64^;
-externC^rh_fs_write:p^file:i64^, data:u8^[..], length:i64^-> i64^;
+externC^rh_fs_write:p^file:i64^, data:read^u8^[..], length:i64^-> i64^;
 externC^rh_fs_flush:p^file:i64^-> i64^;
 externC^rh_fs_close:p^file:i64^-> i64^;
-externC^rh_fs_remove:p^path:u8^[..], length:i64^-> bool^;
+externC^rh_fs_remove:p^path:read^u8^[..], length:i64^-> bool^;
 
 public^errordef^Error { OpenFailed }
 
@@ -34,13 +34,13 @@ public^def^File : io.Stream, Disposable {
     read = p^self^, out:ref^u8^[grow^], max:i64^-> i64^| io.Error {
         if^self^.handle = 0 { return^io.Error.Closed{} }
         if^max <= 0 { return^0 }
-        let^buffer = u8^[]{0 repeat^max}
+        var^buffer = u8^[]{0 repeat^max}
         let^n = rh_fs_read(self^.handle, buffer[..], max)
         if^n < 0 { return^io.Error.ReadFailed{} }
         out.append(buffer[0 .. n])
         return^n
     }
-    write = p^self^, data:u8^[..] -> nil^| io.Error {
+    write = p^self^, data:read^u8^[..] -> nil^| io.Error {
         if^self^.handle = 0 { return^io.Error.Closed{} }
         return^written(rh_fs_write(self^.handle, data, data.len))
     }
@@ -88,14 +88,14 @@ overload^read = p^path:string^-> u8^[grow^] | Error.OpenFailed | io.Error {
 }
 
 # Creates the file or replaces its contents.
-public^let^write = p^path:string^, data:u8^[..] -> nil^| Error.OpenFailed | io.Error {
+public^let^write = p^path:string^, data:read^u8^[..] -> nil^| Error.OpenFailed | io.Error {
     var^file = try^create(path)
     try^file.write(data)
     return^file.close()
 }
 
 # Adds to the end of the file, creating it if it is not there.
-public^let^append = p^path:string^, data:u8^[..] -> nil^| Error.OpenFailed | io.Error {
+public^let^append = p^path:string^, data:read^u8^[..] -> nil^| Error.OpenFailed | io.Error {
     var^file = try^File.for_appending(path)
     try^file.write(data)
     return^file.close()

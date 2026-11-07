@@ -1922,7 +1922,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         read_write_check(c, ((Value *)writable.v[j])->deps, e->loc);
     }
     read_dyn_call_check(c, iface, index, &arguments, e->loc);
-    if (expected && expected != t) {
+    if (expected && expected != t && !(read_reference(expected) && sum_accepts(expected, t))) {
         fail(e->loc, "call returns '%s', expected '%s'", type_name(t), type_name(expected));
     }
     Value out = {.type = t,
@@ -2310,6 +2310,16 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             return out;
         }
         if (base.type->kind == T_DYN) {
+            if (base.readonly && !read_reference(base.type)) {
+                // Reached through read^, it can only be read, whatever the element's own type.
+                Value read = value(c, type_wrap(p, T_DYN, base.type->elem, 1));
+                read.deps = base.deps;
+                Instr *i = emit(c, I_COPY, e->loc);
+                i->dst = read.id;
+                i->a = base.id;
+                i->type = read.type;
+                return dyn_call(c, e, read, expected, destination);
+            }
             return dyn_call(c, e, snapshot(c, base, e->loc), expected, destination);
         }
         if (base.type->kind != T_STRUCT) {
@@ -2436,6 +2446,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             Type *a = v.type, *b = want;
             if (a != b) {
                 bool okay = parameter_accepts(b, a);
+                if (!okay && want->kind == T_SLICE && v.type->kind == T_SLICE) {
+                    fail(e->loc,
+                         "'%s' may write this argument, which is '%s'; declare it read^ if it only "
+                         "reads",
+                         f->name, type_name(v.type));
+                }
                 if (!okay) {
                     fail(e->loc, "argument to '%s' requires nominal '%s', found '%s'", f->name,
                          type_name(want), type_name(v.type));
@@ -2487,7 +2503,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     c->inflight.n = inflight;
     Type *t = in->result;
-    if (expected && expected != t) {
+    if (expected && expected != t && !(read_reference(expected) && sum_accepts(expected, t))) {
         fail(e->loc, "call returns '%s', expected '%s'", type_name(t), type_name(expected));
     }
     Value out = {0};
@@ -3347,10 +3363,21 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
         }
         bounds[j] = range_widen(c, v, e->loc).id;
     }
-    Type *elem = base.type->kind == T_STRING ? type_builtin(p, T_U8) : base.type->elem;
-    Type *t = type_wrap(p, T_SLICE, elem, 0);
-    if (expected && expected != t) {
-        fail(e->loc, "slice is '%s', expected '%s'", type_name(t), type_name(expected));
+    // A slice of what cannot be written is read^; a read^ destination converts a writable one.
+    bool read = base.readonly || read_reference(base.type);
+    if (inline_storage) {
+        read |= base.var && !base.var->mut;
+        for (int j = 0; j < base.storage.n; j++) {
+            read |= base.storage.v[j]->readonly != NULL;
+        }
+    }
+    Type *t = type_wrap(p, T_SLICE, base.type->elem, read);
+    if (expected && !sum_accepts(expected, t)) {
+        fail(e->loc,
+             read && expected->kind == T_SLICE
+                 ? "slice is '%s', expected '%s'; its source is read-only, so var^ it or take read^"
+                 : "slice is '%s', expected '%s'",
+             type_name(t), type_name(expected));
     }
     Value out = {.id = slot(c, t, false),
                  .type = t,
@@ -3762,7 +3789,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             if (base.type->kind != T_SLICE && !base.addressable) {
                 fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
             }
-            Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0);
+            Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 1);
             out = (Value){.id = slot(c, view, false),
                           .type = view,
                           .deps = base.type->kind != T_SLICE ? roots_union(base.deps, base.storage)
@@ -3784,7 +3811,7 @@ Value expression(Context *c, Expr *e, Type *expected)
                      "s.count_chars()",
                      e->text);
             }
-            Value bytes = {.id = slot(c, type_wrap(p, T_SLICE, type_builtin(p, T_U8), 0), false),
+            Value bytes = {.id = slot(c, type_wrap(p, T_SLICE, type_builtin(p, T_U8), 1), false),
                            .deps = base.deps};
             bytes.type = ((Slot *)c->in->slots.v[bytes.id])->type;
             Instr *i = emit(c, I_COPY, e->loc);
@@ -3883,25 +3910,17 @@ Value expression(Context *c, Expr *e, Type *expected)
         out.deps = !out.type->refs ? (Roots){0}
                    : view          ? base.deps
                                    : roots_union(base.deps, base.storage);
-        out.var = base.var;
-        out.addressable = base.addressable;
-        out.readonly = base.readonly;
+        // A slice is a handle: what its element allows does not depend on how it is bound.
+        out.var = view ? NULL : base.var;
+        out.addressable = view || base.addressable;
+        out.readonly = base.readonly || read_reference(base.type);
         out.guarded_copy = base.guarded_copy;
         Instr *i = emit(c, I_INDEX, e->loc);
         i->dst = out.id;
         i->a = base.id;
         i->b = index.id;
         i->type = base.type;
-        if (!view) {
-            return out;
-        }
-        layout(out.type, e->loc);
-        if (out.type->disposable) {
-            // A slice shows a Disposable element where it lies, read-only.
-            out.addressable = out.readonly = true;
-            return out;
-        }
-        return snapshot(c, out, e->loc);
+        return out;
     }
     if (e->kind == E_UNARY) {
         if (!strcmp(e->text, "-") && e->a->kind == E_INT) {

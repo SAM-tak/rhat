@@ -517,9 +517,11 @@ let^ sub=f^ a:i32^[..] {
 }
 let^ borrowed=f^ a:ref^ i32^[grow^] { return^ a[..] }
 var^ a:i32^[grow^]={1,2,3,4}
-let^ view=sub(borrowed(ref^ a))
+do^{
+    let^ view=sub(borrowed(ref^ a))
+    print^(view.len,view[0])
+}
 a.push(5)
-print^(view.len,view[0])
 let^ literal=f^ { return^ "hello".bytes[1 .. 4] }
 print^(literal()[0])
 """, "1 3\n101\n")
@@ -539,7 +541,7 @@ let^ view=refs[.. 1];
 var^ other:i32^[ref^ grow^]={}
 other.append(view)
 var^ views:i32^[..][grow^]={}
-let^ values:i32^[2]={10,20}
+var^ values:i32^[2]={10,20}
 views.push(values[.. 2])
 print^(x,*other[0],views[0][1])
 """, "42 42 20\n")
@@ -564,11 +566,8 @@ for name,text in (
     runtime_failure("slice_"+name, "var^ a:i32^[grow^]={1,2}; let^ v="+text, "slice range out of bounds")
 runtime_failure("slice_index_bounds", "let^ a:i32^[2]={1,2}; let^ v=a[.. 1]; print^(v[1])", "array index out of bounds")
 runtime_failure("string_index_bounds", 'print^("abc".bytes[3])', "array index out of bounds")
-negative("slice_local_escape", "let^ bad=f^ -> i32^[..] { let^ a:i32^[2]={1,2}; return^ a[.. 2] }", "cannot return a reference")
+negative("slice_local_escape", "let^ bad=f^ -> i32^[..] { var^ a:i32^[2]={1,2}; return^ a[.. 2] }", "cannot return a reference")
 negative("slice_outer_escape", "var^ v=\"abc\".bytes[.. 0]; do^{ var^ a:u8^[grow^]={1}; v := a[.. 1] }", "reference would outlive its owner")
-negative("slice_write", "var^ a:i32^[grow^]={1}; var^ v=a[.. 1]; v[0] := 2", "not addressable")
-negative("slice_borrow_element", "var^ a:i32^[grow^]={1}; let^ v=a[.. 1]; let^ p=ref^ v[0]", "cannot borrow a temporary")
-negative("slice_field_write", "def^ Item { self^{x:i32^} } var^ a:Item[grow^]={Item{x=1}}; a[.. 1][0].x := 2", "not addressable")
 negative("slice_temporary", "let^ v={1,2}[.. 2]", "slice source needs a binding")
 negative("slice_index_type", "let^ a:i32^[1]={1}; let^ n:u64^=0; a[n .. n+1]", "integers that fit i64^")
 negative("slice_initializer", "def^ Box { self^{ view:i32^[..] } } let^ b=Box{}", "needs an initializer")
