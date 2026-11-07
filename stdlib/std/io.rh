@@ -1,0 +1,50 @@
+module^std.io
+
+# Streams: the same code reads a file, memory or anything else that composes Reader or Writer.
+# Take ref^Reader to specialize for each concrete type, or ref^dyn^Reader to mix them at run time.
+
+public^errordef^Error { ReadFailed, WriteFailed, Closed }
+
+public^def^Reader {
+    # Appends up to max bytes to out and answers how many; 0 means the end.
+    abstract^read:p^self^, out:ref^u8^[grow^], max:i64^-> i64^| Error;
+    # Appends everything that remains to out.
+    read_all = p^self^, out:ref^u8^[grow^] -> nil^| Error {
+        repeat^{
+            if^(try^self^.read(out, 65536)) = 0 { return^nil^}
+        }
+    }
+}
+
+public^def^Writer {
+    # Writes all of data; it is copied, not kept.
+    abstract^write:p^self^, data:u8^[..] -> nil^| Error;
+    flush = p^self^-> nil^| Error { return^nil^}
+}
+
+public^def^Stream : Reader, Writer {}
+
+# Reads a view of bytes the caller keeps.
+public^def^MemoryReader : Reader {
+    self^{ private^data:u8^[..], private^at:i64^= 0 }
+    over = f^data:u8^[..] -> Self^{ Self^{data = data} }
+    read = p^self^, out:ref^u8^[grow^], max:i64^-> i64^| Error {
+        var^n = self^.data.len - self^.at
+        if^n > max { n := max }
+        if^n <= 0 { return^0 }
+        out.append(self^.data[self^.at .. self^.at + n])
+        self^.at += n
+        return^n
+    }
+}
+
+# Collects what is written.
+public^def^MemoryWriter : Writer {
+    self^{ private^bytes:u8^[grow^] = {} }
+    data = f^self^-> u8^[..] { self^.bytes[..] }
+    clear = p^self^{ self^.bytes.clear() }
+    write = p^self^, data:u8^[..] -> nil^| Error {
+        self^.bytes.append(data)
+        return^nil^
+    }
+}

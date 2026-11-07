@@ -398,7 +398,8 @@ do^{
 catch^:
     print^("failed")
 }
-let^ load=p^ name:string^ ->u8^[grow^]|fs.Error.OpenFailed|fs.Error.ReadFailed {
+let^ io=import^ std.io
+let^ load=p^ name:string^ ->u8^[grow^]|fs.Error.OpenFailed|io.Error {
     var^ first=try^ fs.read(name)
     first.push(1)
     return^ first

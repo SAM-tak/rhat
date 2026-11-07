@@ -1227,10 +1227,53 @@ static bool owner_var(Context *c, Var *v)
            !((Slot *)c->in->slots.v[v->slot])->alias;
 }
 
+Function *with_dispose(Context *c, Type *t, Loc l)
+{
+    if (!c->in->fn->procedure) {
+        fail(l, "with^ needs p^: it calls dispose() when its block ends");
+    }
+    Type *base = t->kind == T_REF ? t->elem : t;
+    Function *f = base->kind == T_STRUCT ? method(base->def, "dispose") : NULL;
+    if (!f) {
+        fail(l, "with^ needs a value with a dispose() method, found '%s'", type_name(t));
+    }
+    if (f->params.n != 1 || !((Param *)f->params.v[0])->self || !f->procedure) {
+        fail(l, "dispose must be a p^self^ method without other arguments");
+    }
+    return f;
+}
+
+void with_leaves(Context *c, Expr *e)
+{
+    if (e && e->kind == E_NAME) {
+        Var *v = selected(c, e);
+        if (v && v->dispose) {
+            fail(e->loc, "'%s' is disposed when its with^ block ends; it cannot leave the block",
+                 v->name);
+        }
+    }
+}
+
+static void run_dispose(Context *c, Var *v, Loc l)
+{
+    Expr *origin = mem(sizeof(*origin));
+    origin->kind = E_NAME;
+    origin->loc = l;
+    origin->text = v->name;
+    Value out = invoke_operator(c, v->dispose, variable(v), (Value){0}, origin);
+    if (!dead(out) && out.type->kind != T_VOID) {
+        fail(l, "dispose must not return a value, found '%s'; failing cleanup is a separate call",
+             type_name(out.type));
+    }
+}
+
 void cleanup(Context *c, int from, Loc l)
 {
     for (int j = c->vars.n - 1; j >= from; j--) {
         Var *v = c->vars.v[j];
+        if (v->dispose) {
+            run_dispose(c, v, l);
+        }
         if (owner_var(c, v)) {
             release(c, v->type, v->slot, l);
         }
@@ -1239,6 +1282,12 @@ void cleanup(Context *c, int from, Loc l)
 
 void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
 {
+    for (int j = c->vars.n - 1; j >= bindings; j--) {
+        Var *v = c->vars.v[j];
+        if (v->dispose) {
+            run_dispose(c, v, loc);
+        }
+    }
     List ids = {0};
     for (int j = bindings; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
@@ -1507,6 +1556,30 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
     }
 }
 
+// Whether a result of type t can hold references from the arguments. An error's own record of
+// where it was made is static text, so only fields declared on the error count.
+static bool result_holds_arguments(Type *t)
+{
+    if (t->kind == T_UNION) {
+        for (int j = 0; j < t->def->alternatives.n; j++) {
+            if (result_holds_arguments(t->def->alternatives.v[j])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (t->kind != T_STRUCT || !t->def->group) {
+        return t->refs;
+    }
+    for (int j = 0; j < t->def->fields.n; j++) {
+        Field *field = t->def->fields.v[j];
+        if (field->name[0] != '\001' && field->type->refs) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Why method f of iface cannot occupy a dyn^ table entry, or NULL. Entries
 // share one signature across every concrete type.
 static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
@@ -1709,6 +1782,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     Type *t = dyn_result(p, f);
+    deps = result_holds_arguments(t) ? deps : (Roots){0};
     if (read_reference(receiver.type) && type_writes(t)) {
         fail(e->loc, "a read^ dyn^ receiver cannot expose writable references");
     }

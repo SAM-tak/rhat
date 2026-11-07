@@ -786,6 +786,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 continue;
             }
             binding_name(c, s);
+            with_leaves(c, s->a);
             Type *t = context_type(c, s->spec);
             if (!t) {
                 t = expression_type(c, s->a, NULL);
@@ -880,6 +881,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             var->mut = s->mut;
             var->root = root(c, s, c->depth, false);
             var->deps = v.deps;
+            var->dispose = s->with ? with_dispose(c, t, s->loc) : NULL;
             var->constant =
                 !s->mut && kind_integer(t->kind) && static_integer(&c->vars, s->a, &var->integer);
             if (s->flow_alias && s->a->kind == E_NAME) {
@@ -986,6 +988,10 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     }
                     continue;
                 }
+                if (target->kind == E_NAME && selected(c, target) && selected(c, target)->dispose) {
+                    fail(s->loc, "a with^ name cannot be written; dispose() would miss its value");
+                }
+                with_leaves(c, s->values.n > j ? s->values.v[j] : s->b);
                 dest[j] = place_expression(c, s->targets.n ? s->targets.v[j] : s->a);
                 if (dead(dest[j])) {
                     break;
@@ -1114,6 +1120,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     fail(s->loc, "procedure or void function cannot return a value");
                 }
                 Expr *named = s->a->tuple ? s->a->args.v[s->a->args.n - 1] : s->a;
+                with_leaves(c, named);
                 bool designated = t->owned && c->in->result_local && named->kind == E_NAME &&
                                   !strcmp(named->text, c->in->result_local);
                 if (t->owned && c->in->result_local && t->kind != T_UNION && !designated) {

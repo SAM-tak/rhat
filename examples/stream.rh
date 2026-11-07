@@ -1,0 +1,30 @@
+# The same copy reads memory or a file and writes a file or memory.
+# Run from the repository root; it leaves nothing behind.
+let^fs = import^std.fs
+let^io = import^std.io
+
+let^copy = p^src:ref^io.Reader, dst:ref^io.Writer -> nil^| io.Error {
+    var^chunk:u8^[grow^] = {}
+    repeat^{
+        chunk.clear()
+        if^(try^src.read(ref^chunk, 4096)) = 0 { return^nil^}
+        try^dst.write(chunk[..])
+    }
+}
+
+let^path = "stream_example.tmp"
+
+do^{
+    var^text = io.MemoryReader.over("from memory to a file and back".bytes)
+    with^out = try^fs.create(path) {
+        try^copy(ref^text, ref^out)
+    }
+    var^back = io.MemoryWriter{}
+    with^in = try^fs.open(path) {
+        try^copy(ref^in, ref^back)
+    }
+    print^(string^(back.data()) catch^"")
+catch^:
+    print^("failed:", it^.message())
+}
+fs.delete(path)

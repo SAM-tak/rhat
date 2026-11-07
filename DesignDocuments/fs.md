@@ -1,6 +1,7 @@
 # ファイル入出力（std.fs）
 
-ファイル全体の読み書きです。開く・読む・書く・閉じる・消すはランタイム（`rhat_runtime.c`）の `rh_fs_*` が行います。
+ファイル全体の読み書きです。ここの関数は [File とストリーム](io.md) の上の便利な入口です。
+開く・読む・書く・閉じる・消すはランタイム（`rhat_runtime.c`）の `rh_fs_*` が行います。
 パスは UTF-8 で、Windows では UTF-16 に変換して `_wfopen_s` / `_wremove` で開くので、日本語などのパスも使えます。
 
 ```rhat
@@ -19,11 +20,11 @@ catch^:
 
 ## 関数
 
-- `read(path:string^) -> u8^[grow^] | Error.OpenFailed | Error.ReadFailed`:
+- `read(path:string^) -> u8^[grow^] | Error.OpenFailed | io.Error`:
   ファイル全体を新しい配列で返します。配列の所有者は呼び出し元です（所有値は呼び出し元の保存先に直接構築します）。
-- `read(path:string^, out:ref^ u8^[grow^]) -> nil^ | Error.OpenFailed | Error.ReadFailed`:
+- `read(path:string^, out:ref^ u8^[grow^]) -> nil^ | Error.OpenFailed | io.Error`:
   ファイル全体を `out` の末尾へ追加します。失敗したときは途中まで入っていることがあります。
-- `write(path, data:u8^[..]) -> nil^ | Error.OpenFailed | Error.WriteFailed`: 作成または置換します。
+- `write(path, data:u8^[..]) -> nil^ | Error.OpenFailed | io.Error`: 作成または置換します。
 - `append(path, data:u8^[..])`: 末尾へ追加します。戻り値は `write` と同じです。
 - `exists(path) -> bool^`: 読み取りで開けるか。
 - `delete(path) -> bool^`: 削除できたか。

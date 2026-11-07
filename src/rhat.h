@@ -203,6 +203,7 @@ struct Stmt {
     bool public_binding;  // A public entry binding must resolve to a type alias.
     List handlers;        // Ordered CatchArm pointers for S_HANDLE.
     bool loop_handler;    // A loop catches main^ only, with outer names visible.
+    bool with;            // with^ h = e: h.dispose() runs on every way out of the block.
     bool scoped_handlers; // If arms share the if^ body's lexical scope depth.
     int kind;
     Loc loc;

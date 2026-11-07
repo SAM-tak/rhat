@@ -45,7 +45,8 @@ struct Var {
     bool path_sensitive; // Guards on this root can depend on aliased storage.
     Var *source;         // Match snapshots only: valid until the original changes.
     unsigned source_version;
-    bool constant; // An immutable integer binding known at specialization time.
+    Function *dispose; // with^: called when the binding's scope ends, however it ends.
+    bool constant;     // An immutable integer binding known at specialization time.
     int64_t integer;
 };
 
@@ -527,6 +528,10 @@ Value nil_literal(Context *c, Loc loc);
 Value field_value(Context *c, Value base, Field *f, Loc l);
 // Release, innermost first, the owners from bindings and pending owners from
 // pending onward, before leaving their scope early.
+// The dispose() a with^ binding of type t calls, checking that it can be called.
+Function *with_dispose(Context *c, Type *t, Loc l);
+// Rejects copying a with^ binding out by name, since its value ends with the block.
+void with_leaves(Context *c, Expr *e);
 void escape_cleanup(Context *c, int bindings, int pending, Loc loc);
 // Build e as type t into slot dst, or into a new slot when dst is negative.
 Value construct(Context *c, Expr *e, Type *t, int dst);

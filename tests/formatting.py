@@ -149,6 +149,28 @@ def main():
            'let^f = f^x {x}\nlet^v = f\n(1)()\n')
     expect('empty', '', '')
 
+    expect('with_row', '''with^r=open("a")
+with^w=open("b") {
+  use(r,w)
+}
+let^f=p^ {
+ with^r=open("a")
+ with^w=open("b") {
+  use(r,w)
+ }
+}
+''', '''with^r = open("a")
+with^w = open("b") {
+    use(r, w)
+}
+let^f = p^{
+    with^r = open("a")
+    with^w = open("b") {
+        use(r, w)
+    }
+}
+''')
+
     def invalid():
         path = fixture('invalid')
         for source in ('let^ = (', 'print^("unterminated)', '#[ missing', 'def^V<T>{self^{x:T}'):

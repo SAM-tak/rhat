@@ -287,7 +287,7 @@ static void synchronize(Parser *p, int start, int failed, bool outer)
                        is(p, "exportC^") || is(p, "exportL^") || is(p, "if^") || is(p, "for^") ||
                        is(p, "while^") || is(p, "print^") || is(p, "op^") || is(p, "private^") ||
                        is(p, "abstract^") || is(p, "override^") || is(p, "overload^") ||
-                       is(p, "inline^");
+                       is(p, "inline^") || is(p, "with^");
         if (t->kind == TOK_WORD && p->at + 2 < p->tokens.n) {
             Token *equal = p->tokens.v[p->at + 1], *value = p->tokens.v[p->at + 2];
             starter |= (!strcmp(equal->text, "=") || !strcmp(equal->text, ":=")) &&
@@ -2127,8 +2127,8 @@ static int loop_section(Parser *p);
 // Whether word can only begin a statement, never a literal's first element.
 static bool statement_word(const char *word)
 {
-    const char *words[] = {"let^",   "var^",  "return^", "if^",  "for^",   "repeat^",
-                           "break^", "next^", "do^",     "def^", "print^", "inline^"};
+    const char *words[] = {"let^",  "var^", "return^", "if^",    "for^",    "repeat^", "break^",
+                           "next^", "do^",  "def^",    "print^", "inline^", "with^"};
     for (size_t j = 0; j < sizeof(words) / sizeof(*words); j++) {
         if (!strcmp(word, words[j])) {
             return true;
@@ -2188,6 +2188,9 @@ static bool catch_head(Parser *p)
     }
     return is(&q, ":");
 }
+
+static Stmt *binding(char *name, Expr *value, bool mut);
+static Stmt *with_statement(Parser *p, Loc loc);
 
 static void catches(Parser *p, List *body, bool loop)
 {
@@ -2765,7 +2768,7 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
             p->header = header;
             loop_body(p, loop);
             if (loop->last.n) {
-                // The names are bound per turn, and running out leaves by break^, which skips last^.
+                // The names are bound per turn, so last^ could not see them.
                 fail(loc,
                      "last^ needs a range written in the header; for^ in^ over a value has none");
             }
@@ -3018,6 +3021,9 @@ static Stmt *stmt_unchecked(Parser *p)
     else if (take(p, "for^") || take(p, "repeat^")) {
         s = loop_statement(p, !strcmp(t->text, "repeat^"), t->loc);
     }
+    else if (take(p, "with^")) {
+        s = with_statement(p, t->loc);
+    }
     else if (t->kind == TOK_WORD &&
              (!strncmp(t->text, "break^", 6) || !strncmp(t->text, "next^", 5) ||
               !strncmp(t->text, "skip^", 5) || !strncmp(t->text, "continue^", 9))) {
@@ -3161,9 +3167,10 @@ static Stmt *stmt(Parser *p)
         int first = p->at;
         Stmt *out = stmt_unchecked(p);
         Token *head = p->tokens.v[first];
-        bool row = !strcmp(head->text, "for^") && first + 1 < p->at &&
-                   (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
-                    !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^"));
+        bool row = !strcmp(head->text, "with^") ||
+                   (!strcmp(head->text, "for^") && first + 1 < p->at &&
+                    (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
+                     !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^")));
         format_span(p, first, 2000 + out->kind, false, row);
         return out;
     }
@@ -3224,6 +3231,44 @@ static void block(Parser *p, List *out)
     }
     p->scope_depth--;
     format_span(p, first, 4000, true, false);
+}
+
+// with^ a = e with^ b = e { ... }: the names are bound first thing in the block. A catch^ goes on
+// an enclosing block, so a failed e reaches it as any other error and only what was bound is
+// disposed on the way out.
+static Stmt *with_statement(Parser *p, Loc loc)
+{
+    Stmt *scope = mem(sizeof(*scope));
+    scope->kind = S_BLOCK;
+    scope->loc = loc;
+    bool header = p->header;
+    p->header = true;
+    do {
+        Loc at = tok(p)->loc;
+        char *name = decl_word(p);
+        if (is(p, ":=")) {
+            fail(tok(p)->loc, "with^ binds with =; its name cannot be written");
+        }
+        need(p, "=");
+        Stmt *held = binding(name, expr(p, 0), true);
+        held->loc = at;
+        held->with = true;
+        add(&scope->body, held);
+    } while (take(p, "with^"));
+    p->header = header;
+    if (!is(p, "{")) {
+        fail(tok(p)->loc, "with^ needs a block; its resources end with that block");
+    }
+    List inner = {0};
+    block(p, &inner);
+    if (inner.n == 1 && ((Stmt *)inner.v[0])->kind == S_HANDLE) {
+        fail(((Stmt *)inner.v[0])->loc,
+             "a with^ block cannot have catch^; put it on an enclosing do^{...}");
+    }
+    for (int j = 0; j < inner.n; j++) {
+        add(&scope->body, inner.v[j]);
+    }
+    return scope;
 }
 
 static Function *function(Parser *p, char *name, Def *owner, bool abstr)
@@ -3905,7 +3950,8 @@ static void declaration_checked(Parser *q)
     if (!q->p->tooling) {
         int first = q->at;
         declaration(q);
-        format_span(q, first, 3000, false, false);
+        // The with^ lines of one statement are a row, not a statement carried on.
+        format_span(q, first, 3000, false, !strcmp(((Token *)q->tokens.v[first])->text, "with^"));
         return;
     }
     int start = q->at, defs = q->p->defs.n, depth = q->scope_depth;
