@@ -3254,13 +3254,14 @@ static void block(Parser *p, List *out)
 
 // with^ a = e with^ b = e { ... }: the names are bound around the block, so its catch^ arms see them
 // and run before dispose(), while a failed e is outside them and goes to an enclosing catch^.
+// e is no ordinary header: a type's name is not a resource, so the { after it opens a literal.
 static Stmt *with_statement(Parser *p, Loc loc)
 {
     Stmt *scope = mem(sizeof(*scope));
     scope->kind = S_BLOCK;
     scope->loc = loc;
     bool header = p->header;
-    p->header = true;
+    p->header = false;
     do {
         Loc at = tok(p)->loc;
         char *name = decl_word(p);

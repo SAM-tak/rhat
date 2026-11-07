@@ -153,7 +153,7 @@ def^Owner {
     self^{ data:i32^[grow^] = {} }
     dispose = p^self^ { print^("owner", self^.data.len) }
 }
-with^o = (Owner{}) {
+with^o = Owner{} {
     o.data.push(1)
 }
 with^r = res("named") {
@@ -163,6 +163,27 @@ with^r = res("named") {
     }
 }
 ''', 'owner 1\n1\ndispose named\n')
+
+    positive('with_literal_head', '''
+def^D<T> {
+    self^{ n:T }
+    dispose = p^self^ { print^("dispose", self^.n) }
+}
+def^N {
+    self^{ n:i32^ }
+    dispose = p^self^ { print^("dispose", self^.n) }
+}
+with^a = N{n = 1}
+with^b = N{n = 2} {
+    print^(a.n + b.n)
+}
+with^c = D<i32^>{n = 3} {
+    print^(c.n)
+}
+with^d = (N{n = 4}) {}
+''', '3\ndispose 2\ndispose 1\n3\ndispose 3\ndispose 4\n')
+    negative('with_qualified_literal', 'let^io = import^std.io\nwith^m = io.MemoryWriter{} {}\n',
+             "with^ needs a value with a dispose() method, found 'std.io.MemoryWriter'")
 
     negative('with_needs_a_block', RESOURCE + 'with^r = res("x")\nprint^(r.name)\n', 'with^ needs a block')
     negative('with_no_dispose', 'def^N {}\nwith^n = (N{}) {}\n', "with^ needs a value with a dispose() method, found 'N'")
