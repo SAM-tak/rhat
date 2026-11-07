@@ -197,6 +197,8 @@ typedef struct {
     Loc loc;    // Source location of the catch^ arm.
     Spec *spec; // Error type filter, or NULL for the final default arm.
     List body;  // Statements evaluated with the caught error as it^.
+    bool used;  // Some specialization can reach this arm.
+    bool with;  // The arm of a with^ block, whose header it does not receive.
 } CatchArm;
 
 struct Stmt {
@@ -376,6 +378,7 @@ struct Program {
     const char *stdlib_dir;
     List defs, functions, types, instances, strings;
     Type *builtins[T_NEVER + 1]; // Primitive types indexed by kind.
+    List catch_sites;            // CatchSite records: each arm in each specialization lowered.
     List dyn_tables;             // DynTable records, one per converted concrete type and
                                  // dyn^ def.
     Function *entry;

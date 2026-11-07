@@ -268,6 +268,48 @@ void route_error(Context *c, Value error, Loc loc)
     c->terminated = true;
 }
 
+typedef struct {
+    CatchArm *arm;
+    Instance *in;
+} CatchSite;
+
+void catch_seen(Context *c, CatchArm *arm)
+{
+    CatchSite *site = mem(sizeof(*site));
+    *site = (CatchSite){arm, c->in};
+    add(&c->p->catch_sites, site);
+}
+
+static bool same_place(Loc a, Loc b)
+{
+    return a.line == b.line && a.col == b.col && !strcmp(a.file, b.file);
+}
+
+void catch_validate(Program *p)
+{
+    // The same source arm has a copy per generic type and inline^ turn, and an arm reached in one
+    // specialization may not be in another, so only one reached nowhere is dead. An instance whose
+    // analysis stopped early says nothing about what its body raises.
+    for (int j = 0; j < p->catch_sites.n; j++) {
+        CatchSite *site = p->catch_sites.v[j];
+        bool alive = false;
+        for (int k = 0; !alive && k < p->catch_sites.n; k++) {
+            CatchSite *other = p->catch_sites.v[k];
+            alive = same_place(site->arm->loc, other->arm->loc) &&
+                    (other->arm->used || other->in->invalid);
+        }
+        if (alive) {
+            continue;
+        }
+        const char *name = site->arm->spec ? type_name(type_spec(p, site->arm->spec)) : "";
+        fail(site->arm->loc, "catch^%s%s never runs: its block raises nothing left for it%s",
+             *name ? " " : "", name,
+             site->arm->with ? "; a with^ header is outside the block, so a catch^ for it goes on "
+                               "an enclosing do^{...}"
+                             : "");
+    }
+}
+
 void error_focus(Context *c, Value error, const void *key)
 {
     Var *v = mem(sizeof(*v));

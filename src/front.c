@@ -3261,7 +3261,11 @@ static Stmt *with_statement(Parser *p, Loc loc)
     List inner = {0};
     block(p, &inner);
     for (int j = 0; j < inner.n; j++) {
-        add(&scope->body, inner.v[j]);
+        Stmt *s = inner.v[j];
+        add(&scope->body, s);
+        for (int k = 0; s->kind == S_HANDLE && k < s->handlers.n; k++) {
+            ((CatchArm *)s->handlers.v[k])->with = true;
+        }
     }
     return scope;
 }

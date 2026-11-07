@@ -629,6 +629,9 @@ void handle_statements(Context *c, Stmt *s)
     for (int j = 0; j < base; j++) {
         hidden[j] = ((Var *)c->vars.v[j])->hidden;
     }
+    for (int k = 0; k < s->handlers.n; k++) {
+        catch_seen(c, s->handlers.v[k]);
+    }
     for (int k = 0; k < s->handlers.n && remaining.type; k++) {
         CatchArm *arm = s->handlers.v[k];
         Type *asked = arm->spec ? type_spec(c->p, arm->spec) : remaining.type;
@@ -640,6 +643,7 @@ void handle_statements(Context *c, Stmt *s)
         if (!yes) {
             continue;
         }
+        arm->used = true;
         int next = 0;
         if (no) {
             int body = ++c->in->labels;
@@ -1721,6 +1725,7 @@ void analyze(Program *p)
     }
     if (p->tooling) {
         TOOL_CHECK(p, read_validate(p););
+        TOOL_CHECK(p, catch_validate(p););
         return;
     }
     // fits^ dyn^ D needs D's table for each concrete type it may find; building
@@ -1772,4 +1777,5 @@ void analyze(Program *p)
         }
     }
     read_validate(p);
+    catch_validate(p);
 }

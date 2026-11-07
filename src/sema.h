@@ -173,6 +173,10 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc);
 void read_call_check(Context *c, Instance *callee, List *values, Loc loc);
 // Retain the same provenance for each possible implementation of a dynamic call.
 void read_dyn_call_check(Context *c, Def *iface, int method, List *values, Loc loc);
+// Records that a specialization lowered this catch^ arm.
+void catch_seen(Context *c, CatchArm *arm);
+// Rejects catch^ arms that no specialization can reach.
+void catch_validate(Program *p);
 // Solve interprocedural read/write conflicts and reject aliased call arguments.
 void read_validate(Program *p);
 

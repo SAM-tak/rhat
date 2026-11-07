@@ -452,6 +452,49 @@ print^(e.message(),e.line)
     suite.runtime_failure('error_panic_detail', detailed+'let^ n=parse("z") catch^ panic^ it^',
                           'panic: ParseError.Syntax: z')
     positive('error_small', 'errordef^ E {Bad}\nlet^ f=f^ ->i64^|E.Bad {return^ 5}\nprint^(f() catch^ 0)', '5\n')
+    arms = '''errordef^ E { Bad, Other }
+errordef^ G { Open }
+let^ work=p^ ->nil^|E.Bad {return^ E.Bad{}}
+let^ open=p^ ->R|G.Open {return^ R{}}
+def^ R {dispose=p^ self^ {}}
+'''
+    negative('catch_arm_never_raised', arms+'do^{try^ work() catch^ E.Other: print^(1) catch^: print^(2)}',
+             'catch^ E.Other never runs: its block raises nothing left for it')
+    negative('catch_arm_taken_above', arms+'do^{try^ work() catch^ E.Bad: print^(1) catch^ E.Bad: print^(2)}',
+             'catch^ E.Bad never runs')
+    negative('catch_default_taken_above', arms+'do^{try^ work() catch^ E.Bad: print^(1) catch^: print^(2)}',
+             'catch^ never runs')
+    negative('catch_arm_for_a_with_header',
+             arms+'do^{with^ r=try^ open() {try^ work() catch^ G.Open: print^(1) catch^: print^(2)} catch^: print^(3)}',
+             'a with^ header is outside the block, so a catch^ for it goes on an enclosing do^{...}')
+    negative('catch_arm_in_a_loop', arms+'for^ i from^ 0 to^ 1 {main^: try^ work() catch^ E.Other: print^(1) catch^: print^(2)}',
+             'catch^ E.Other never runs')
+    negative('catch_arm_in_a_function', arms+'let^ f=p^ {try^ work() catch^ E.Other: print^(1) catch^: print^(2)}\nf()',
+             'catch^ E.Other never runs')
+    positive('catch_arm_alive_in_one_specialization', arms+'''
+def^ A {go=p^ self^ ->nil^|E.Bad {return^ E.Bad{}}}
+def^ B {go=p^ self^ ->nil^|E.Other {return^ E.Other{}}}
+let^ each=p^ x {
+    try^ x.go()
+catch^ E.Bad:
+    print^("bad")
+catch^ E.Other:
+    print^("other")
+}
+var^ a=A{}
+var^ b=B{}
+each(ref^ a)
+each(ref^ b)
+do^{
+    with^ r=try^ open() {
+        try^ work()
+    catch^:
+        print^("arm")
+    }
+catch^ G.Open:
+    print^("outer takes the header")
+}
+''', 'bad\nother\narm\n')
     negative('error_field_reserved', 'errordef^ E { Bad { self^{ line:i64^=0 } } }', 'a member every error has')
     negative('error_field_message', 'errordef^ E { Bad { self^{ message:string^="" } } }', 'a member every error has')
     negative('error_message_literal', 'errordef^ E { Bad }\nlet^ s="x"\nlet^ e=E.Bad{message=s}', 'string literal')
