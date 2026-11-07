@@ -788,43 +788,6 @@ static RhPathChar *rh_fs_path(const uint8_t *path, int64_t length)
     return name;
 }
 
-// An open file. A handle is a generation and a table position, so one that was closed, or a copy
-// of it, finds nothing even after the position is reused.
-typedef struct {
-    FILE *file;
-    uint32_t generation;
-} RhFile;
-
-static RhFile *rh_files;
-static uint32_t rh_file_count;
-
-static FILE *rh_file(int64_t handle)
-{
-    uint32_t at = (uint32_t)handle, generation = (uint32_t)((uint64_t)handle >> 32);
-    return at && at <= rh_file_count && rh_files[at - 1].generation == generation
-               ? rh_files[at - 1].file
-               : NULL;
-}
-
-static int64_t rh_file_add(FILE *file)
-{
-    uint32_t at = 0;
-    while (at < rh_file_count && rh_files[at].file) {
-        at++;
-    }
-    if (at == rh_file_count) {
-        RhFile *grown = realloc(rh_files, (rh_file_count + 1) * sizeof(*grown));
-        if (!grown) {
-            fclose(file);
-            return 0;
-        }
-        rh_files = grown;
-        rh_files[rh_file_count++] = (RhFile){0};
-    }
-    rh_files[at].file = file;
-    return (int64_t)(((uint64_t)rh_files[at].generation << 32) | (at + 1));
-}
-
 // Opens a file with a C mode such as "rb": its handle, or 0 when it did not open.
 int64_t rh_fs_open(const uint8_t *path, int64_t length, const char *mode)
 {
@@ -842,48 +805,33 @@ int64_t rh_fs_open(const uint8_t *path, int64_t length, const char *mode)
     file = name ? fopen(name, mode) : NULL;
 #endif
     free(name);
-    return file ? rh_file_add(file) : 0;
+    return (int64_t)(intptr_t)file;
 }
 
-// Reads up to capacity bytes: the count, -1 on a read error, or -2 if the file is closed.
+// Reads up to capacity bytes: the count, or -1 on a read error.
 int64_t rh_fs_read(int64_t handle, uint8_t *buffer, int64_t capacity)
 {
-    FILE *f = rh_file(handle);
-    if (!f) {
-        return -2;
-    }
+    FILE *f = (FILE *)(intptr_t)handle;
     size_t n = fread(buffer, 1, (size_t)capacity, f);
     return n < (size_t)capacity && ferror(f) ? -1 : (int64_t)n;
 }
 
-// Writes all of data: 0, -1 on a write error, or -2 if the file is closed.
+// Writes all of data: 0, or -1 on a write error.
 int64_t rh_fs_write(int64_t handle, const uint8_t *data, int64_t length)
 {
-    FILE *f = rh_file(handle);
-    if (!f) {
-        return -2;
-    }
-    return fwrite(data, 1, (size_t)length, f) == (size_t)length ? 0 : -1;
+    return fwrite(data, 1, (size_t)length, (FILE *)(intptr_t)handle) == (size_t)length ? 0 : -1;
 }
 
-// Flushes what was written: 0, -1 on a write error, or -2 if the file is closed.
+// Flushes what was written: 0, or -1 on a write error.
 int64_t rh_fs_flush(int64_t handle)
 {
-    FILE *f = rh_file(handle);
-    return !f ? -2 : fflush(f) ? -1 : 0;
+    return fflush((FILE *)(intptr_t)handle) ? -1 : 0;
 }
 
-// Closes the file: 0, -1 if flushing it failed, or -2 if it was closed already.
+// Closes the file: 0, or -1 if flushing it failed.
 int64_t rh_fs_close(int64_t handle)
 {
-    FILE *f = rh_file(handle);
-    if (!f) {
-        return -2;
-    }
-    RhFile *entry = &rh_files[(uint32_t)handle - 1];
-    entry->file = NULL;
-    entry->generation++;
-    return fclose(f) ? -1 : 0;
+    return fclose((FILE *)(intptr_t)handle) ? -1 : 0;
 }
 
 // Whether the file was removed.

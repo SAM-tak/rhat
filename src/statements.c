@@ -42,8 +42,12 @@ static void plain_loop(Context *c, Stmt *s)
 {
     int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
     int update = s->update.n ? ++c->in->labels : test;
-    Loop target = {
-        .end = end, .update = update, .bindings = c->vars.n, .outside = c->vars.n, .phase = 1};
+    Loop target = {.end = end,
+                   .update = update,
+                   .bindings = c->vars.n,
+                   .outside = c->vars.n,
+                   .disposals = c->pending_disposals.n,
+                   .phase = 1};
     add(&c->loops, &target);
     branch_to(c, test, s->loc);
     int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels;
@@ -161,6 +165,9 @@ static void loop_code(Context *c, Stmt *s)
         v->root = root(c, v->name, c->depth, false);
         v->slot = slot(c, v->type, false);
         v->unavailable = v->pending = true;
+        if (v->type->disposable) {
+            fail(s->loc, "first^ binding '%s' cannot hold a Disposable", v->name);
+        }
         if (v->type->owned) {
             Instr *i = emit(c, I_STACK_BEGIN, s->loc);
             i->dst = v->slot;
@@ -182,8 +189,12 @@ static void loop_code(Context *c, Stmt *s)
     int test = ++c->in->labels, yes = ++c->in->labels, no = ++c->in->labels, once = ++c->in->labels;
     int main = ++c->in->labels, update = ++c->in->labels, finish = ++c->in->labels;
     int last = ++c->in->labels, epilog = ++c->in->labels;
-    Loop target = {
-        .end = finish, .update = update, .bindings = c->vars.n, .outside = scope, .first = first};
+    Loop target = {.end = finish,
+                   .update = update,
+                   .bindings = c->vars.n,
+                   .outside = scope,
+                   .disposals = c->pending_disposals.n,
+                   .first = first};
     for (int j = 0; j < s->focuses.n; j++) {
         Expr name = {.kind = E_NAME, .loc = s->loc, .text = s->focuses.v[j]};
         Var *v = selected(c, &name);
@@ -602,6 +613,7 @@ void handle_statements(Context *c, Stmt *s)
                           .label = ++c->in->labels,
                           .bindings = base,
                           .pending = c->pending_owners.n,
+                          .disposals = c->pending_disposals.n,
                           .checkpoint = -1,
                           .arms = &s->handlers};
     if (c->in->result->owned) {
@@ -791,7 +803,22 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 continue;
             }
             binding_name(c, s);
-            with_leaves(c, s->a);
+            Var *matched = s->flow_alias && s->a->kind == E_NAME ? selected(c, s->a) : NULL;
+            if (matched) {
+                layout(matched->type, s->loc);
+            }
+            if (matched && matched->type->disposable) {
+                // A match looks at a Disposable where it lies, which its binding still disposes.
+                Var *view = mem(sizeof(*view));
+                *view = *matched;
+                view->name = s->name;
+                view->declaration = s->loc;
+                view->dispose = false;
+                view->source = matched;
+                view->source_version = matched->version;
+                add(&c->vars, view);
+                continue;
+            }
             Type *t = context_type(c, s->spec);
             if (!t) {
                 t = expression_type(c, s->a, NULL);
@@ -886,7 +913,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             var->mut = s->mut;
             var->root = root(c, s, c->depth, false);
             var->deps = v.deps;
-            var->dispose = s->with ? with_dispose(c, t, s->loc) : NULL;
+            layout(t, s->loc);
+            var->dispose = t->disposable;
             var->constant =
                 !s->mut && kind_integer(t->kind) && static_integer(&c->vars, s->a, &var->integer);
             if (s->flow_alias && s->a->kind == E_NAME) {
@@ -993,10 +1021,6 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     }
                     continue;
                 }
-                if (target->kind == E_NAME && selected(c, target) && selected(c, target)->dispose) {
-                    fail(s->loc, "a with^ name cannot be written; dispose() would miss its value");
-                }
-                with_leaves(c, s->values.n > j ? s->values.v[j] : s->b);
                 dest[j] = place_expression(c, s->targets.n ? s->targets.v[j] : s->a);
                 if (dead(dest[j])) {
                     break;
@@ -1006,6 +1030,10 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 }
                 if (dest[j].type->owned) {
                     fail(s->loc, "owned values cannot be reassigned while references may exist");
+                }
+                layout(dest[j].type, s->loc);
+                if (dest[j].type->disposable && count > 1) {
+                    fail(s->loc, "assign Disposable values one at a time");
                 }
                 if (s->op) {
                     Value previous = dest[j];
@@ -1064,6 +1092,11 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 if (s->internal && dest[j].var) {
                     dest[j].var->mut = true;
                 }
+                if (dest[j].type->disposable) {
+                    // The new value is ready, so its failure cannot leave the old one disposed.
+                    store_check(c, dest[j], src[j], s->loc);
+                    dispose_value(c, dest[j], s->loc);
+                }
                 copy_to(c, dest[j], src[j], s->loc, false);
                 Expr *target = s->targets.n ? s->targets.v[j] : s->a;
                 if (s->op && target->kind == E_NAME && dest[j].var &&
@@ -1094,6 +1127,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             if (loop->phase == 1) {
                 remember_focus(c, loop, s->loc, false);
             }
+            for (int j = c->pending_disposals.n - 1; j >= loop->disposals; j--) {
+                dispose_value(c, *(Value *)c->pending_disposals.v[j], s->loc);
+            }
             cleanup(c, loop->bindings, s->loc);
             Instr *br = emit(c, I_BR, s->loc);
             br->label = s->kind == S_BREAK ? loop->end : loop->update;
@@ -1110,12 +1146,18 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             if (s->a->kind != E_CALL && s->a->kind != E_TRY && s->a->kind != E_CATCH) {
                 fail(s->loc, "only calls can be expression statements");
             }
+            layout(v.type, s->loc);
+            if (v.type->disposable) {
+                fail(s->loc, "bind this '%s': a Disposable temporary has nothing to dispose it",
+                     type_name(v.type));
+            }
         }
         else if (s->kind == S_RETURN) {
             bool old_read_return = c->read_return;
             c->read_return = true;
             Type *t = c->in->result;
             Value v = {.id = -1, .type = type_builtin(c->p, T_VOID)};
+            Var *moved = NULL;
             if (s->a) {
                 if (t->kind == T_VOID) {
                     Value tested = expression(c, s->a, NULL);
@@ -1125,7 +1167,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     fail(s->loc, "procedure or void function cannot return a value");
                 }
                 Expr *named = s->a->tuple ? s->a->args.v[s->a->args.n - 1] : s->a;
-                with_leaves(c, named);
+                moved = named->kind == E_NAME ? selected(c, named) : NULL;
+                moved = moved && moved->dispose ? moved : NULL;
+                c->moving = moved;
                 bool designated = t->owned && c->in->result_local && named->kind == E_NAME &&
                                   !strcmp(named->text, c->in->result_local);
                 if (t->owned && c->in->result_local && t->kind != T_UNION && !designated) {
@@ -1161,12 +1205,24 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                         v.deps = roots_union(v.deps, part.deps);
                     }
                 }
+                else if (t->owned && t->disposable && c->in->result_local) {
+                    // An error overwrites the result, which a binding may occupy.
+                    Value early = snapshot(c, expression(c, s->a, NULL), s->loc);
+                    if (dead(early)) {
+                        c->moving = NULL;
+                        break;
+                    }
+                    dispose_all(c, 0, 0, s->loc);
+                    c->disposed = true;
+                    v = convert_value(c, early, t, c->in->result_slot, s->loc);
+                }
                 else {
                     bool building = c->building_result;
                     c->building_result |= t->owned;
                     v = construct(c, s->a, t, c->in->result_slot);
                     c->building_result = building;
                 }
+                c->moving = NULL;
                 if (dead(v)) {
                     break;
                 }
@@ -1190,7 +1246,17 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 }
             }
             flow_return(c, v.deps);
+            for (int j = c->pending_disposals.n - 1; !c->disposed && j >= 0; j--) {
+                dispose_value(c, *(Value *)c->pending_disposals.v[j], s->loc);
+            }
+            if (moved) {
+                moved->dispose = false;
+            }
             cleanup(c, 0, s->loc);
+            if (moved) {
+                moved->dispose = true;
+            }
+            c->disposed = false;
             Instr *i = emit(c, I_RETURN, s->loc);
             i->type = t;
             c->terminated = true;
@@ -1300,9 +1366,10 @@ static void statement_checked(Context *c, Stmt *statement)
     static const size_t lists[] = {
         offsetof(Context, vars),           offsetof(Context, default_stack),
         offsetof(Context, loops),          offsetof(Context, handlers),
-        offsetof(Context, pending_owners), offsetof(Context, flow.guards),
-        offsetof(Context, inflight),       offsetof(Context, root_keys),
-        offsetof(Context, root_list),      offsetof(Context, read_borrows)};
+        offsetof(Context, pending_owners), offsetof(Context, pending_disposals),
+        offsetof(Context, flow.guards),    offsetof(Context, inflight),
+        offsetof(Context, root_keys),      offsetof(Context, root_list),
+        offsetof(Context, read_borrows)};
     static const size_t instance_lists[] = {offsetof(Instance, params), offsetof(Instance, slots),
                                             offsetof(Instance, code),
                                             offsetof(Instance, read_calls)};
@@ -1474,7 +1541,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         if (t->owned) {
             fail(a->loc, "owned by-value parameters are not supported; use 'ref^'");
         }
-        noncopy_argument(t, a->loc);
+        disposable_argument(t, a->loc);
         Var *v = mem(sizeof(*v));
         v->declaration = a->loc;
         tool_record(p, a->loc, a->loc, a->name, t, NULL, NULL, TOOL_PARAMETER, true);
@@ -1511,14 +1578,16 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     }
     statements(&c, &f->body, false);
     if (!c.terminated) {
-        if (nullable(in->result) && has_error(in->result)) {
+        bool implicit_nil = nullable(in->result) && has_error(in->result);
+        if (!implicit_nil && in->result->kind != T_VOID && !in->invalid) {
+            fail(f->loc, "not all paths return a value in '%s'", f->name);
+        }
+        // Disposing first: a binding being returned may occupy the result.
+        cleanup(&c, 0, f->loc);
+        if (implicit_nil) {
             construct(&c, &(Expr){.kind = E_NAME, .text = "nil^", .loc = f->loc}, in->result,
                       in->result_slot);
         }
-        else if (in->result->kind != T_VOID && !in->invalid) {
-            fail(f->loc, "not all paths return a value in '%s'", f->name);
-        }
-        cleanup(&c, 0, f->loc);
         Instr *i = emit(&c, I_RETURN, f->loc);
         i->type = in->result;
     }

@@ -464,9 +464,6 @@ def^ R {dispose=p^ self^ {}}
              'catch^ E.Bad never runs')
     negative('catch_default_taken_above', arms+'do^{try^ work() catch^ E.Bad: print^(1) catch^: print^(2)}',
              'catch^ never runs')
-    negative('catch_arm_for_a_with_header',
-             arms+'do^{with^ r=try^ open() {try^ work() catch^ G.Open: print^(1) catch^: print^(2)} catch^: print^(3)}',
-             'a with^ header is outside the block, so a catch^ for it goes on an enclosing do^{...}')
     negative('catch_arm_in_a_loop', arms+'for^ i from^ 0 to^ 1 {main^: try^ work() catch^ E.Other: print^(1) catch^: print^(2)}',
              'catch^ E.Other never runs')
     negative('catch_arm_in_a_function', arms+'let^ f=p^ {try^ work() catch^ E.Other: print^(1) catch^: print^(2)}\nf()',
@@ -485,16 +482,7 @@ var^ a=A{}
 var^ b=B{}
 each(ref^ a)
 each(ref^ b)
-do^{
-    with^ r=try^ open() {
-        try^ work()
-    catch^:
-        print^("arm")
-    }
-catch^ G.Open:
-    print^("outer takes the header")
-}
-''', 'bad\nother\narm\n')
+''', 'bad\nother\n')
     negative('error_field_reserved', 'errordef^ E { Bad { self^{ line:i64^=0 } } }', 'a member every error has')
     negative('error_field_message', 'errordef^ E { Bad { self^{ message:string^="" } } }', 'a member every error has')
     negative('error_message_literal', 'errordef^ E { Bad }\nlet^ s="x"\nlet^ e=E.Bad{message=s}', 'string literal')

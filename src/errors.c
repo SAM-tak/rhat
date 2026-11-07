@@ -233,7 +233,7 @@ void route_error(Context *c, Value error, Loc loc)
                 }
             }
         }
-        escape_cleanup(c, target->bindings, target->pending, loc);
+        escape_cleanup(c, target->bindings, target->pending, target->disposals, loc);
         if (c->building_result && target->checkpoint >= 0) {
             Instr *i = emit(c, I_STACK_REWIND, loc);
             i->a = c->in->result_slot;
@@ -255,6 +255,8 @@ void route_error(Context *c, Value error, Loc loc)
                  "catch^ or widen the result",
                  type_name(error.type), type_name(c->in->result));
         }
+        // The error overwrites the result, which a binding being returned may occupy.
+        dispose_all(c, 0, 0, loc);
         Value out = pack_error(c, error, c->in->result, c->in->result_slot, loc);
         for (int j = 0; j < out.deps.n; j++) {
             if (!out.deps.v[j]->external) {
@@ -262,7 +264,9 @@ void route_error(Context *c, Value error, Loc loc)
             }
         }
         flow_return(c, out.deps);
-        escape_cleanup(c, 0, 0, loc);
+        c->disposed = true;
+        escape_cleanup(c, 0, 0, 0, loc);
+        c->disposed = false;
         Instr *i = emit(c, I_RETURN, loc);
         i->type = c->in->result;
     }
@@ -303,11 +307,8 @@ void catch_validate(Program *p)
             continue;
         }
         const char *name = site->arm->spec ? type_name(type_spec(p, site->arm->spec)) : "";
-        fail(site->arm->loc, "catch^%s%s never runs: its block raises nothing left for it%s",
-             *name ? " " : "", name,
-             site->arm->with ? "; a with^ header is outside the block, so a catch^ for it goes on "
-                               "an enclosing do^{...}"
-                             : "");
+        fail(site->arm->loc, "catch^%s%s never runs: its block raises nothing left for it",
+             *name ? " " : "", name);
     }
 }
 

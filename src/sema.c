@@ -607,25 +607,40 @@ static Value enum_integer(Context *c, Value v, Loc l)
     return out;
 }
 
-// A place keeps its noncopy^ value, so only a temporary, which nothing else names, may move out.
-static void noncopy_check(Value src, Loc l)
+// A place keeps its Disposable value, so only a temporary, which nothing else names, or the binding
+// a return^ hands over may move out.
+static void disposable_check(Context *c, Value src, Loc l)
 {
     layout(src.type, l);
-    if (src.type->noncopy && src.addressable) {
+    bool handed = c->moving && src.var == c->moving &&
+                  (src.id == c->moving->slot || c->moving->narrowed == src.type);
+    if (src.type->disposable && src.addressable && !handed) {
         fail(l,
-             "'%s' is noncopy^ and cannot be copied; store a temporary directly, or keep it in "
-             "a T[grow^] and borrow with 'ref^'",
+             "'%s' is Disposable and cannot be copied; store a temporary directly, or keep it "
+             "in a T[grow^] and borrow with 'ref^'",
              type_name(src.type));
     }
 }
 
-void noncopy_argument(Type *t, Loc l)
+// A temporary with no binding has nothing to dispose it, so it cannot be used up in passing.
+static void temporary_check(Value v, Loc l)
+{
+    if (!dead(v)) {
+        layout(v.type, l);
+        if (v.type->disposable && !v.addressable) {
+            fail(l, "bind this '%s' first: a Disposable temporary has nothing to dispose it",
+                 type_name(v.type));
+        }
+    }
+}
+
+void disposable_argument(Type *t, Loc l)
 {
     layout(t, l);
-    if (t->noncopy) {
+    if (t->disposable) {
         fail(l,
-             "'%s' is noncopy^ and cannot be passed by value; take 'ref^', and keep the values "
-             "in a T[grow^] that others refer to",
+             "'%s' is Disposable and cannot be passed by value; take 'ref^', and keep the "
+             "values in a T[grow^] that others refer to",
              type_name(t));
     }
 }
@@ -651,7 +666,7 @@ Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
         fail(l, "owned region values cannot be copied; construct at the "
                 "destination or borrow with 'ref^'");
     }
-    noncopy_check(src, l);
+    disposable_check(c, src, l);
     if (!init) {
         store_check(c, dst, src, l);
         forget_roots(&c->vars, dst.storage, false);
@@ -738,8 +753,8 @@ Value held_operand(Context *c, Expr *e, int dst)
 Value case_value(Context *c, Value src, Type *arm, Loc loc)
 {
     layout(arm, loc);
-    if (arm->owned || arm->noncopy) {
-        // An owned or noncopy^ alternative is used where it lies.
+    if (arm->owned || arm->disposable) {
+        // An owned or Disposable alternative is used where it lies.
         return (Value){.id = case_at(c, src, arm, false, loc),
                        .type = arm,
                        .deps = arm->refs ? src.deps : (Roots){0},
@@ -830,7 +845,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         if (src.type->owned && !src.held) {
             fail(loc, "owned region values cannot be copied; construct at the destination");
         }
-        noncopy_check(src, loc);
+        disposable_check(c, src, loc);
         Instr *i = emit(c, I_UNION, loc);
         i->dst = out.id;
         i->a = src.id;
@@ -842,8 +857,8 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     if (src.type->kind != T_UNION) {
         fail(loc, "expected '%s', found '%s'", type_name(to), type_name(src.type));
     }
-    if (dst < 0 && (to->owned || to->noncopy) && union_alternative(src.type, to) >= 0) {
-        // A narrowed owned or noncopy^ alternative is used where it lies.
+    if (dst < 0 && (to->owned || to->disposable) && union_alternative(src.type, to) >= 0) {
+        // A narrowed owned or Disposable alternative is used where it lies.
         return case_value(c, src, to, loc);
     }
     List selected = {0};
@@ -1027,6 +1042,7 @@ Value fits_value(Context *c, Expr *e)
     if (dead(src)) {
         return src;
     }
+    temporary_check(src, e->loc);
     if (src.type->kind == T_DYN) {
         // Only the yes branch narrows; the remaining types are not expressible.
         Type *yes = dyn_fits_target(c->p, e->test_spec, e->loc);
@@ -1252,43 +1268,137 @@ static bool owner_var(Context *c, Var *v)
            !((Slot *)c->in->slots.v[v->slot])->alias;
 }
 
-Function *with_dispose(Context *c, Type *t, Loc l)
+void dispose_elements(Context *c, Value array, Value from, Loc l)
 {
-    if (!c->in->fn->procedure) {
-        fail(l, "with^ needs p^: it calls dispose() when its block ends");
+    layout(array.type, l);
+    Type *elem = array.type->elem;
+    if (!elem->disposable) {
+        return;
     }
-    Type *base = t->kind == T_REF ? t->elem : t;
-    Function *f = base->kind == T_STRUCT ? method(base->def, "dispose") : NULL;
-    if (!f) {
-        fail(l, "with^ needs a value with a dispose() method, found '%s'", type_name(t));
+    Type *integer = type_builtin(c->p, T_I64);
+    Value at = value(c, integer);
+    if (array.type->kind == T_ARRAY) {
+        Instr *i = emit(c, I_CONST, l);
+        i->dst = at.id;
+        i->type = integer;
+        i->text = fmt("%d", array.type->count);
     }
-    if (f->params.n != 1 || !((Param *)f->params.v[0])->self || !f->procedure) {
-        fail(l, "dispose must be a p^self^ method without other arguments");
+    else {
+        Instr *i = emit(c, I_LENGTH, l);
+        i->dst = at.id;
+        i->a = array.id;
+        i->type = array.type;
     }
-    return f;
+    if (from.id < 0) {
+        from = value(c, integer);
+        Instr *i = emit(c, I_CONST, l);
+        i->dst = from.id;
+        i->type = integer;
+        i->text = "0";
+    }
+    Value one = value(c, integer);
+    Instr *constant = emit(c, I_CONST, l);
+    constant->dst = one.id;
+    constant->type = integer;
+    constant->text = "1";
+    int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
+    nil_jump(c, test, l);
+    nil_label(c, test, l);
+    nil_branch(c, operate(c, ">", at, from, l), body, end, l);
+    nil_label(c, body, l);
+    Value before = operate(c, "-", at, one, l);
+    Instr *step = emit(c, I_COPY, l);
+    step->dst = at.id;
+    step->a = before.id;
+    step->type = integer;
+    Value item = {.id = slot(c, elem, true), .type = elem, .addressable = true};
+    Instr *index = emit(c, I_INDEX, l);
+    index->dst = item.id;
+    index->a = array.id;
+    index->b = at.id;
+    index->type = array.type;
+    dispose_value(c, item, l);
+    nil_jump(c, test, l);
+    nil_label(c, end, l);
 }
 
-void with_leaves(Context *c, Expr *e)
+void dispose_value(Context *c, Value v, Loc l)
 {
-    if (e && e->kind == E_NAME) {
-        Var *v = selected(c, e);
-        if (v && v->dispose) {
-            fail(e->loc, "'%s' is disposed when its with^ block ends; it cannot leave the block",
-                 v->name);
+    layout(v.type, l);
+    Type *t = v.type;
+    if (!t->disposable) {
+        return;
+    }
+    if (!c->in->fn->procedure) {
+        fail(l, "'%s' needs p^: disposing it calls dispose()", type_name(t));
+    }
+    if (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED) {
+        dispose_elements(c, v, (Value){.id = -1}, l);
+        return;
+    }
+    Value place = {.id = v.id, .type = t, .addressable = true};
+    if (t->kind == T_UNION) {
+        for (int j = 0; j < t->def->alternatives.n; j++) {
+            Type *arm = t->def->alternatives.v[j];
+            if (!arm->disposable) {
+                continue;
+            }
+            Value test = value(c, type_builtin(c->p, T_BOOL));
+            Instr *is = emit(c, I_CASE_IS, l);
+            is->dst = test.id;
+            is->a = v.id;
+            is->type = t;
+            is->label = j;
+            int here = ++c->in->labels, next = ++c->in->labels;
+            nil_branch(c, test, here, next, l);
+            nil_label(c, here, l);
+            Value part = {.id = case_at(c, place, arm, false, l), .type = arm, .addressable = true};
+            dispose_value(c, part, l);
+            nil_jump(c, next, l);
+            nil_label(c, next, l);
+        }
+        return;
+    }
+    Def *access = c->access;
+    if (t->def->disposable) {
+        Function *own = method(t->def, "dispose");
+        c->access = own->owner;
+        Expr *origin = mem(sizeof(*origin));
+        origin->kind = E_NAME;
+        origin->loc = l;
+        origin->text = "dispose";
+        invoke_operator(c, own, place, (Value){0}, origin);
+    }
+    for (int j = t->def->fields.n - 1; j >= 0; j--) {
+        Field *f = t->def->fields.v[j];
+        if (f->type->disposable) {
+            c->access = f->owner;
+            dispose_value(c, field_value(c, place, f, l), l);
         }
     }
+    c->access = access;
 }
 
-static void run_dispose(Context *c, Var *v, Loc l)
+void dispose_pending(Context *c, Value part)
 {
-    Expr *origin = mem(sizeof(*origin));
-    origin->kind = E_NAME;
-    origin->loc = l;
-    origin->text = v->name;
-    Value out = invoke_operator(c, v->dispose, variable(v), (Value){0}, origin);
-    if (!dead(out) && out.type->kind != T_VOID) {
-        fail(l, "dispose must not return a value, found '%s'; failing cleanup is a separate call",
-             type_name(out.type));
+    layout(part.type, c->in->fn->loc);
+    if (part.type->disposable) {
+        Value *kept = mem(sizeof(*kept));
+        *kept = part;
+        add(&c->pending_disposals, kept);
+    }
+}
+
+void dispose_all(Context *c, int bindings, int disposals, Loc loc)
+{
+    for (int j = c->pending_disposals.n - 1; !c->disposed && j >= disposals; j--) {
+        dispose_value(c, *(Value *)c->pending_disposals.v[j], loc);
+    }
+    for (int j = c->vars.n - 1; !c->disposed && j >= bindings; j--) {
+        Var *v = c->vars.v[j];
+        if (v->dispose) {
+            dispose_value(c, variable(v), loc);
+        }
     }
 }
 
@@ -1296,8 +1406,8 @@ void cleanup(Context *c, int from, Loc l)
 {
     for (int j = c->vars.n - 1; j >= from; j--) {
         Var *v = c->vars.v[j];
-        if (v->dispose) {
-            run_dispose(c, v, l);
+        if (v->dispose && !c->disposed) {
+            dispose_value(c, variable(v), l);
         }
         if (owner_var(c, v)) {
             release(c, v->type, v->slot, l);
@@ -1305,14 +1415,9 @@ void cleanup(Context *c, int from, Loc l)
     }
 }
 
-void escape_cleanup(Context *c, int bindings, int pending, Loc loc)
+void escape_cleanup(Context *c, int bindings, int pending, int disposals, Loc loc)
 {
-    for (int j = c->vars.n - 1; j >= bindings; j--) {
-        Var *v = c->vars.v[j];
-        if (v->dispose) {
-            run_dispose(c, v, loc);
-        }
-    }
+    dispose_all(c, bindings, disposals, loc);
     List ids = {0};
     for (int j = bindings; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
@@ -1564,14 +1669,16 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
         if (!roots_meet(v->root, storage) && roots_meet(v->deps, storage) &&
             may_reference(v->type, elem)) {
             fail(loc,
-                 "cannot shrink flex^ storage while '%s' may refer into it; end its scope first",
+                 "cannot shrink flex^ storage or dispose elements while '%s' may refer into it; "
+                 "end its scope first",
                  v->name);
         }
     }
     for (int j = 0; j < c->inflight.n; j++) {
         Value *v = c->inflight.v[j];
         if (v != skip && roots_meet(v->deps, storage) && may_reference(v->type, elem)) {
-            fail(loc, "cannot shrink flex^ storage while an earlier operand may refer into it");
+            fail(loc, "cannot shrink flex^ storage or dispose elements while an earlier operand "
+                      "may refer into it");
         }
     }
     for (int k = 0; k < c->in->params.n && k < 64; k++) {
@@ -2075,6 +2182,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             return abrupt(c);
         }
         Value base = deref(c, receiver, e->loc);
+        temporary_check(base, e->loc);
+        Type *held = base.type->kind == T_DYN ? base.type->elem : base.type;
+        if (!strcmp(target->text, "dispose") && held->kind == T_STRUCT && held->def->disposable) {
+            fail(e->loc, "dispose is called when the value's scope ends; it cannot be called "
+                         "directly");
+        }
         if (base.type->kind == T_GROW && base.type->count == ARRAY_SIZED &&
             (!strcmp(target->text, "push") || !strcmp(target->text, "pop") ||
              !strcmp(target->text, "append") || !strcmp(target->text, "clear") ||
@@ -2096,13 +2209,15 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "truncate length must be i64^");
             }
             store_check(c, base, (Value){0}, e->loc);
-            if (flex) {
+            layout(base.type, e->loc);
+            if (flex || base.type->elem->disposable) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
             }
             Type *t = type_builtin(p, T_VOID);
             if (expected && expected != t) {
                 fail(e->loc, "truncate has no result");
             }
+            dispose_elements(c, base, len, e->loc);
             Instr *i = emit(c, I_TRUNCATE, e->loc);
             i->a = base.id;
             i->b = len.id;
@@ -2122,8 +2237,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "append needs a slice with the same element type");
             }
             layout(base.type->elem, e->loc);
-            if (base.type->elem->noncopy) {
-                fail(e->loc, "append would copy noncopy^ '%s'; push temporaries instead",
+            if (base.type->elem->disposable) {
+                fail(e->loc, "append would copy Disposable '%s'; push temporaries instead",
                      type_name(base.type->elem));
             }
             Value dependencies = {.deps = base.type->elem->refs ? src.deps : (Roots){0}};
@@ -2145,8 +2260,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "%s expects no arguments", target->text);
             }
             store_check(c, base, (Value){0}, e->loc);
-            if (flex) {
+            layout(base.type, e->loc);
+            if (flex || base.type->elem->disposable) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
+            }
+            if (!pop) {
+                dispose_elements(c, base, (Value){.id = -1}, e->loc);
             }
             Type *t = pop ? base.type->elem : type_builtin(p, T_VOID);
             if (expected && expected != t) {
@@ -2173,7 +2292,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             if (v.type != base.type->elem) {
                 fail(e->loc, "push element type mismatch");
             }
-            noncopy_check(v, e->loc);
+            disposable_check(c, v, e->loc);
             store_check(c, base, v, e->loc);
             forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
             Type *t = type_wrap(p, T_REF, base.type->elem, 0);
@@ -2332,7 +2451,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (v.type->owned) {
             fail(e->loc, "pass owned values by reference with 'ref^'");
         }
-        noncopy_argument(v.type, e->loc);
+        disposable_argument(v.type, e->loc);
         if (argument_pack(v.type) && (!f->heterogeneous || strcmp(param->name, "..."))) {
             fail(e->loc, "argument packs must be forwarded to a variadic parameter");
         }
@@ -2463,8 +2582,8 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
              type_name(t), t->count);
     }
     layout(t, e->loc);
-    if (t->elem->noncopy && !reserve) {
-        fail(e->loc, "repeat^ and source... would copy noncopy^ '%s'", type_name(t->elem));
+    if (t->elem->disposable && !reserve) {
+        fail(e->loc, "repeat^ and source... would copy Disposable '%s'", type_name(t->elem));
     }
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     Value count = {0}, source = {0};
@@ -2833,6 +2952,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if ((c->type_constant || c->in->fn->constant_value) && t->owned) {
             fail(e->loc, "type constant cannot own a data stack region");
         }
+        if ((c->type_constant || c->in->fn->constant_value) && t->def->disposable) {
+            fail(e->loc, "type constant cannot be Disposable");
+        }
         Module *scope = c->in_default && c->access ? c->access->module : c->in->fn->module;
         if (!e->text && t->def->module && t->def->module != scope && !t->def->public) {
             fail(e->loc, "contextual construction requires a public type outside "
@@ -2851,7 +2973,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         out.type = t;
         out.id = dst >= 0 ? dst : slot(c, t, false);
         // Fields built so far stay in use while later ones are evaluated.
-        int inflight = c->inflight.n;
+        int inflight = c->inflight.n, pending = c->pending_disposals.n;
         add(&c->inflight, &out);
         if (!t->def->fields.n) {
             Instr *z = emit(c, I_ZERO, e->loc);
@@ -2955,11 +3077,14 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             }
             if (c->terminated) {
                 c->inflight.n = inflight;
+                c->pending_disposals.n = pending;
                 return abrupt(c);
             }
+            dispose_pending(c, dest);
             out.deps = roots_union(out.deps, v.deps);
         }
         c->inflight.n = inflight;
+        c->pending_disposals.n = pending;
         return out;
     }
     if (e->kind == E_ARRAY) {
@@ -3023,19 +3148,24 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->a = out.id;
             a->type = t;
         }
-        int inflight = c->inflight.n;
+        int inflight = c->inflight.n, pending = c->pending_disposals.n;
         add(&c->inflight, &out);
+        if (t->kind == T_GROW || t->kind == T_BOUNDED) {
+            // Its length covers what has been pushed so far.
+            dispose_pending(c, out);
+        }
         for (int j = 0; j < e->args.n; j++) {
             if (t->kind == T_GROW || t->kind == T_BOUNDED) {
                 Value v = j || !first.type ? array_element(c, e, e->args.v[j], t->elem) : first;
                 if (dead(v)) {
                     c->inflight.n = inflight;
+                    c->pending_disposals.n = pending;
                     return v;
                 }
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");
                 }
-                noncopy_check(v, e->loc);
+                disposable_check(c, v, e->loc);
                 out.deps = roots_union(out.deps, v.deps);
                 Instr *a = emit(c, I_PUSH, e->loc);
                 a->a = out.id;
@@ -3062,12 +3192,15 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 }
                 if (c->terminated) {
                     c->inflight.n = inflight;
+                    c->pending_disposals.n = pending;
                     return abrupt(c);
                 }
+                dispose_pending(c, (Value){.id = d, .type = t->elem});
                 out.deps = roots_union(out.deps, v.deps);
             }
         }
         c->inflight.n = inflight;
+        c->pending_disposals.n = pending;
         return out;
     }
     Expr *old_target = c->operator_target;
@@ -3679,6 +3812,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (base.type->kind != T_STRUCT) {
             fail(e->loc, "field access requires a structure");
         }
+        temporary_check(base, e->loc);
         Field *f = field(base.type->def, e->text);
         if (!f) {
             Type *type = callable_group(p, base.type->def, e->text);
@@ -3720,6 +3854,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(base)) {
             return base;
         }
+        temporary_check(base, e->loc);
         if (argument_pack(base.type)) {
             int index = argument_index(&c->vars, base.type, e->b, e->loc);
             return field_value(c, base, base.type->def->fields.v[index], e->loc);
@@ -3761,8 +3896,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             return out;
         }
         layout(out.type, e->loc);
-        if (out.type->noncopy) {
-            // A slice shows a noncopy^ element where it lies, read-only.
+        if (out.type->disposable) {
+            // A slice shows a Disposable element where it lies, read-only.
             out.addressable = out.readonly = true;
             return out;
         }

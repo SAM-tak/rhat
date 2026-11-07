@@ -806,6 +806,7 @@ static void compose_unchecked(Program *p, Def *d)
         d->state = 2;
         return;
     }
+    d->disposable = !strcmp(d->name, "std.disposable.Disposable");
     for (int i = 0; i < d->base_names.n; i++) {
         char *n = d->base_names.v[i];
         Def *b = lookup_def(p, n);
@@ -817,7 +818,7 @@ static void compose_unchecked(Program *p, Def *d)
             fail(d->loc, "composition base must be a structure, found union '%s'", b->name);
         }
         add(&d->bases, b);
-        d->noncopy |= b->noncopy;
+        d->disposable |= b->disposable;
         for (int j = 0; j < b->fields.n; j++) {
             Field *f = b->fields.v[j], *old = field(d, f->name);
             if (old) {
@@ -1031,6 +1032,7 @@ static void layout_unchecked(Type *t, Loc l)
             fail(l, "owning array elements must be nonempty fixed-size values");
         }
         t->refs = t->elem->refs;
+        t->disposable = t->elem->disposable;
         return;
     }
     if (t->kind < T_STRUCT || t->kind == T_REF) {
@@ -1046,7 +1048,7 @@ static void layout_unchecked(Type *t, Loc l)
         return;
     }
     t->size = SIZE_MAX;
-    t->noncopy = t->def && t->def->noncopy;
+    t->disposable = t->def && t->def->disposable;
     size_t size = 0, align = 1;
     if (t->kind == T_UNION) {
         for (int j = 0; j < t->def->alternatives.n; j++) {
@@ -1056,7 +1058,7 @@ static void layout_unchecked(Type *t, Loc l)
                 fail(l, "union alternative '%s' must be concrete", type_name(arm));
             }
             t->owned |= arm->owned;
-            t->noncopy |= arm->noncopy;
+            t->disposable |= arm->disposable;
             if (arm->size > size) {
                 size = arm->size;
             }
@@ -1092,7 +1094,7 @@ static void layout_unchecked(Type *t, Loc l)
             size += align;
         }
         t->refs = t->elem->refs;
-        t->noncopy = t->elem->noncopy;
+        t->disposable = t->elem->disposable;
     }
     else {
         for (int i = 0; i < t->def->fields.n; i++) {
@@ -1114,7 +1116,7 @@ static void layout_unchecked(Type *t, Loc l)
             }
             t->refs |= f->type->refs;
             t->owned |= f->type->owned;
-            t->noncopy |= f->type->noncopy;
+            t->disposable |= f->type->disposable;
         }
     }
     t->align = align;

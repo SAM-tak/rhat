@@ -287,7 +287,7 @@ static void synchronize(Parser *p, int start, int failed, bool outer)
                        is(p, "exportC^") || is(p, "exportL^") || is(p, "if^") || is(p, "for^") ||
                        is(p, "while^") || is(p, "print^") || is(p, "op^") || is(p, "private^") ||
                        is(p, "abstract^") || is(p, "override^") || is(p, "overload^") ||
-                       is(p, "inline^") || is(p, "with^") || is(p, "noncopy^");
+                       is(p, "inline^");
         if (t->kind == TOK_WORD && p->at + 2 < p->tokens.n) {
             Token *equal = p->tokens.v[p->at + 1], *value = p->tokens.v[p->at + 2];
             starter |= (!strcmp(equal->text, "=") || !strcmp(equal->text, ":=")) &&
@@ -2127,8 +2127,8 @@ static int loop_section(Parser *p);
 // Whether word can only begin a statement, never a literal's first element.
 static bool statement_word(const char *word)
 {
-    const char *words[] = {"let^",  "var^", "return^", "if^",    "for^",    "repeat^", "break^",
-                           "next^", "do^",  "def^",    "print^", "inline^", "with^"};
+    const char *words[] = {"let^",   "var^",  "return^", "if^",  "for^",   "repeat^",
+                           "break^", "next^", "do^",     "def^", "print^", "inline^"};
     for (size_t j = 0; j < sizeof(words) / sizeof(*words); j++) {
         if (!strcmp(word, words[j])) {
             return true;
@@ -3040,9 +3040,6 @@ static Stmt *stmt_unchecked(Parser *p)
     else if (take(p, "for^") || take(p, "repeat^")) {
         s = loop_statement(p, !strcmp(t->text, "repeat^"), t->loc);
     }
-    else if (take(p, "with^")) {
-        s = with_statement(p, t->loc);
-    }
     else if (t->kind == TOK_WORD &&
              (!strncmp(t->text, "break^", 6) || !strncmp(t->text, "next^", 5) ||
               !strncmp(t->text, "skip^", 5) || !strncmp(t->text, "continue^", 9))) {
@@ -3186,10 +3183,9 @@ static Stmt *stmt(Parser *p)
         int first = p->at;
         Stmt *out = stmt_unchecked(p);
         Token *head = p->tokens.v[first];
-        bool row = !strcmp(head->text, "with^") ||
-                   (!strcmp(head->text, "for^") && first + 1 < p->at &&
-                    (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
-                     !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^")));
+        bool row = !strcmp(head->text, "for^") && first + 1 < p->at &&
+                   (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
+                    !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^"));
         format_span(p, first, 2000 + out->kind, false, row);
         return out;
     }
@@ -3250,44 +3246,6 @@ static void block(Parser *p, List *out)
     }
     p->scope_depth--;
     format_span(p, first, 4000, true, false);
-}
-
-// with^ a = e with^ b = e { ... }: the names are bound around the block, so its catch^ arms see them
-// and run before dispose(), while a failed e is outside them and goes to an enclosing catch^.
-// e is no ordinary header: a type's name is not a resource, so the { after it opens a literal.
-static Stmt *with_statement(Parser *p, Loc loc)
-{
-    Stmt *scope = mem(sizeof(*scope));
-    scope->kind = S_BLOCK;
-    scope->loc = loc;
-    bool header = p->header;
-    p->header = false;
-    do {
-        Loc at = tok(p)->loc;
-        char *name = decl_word(p);
-        if (is(p, ":=")) {
-            fail(tok(p)->loc, "with^ binds with =; its name cannot be written");
-        }
-        need(p, "=");
-        Stmt *held = binding(name, expr(p, 0), true);
-        held->loc = at;
-        held->with = true;
-        add(&scope->body, held);
-    } while (take(p, "with^"));
-    p->header = header;
-    if (!is(p, "{")) {
-        fail(tok(p)->loc, "with^ needs a block; its resources end with that block");
-    }
-    List inner = {0};
-    block(p, &inner);
-    for (int j = 0; j < inner.n; j++) {
-        Stmt *s = inner.v[j];
-        add(&scope->body, s);
-        for (int k = 0; s->kind == S_HANDLE && k < s->handlers.n; k++) {
-            ((CatchArm *)s->handlers.v[k])->with = true;
-        }
-    }
-    return scope;
 }
 
 static Function *function(Parser *p, char *name, Def *owner, bool abstr)
@@ -3601,7 +3559,7 @@ static void def_body(Parser *p, Def *d)
     p->type_owner = d;
     while (!take(p, "}")) {
         if (p->p->tooling && (is(p, "let^") || is(p, "var^") || is(p, "def^") || is(p, "struct^") ||
-                              is(p, "import^") || is(p, "public^") || is(p, "noncopy^"))) {
+                              is(p, "import^") || is(p, "public^"))) {
             TOOL_CHECK(p->p, fail(tok(p)->loc, "expected '}' before a top-level declaration"););
             break;
         }
@@ -3716,10 +3674,6 @@ static void declaration(Parser *q)
         return;
     }
     bool public = take(q, "public^");
-    bool noncopy = take(q, "noncopy^");
-    if (noncopy && !is(q, "def^") && !is(q, "struct^")) {
-        fail(tok(q)->loc, "noncopy^ applies only to a def^");
-    }
     // exportC^ and exportL^ mark a function entered from C or from L^;
     // exportL^ also marks a def^ L^ holds by value, or with ref^ by
     // reference, and an errordef^ L^ receives as its own errors.
@@ -3859,7 +3813,6 @@ static void declaration(Parser *q)
     if (structure || take(q, "def^")) {
         definition(q, structure);
         Def *d = p->defs.v[p->defs.n - 1];
-        d->noncopy = noncopy;
         d->module = module;
         d->public = public;
         d->lhat_value = lhat_def && !lhat_ref;
@@ -3969,8 +3922,7 @@ static void declaration_checked(Parser *q)
     if (!q->p->tooling) {
         int first = q->at;
         declaration(q);
-        // The with^ lines of one statement are a row, not a statement carried on.
-        format_span(q, first, 3000, false, !strcmp(((Token *)q->tokens.v[first])->text, "with^"));
+        format_span(q, first, 3000, false, false);
         return;
     }
     int start = q->at, defs = q->p->defs.n, depth = q->scope_depth;
@@ -4091,4 +4043,19 @@ void parse_file(Program *p, const char *path, Module *module)
     // Casts fail with std.text's or std.sys's errors, imported out of sight.
     hidden_import(module, q.text_cast, "std.text", path);
     hidden_import(module, q.enum_cast, "std.sys", path);
+    // Disposable is written bare everywhere, unless a module declares its own.
+    bool own = false;
+    for (int j = 0; j < module->defs.n; j++) {
+        own |= !strcmp(((Def *)module->defs.v[j])->name, "Disposable");
+    }
+    for (int j = 0; !own && j < module->defs.n; j++) {
+        List *bases = &((Def *)module->defs.v[j])->base_specs;
+        for (int k = 0; k < bases->n; k++) {
+            Spec *base = bases->v[k];
+            if (base->kind == SPEC_NAME && base->name && !strcmp(base->name, "Disposable")) {
+                base->name = "\001std.disposable.Disposable";
+                hidden_import(module, true, "std.disposable", path);
+            }
+        }
+    }
 }

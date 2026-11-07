@@ -180,7 +180,10 @@ void inline_loop(Context *c, Stmt *s)
     }
     c->inline_steps += count;
     int mark = c->vars.n, begin = c->in->code.n;
-    Loop loop = {.end = ++c->in->labels, .bindings = mark, .outside = mark};
+    Loop loop = {.end = ++c->in->labels,
+                 .bindings = mark,
+                 .outside = mark,
+                 .disposals = c->pending_disposals.n};
     add(&c->loops, &loop);
     for (int j = 0; j < count; j++) {
         loop.update = ++c->in->labels;

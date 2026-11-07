@@ -397,9 +397,8 @@ static void syntax_regions(Format *f, const Reading *r)
         }
         if (s->kind >= 2000 && s->kind < 3000) {
             const char *head = f->units[a].token.text;
-            bool body =
-                s->kind != 2000 + S_EXPR && (!strcmp(head, "if^") || !strcmp(head, "for^") ||
-                                             !strcmp(head, "repeat^") || !strcmp(head, "with^"));
+            bool body = s->kind != 2000 + S_EXPR &&
+                        (!strcmp(head, "if^") || !strcmp(head, "for^") || !strcmp(head, "repeat^"));
             for (size_t k = a; body && k <= b; k++) {
                 Unit *u = &f->units[k];
                 if (unit_is_op(u, "{")) {

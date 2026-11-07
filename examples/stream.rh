@@ -16,13 +16,13 @@ let^path = "stream_example.tmp"
 
 do^{
     var^text = io.MemoryReader.over("from memory to a file and back".bytes)
-    with^out = try^fs.create(path) {
+    do^{
+        var^out = try^fs.create(path)
         try^copy(ref^text, ref^out)
     }
     var^back = io.MemoryWriter{}
-    with^in = try^fs.open(path) {
-        try^copy(ref^in, ref^back)
-    }
+    var^in = try^fs.open(path)
+    try^copy(ref^in, ref^back)
     print^(string^(back.data()) catch^"")
 catch^:
     print^("failed:", it^.message())

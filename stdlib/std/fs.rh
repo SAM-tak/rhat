@@ -14,10 +14,9 @@ externC^rh_fs_remove:p^path:u8^[..], length:i64^-> bool^;
 
 public^errordef^Error { OpenFailed }
 
-# An open file. with^ closes it however its block ends; close it yourself to learn whether
-# writing it out succeeded. A copy shares the file, and using one after it closed answers
-# io.Error.Closed.
-public^def^File : io.Stream {
+# An open file, closed when its scope ends. Close it yourself to learn whether writing it out
+# succeeded; using it after that answers io.Error.Closed.
+public^def^File : io.Stream, Disposable {
     self^{ private^handle:i64^}
 
     private^opened = p^path:string^, mode:string^-> Self^| Error.OpenFailed {
@@ -33,24 +32,37 @@ public^def^File : io.Stream {
     for_appending = p^path:string^-> Self^| Error.OpenFailed { return^def^.opened(path, "ab") }
 
     read = p^self^, out:ref^u8^[grow^], max:i64^-> i64^| io.Error {
+        if^self^.handle = 0 { return^io.Error.Closed{} }
         if^max <= 0 { return^0 }
         let^buffer = u8^[]{0 repeat^max}
         let^n = rh_fs_read(self^.handle, buffer[..], max)
-        if^n = -2 { return^io.Error.Closed{} }
         if^n < 0 { return^io.Error.ReadFailed{} }
         out.append(buffer[0 .. n])
         return^n
     }
     write = p^self^, data:u8^[..] -> nil^| io.Error {
+        if^self^.handle = 0 { return^io.Error.Closed{} }
         return^written(rh_fs_write(self^.handle, data, data.len))
     }
-    override^flush = p^self^-> nil^| io.Error { return^written(rh_fs_flush(self^.handle)) }
-    close = p^self^-> nil^| io.Error { return^written(rh_fs_close(self^.handle)) }
-    dispose = p^self^{ rh_fs_close(self^.handle) }
+    override^flush = p^self^-> nil^| io.Error {
+        if^self^.handle = 0 { return^io.Error.Closed{} }
+        return^written(rh_fs_flush(self^.handle))
+    }
+    close = p^self^-> nil^| io.Error {
+        if^self^.handle = 0 { return^io.Error.Closed{} }
+        let^handle = self^.handle
+        self^.handle := 0
+        return^written(rh_fs_close(handle))
+    }
+    dispose = p^self^{
+        if^self^.handle != 0 {
+            rh_fs_close(self^.handle)
+            self^.handle := 0
+        }
+    }
 }
 
 let^written = f^code:i64^-> nil^| io.Error {
-    if^code = -2 { return^io.Error.Closed{} }
     if^code < 0 { return^io.Error.WriteFailed{} }
     return^nil^
 }
@@ -63,9 +75,8 @@ public^let^create = p^path:string^-> File | Error.OpenFailed { return^File.for_w
 
 # Appends the whole file to out. On failure out may hold part of it.
 public^let^read = p^path:string^, out:ref^u8^[grow^] -> nil^| Error.OpenFailed | io.Error {
-    with^file = try^open(path) {
-        try^file.read_all(out)
-    }
+    var^file = try^open(path)
+    try^file.read_all(out)
     return^nil^
 }
 
@@ -78,20 +89,16 @@ overload^read = p^path:string^-> u8^[grow^] | Error.OpenFailed | io.Error {
 
 # Creates the file or replaces its contents.
 public^let^write = p^path:string^, data:u8^[..] -> nil^| Error.OpenFailed | io.Error {
-    with^file = try^create(path) {
-        try^file.write(data)
-        try^file.close()
-    }
-    return^nil^
+    var^file = try^create(path)
+    try^file.write(data)
+    return^file.close()
 }
 
 # Adds to the end of the file, creating it if it is not there.
 public^let^append = p^path:string^, data:u8^[..] -> nil^| Error.OpenFailed | io.Error {
-    with^file = try^File.for_appending(path) {
-        try^file.write(data)
-        try^file.close()
-    }
-    return^nil^
+    var^file = try^File.for_appending(path)
+    try^file.write(data)
+    return^file.close()
 }
 
 # Whether a file can be opened for reading.

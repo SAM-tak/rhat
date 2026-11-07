@@ -45,8 +45,8 @@ struct Var {
     bool path_sensitive; // Guards on this root can depend on aliased storage.
     Var *source;         // Match snapshots only: valid until the original changes.
     unsigned source_version;
-    Function *dispose; // with^: called when the binding's scope ends, however it ends.
-    bool constant;     // An immutable integer binding known at specialization time.
+    bool dispose;  // Its Disposable parts are disposed when its scope ends, however it ends.
+    bool constant; // An immutable integer binding known at specialization time.
     int64_t integer;
 };
 
@@ -65,7 +65,7 @@ typedef struct {
 
 // Loop targets and scope boundaries used by control-flow analysis.
 typedef struct {
-    int end, update, bindings, phase, outside;
+    int end, update, bindings, phase, outside, disposals;
     List focuses, saved, first;
 } Loop; // Jump targets carry the ownership cleanup boundary.
 
@@ -94,7 +94,7 @@ typedef struct {
 // The error domain and cleanup boundary of an enclosing catch clause.
 typedef struct {
     Type *errors;
-    int slot, label, bindings, pending, checkpoint;
+    int slot, label, bindings, pending, disposals, checkpoint;
     Roots deps;
     List facts;
     List *arms; // The CatchArms of this clause, in order.
@@ -111,6 +111,9 @@ typedef struct {
     Roots self_roots;
     List default_stack, loops;
     List handlers, pending_owners;
+    List pending_disposals; // Parts of literals being built, which nothing else disposes yet.
+    Var *moving;            // The binding a return^ hands to the caller.
+    bool disposed;          // This exit has disposed already.
     bool building_result;
     NilFlow flow;
     bool raw_name;
@@ -531,13 +534,16 @@ void nil_jump(Context *c, int label, Loc loc);
 Value nil_literal(Context *c, Loc loc);
 // The place of field f of base.
 Value field_value(Context *c, Value base, Field *f, Loc l);
-// Release, innermost first, the owners from bindings and pending owners from
-// pending onward, before leaving their scope early.
-// The dispose() a with^ binding of type t calls, checking that it can be called.
-Function *with_dispose(Context *c, Type *t, Loc l);
-// Rejects copying a with^ binding out by name, since its value ends with the block.
-void with_leaves(Context *c, Expr *e);
-void escape_cleanup(Context *c, int bindings, int pending, Loc loc);
+// Dispose what leaving the scopes above these marks abandons, then release the owners.
+void escape_cleanup(Context *c, int bindings, int pending, int disposals, Loc loc);
+// Dispose only, for an exit that must do so before it writes the result.
+void dispose_all(Context *c, int bindings, int disposals, Loc loc);
+// Calls the dispose of every Disposable in the place v, whatever holds them.
+void dispose_value(Context *c, Value v, Loc l);
+// Disposes the elements from from up to the array's length, last first.
+void dispose_elements(Context *c, Value array, Value from, Loc l);
+// Remembers a part of a literal just built, for a failure in a later part.
+void dispose_pending(Context *c, Value part);
 // Build e as type t into slot dst, or into a new slot when dst is negative.
 Value construct(Context *c, Expr *e, Type *t, int dst);
 // Call operator or method f on a and b (b is a for a unary one).
@@ -607,8 +613,8 @@ Value place_expression(Context *c, Expr *e);
 Value variable(Var *v);
 // Reject storing src into dst when a borrow in src would outlive dst.
 void store_check(Context *c, Value dst, Value src, Loc l);
-// Rejects a noncopy^ value as an argument or parameter of type t.
-void noncopy_argument(Type *t, Loc l);
+// Rejects a Disposable value as an argument or parameter of type t.
+void disposable_argument(Type *t, Loc l);
 // src copied into a new slot, unless it is owned or void.
 Value snapshot(Context *c, Value src, Loc l);
 // Whether src, which may be nil^, holds a value.

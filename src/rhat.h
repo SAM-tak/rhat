@@ -200,14 +200,12 @@ typedef struct {
     Spec *spec; // Error type filter, or NULL for the final default arm.
     List body;  // Statements evaluated with the caught error as it^.
     bool used;  // Some specialization can reach this arm.
-    bool with;  // The arm of a with^ block, whose header it does not receive.
 } CatchArm;
 
 struct Stmt {
     bool public_binding;  // A public entry binding must resolve to a type alias.
     List handlers;        // Ordered CatchArm pointers for S_HANDLE.
     bool loop_handler;    // A loop catches main^ only, with outer names visible.
-    bool with;            // with^ h = e: h.dispose() runs on every way out of the block.
     bool scoped_handlers; // If arms share the if^ body's lexical scope depth.
     int kind;
     Loc loc;
@@ -299,7 +297,7 @@ struct Def {
     List fields, methods;
     int state, id;
     bool abstract;
-    bool noncopy; // noncopy^ def^: only a temporary of this type moves into a place.
+    bool disposable; // Composes std.disposable.Disposable: scopes call its dispose.
     Type *type;
     char *c_name;    // externC^ def^: the C type of this name it lays out as.
     bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.
@@ -364,7 +362,7 @@ struct Type {
     size_t size, align;
     size_t payload_align, payload_bytes, payload_offset;
     bool refs, owned;
-    bool noncopy;       // A noncopy^ def^, or a value holding one; set by layout.
+    bool disposable;    // A Disposable, or a value holding one; never copied. Set by layout.
     bool structural;    // Anonymous union identity is its canonical alternative set.
     List params, arms;  // Callable parameters or intersection members.
     Type *result;       // The result of a callable signature.
