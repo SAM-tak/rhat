@@ -3233,9 +3233,8 @@ static void block(Parser *p, List *out)
     format_span(p, first, 4000, true, false);
 }
 
-// with^ a = e with^ b = e { ... }: the names are bound first thing in the block. A catch^ goes on
-// an enclosing block, so a failed e reaches it as any other error and only what was bound is
-// disposed on the way out.
+// with^ a = e with^ b = e { ... }: the names are bound around the block, so its catch^ arms see them
+// and run before dispose(), while a failed e is outside them and goes to an enclosing catch^.
 static Stmt *with_statement(Parser *p, Loc loc)
 {
     Stmt *scope = mem(sizeof(*scope));
@@ -3261,10 +3260,6 @@ static Stmt *with_statement(Parser *p, Loc loc)
     }
     List inner = {0};
     block(p, &inner);
-    if (inner.n == 1 && ((Stmt *)inner.v[0])->kind == S_HANDLE) {
-        fail(((Stmt *)inner.v[0])->loc,
-             "a with^ block cannot have catch^; put it on an enclosing do^{...}");
-    }
     for (int j = 0; j < inner.n; j++) {
         add(&scope->body, inner.v[j]);
     }

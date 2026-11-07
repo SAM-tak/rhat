@@ -92,6 +92,62 @@ catch^:
 print^("end")
 ''', 'in\ndispose body\ncaught\ncaught open\ndispose first\ncaught second\nin\ndispose fine\nend\n')
 
+    positive('with_catch_inside', RESOURCE + '''
+with^r = res("body") {
+    try^fail()
+    print^("never")
+catch^:
+    print^("arm", r.name)
+    r.use()
+}
+do^{
+    with^r = try^make("head", false^) {
+        try^fail()
+    catch^:
+        print^("never")
+    }
+catch^:
+    print^("head goes outside")
+}
+do^{
+    with^a = res("a")
+    with^b = try^make("b", false^) {
+        try^fail()
+    catch^:
+        print^("never")
+    }
+catch^:
+    print^("second head goes outside")
+}
+do^{
+    with^r = res("rethrown") {
+        try^fail()
+    catch^:
+        print^("arm")
+        try^fail()
+        print^("never")
+    }
+catch^:
+    print^("outer")
+}
+let^answer = p^ -> i32^ {
+    with^r = res("returned") {
+        try^fail()
+        return^1
+    catch^:
+        return^2
+    }
+}
+print^(answer())
+with^r = res("recovered") {
+    try^fail()
+catch^:
+    print^("arm")
+}
+print^("end")
+''', 'arm body\nuse body\ndispose body\nhead goes outside\ndispose a\nsecond head goes outside\n'
+     'arm\ndispose rethrown\nouter\ndispose returned\n2\narm\ndispose recovered\nend\n')
+
     positive('with_shadow_and_owned', RESOURCE + '''
 def^Owner {
     self^{ data:i32^[grow^] = {} }
@@ -119,7 +175,7 @@ with^r = res("named") {
     negative('with_return', RESOURCE + 'let^f = p^ -> R {\n with^r = res("x") { return^r }\n}\nf()\n', 'it cannot leave the block')
     negative('with_copy', RESOURCE + 'with^r = res("x") { let^s = r }\n', 'it cannot leave the block')
     negative('with_in_function', RESOURCE + 'let^f = f^ -> i32^ {\n with^r = (R{name = "x"}) { return^1 }\n}\nprint^(f())\n', 'with^ needs p^')
-    negative('with_catch_inside', RESOURCE + 'with^r = try^make("x", true^) {\n print^(1)\ncatch^:\n print^(2)\n}\n', 'a with^ block cannot have catch^')
+    negative('with_arm_cannot_see_body_names', RESOURCE + 'with^r = res("x") {\n let^n = 1\n try^fail()\ncatch^:\n print^(n)\n}\n', "'n'")
     negative('with_name_in_catch', RESOURCE + 'do^{\n with^r = try^make("x", true^) {\n print^(1)\n }\ncatch^:\n print^(r.name)\n}\n', "'r.name'")
 
     FILE = '''

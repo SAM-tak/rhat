@@ -13,7 +13,7 @@ do^{
         try^file.read_all(ref^data)
     }
 catch^:
-    print^("failed")                       # open の失敗も本体の失敗も受ける
+    print^("failed")                       # 外側なので open の失敗も受ける
 }
 
 # 型ごとに具体化する
@@ -42,21 +42,25 @@ with^w = try^fs.create("b.txt") {
 
 ### catch^ との関係
 
-`with^` のブロックには `catch^` を書けません（L^ と同じ）。外側の `do^{...}` などに書きます。
+L^ と同じです（L^ の `04-errors.md` の「どのブロックにも書ける」）。`with^` のブロックに書いた `catch^` は、
+**波括弧の中の `try^` だけ**を受けます。見出しの `e` は波括弧の外なので受けません。
 
 ```rhat
 do^{
-    with^a = try^open_a()
-    with^b = try^open_b() {
-        use(a, b)
-    }
+    with^file = try^fs.open("a.txt") {     # 開けなければ外側の catch^ へ
+        try^file.read_all(ref^data)        # 読めなければ内側の catch^ へ
+    catch^:
+        try^file.close()                   # file は開いたままで、見える
+    }                                      # ここで dispose
 catch^:
-    report()      # open_b の失敗なら a を、本体の失敗なら b と a を閉じた後
+    print^("cannot open")
 }
 ```
 
-見出しの `e` の失敗も本体の失敗も、外側の `catch^` へ普通のエラーとして届きます。`catch^` はブロックの外なので、`with^` の名前は見えません。
-束縛済みの資源は、`catch^` へ移る前に `dispose` します。
+- 内側の `catch^` からは `with^` の名前が見えます。名前は見出しで束縛されるので、腕に来たときには必ず束縛済みです。ブロックの中で作った名前は見えません。
+- `dispose` は内側の `catch^` の**後**です。
+- 内側の `catch^` の中の `try^` は外へ伝わり、そのときも `dispose` してから移ります。
+- 外側の `catch^` へ移るときは、束縛済みの資源をすべて `dispose` してからです。2つ目の `e` が失敗したら、1つ目だけを閉じます。
 
 ## ストリーム
 
