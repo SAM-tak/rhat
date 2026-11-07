@@ -151,6 +151,29 @@ print^(twice(point.x))
     assert 'hidden' not in {x['label'] for x in completions}, completions
     print('PASS semantic hover, definitions, references, outline, signatures, completion, tokens', flush=True)
 
+    interpolated_path = work/'interpolated.rh'
+    interpolated = '''var^inner=1
+var^outer=2
+var^after=3
+print^($"inner {inner} {{inner}} {outer:04} {(outer)} {$"nested {inner} text"} text")
+print^(after)
+'''
+    client.open(interpolated_path, interpolated)
+    client.diagnostics(interpolated_path, 1)
+    data = client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=interpolated_path.as_uri())))['data']
+    line = column = 0
+    found = []
+    for offset in range(0, len(data), 5):
+        delta_line, delta_column, length = data[offset:offset+3]
+        line += delta_line
+        column = delta_column if delta_line else column + delta_column
+        found.append((line, column, length))
+    lines = interpolated.splitlines()
+    assert [lines[l][c:c+n] for l, c, n in found if l == 3] == ['inner', 'outer', 'outer', 'inner'], found
+    assert [lines[l][c:c+n] for l, c, n in found if l == 4] == ['after'], found
+    assert lines[3][found[[l for l, _, _ in found].index(3)][1]-1] == '{', found
+    print('PASS semantic tokens in interpolation holes', flush=True)
+
     broken = content.replace('point.x','point.')
     client.change(path,broken,2)
     assert client.diagnostics(path,2)

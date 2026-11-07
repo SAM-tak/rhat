@@ -752,6 +752,15 @@ static bool namespace_name(cJSON *index, cJSON **lookup, const char *uri, const 
     return false;
 }
 
+// Where the text of an interpolated string stops: its next hole's {, its closing ", or the end.
+static size_t skip_interpolated_text(const char *s, size_t n)
+{
+    while (s[n] && s[n] != '"' && !(s[n] == '{' && s[n + 1] != '{')) {
+        n += (s[n] == '\\' || s[n] == '{') && s[n + 1] ? 2 : 1;
+    }
+    return n;
+}
+
 static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
 {
     cJSON *out = cJSON_CreateObject(), *data = cJSON_AddArrayToObject(out, "data");
@@ -760,17 +769,45 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
     cJSON **lookup = symbol_lookup(index, uri, length);
     size_t position_offset = 0;
     LspPosition position = {0};
+    // As the lexer does: the interpolated strings open here, and each one's brackets in its hole.
+    int level = 0, nest[33] = {0};
+    bool in_text = false;
     for (size_t at = 0; at < length;) {
         size_t start = at;
         int kind = -1, modifiers = 0;
         unsigned char c = (unsigned char)buffer[at];
         size_t operator_length;
+        if (in_text) {
+            at = skip_interpolated_text(buffer, at);
+            if (buffer[at]) {
+                level -= buffer[at] == '"';
+                nest[level] = buffer[at] == '{' ? 0 : nest[level];
+                at++;
+            }
+            in_text = false;
+            continue;
+        }
         if (unicode_operator(buffer + at, &operator_length)) {
             at += operator_length;
             continue;
         }
         if (isspace(c)) {
             at++;
+            continue;
+        }
+        if (level && !nest[level] && c == '}') {
+            at++;
+            in_text = true;
+            continue;
+        }
+        if (level && !nest[level] && c == ':') {
+            at += strcspn(buffer + at, "}\n");
+            continue;
+        }
+        if (c == '$' && buffer[at + 1] == '"' && level < 32) {
+            at += 2;
+            level++;
+            in_text = true;
             continue;
         }
         if (c == '#') {
@@ -814,6 +851,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         }
         else {
             at++;
+            nest[level] += strchr("([{", c) ? 1 : strchr(")]}", c) ? -1 : 0;
         }
         // Let TextMate style lexical tokens, including the separately dimmed hat.
         // Semantic tokens describe resolved names only, as in the L^ client.
