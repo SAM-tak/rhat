@@ -2310,6 +2310,21 @@ static Expr *contextual(Expr *value, Expr *hint)
     return e;
 }
 
+// | continues only a type, so meeting one after the value means the value was the union's first
+// alternative: read the whole again as a type.
+static Expr *binding_value(Parser *p)
+{
+    int start = p->at;
+    Expr *e = expr(p, 0);
+    if (!is(p, "|")) {
+        return e;
+    }
+    p->at = start;
+    e = node(E_TYPE, tok(p)->loc);
+    e->type_expr = spec(p);
+    return e;
+}
+
 static Stmt *binding(char *name, Expr *value, bool mut)
 {
     Stmt *s = mem(sizeof(*s));
@@ -2986,7 +3001,7 @@ static Stmt *stmt_unchecked(Parser *p)
             need(p, "=");
         }
         do {
-            add(&values, expr(p, 0));
+            add(&values, binding_value(p));
         } while (!p->header && take(p, ","));
         if (values.n == 1 && bindings.n > 1) {
             // let^ a, b = f(): the source binds first, then each name its part.
@@ -3001,6 +3016,10 @@ static Stmt *stmt_unchecked(Parser *p)
         }
         if (bindings.n == 1) {
             *s = *(Stmt *)bindings.v[0];
+            if (!s->mut && (s->a->kind == E_TYPE || type_constructor(p, s->a) ||
+                            (s->a->kind == E_NAME && numeric_kind(s->a->text) >= 0))) {
+                add(&p->type_names, s->name);
+            }
         }
         else {
             s->kind = S_BIND_MANY;
@@ -3866,11 +3885,6 @@ static void declaration(Parser *q)
     }
     if (!binding) {
         Stmt *s = stmt(q);
-        if (s->kind == S_BIND && !s->mut && s->a &&
-            (s->a->kind == E_TYPE || type_constructor(q, s->a) ||
-             (s->a->kind == E_NAME && numeric_kind(s->a->text) >= 0))) {
-            add(&q->type_names, s->name);
-        }
         if (!module->root) {
             if ((s->kind != S_BIND && s->kind != S_BIND_MANY) || s->mut) {
                 fail(s->loc, "library top level permits only declarations and "

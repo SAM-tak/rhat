@@ -26,30 +26,17 @@ public^let^combine = f^seed:u64^, h:u64^ -> u64^ {
 # The hash of a string^, an integer, a char^, a bool^, or a value with a hash method.
 # Floats have none: NaN differs from itself and -0.0 equals 0.0.
 public^let^of = template^f^x -> u64^ {
-    if^typeof^(x) = string^ {
-        return^bytes(x.bytes)
-    el^typeof^(x) = bool^:
-        if^x { return^mix(1) }
-        return^mix(0)
-    el^typeof^(x) = char^:
-        return^mix(u64^(u32^(x)))
-    el^typeof^(x) = u8^:
-        return^mix(u64^(x))
-    el^typeof^(x) = u16^:
-        return^mix(u64^(x))
-    el^typeof^(x) = u32^:
-        return^mix(u64^(x))
-    el^typeof^(x) = u64^:
-        return^mix(x)
-    el^typeof^(x) = i8^:
-        return^mix(u64^(i64^(x)))
-    el^typeof^(x) = i16^:
-        return^mix(u64^(i64^(x)))
-    el^typeof^(x) = i32^:
-        return^mix(u64^(i64^(x)))
-    el^typeof^(x) = i64^:
-        return^mix(u64^(x))
-    else^:
-        return^x.hash()
-    }
+    for^x:
+    when^fits^string^: bytes(x.bytes)
+    when^fits^bool^: if^x: mix(1) el^: mix(0);
+    when^fits^char^: mix(u64^(u32^(x)))
+    when^fits^u8^: mix(u64^(x))
+    when^fits^u16^: mix(u64^(x))
+    when^fits^u32^: mix(u64^(x))
+    when^fits^u64^: mix(x)
+    when^fits^i8^: mix(u64^(i64^(x)))
+    when^fits^i16^: mix(u64^(i64^(x)))
+    when^fits^i32^: mix(u64^(i64^(x)))
+    when^fits^i64^: mix(u64^(x))
+    other^: x.hash();
 }

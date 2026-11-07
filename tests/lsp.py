@@ -981,6 +981,24 @@ try^open()
     client.send('textDocument/didClose',dict(textDocument=dict(uri=try_path.as_uri())))
     print('PASS try^ hover and definition name where each error goes',flush=True)
 
+    alias_path = work/'local_type.rh'
+    alias_text = '''let^g=template^p^x {
+    let^kind=typeof^x
+    var^y:kind=x
+    if^kind=i32^ {print^(y)}
+}
+g(1)
+'''
+    client.open(alias_path,alias_text)
+    assert client.diagnostics(alias_path,1) == []
+    def alias_definition(needle):
+        return client.request('textDocument/definition',dict(textDocument=dict(uri=alias_path.as_uri()),
+                              position=at(alias_text,needle)))['range']['start']
+    assert alias_definition('kind=x') == at(alias_text,'kind=typeof^x')
+    assert alias_definition('kind=i32^') == at(alias_text,'kind=typeof^x')
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=alias_path.as_uri())))
+    print('PASS a local type goes to its binding',flush=True)
+
     inline_path = work/'inline.rh'
     inline_text = ('let^show=template^p^... {\n'
                    ' inline^for^x in^... {print^(x)}\n'

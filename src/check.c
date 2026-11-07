@@ -2304,6 +2304,10 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
         else if (s->kind == S_BLOCK) {
             infer_statements(c, &s->body, true);
         }
+        else if (s->kind == S_TYPE) {
+            Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+            pin_local_type(&scope, s->spec);
+        }
         else {
             infer_expr(c, s->a, NULL);
             if (s->b) {
@@ -2569,6 +2573,15 @@ static Spec *fixed_spec(Context *c, Spec *s)
     Spec *r = mem(sizeof(*r));
     *r = *s;
     r->type = NULL;
+    if (s->pins) {
+        for (int j = 0; j < s->pins->n; j += 2) {
+            if (s->pins->v[j] == c->in) {
+                r->type = s->pins->v[j + 1];
+                return r;
+            }
+        }
+        fail(s->loc, "type '%s' is used before its binding", s->name);
+    }
     if (s->kind == SPEC_TYPEOF) {
         r->type = expression_type(c, s->operand, NULL);
         record_operand(c, s->operand);
@@ -2596,6 +2609,22 @@ static Spec *fixed_spec(Context *c, Spec *s)
 Type *context_type(Context *c, Spec *s)
 {
     return s ? type_spec(c->p, fixed_spec(c, s)) : NULL;
+}
+
+void pin_local_type(Context *c, Spec *s)
+{
+    if (!s->pins) {
+        return;
+    }
+    Type *t = context_type(c, s->elem);
+    for (int j = 0; j < s->pins->n; j += 2) {
+        if (s->pins->v[j] == c->in) {
+            s->pins->v[j + 1] = t;
+            return;
+        }
+    }
+    add(s->pins, c->in);
+    add(s->pins, t);
 }
 
 bool type_comparison(Expr *e)

@@ -220,8 +220,8 @@ Expr *loop_part(Program *p, Expr *e, Type *t);
 bool type_signature(Expr *e);
 // A written type, or the static type a typeof^ operand has in this specialization.
 Type *context_type(Context *c, Spec *s);
-// Whether a spec contains typeof^ and so differs between specializations.
-bool dependent_spec(Spec *s);
+// Fixes what the local type binding s names in this specialization, at this point of the body.
+void pin_local_type(Context *c, Spec *s);
 // typeof^(a) = typeof^(b): exact type identity, decided per specialization.
 bool type_comparison(Expr *e);
 // Decide a type comparison and record the outcome for branch pruning.

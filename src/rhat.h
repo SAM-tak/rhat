@@ -83,9 +83,10 @@ struct Spec {
     Spec *elem, *other; // Binary type operands; elem holds a callable result.
     int kind, count;
     // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
-    Expr *length;   // A constant expression for count, evaluated during name resolution.
-    Expr *operand;  // SPEC_TYPEOF: the unevaluated expression whose static type this names.
-    List params;    // Parameter specifications of a callable signature.
+    Expr *length;  // A constant expression for count, evaluated during name resolution.
+    Expr *operand; // SPEC_TYPEOF: the unevaluated expression whose static type this names.
+    List *pins;  // SPEC_TYPEOF of a local type binding: Instance, Type pairs fixed at the binding.
+    List params; // Parameter specifications of a callable signature.
     bool procedure; // A p^ signature carries the procedure effect.
     bool foreign;   // externC^ before a signature: a C function pointer.
 };
@@ -189,7 +190,8 @@ enum {
     S_INIT,
     S_INIT_MANY,
     S_HANDLE, // A physical block body with ordered error handling arms.
-    S_INLINE  // Compile-time expansion over a fixed array or heterogeneous arguments.
+    S_INLINE, // Compile-time expansion over a fixed array or heterogeneous arguments.
+    S_TYPE    // let^ t = a type inside a body: emits nothing; spec is the type it names.
 };
 
 // One ordered, typed or default arm of a physical block's catch^ clause.
@@ -390,6 +392,9 @@ struct Program {
     const char *path;
 };
 
+// Whether a spec contains typeof^ and so differs between specializations.
+bool dependent_spec(Spec *s);
+
 void parse(Program *p, const char *path);
 void parse_file(Program *p, const char *path, Module *module);
 void resolve_modules(Program *p);
@@ -538,7 +543,7 @@ struct Instance {
     List returns;    // Flow records: where the references in its result come from.
     bool returns_unknown; // A returned reference did not come from a parameter.
     bool indirect;        // Reached without a summary: dyn^, a function value or exportC^.
-    List callers;    // ToolInstantiation records for every use of this concrete specialization.
+    List callers; // ToolInstantiation records for every use of this concrete specialization.
 };
 
 // The methods of def iface specialized for concrete, by iface method index;

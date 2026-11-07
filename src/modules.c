@@ -584,6 +584,44 @@ static bool local(List *names, const char *name)
     return false;
 }
 
+// A type bound by let^ inside a body. A names list holds this exact name string, so the list's
+// scoping and shadowing apply to types as they do to values.
+typedef struct {
+    char *name;
+    Spec *spec;
+    Loc loc;
+} LocalType;
+
+static List local_types;
+
+// What a name means at this point of a body when it is a local type, else NULL.
+static Spec *local_type(Program *p, List *names, const char *name, Loc use)
+{
+    for (int j = names->n - 1; j >= 0; j--) {
+        if (strcmp(names->v[j], name)) {
+            continue;
+        }
+        for (int k = 0; k < local_types.n; k++) {
+            LocalType *t = local_types.v[k];
+            if (t->name == names->v[j]) {
+                tool_record(p, use, t->loc, t->name, NULL, NULL, NULL, 23, false);
+                return t->spec;
+            }
+        }
+        return NULL;
+    }
+    return NULL;
+}
+
+// Reads a local type's name in an expression as the type.
+static void read_local_type(Program *p, List *names, Expr *e)
+{
+    Spec *s = e->kind == E_NAME ? local_type(p, names, e->text, e->loc) : NULL;
+    if (s) {
+        *e = (Expr){.kind = E_TYPE, .loc = e->loc, .type_expr = s};
+    }
+}
+
 static char *path_of(Expr *e)
 {
     if (!e) {
@@ -772,6 +810,16 @@ static Spec *expression_type(Module *m, Expr *e)
     return s;
 }
 
+// The type e names at this point of a body, or NULL when it names a value.
+static Spec *written_type(Program *p, Module *m, List *names, Expr *e)
+{
+    char *path = path_of(e);
+    if (path && local(names, path)) {
+        return e->kind == E_NAME ? local_type(p, names, path, e->loc) : NULL;
+    }
+    return expression_type(m, e);
+}
+
 static Constant *type_constant(Program *p, Def *d, const char *name, int depth)
 {
     if (depth > 128) {
@@ -869,7 +917,17 @@ static bool module_function(Module *m, const char *name)
 // A local annotation's typeof^ operands see the same locals as expressions.
 static void resolve_local_spec(Program *p, Module *m, List *names, Spec *s)
 {
-    if (!s) {
+    if (!s || s->resolved) {
+        return;
+    }
+    Spec *alias = s->kind == SPEC_NAME ? local_type(p, names, s->name, s->loc) : NULL;
+    if (alias) {
+        if (s->type_args.n) {
+            fail(s->loc, "type alias '%s' does not accept type arguments", s->name);
+        }
+        Loc loc = s->loc;
+        *s = *alias;
+        s->loc = loc;
         return;
     }
     resolve_expr(p, m, names, s->operand);
@@ -894,20 +952,26 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         constant_integer(m, names, e->args.v[1], 0, &count) && count > 0 && count <= 1000000) {
         e->repeat_count = (int)count;
     }
+    read_local_type(p, names, e);
     if (e->kind == E_TYPE) {
         resolve_local_spec(p, m, names, e->type_expr);
         return;
     }
-    if (e->kind == E_BIN && (!strcmp(e->text, "=") || !strcmp(e->text, "!=")) &&
-        (e->a->kind == E_TYPE || e->b->kind == E_TYPE)) {
+    if (e->kind == E_IF && e->match && local(names, e->match->text) &&
+        local_type(p, names, e->match->text, e->loc)) {
+        fail(e->loc, "a match on a type requires other^:");
+    }
+    bool equality = e->kind == E_BIN && (!strcmp(e->text, "=") || !strcmp(e->text, "!="));
+    if (equality) {
+        read_local_type(p, names, e->a);
+        read_local_type(p, names, e->b);
+    }
+    if (equality && (e->a->kind == E_TYPE || e->b->kind == E_TYPE)) {
         // typeof^(x) = i32^ compares types; the name side is read as a type.
         Expr **sides[] = {&e->a, &e->b};
         for (int j = 0; j < 2; j++) {
             Expr *side = *sides[j];
-            char *path = path_of(side);
-            Spec *s = side->kind == E_TYPE         ? side->type_expr
-                      : path && local(names, path) ? NULL
-                                                   : expression_type(m, side);
+            Spec *s = written_type(p, m, names, side);
             if (!s) {
                 fail(side->loc, "a type comparison needs a type on both sides");
             }
@@ -920,8 +984,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         return;
     }
     if (e->kind == E_CALL) {
-        char *path = path_of(e->a);
-        Spec *s = path && local(names, path) ? NULL : expression_type(m, e->a);
+        Spec *s = written_type(p, m, names, e->a);
         if (s) {
             resolve_spec(m, s);
             if (s->kind == SPEC_NAME && numeric_kind(s->name) >= 0) {
@@ -937,8 +1000,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         }
     }
     if (e->kind == E_MEMBER && !e->optional) {
-        char *path = path_of(e->a);
-        Spec *s = path && local(names, path) ? NULL : expression_type(m, e->a);
+        Spec *s = written_type(p, m, names, e->a);
         if (!strcmp(e->text, "signature^")) {
             if (!s) {
                 fail(e->loc, "signature^ is a member of types; write typeof^(value).signature^");
@@ -1103,7 +1165,11 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         }
     }
     if (e->kind == E_RECORD && e->text) {
-        Spec s = {.kind = SPEC_NAME, .loc = e->loc, .name = e->text};
+        Spec *alias = local_type(p, names, e->text, e->loc);
+        if (alias && alias->kind == SPEC_TYPEOF) {
+            fail(e->loc, "a typeof^ type cannot construct values; name the type");
+        }
+        Spec s = alias ? *alias : (Spec){.kind = SPEC_NAME, .loc = e->loc, .name = e->text};
         resolve_spec(m, &s);
         e->text = s.self_type ? canonical(s.self_type->module, s.self_type->name) : s.name;
     }
@@ -1151,7 +1217,7 @@ static void bound_names(List *names, List *body)
 {
     for (int j = 0; j < body->n; j++) {
         Stmt *s = body->v[j];
-        if (s->kind == S_BIND) {
+        if (s->kind == S_BIND || s->kind == S_TYPE) {
             add(names, s->name);
         }
         else if (s->kind == S_BIND_MANY) {
@@ -1184,6 +1250,29 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
     tool_leave(&recovery);
 }
 
+// let^ t = a type: t names it for the rest of the scope. One that depends on typeof^ is fixed
+// here, per specialization, so later narrowing and shadowing of its operand do not change it.
+static void bind_local_type(Program *p, Module *m, List *names, Stmt *s, Spec *type)
+{
+    resolve_local_spec(p, m, names, type);
+    Spec *alias = type;
+    s->name = fmt("%s", s->name);
+    if (dependent_spec(type)) {
+        alias = mem(sizeof(*alias));
+        *alias = (Spec){.kind = SPEC_TYPEOF, .loc = s->loc, .name = s->name, .elem = type};
+        alias->pins = mem(sizeof(List));
+        alias->resolved = true;
+    }
+    s->kind = S_TYPE;
+    s->spec = alias;
+    s->a = NULL;
+    LocalType *t = mem(sizeof(*t));
+    *t = (LocalType){.name = s->name, .spec = alias, .loc = s->loc};
+    add(&local_types, t);
+    add(names, s->name);
+    tool_record(p, s->loc, s->loc, s->name, NULL, NULL, NULL, 23, true);
+}
+
 static void resolve_body(Program *p, Module *m, List *names, List *body)
 {
     int old = names->n;
@@ -1193,7 +1282,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             resolve_body(p, m, names, &s->body);
             for (int k = 0; k < s->handlers.n; k++) {
                 CatchArm *arm = s->handlers.v[k];
-                resolve_spec(m, arm->spec);
+                resolve_local_spec(p, m, names, arm->spec);
                 int begin = names->n;
                 add(names, "it^");
                 resolve_body(p, m, names, &arm->body);
@@ -1219,7 +1308,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
                 names->n = begin;
                 for (int k = 0; k < handle->handlers.n; k++) {
                     CatchArm *arm = handle->handlers.v[k];
-                    resolve_spec(m, arm->spec);
+                    resolve_local_spec(p, m, names, arm->spec);
                     int outer = names->n;
                     add(names, "it^");
                     resolve_body(p, m, names, &arm->body);
@@ -1260,6 +1349,13 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             for (int k = 0; k < s->body.n; k++) {
                 add(names, ((Stmt *)s->body.v[k])->name);
             }
+            continue;
+        }
+        Spec *type = s->kind == S_BIND && !s->mut && !s->spec && s->a
+                         ? written_type(p, m, names, s->a)
+                         : NULL;
+        if (type) {
+            bind_local_type(p, m, names, s, type);
             continue;
         }
         resolve_local_spec(p, m, names, s->spec);
@@ -1618,7 +1714,7 @@ static bool collect_alias(Module *m, Stmt *s, bool public)
         return false;
     }
     Spec *spec = expression_type(m, s->a);
-    if (!spec) {
+    if (!spec || dependent_spec(spec)) {
         return false;
     }
     TypeAlias *a = mem(sizeof(*a));
@@ -1660,7 +1756,7 @@ static void collect_aliases(Program *p)
 
 void resolve_modules(Program *p)
 {
-    top_bindings = top_calls = top_references = (List){0};
+    top_bindings = top_calls = top_references = local_types = (List){0};
     top_user = NULL;
     collect_aliases(p);
     // Names remain local until every module's references have been resolved.

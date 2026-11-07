@@ -1198,6 +1198,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
         else if (s->kind == S_BLOCK) {
             statements(c, &s->body, true);
         }
+        else if (s->kind == S_TYPE) {
+            pin_local_type(c, s->spec);
+        }
         else if (s->kind == S_IF) {
             Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
             if (dead(cond)) {
