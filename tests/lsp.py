@@ -174,6 +174,24 @@ print^(after)
     assert lines[3][found[[l for l, _, _ in found].index(3)][1]-1] == '{', found
     print('PASS semantic tokens in interpolation holes', flush=True)
 
+    # A string in a hole, and a brace in that string, must not move the scope of what is around them.
+    scope_path = work/'interpolated_scope.rh'
+    scoped_text = '''let^run=p^ {
+    let^shown=1
+    print^($"{"{"} {shown}")
+    print^(shown)
+}
+print^(1)
+'''
+    client.open(scope_path, scoped_text)
+    client.diagnostics(scope_path, 1)
+    def scope_labels(needle, shift=0):
+        items = client.request('textDocument/completion', dict(textDocument=dict(uri=scope_path.as_uri()), position=at(scoped_text, needle, 0, shift)))
+        return {x['label'] for x in items}
+    assert 'shown' in scope_labels('print^(shown)', 7)
+    assert 'shown' not in scope_labels('print^(1)')
+    print('PASS scopes around interpolated strings', flush=True)
+
     broken = content.replace('point.x','point.')
     client.change(path,broken,2)
     assert client.diagnostics(path,2)
