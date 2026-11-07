@@ -1,0 +1,13 @@
+let^c = import^std.collections
+
+var^m:c.HashMap<string^, i32^> = {}
+m.set("a", 1)
+for^k, v in^m { print^(k, v) }
+for^_^, v in^m { print^(v) }
+
+var^s:c.HashSet<string^> = {}
+s.add("a")
+for^x in^s { print^(x) }
+
+let^xs = i64^[]{1, 2}
+for^x in^xs { print^(x) }       # 配列とスライスも回せる
