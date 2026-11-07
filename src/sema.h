@@ -97,6 +97,7 @@ typedef struct {
     int slot, label, bindings, pending, checkpoint;
     Roots deps;
     List facts;
+    List *arms; // The CatchArms of this clause, in order.
 } ErrorTarget;
 
 // IR-construction state; inference only reads snapshots of this context.

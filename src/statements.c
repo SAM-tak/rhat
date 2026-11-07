@@ -602,7 +602,8 @@ void handle_statements(Context *c, Stmt *s)
                           .label = ++c->in->labels,
                           .bindings = base,
                           .pending = c->pending_owners.n,
-                          .checkpoint = -1};
+                          .checkpoint = -1,
+                          .arms = &s->handlers};
     if (c->in->result->owned) {
         target.checkpoint = slot(c, type_builtin(c->p, T_U64), false);
         Instr *i = emit(c, I_STACK_SAVE, s->loc);

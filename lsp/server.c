@@ -509,6 +509,9 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
                 continue;
             }
             int kind = number(s, "kind");
+            if (kind == TOOL_TRY) {
+                continue;
+            }
             if ((kind == 13 || kind == TOOL_PARAMETER) &&
                 !in_scope(buffer, (size_t)number(use, "offset"), cursor, kind == TOOL_PARAMETER)) {
                 continue;

@@ -76,7 +76,7 @@ typedef struct {
 } ToolSource;
 
 // Parameters have an internal kind; other kinds follow LSP SymbolKind.
-enum { TOOL_PARAMETER = 100 };
+enum { TOOL_PARAMETER = 100, TOOL_TRY = 101 };
 
 // One compiler-recorded identifier resolution.
 typedef struct {
@@ -87,6 +87,7 @@ typedef struct {
     Def *owner;
     int kind;
     bool definition;
+    const char *detail; // What hovering says, when it is not the name's type.
 } ToolRef;
 
 // Path comparison for source overlays, including Windows case folding.
@@ -98,4 +99,8 @@ const char *source_override(Program *p, const char *path);
 // Record a checked use or declaration when tooling is enabled.
 void tool_record(Program *p, Loc use, Loc declaration, const char *name, Type *type,
                  Function *function, Def *owner, int kind, bool definition);
+
+// Record where the try^ at use sends what it finds: detail for hovering, and the first
+// destination for going to its definition.
+void tool_record_try(Program *p, Loc use, Loc destination, Type *errors, const char *detail);
 #endif

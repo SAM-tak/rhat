@@ -936,6 +936,51 @@ print^(typeof^(x).signature^,i32^.signature^,Box.signature^)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=readonly_path.as_uri())))
     print('PASS read-reference hover, lexical borrow diagnostics and recovery',flush=True)
 
+    try_path = work/'try_destinations.rh'
+    try_text = '''errordef^E { Bad, Other }
+errordef^G { Open }
+let^work=p^ ->nil^|E {return^E.Bad{}}
+let^open=p^ ->nil^|G {return^G.Open{}}
+let^passes=p^ ->nil^|G {
+    try^open()
+    return^nil^
+}
+do^{
+    do^{
+        try^work()
+    catch^E.Bad:
+        print^(1)
+    }
+catch^:
+    print^(2)
+}
+do^{
+    try^open()
+catch^:
+    print^(3)
+}
+try^open()
+'''
+    client.open(try_path,try_text)
+    assert client.diagnostics(try_path,1) == []
+    def on_try(method,needle,occurrence=0):
+        return client.request('textDocument/'+method,dict(textDocument=dict(uri=try_path.as_uri()),
+                              position=at(try_text,needle,occurrence)))
+    def said(needle,occurrence,expected):
+        value=on_try('hover',needle,occurrence)['contents']['value']
+        assert value == expected, repr(value)
+    said('try^open()',0,"try^: G.Open\nG.Open -> result of 'passes' at 5:12")
+    assert on_try('definition','try^open()')['range']['start'] == at(try_text,'p^ ->nil^|G {\n    try^')
+    said('try^work()',0,'try^: E.Bad | E.Other\nE.Bad -> catch^ at 12:5\nE.Other -> catch^ at 15:1')
+    assert on_try('definition','try^work()')['range']['start'] == at(try_text,'catch^E.Bad')
+    said('try^open()',1,'try^: G.Open\nG.Open -> catch^ at 20:1')
+    said('try^open()',2,'try^: G.Open\nG.Open -> out of the unit: the runtime reports it and exits')
+    labels=[x['label'] for x in client.request('textDocument/completion',dict(
+        textDocument=dict(uri=try_path.as_uri()),position=at(try_text,'try^open()',2)))]
+    assert labels.count('try^') <= 1, labels
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=try_path.as_uri())))
+    print('PASS try^ hover and definition name where each error goes',flush=True)
+
     inline_path = work/'inline.rh'
     inline_text = ('let^show=template^p^... {\n'
                    ' inline^for^x in^... {print^(x)}\n'

@@ -575,9 +575,10 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddBoolToObject(out, "public", public);
     cJSON_AddItemToObject(out, "use", use);
     cJSON_AddItemToObject(out, "target", decl);
-    char *detail = r->function
-                       ? signature(r->function)
-                       : fmt("%s: %s", short_name(use_name), r->type ? type_name(r->type) : "?");
+    const char *detail =
+        r->detail     ? r->detail
+        : r->function ? signature(r->function)
+                      : fmt("%s: %s", short_name(use_name), r->type ? type_name(r->type) : "?");
     cJSON_AddStringToObject(out, "detail", detail);
     if (callable_type(r->type)) {
         cJSON *signatures = cJSON_AddArrayToObject(out, "callableSignatures");

@@ -1,4 +1,5 @@
 #include "sema.h"
+#include "tooling.h"
 
 static Value error_test(Context *c, Value src, Loc loc)
 {
@@ -323,6 +324,43 @@ void error_focus(Context *c, Value error, const void *key)
     add(&c->vars, v);
 }
 
+// Tells the editor where each error of this try^ goes: to the first arm of the innermost clause
+// that takes it, else out of the function, whose result it joins, or out of the unit.
+static void try_destinations(Context *c, Type *errors, Loc loc)
+{
+    Program *p = c->p;
+    if (!p->tooling) {
+        return;
+    }
+    char *detail = fmt("try^: %s", type_name(errors));
+    Loc first = {0};
+    Type *remaining = errors;
+    for (int j = c->handlers.n - 1; remaining && j >= 0; j--) {
+        List *arms = ((ErrorTarget *)c->handlers.v[j])->arms;
+        for (int k = 0; remaining && k < arms->n; k++) {
+            CatchArm *arm = arms->v[k];
+            Type *asked = arm->spec ? type_spec(p, arm->spec) : remaining;
+            Type *taken = fits_subset(p, remaining, asked, true, loc);
+            if (taken) {
+                detail = fmt("%s\n%s -> catch^ at %d:%d", detail, type_name(taken), arm->loc.line,
+                             arm->loc.col);
+                first = first.file ? first : arm->loc;
+                remaining = fits_subset(p, remaining, asked, false, loc);
+            }
+        }
+    }
+    if (remaining) {
+        Function *f = c->in->fn;
+        bool unit = f == p->entry;
+        detail = unit ? fmt("%s\n%s -> out of the unit: the runtime reports it and exits", detail,
+                            type_name(remaining))
+                      : fmt("%s\n%s -> result of '%s' at %d:%d", detail, type_name(remaining),
+                            f->name, f->loc.line, f->loc.col);
+        first = first.file ? first : unit ? loc : f->loc;
+    }
+    tool_record_try(p, loc, first, errors, detail);
+}
+
 Value try_value(Context *c, Expr *e, int dst)
 {
     Value src = held_operand(c, e->a, dst);
@@ -334,6 +372,7 @@ Value try_value(Context *c, Expr *e, int dst)
     if (!errors) {
         return src;
     }
+    try_destinations(c, errors, e->loc);
     if (plain->kind == T_NEVER) {
         route_error(c, pack_error(c, src, errors, -1, e->loc), e->loc);
         return abrupt(c);

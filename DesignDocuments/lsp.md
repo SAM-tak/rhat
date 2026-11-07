@@ -183,3 +183,19 @@ python bench/lsp_latency.py --server build/Release/rhat.exe `
 編集中の `mini_doom.rh` の `Self^` を `F2` に置き換えた検査用コピーを使用し、元ファイルは変更していません。
 
 移植元のライセンスは `lsp/LICENSE.lhat`、cJSON は `vendor/cjson/LICENSE` に保持しています。
+
+## try^ の行き先
+
+`try^` のホバーは、エラーの型ごとの行き先を表示します。定義へ移動すると、最初の行き先へ飛びます。
+
+```text
+try^: E.Bad | E.Other
+E.Bad -> catch^ at 12:5
+E.Other -> catch^ at 15:1
+```
+
+- `catch^` が受けるなら、その腕の行と桁。型付きの腕で受けきれない分は、外側の節へたどります。
+- 受ける腕がなければ、関数の結果に合併されるので、`result of 'f' at 5:12` とその関数の位置。
+- トップレベルで受ける腕がなければ、`out of the unit: the runtime reports it and exits`。
+
+実行時の経路と同じく、生成時の `catch^` の並びから求めます。型を書かない引数の関数では、具体化ごとに行き先が異なることがあり、そのときは最初の具体化の結果を表示します。

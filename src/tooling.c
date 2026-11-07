@@ -216,6 +216,15 @@ void tool_record(Program *p, Loc use, Loc declaration, const char *name, Type *t
         return;
     }
     ToolRef *r = mem(sizeof(*r));
-    *r = (ToolRef){use, declaration, name, type, function, owner, kind, definition};
+    *r = (ToolRef){use, declaration, name, type, function, owner, kind, definition, NULL};
     add(&p->resolutions, r);
+}
+
+void tool_record_try(Program *p, Loc use, Loc destination, Type *errors, const char *detail)
+{
+    int before = p->resolutions.n;
+    tool_record(p, use, destination, "try^", errors, NULL, NULL, TOOL_TRY, false);
+    if (p->resolutions.n != before) {
+        ((ToolRef *)p->resolutions.v[before])->detail = detail;
+    }
 }
