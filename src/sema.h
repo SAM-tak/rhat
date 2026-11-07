@@ -607,6 +607,8 @@ Value place_expression(Context *c, Expr *e);
 Value variable(Var *v);
 // Reject storing src into dst when a borrow in src would outlive dst.
 void store_check(Context *c, Value dst, Value src, Loc l);
+// Rejects a noncopy^ value as an argument or parameter of type t.
+void noncopy_argument(Type *t, Loc l);
 // src copied into a new slot, unless it is owned or void.
 Value snapshot(Context *c, Value src, Loc l);
 // Whether src, which may be nil^, holds a value.

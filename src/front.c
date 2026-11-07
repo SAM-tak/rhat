@@ -287,7 +287,7 @@ static void synchronize(Parser *p, int start, int failed, bool outer)
                        is(p, "exportC^") || is(p, "exportL^") || is(p, "if^") || is(p, "for^") ||
                        is(p, "while^") || is(p, "print^") || is(p, "op^") || is(p, "private^") ||
                        is(p, "abstract^") || is(p, "override^") || is(p, "overload^") ||
-                       is(p, "inline^") || is(p, "with^");
+                       is(p, "inline^") || is(p, "with^") || is(p, "noncopy^");
         if (t->kind == TOK_WORD && p->at + 2 < p->tokens.n) {
             Token *equal = p->tokens.v[p->at + 1], *value = p->tokens.v[p->at + 2];
             starter |= (!strcmp(equal->text, "=") || !strcmp(equal->text, ":=")) &&
@@ -3601,7 +3601,7 @@ static void def_body(Parser *p, Def *d)
     p->type_owner = d;
     while (!take(p, "}")) {
         if (p->p->tooling && (is(p, "let^") || is(p, "var^") || is(p, "def^") || is(p, "struct^") ||
-                              is(p, "import^") || is(p, "public^"))) {
+                              is(p, "import^") || is(p, "public^") || is(p, "noncopy^"))) {
             TOOL_CHECK(p->p, fail(tok(p)->loc, "expected '}' before a top-level declaration"););
             break;
         }
@@ -3716,6 +3716,10 @@ static void declaration(Parser *q)
         return;
     }
     bool public = take(q, "public^");
+    bool noncopy = take(q, "noncopy^");
+    if (noncopy && !is(q, "def^") && !is(q, "struct^")) {
+        fail(tok(q)->loc, "noncopy^ applies only to a def^");
+    }
     // exportC^ and exportL^ mark a function entered from C or from L^;
     // exportL^ also marks a def^ L^ holds by value, or with ref^ by
     // reference, and an errordef^ L^ receives as its own errors.
@@ -3855,6 +3859,7 @@ static void declaration(Parser *q)
     if (structure || take(q, "def^")) {
         definition(q, structure);
         Def *d = p->defs.v[p->defs.n - 1];
+        d->noncopy = noncopy;
         d->module = module;
         d->public = public;
         d->lhat_value = lhat_def && !lhat_ref;

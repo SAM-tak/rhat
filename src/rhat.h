@@ -299,6 +299,7 @@ struct Def {
     List fields, methods;
     int state, id;
     bool abstract;
+    bool noncopy; // noncopy^ def^: only a temporary of this type moves into a place.
     Type *type;
     char *c_name;    // externC^ def^: the C type of this name it lays out as.
     bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.
@@ -363,6 +364,7 @@ struct Type {
     size_t size, align;
     size_t payload_align, payload_bytes, payload_offset;
     bool refs, owned;
+    bool noncopy;       // A noncopy^ def^, or a value holding one; set by layout.
     bool structural;    // Anonymous union identity is its canonical alternative set.
     List params, arms;  // Callable parameters or intersection members.
     Type *result;       // The result of a callable signature.

@@ -1474,6 +1474,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         if (t->owned) {
             fail(a->loc, "owned by-value parameters are not supported; use 'ref^'");
         }
+        noncopy_argument(t, a->loc);
         Var *v = mem(sizeof(*v));
         v->declaration = a->loc;
         tool_record(p, a->loc, a->loc, a->name, t, NULL, NULL, TOOL_PARAMETER, true);

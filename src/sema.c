@@ -607,6 +607,29 @@ static Value enum_integer(Context *c, Value v, Loc l)
     return out;
 }
 
+// A place keeps its noncopy^ value, so only a temporary, which nothing else names, may move out.
+static void noncopy_check(Value src, Loc l)
+{
+    layout(src.type, l);
+    if (src.type->noncopy && src.addressable) {
+        fail(l,
+             "'%s' is noncopy^ and cannot be copied; store a temporary directly, or keep it in "
+             "a T[grow^] and borrow with 'ref^'",
+             type_name(src.type));
+    }
+}
+
+void noncopy_argument(Type *t, Loc l)
+{
+    layout(t, l);
+    if (t->noncopy) {
+        fail(l,
+             "'%s' is noncopy^ and cannot be passed by value; take 'ref^', and keep the values "
+             "in a T[grow^] that others refer to",
+             type_name(t));
+    }
+}
+
 Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
 {
     if (dead(src)) {
@@ -628,6 +651,7 @@ Value copy_to(Context *c, Value dst, Value src, Loc l, bool init)
         fail(l, "owned region values cannot be copied; construct at the "
                 "destination or borrow with 'ref^'");
     }
+    noncopy_check(src, l);
     if (!init) {
         store_check(c, dst, src, l);
         forget_roots(&c->vars, dst.storage, false);
@@ -714,8 +738,8 @@ Value held_operand(Context *c, Expr *e, int dst)
 Value case_value(Context *c, Value src, Type *arm, Loc loc)
 {
     layout(arm, loc);
-    if (arm->owned) {
-        // An owned alternative is used where it lies.
+    if (arm->owned || arm->noncopy) {
+        // An owned or noncopy^ alternative is used where it lies.
         return (Value){.id = case_at(c, src, arm, false, loc),
                        .type = arm,
                        .deps = arm->refs ? src.deps : (Roots){0},
@@ -806,6 +830,7 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         if (src.type->owned && !src.held) {
             fail(loc, "owned region values cannot be copied; construct at the destination");
         }
+        noncopy_check(src, loc);
         Instr *i = emit(c, I_UNION, loc);
         i->dst = out.id;
         i->a = src.id;
@@ -817,8 +842,8 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     if (src.type->kind != T_UNION) {
         fail(loc, "expected '%s', found '%s'", type_name(to), type_name(src.type));
     }
-    if (dst < 0 && to->owned && union_alternative(src.type, to) >= 0) {
-        // A narrowed owned alternative is used where it lies.
+    if (dst < 0 && (to->owned || to->noncopy) && union_alternative(src.type, to) >= 0) {
+        // A narrowed owned or noncopy^ alternative is used where it lies.
         return case_value(c, src, to, loc);
     }
     List selected = {0};
@@ -2096,6 +2121,11 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                   (src.type->kind == T_STRING && base.type->elem->kind == T_U8))) {
                 fail(e->loc, "append needs a slice with the same element type");
             }
+            layout(base.type->elem, e->loc);
+            if (base.type->elem->noncopy) {
+                fail(e->loc, "append would copy noncopy^ '%s'; push temporaries instead",
+                     type_name(base.type->elem));
+            }
             Value dependencies = {.deps = base.type->elem->refs ? src.deps : (Roots){0}};
             store_check(c, base, dependencies, e->loc);
             forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
@@ -2143,6 +2173,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             if (v.type != base.type->elem) {
                 fail(e->loc, "push element type mismatch");
             }
+            noncopy_check(v, e->loc);
             store_check(c, base, v, e->loc);
             forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
             Type *t = type_wrap(p, T_REF, base.type->elem, 0);
@@ -2301,6 +2332,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (v.type->owned) {
             fail(e->loc, "pass owned values by reference with 'ref^'");
         }
+        noncopy_argument(v.type, e->loc);
         if (argument_pack(v.type) && (!f->heterogeneous || strcmp(param->name, "..."))) {
             fail(e->loc, "argument packs must be forwarded to a variadic parameter");
         }
@@ -2431,6 +2463,9 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
              type_name(t), t->count);
     }
     layout(t, e->loc);
+    if (t->elem->noncopy && !reserve) {
+        fail(e->loc, "repeat^ and source... would copy noncopy^ '%s'", type_name(t->elem));
+    }
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     Value count = {0}, source = {0};
     if (repeat) {
@@ -3000,6 +3035,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");
                 }
+                noncopy_check(v, e->loc);
                 out.deps = roots_union(out.deps, v.deps);
                 Instr *a = emit(c, I_PUSH, e->loc);
                 a->a = out.id;
@@ -3721,7 +3757,16 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->a = base.id;
         i->b = index.id;
         i->type = base.type;
-        return view ? snapshot(c, out, e->loc) : out;
+        if (!view) {
+            return out;
+        }
+        layout(out.type, e->loc);
+        if (out.type->noncopy) {
+            // A slice shows a noncopy^ element where it lies, read-only.
+            out.addressable = out.readonly = true;
+            return out;
+        }
+        return snapshot(c, out, e->loc);
     }
     if (e->kind == E_UNARY) {
         if (!strcmp(e->text, "-") && e->a->kind == E_INT) {
