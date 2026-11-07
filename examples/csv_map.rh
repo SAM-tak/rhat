@@ -1,0 +1,38 @@
+# Reads "key, number" lines into a HashMap<string^, i32^>. Each distinct key's text
+# is kept once in a pool, whichever line it came from. Run from the repository root.
+let^c = import^std.collections
+let^fs = import^std.fs
+import^std.text
+
+do^{
+    let^file = try^fs.read("examples/csv_map.csv")
+    var^pool = std.text.Builder{}
+    var^keys:c.HashSet<string^> = {}
+    var^values:c.HashMap<string^, i32^> = {}
+
+    var^number = 0
+    for^raw in^(string^(file[..]) catch^"").split("\n") {
+        number += 1
+        let^line = raw.trim()
+        if^line.bytes.len = 0 { next^}
+
+        let^comma = line.find(",")
+        if^comma fits^nil^{
+            print^("line", number, "has no comma:", line)
+            next^
+        }
+        let^name = line.slice(.. comma).trim()
+        let^text = line.slice(comma + 1 ..).trim()
+        let^value = i32^.parse(text)
+        if^value fits^i32^{
+            values.set(c.intern(ref^keys, ref^pool, name), value)
+        else^:
+            print^("line", number, "has no number:", text)
+        }
+    }
+
+    for^key, value in^values { print^(key, value) }
+    print^("keys", keys.len(), "pool", pool.text())
+catch^:
+    print^("cannot read examples/csv_map.csv")
+}

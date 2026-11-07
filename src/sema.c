@@ -1879,6 +1879,13 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         textual(expression_type(c, target->a, NULL))) {
         return value_text(c, e, destination);
     }
+    if (target->kind == E_MEMBER &&
+        (!strcmp(target->text, "trim") || !strcmp(target->text, "split"))) {
+        Expr *library = text_library_call(p, e, expression_type(c, target->a, NULL));
+        if (library) {
+            return call(c, library, expected, destination);
+        }
+    }
     if (target->kind == E_MEMBER && text_method_type(p, target->text, e->loc)) {
         Type *base = expression_type(c, target->a, NULL);
         if (base && base->kind == T_REF) {
@@ -2114,7 +2121,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         ref.target = base.storage;
         ref.contents = base.deps;
         if (!base.addressable) {
-            ref.deps = roots_union(ref.deps, root(c, e, c->depth + 1, false));
+            Roots temporary = root(c, e, c->depth + 1, false);
+            ref.deps = roots_union(ref.deps, temporary);
+            ref.target = roots_union(ref.target, temporary);
         }
         Value *saved = mem(sizeof(*saved));
         *saved = ref;

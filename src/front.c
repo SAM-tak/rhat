@@ -1890,8 +1890,10 @@ static Expr *primary(Parser *p)
             n->a = e;
             n->name_loc = tok(p)->loc;
             n->text = word(p);
-            // tostring() and write_text(out) answer with std.text.Builder.
-            p->text_cast |= !strcmp(n->text, "tostring") || !strcmp(n->text, "write_text");
+            // tostring() and write_text(out) answer with std.text.Builder; trim() and split(t) live
+            // in std.text.
+            p->text_cast |= !strcmp(n->text, "tostring") || !strcmp(n->text, "write_text") ||
+                            !strcmp(n->text, "trim") || !strcmp(n->text, "split");
             e = n;
         }
         else if (is(p, "(") && ((Token *)p->tokens.v[p->at - 1])->loc.line == tok(p)->loc.line) {

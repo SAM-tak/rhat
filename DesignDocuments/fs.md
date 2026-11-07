@@ -6,16 +6,21 @@
 ```rhat
 let^fs = import^std.fs
 
-var^wad:u8^[grow^] = {}
-let^loaded = fs.read("freedoom1-e1m1.wad", ref^ wad)       # 全体を wad の末尾に追加
-for^loaded { when^fits^fs.Error: print^("cannot read") other^: print^(wad.len) }
+do^{
+    var^wad = try^fs.read("freedoom1-e1m1.wad")              # 全体を新しい配列で受け取る
+    try^fs.read("more.wad", ref^ wad)                        # 既存の配列の末尾に追加
 
-fs.write("out.bin", wad[0 .. 16])                            # 作成または置換
-fs.append("log.bin", wad[0 .. 4])                            # 末尾に追加（無ければ作成）
+    fs.write("out.bin", wad[0 .. 16])                        # 作成または置換
+    fs.append("log.bin", wad[0 .. 4])                        # 末尾に追加（無ければ作成）
+catch^:
+    print^("cannot read")
+}
 ```
 
 ## 関数
 
+- `read(path:string^) -> u8^[grow^] | Error.OpenFailed | Error.ReadFailed`:
+  ファイル全体を新しい配列で返します。配列の所有者は呼び出し元です（所有値は呼び出し元の保存先に直接構築します）。
 - `read(path:string^, out:ref^ u8^[grow^]) -> nil^ | Error.OpenFailed | Error.ReadFailed`:
   ファイル全体を `out` の末尾へ追加します。失敗したときは途中まで入っていることがあります。
 - `write(path, data:u8^[..]) -> nil^ | Error.OpenFailed | Error.WriteFailed`: 作成または置換します。

@@ -3,22 +3,22 @@ module^std.fs
 # Whole-file reads and writes. Paths are UTF-8; the runtime opens them as the
 # system needs (UTF-16 on Windows).
 
-externC^rh_fs_open:f^path:u8^[..], length:i64^, mode:string^ -> i64^;
-externC^rh_fs_read:f^file:i64^, buffer:u8^[..], capacity:i64^ -> i64^;
-externC^rh_fs_write:f^file:i64^, data:u8^[..], length:i64^ -> bool^;
-externC^rh_fs_close:f^file:i64^ -> bool^;
-externC^rh_fs_remove:f^path:u8^[..], length:i64^ -> bool^;
+externC^rh_fs_open:f^path:u8^[..], length:i64^, mode:string^-> i64^;
+externC^rh_fs_read:f^file:i64^, buffer:u8^[..], capacity:i64^-> i64^;
+externC^rh_fs_write:f^file:i64^, data:u8^[..], length:i64^-> bool^;
+externC^rh_fs_close:f^file:i64^-> bool^;
+externC^rh_fs_remove:f^path:u8^[..], length:i64^-> bool^;
 
 public^errordef^Error { OpenFailed, ReadFailed, WriteFailed }
 
-let^chunk_size:i64^ = 65536
+let^chunk_size:i64^= 65536
 
 # Appends the whole file to out. On failure out may hold part of it.
 public^let^read = p^path:string^, out:ref^u8^[grow^] {
     let^file = rh_fs_open(path.bytes, path.bytes.len, "rb")
     if^file = 0 { return^Error.OpenFailed{} }
     var^buffer = u8^[grow^]{}
-    for^1 to^ chunk_size { buffer.push(0) }
+    for^1 to^chunk_size { buffer.push(0) }
     var^n = chunk_size
     repeat^while^n = chunk_size {
         n := rh_fs_read(file, buffer[..], chunk_size)
@@ -29,11 +29,18 @@ public^let^read = p^path:string^, out:ref^u8^[grow^] {
     return^nil^
 }
 
+# The whole file as a new array, which the caller owns.
+overload^read = p^path:string^-> u8^[grow^] | Error.OpenFailed | Error.ReadFailed {
+    var^out = u8^[grow^]{}
+    try^read(path, ref^out)
+    return^out
+}
+
 let^write_with = p^path:string^, data:u8^[..], mode:string^{
     let^file = rh_fs_open(path.bytes, path.bytes.len, mode)
     if^file = 0 { return^Error.OpenFailed{} }
     let^written = rh_fs_write(file, data, data.len)
-    if^!rh_fs_close(file) or^!written { return^ Error.WriteFailed{} }
+    if^!rh_fs_close(file) or^!written { return^Error.WriteFailed{} }
     return^nil^
 }
 
@@ -46,7 +53,7 @@ public^let^append = p^path:string^, data:u8^[..] { return^write_with(path, data,
 # Whether a file can be opened for reading.
 public^let^exists = p^path:string^{
     let^file = rh_fs_open(path.bytes, path.bytes.len, "rb")
-    return^file != 0 and^ rh_fs_close(file)
+    return^file != 0 and^rh_fs_close(file)
 }
 
 # Deletes the file; false if there was none or it could not be removed.

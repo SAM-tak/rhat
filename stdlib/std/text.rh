@@ -4,6 +4,41 @@ module^std.text
 # Invalid: not a number in the accepted form. OutOfRange: too large for the type.
 public^errordef^Error { Invalid, OutOfRange }
 
+# s without ASCII spaces, tabs or line ends at either end, as a view of s.
+public^let^trim = f^s:string^-> string^{
+    let^bytes = s.bytes
+    let^blank = f^b:u8^-> bool^{ b = 32 or^b = 9 or^b = 10 or^b = 13 }
+    var^start:i64^= 0
+    var^end = bytes.len
+    repeat^while^start < end and^blank(bytes[start]) { start += 1 }
+    repeat^while^start < end and^blank(bytes[end - 1]) { end -= 1 }
+    return^s.slice(start .. end)
+}
+
+# Walks the parts of a string^ between separators, as views of it: for^ part in^ s.split(",").
+# An empty string has one empty part, and a trailing separator leaves an empty last part.
+public^def^Split {
+    self^{ private^rest:string^, private^separator:string^, private^done:bool^= false^}
+    over = f^s:string^, separator:string^-> Self^{ Self^{rest = s, separator = separator} }
+    iter = f^self^-> Split { *self^}
+    next = f^mutable^self^-> string^| nil^{
+        if^self^.done { return^nil^}
+        let^at = self^.rest.find(self^.separator)
+        if^at fits^nil^{
+            self^.done := true^
+            return^self^.rest
+        }
+        let^part = self^.rest.slice(.. at)
+        self^.rest := self^.rest.slice(at + self^.separator.bytes.len ..)
+        return^part
+    }
+}
+
+public^let^split = f^s:string^, separator:string^-> Split {
+    if^separator.bytes.len = 0 { panic^"split needs a separator that is not empty" }
+    return^Split.over(s, separator)
+}
+
 # Owned UTF-8 text built by appending. Every way in keeps its bytes UTF-8,
 # so text() views them as a string^. tostring() builds one.
 public^def^Builder {
@@ -26,11 +61,11 @@ public^def^Builder {
         }
     }
     # Appends s and views the part it added, which stays valid as more is appended.
-    add = p^self^, s:string^ -> string^ {
+    add = p^self^, s:string^-> string^{
         let^start = self^.bytes.len
         self^.bytes.append(s)
-        return^string^(self^.bytes[start ..]) catch^ ""
+        return^string^(self^.bytes[start ..]) catch^""
     }
-    text = f^self^{ string^(self^.bytes[..]) catch^ "" }
+    text = f^self^{ string^(self^.bytes[..]) catch^"" }
     clear = p^self^{ self^.bytes.clear() }
 }

@@ -384,6 +384,38 @@ let^ one,eight=literal()
 print^(one,eight[1])
 ''', '10 3 100\n2\n2\n2\n1 8\n')
 
+    positive('fs_read_returns_an_owned_array', '''
+let^ fs=import^ std.fs
+let^ path="fs_owned.tmp"
+let^ data:u8^[3]={97,98,99}
+fs.write(path,data.bytes)
+do^{
+    var^ got=try^ fs.read(path)
+    got.push(100)
+    print^(typeof^(got).signature^,got.len,got[3])
+    try^ fs.read(path,ref^ got)
+    print^(got.len)
+catch^:
+    print^("failed")
+}
+let^ load=p^ name:string^ ->u8^[grow^]|fs.Error.OpenFailed|fs.Error.ReadFailed {
+    var^ first=try^ fs.read(name)
+    first.push(1)
+    return^ first
+}
+do^{
+    let^ kept=try^ load(path)
+    print^(kept.len)
+    let^ none=try^ load("no_such_dir/no_such.tmp")
+    print^("never",none.len)
+catch^ fs.Error.OpenFailed:
+    print^("open failed")
+catch^:
+    print^("other")
+}
+print^(fs.delete(path))
+''', 'u8^[grow^] 4 100\n7\n4\nopen failed\ntrue\n')
+
     positive('fs_roundtrip', '''
 let^ fs=import^ std.fs
 let^ data:u8^[5]={104,101,108,108,111}
@@ -750,6 +782,33 @@ main 1
 main 2
 done
 ''')
+
+    positive('text_trim_and_split', '''
+let^show=p^s:string^ {print^(s.bytes.len,s)}
+show("  a b\\t\\r\\n".trim())
+show("   ".trim())
+show("".trim())
+show("あ ".trim())
+for^part in^"a,b,,c".split(",") {show(part)}
+for^part in^"".split(",") {show(part)}
+for^part in^"x,".split(",") {show(part)}
+for^part in^"p--q".split("--") {show(part)}
+for^part in^"キー、値".split("、") {show(part)}
+let^parts="a b".split(" ")
+for^part in^parts {show(part)}
+let^first=f^s:string^ ->string^ {
+    for^part in^s.split(":") {return^part}
+    return^s
+}
+show(first("k:v"))
+def^Word {
+    self^{w:string^}
+    trim=f^self^ ->i32^ {1}
+    split=f^self^ ->i32^ {2}
+}
+let^w=Word{w="z"}
+print^(w.trim(),w.split())
+''', '3 a b\n0 \n0 \n3 あ\n1 a\n1 b\n0 \n1 c\n0 \n1 x\n0 \n1 p\n1 q\n6 キー\n3 値\n1 a\n1 b\n1 k\n1 2\n')
 
     positive('narrowing_after_a_jump', '''
 let^two=f^n:i32^ ->(i32^,string^)|nil^ {
@@ -1163,6 +1222,8 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('for_in_number', 'let^ n=3 for^ x in^ n {print^(x)}', "for^ in^ needs a range^, an array or a type with iter(), found 'i32^'"),
         ('for_in_no_iter', 'def^ A {} var^ a=A{} for^ x in^ a {print^(1)}', "'A' has no method 'iter'"),
         ('for_in_last', 'let^ r=0..3 for^ i in^ r {main^: print^(i) last^: print^(i)}', 'last^ needs a range written in the header'),
+        ('split_escapes_its_text', 'import^ std.text\nvar^ part=""\ndo^{\n var^ b=std.text.Builder{}\n b.append("a,b")\n for^ p in^ b.text().split(",") {part:=p}\n}', 'reference would outlive its owner'),
+        ('split_arguments', 'for^ p in^ "a".split() {print^(p)}', 'expects'),
         ('for_in_two_on_range', 'for^ a, b in^ 0..3 {print^(a)}', 'a range^ gives one value at a time, not 2'),
         ('for_in_float', 'for^ i in^ 0.0..1.0 {print^(i)}', 'a range counts in an integer'),
         ('range_mixed_bounds', 'let^ a:i32^=1 let^ b:i64^=2 let^ r=a..b', "range bounds must both be i32^, found 'i64^'"),
@@ -1222,6 +1283,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
     suite.runtime_failure('interp_two_conversions', 'print^($"{1:%d%d}")', 'one numeric conversion')
     suite.runtime_failure('bounded_full', 'var^ a:i64^[max^2]={7,8}\na.push(9)', 'bounded array is full')
     suite.runtime_failure('bounded_index', 'var^ a:i64^[max^4]={7}\nprint^(a[1])', 'array index out of bounds')
+    suite.runtime_failure('split_empty_separator', 'for^ p in^ "abc".split("") {print^(p)}', 'split needs a separator')
     suite.runtime_failure('range_open_len', 'let^ r=(5 ..)\nprint^(r.len)', 'an open range has no length')
     suite.runtime_failure('range_inclusive_overflow', 'let^ r:range^<i64^>=0 to^ 9223372036854775807', 'the end of a to^ range overflows')
     suite.runtime_failure('range_narrow_inclusive_overflow', 'let^ a:u8^=255 let^ r=0 to^ a', 'the end of a to^ range overflows')

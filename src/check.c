@@ -640,6 +640,7 @@ static void infer_mutation(Infer *c, Expr *call, List *types, int offset)
 }
 
 static Type *infer_expr(Infer *c, Expr *e, Type *expected);
+static Expr *part_node(int kind, Loc loc, char *text, Expr *a, Expr *b);
 static Type *infer_type(Infer *c, Spec *s);
 
 // Preserve read capabilities when taking a reference to a projected place.
@@ -744,6 +745,13 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
                 infer_expr(c, e->args.v[j], NULL);
             }
             return target->text[0] == 't' ? builder->type : type_builtin(c->p, T_VOID);
+        }
+    }
+    if (target->kind == E_MEMBER &&
+        (!strcmp(target->text, "trim") || !strcmp(target->text, "split"))) {
+        Expr *library = text_library_call(c->p, e, infer_expr(c, target->a, NULL));
+        if (library) {
+            return infer_call(c, library, expected);
         }
     }
     if (target->kind == E_MEMBER && text_method_type(c->p, target->text, e->loc)) {
@@ -1272,6 +1280,33 @@ static Expr *part_node(int kind, Loc loc, char *text, Expr *a, Expr *b)
 static Expr *part_call(Loc loc, Expr *base, char *method)
 {
     return part_node(E_CALL, loc, NULL, part_node(E_MEMBER, loc, method, base, NULL), NULL);
+}
+
+Expr *text_library_call(Program *p, Expr *e, Type *base)
+{
+    Expr *target = e->a;
+    base = base && base->kind == T_REF ? base->elem : base;
+    if (target->kind != E_MEMBER || !base || base->kind != T_STRING ||
+        (strcmp(target->text, "trim") && strcmp(target->text, "split"))) {
+        return NULL;
+    }
+    if (!e->forms[0]) {
+        char *name = fmt("std.text.%s", target->text);
+        Function *f = NULL;
+        for (int j = 0; !f && j < p->functions.n; j++) {
+            Function *candidate = p->functions.v[j];
+            f = !strcmp(candidate->name, name) ? candidate : NULL;
+        }
+        Expr *callee = part_node(E_FUNCTION, e->loc, NULL, NULL, NULL);
+        callee->function = f;
+        Expr *out = part_node(E_CALL, e->loc, NULL, callee, NULL);
+        add(&out->args, target->a);
+        for (int j = 0; j < e->args.n; j++) {
+            add(&out->args, e->args.v[j]);
+        }
+        e->forms[0] = out;
+    }
+    return e->forms[0];
 }
 
 Expr *loop_part(Program *p, Expr *e, Type *t)

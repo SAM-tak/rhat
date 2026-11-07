@@ -206,6 +206,8 @@ Type *chain_place_type(Context *c, Expr *e);
 
 // Infer an expression from a snapshot without generating IR.
 Type *expression_type(Context *c, Expr *e, Type *expected);
+// A string^ method written in std.text, as a call of its function, or NULL if e is not one.
+Expr *text_library_call(Program *p, Expr *e, Type *base);
 // The form an E_LOOP_PART takes when its a has type t: a range^, an array or a cursor.
 Expr *loop_part(Program *p, Expr *e, Type *t);
 // Type.signature^: the canonical spelling of a type, a string constant per specialization.
