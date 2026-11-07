@@ -27,7 +27,9 @@ static void remember_focus(Context *c, Loop *loop, Loc loc, bool restore)
         Var *v = loop->focuses.v[j];
         Value *save = loop->saved.v[j];
         bool mut = v->mut;
+        const char *readonly = v->root.v[0]->readonly;
         v->mut = true;
+        v->root.v[0]->readonly = NULL;
         if (restore) {
             copy_to(c, variable(v), *save, loc, false);
         }
@@ -35,6 +37,7 @@ static void remember_focus(Context *c, Loop *loop, Loc loc, bool restore)
             *save = copy_to(c, *save, variable(v), loc, true);
         }
         v->mut = mut;
+        v->root.v[0]->readonly = readonly;
     }
 }
 
@@ -913,6 +916,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             var->mut = s->mut;
             var->let_bound = !s->mut;
             var->root = root(c, s, c->depth, false);
+            var->root.v[0]->readonly = NULL; // Analysing a loop again meets the same root.
             var->deps = v.deps;
             layout(t, s->loc);
             var->dispose = t->disposable;
@@ -925,6 +929,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             Value dst = variable(var);
             dst.var = NULL;
             store_check(c, dst, v, s->loc);
+            // What a call hands back from this storage carries the root, so it cannot write either.
+            var->root.v[0]->readonly = s->mut ? NULL : s->name;
             tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, 13, true);
             add(&c->vars, var);
         }
@@ -1090,8 +1096,11 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     continue;
                 }
                 bool mut = dest[j].var && dest[j].var->mut;
+                const char *readonly = NULL;
                 if (s->internal && dest[j].var) {
                     dest[j].var->mut = true;
+                    readonly = dest[j].var->root.v[0]->readonly;
+                    dest[j].var->root.v[0]->readonly = NULL;
                 }
                 if (dest[j].type->disposable) {
                     // The new value is ready, so its failure cannot leave the old one disposed.
@@ -1107,6 +1116,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 }
                 if (s->internal && dest[j].var) {
                     dest[j].var->mut = mut;
+                    dest[j].var->root.v[0]->readonly = readonly;
                 }
             }
         }

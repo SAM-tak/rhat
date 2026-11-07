@@ -21,6 +21,24 @@ let^inspect = p^input:ref^read^Data, output:ref^Buffer {
 演算子の自動借用にもこの既存の効果制限を使い、`read^` の導入を前提にしません。
 既存の `f^mutable^self^` は維持します。
 
+## let^ から返された参照
+
+`let^` の値から `f^` が返した参照やスライスでは、`let^` の中身を変更できません。
+
+```rhat
+let^a = T{}
+let^r = a.me()      # me = f^self^ -> ref^T { self^ }
+r.add()             # エラー: cannot modify let^ binding 'a'
+print^(r.n)         # 読むのは自由
+```
+
+型は `ref^T` のままで、`read^` にはしません。`let^` の束縛の由来（`Roots`）に印を付け、書き込みの時点で由来を見ます。
+`read^` と違って読み取り借用を始めないので、別の保護は生じません。`let^` はもともと変更できないからです。
+
+- `var^` の値から返された参照は、今まで通り書き込めます。
+- `let^` の値の中にある別の値への参照（`let^h = Holder{target = ref^t}` の `h.target`）は、`t` を指すので書き込めます。`let^` が固定するのは自身の保存領域だけです。
+- `p^` の書き込み可の引数に渡すのも拒否します（`bump(a.me())`）。呼び出し先で書き込まれるからです。
+
 ## 求める保証
 
 以下の二つは異なる保証です。

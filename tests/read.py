@@ -330,6 +330,60 @@ var^link=Link{child=ref^a}
 look(ref^link)
 a.change()
 ''', '1\n')
+    let_hole = '''
+def^T {
+    self^{ n:i32^ = 0, xs:i32^[grow^] = {} }
+    me = f^self^ -> ref^T { self^ }
+    view = f^self^ -> i32^[..] { self^.xs[..] }
+    number = f^self^ -> ref^i32^ { ref^self^.n }
+    add = p^self^ { self^.n += 1 }
+    get = f^self^ -> i32^ { self^.n }
+}
+def^Holder {
+    self^{ target:ref^T }
+    held = f^self^ -> ref^T { self^.target }
+}
+def^Sink { abstract^take:p^self^, t:ref^T; }
+def^Adder : Sink { take = p^self^, t:ref^T { t.add() } }
+let^id = f^t:ref^T -> ref^T { t }
+let^bump = p^t:ref^T { t.add() }
+'''
+    let_error = "cannot modify let^ binding"
+    for name, body in (
+        ('let_result_method', 'let^a = T{}\nlet^r = a.me()\nr.add()\n'),
+        ('let_result_field', 'let^a = T{}\nlet^r = a.me()\nr.n := 5\n'),
+        ('let_result_slice', 'let^a = T{xs = {1}}\nlet^v = a.view()\nv[0] := 9\n'),
+        ('let_result_number', 'let^a = T{}\nlet^p = a.number();\n*p := 9\n'),
+        ('let_result_chain', 'let^a = T{}\na.me().add()\n'),
+        ('let_result_chain_slice', 'let^a = T{xs = {1}}\na.view()[0] := 2\n'),
+        ('let_result_twice', 'let^a = T{}\nlet^r = a.me().me()\nr.add()\n'),
+        ('let_result_in_var', 'let^a = T{}\nvar^r = a.me()\nr.add()\n'),
+        ('let_result_in_function', 'let^g = p^ {\n let^a = T{}\n let^r = a.me()\n r.add()\n}\ng()\n'),
+        ('let_result_nested_field', 'def^W { self^{ t:T = T{} } }\nlet^w = W{}\nlet^r = w.t.me()\nr.add()\n'),
+        ('let_result_copied_slice', 'let^a = T{xs = {1}}\nlet^v = a.view()\nvar^w = v\nw[0] := 9\n'),
+        ('let_result_through_field', 'let^a = T{}\nlet^h = Holder{target = a.me()}\nh.target.add()\n'),
+        ('let_result_through_array', 'let^a = T{}\nvar^rs = T[ref^grow^]{ a.me() }\nrs[0].add()\n'),
+        ('let_result_through_function', 'let^a = T{}\nlet^r = id(a.me())\nr.add()\n'),
+        ('let_result_resliced', 'let^a = T{xs = {1}}\nlet^r = a.me()\nlet^w = r.xs[..]\nw[0] := 2\n'),
+        ('let_result_as_argument', 'let^a = T{}\nbump(a.me())\n'),
+        ('let_result_as_dyn_argument', 'let^a = T{}\nvar^s = Adder{}\nlet^d:ref^dyn^Sink = ref^s\nd.take(a.me())\n'),
+        ('let_result_top_level', 'let^a = T{}\nlet^g = p^ {\n let^r = a.me()\n r.add()\n}\ng()\n'),
+    ):
+        negative(name, let_hole + body, let_error)
+    negative('let_result_borrowed_field', let_hole + 'let^a = T{}\nlet^r = a.me()\nvar^q = ref^r.n\n', 'borrowing storage requires var^')
+    for name, body, output in (
+        ('let_result_reads', 'let^a = T{n = 1, xs = {2}}\nlet^r = a.me()\nprint^(r.n, r.get(), a.view()[0], *a.number())\n', '1 1 2 1\n'),
+        ('let_result_resliced_reads', 'let^a = T{xs = {1, 2}}\nlet^r = a.me()\nlet^w = r.xs[1 ..]\nprint^(w[0])\n', '2\n'),
+        ('var_result_writes', 'var^a = T{xs = {1}}\nlet^r = a.me()\nr.add()\nlet^v = a.view()\nv[0] := 9\nprint^(a.n, a.xs[0])\n', '1 9\n'),
+        ('let_holding_a_reference_writes', 'var^t = T{}\nlet^h = Holder{target = ref^t}\nh.target.add()\nlet^r = h.held()\nr.add()\nprint^(t.n)\n', '2\n'),
+        ('let_reference_writes', 'var^t = T{}\nlet^r = ref^t\nr.add()\nbump(r)\nprint^(t.n)\n', '2\n'),
+        ('let_slice_writes', 'var^t = i32^[grow^]{1}\nlet^w = t[..]\nw[0] := 2\nprint^(t[0])\n', '2\n'),
+        ('let_array_of_references_writes', 'var^t = T{}\nlet^rs:T[ref^ 1] = {ref^t}\nrs[0].add()\nlet^gs = T[ref^grow^]{ ref^t }\ngs[0].add()\nlet^r = rs[0]\nr.add()\nprint^(t.n)\n', '3\n'),
+        ('let_array_of_slices_writes', 'var^x = i32^[grow^]{1}\nlet^vs:i32^[..][1] = {x[..]}\nvs[0][0] := 2\nprint^(x[0])\n', '2\n'),
+        ('let_in_a_loop', 'var^t = T{}\nfor^i in^0 .. 2 {\n let^r = ref^t\n r.add()\n}\nprint^(t.n)\n', '2\n'),
+        ('let_shadowed_by_var', 'let^a = T{}\ndo^{\n var^a = T{}\n a.add()\n print^(a.n)\n}\n', '1\n'),
+    ):
+        positive(name, let_hole + body, output)
     suite.finish()
 
 

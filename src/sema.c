@@ -607,6 +607,19 @@ static Value enum_integer(Context *c, Value v, Loc l)
     return out;
 }
 
+// Roots as long-lived as these that say nothing about writing: a reference read out of a let^
+// container may still write what it refers to, though the container must outlive it.
+static Roots lifetime_roots(Context *c, Roots storage)
+{
+    Roots out = {0};
+    for (int j = 0; j < storage.n; j++) {
+        Root *r = storage.v[j];
+        Roots one = {&storage.v[j], 1};
+        out = roots_union(out, r->readonly ? root(c, r, r->depth, r->external) : one);
+    }
+    return out;
+}
+
 // A place keeps its Disposable value, so only a temporary, which nothing else names, or the binding
 // a return^ hands over may move out.
 static void disposable_check(Context *c, Value src, Loc l)
@@ -1850,6 +1863,18 @@ static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint, 
     return v;
 }
 
+// A p^ may write what a writable argument refers to, so it may not refer into a let^.
+static void writable_argument(Value v, Param *param, Function *f, Loc loc)
+{
+    if (f->procedure && !param->self && !param->capture && type_writes(v.type)) {
+        for (int j = 0; j < v.deps.n; j++) {
+            if (v.deps.v[j]->readonly) {
+                fail(loc, "cannot modify let^ binding '%s'", v.deps.v[j]->readonly);
+            }
+        }
+    }
+}
+
 // Call a method through the table carried by a ref^ dyn^ receiver.
 static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int destination)
 {
@@ -1895,6 +1920,10 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     for (int j = 0; j < e->args.n; j++) {
         Type *want = parameter_type(p, f->params.v[j + 1]);
         Value v = call_argument_value(c, e->args.v[j], want, want, e);
+        if (c->terminated) {
+            return abrupt(c);
+        }
+        writable_argument(v, f->params.v[j + 1], f, e->loc);
         if (c->terminated) {
             return abrupt(c);
         }
@@ -2468,6 +2497,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             fail(e->loc, "pass owned values by reference with 'ref^'");
         }
         disposable_argument(v.type, e->loc);
+        writable_argument(v, param, f, e->loc);
         if (argument_pack(v.type) && (!f->heterogeneous || strcmp(param->name, "..."))) {
             fail(e->loc, "argument packs must be forwarded to a variadic parameter");
         }
@@ -3367,8 +3397,9 @@ static Value slice_view(Context *c, Expr *e, Type *expected)
     bool read = base.readonly || read_reference(base.type);
     if (inline_storage) {
         read |= base.var && !base.var->mut;
+        // Other storage of a let^, reached through a reference, is checked when it is written.
         for (int j = 0; j < base.storage.n; j++) {
-            read |= base.storage.v[j]->readonly != NULL;
+            read |= base.storage.v[j]->readonly && base.storage.v[j]->external;
         }
     }
     Type *t = type_wrap(p, T_SLICE, base.type->elem, read);
@@ -3909,7 +3940,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         // bound also covers aliases and loop-carried updates to element roots.
         out.deps = !out.type->refs ? (Roots){0}
                    : view          ? base.deps
-                                   : roots_union(base.deps, base.storage);
+                                   : roots_union(base.deps, lifetime_roots(c, base.storage));
         // A slice is a handle: what its element allows does not depend on how it is bound.
         out.var = view ? NULL : base.var;
         out.addressable = view || base.addressable;
@@ -3947,7 +3978,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             if (a.var && !a.var->mut && !e->top_binding && !reading) {
                 fail(e->loc, "borrowing storage requires var^, found let^ '%s'", a.var->name);
             }
-            for (int n = 0; n < a.storage.n; n++) {
+            for (int n = 0; n < a.storage.n && !e->top_binding; n++) {
                 if (a.storage.v[n]->readonly && !reading) {
                     fail(e->loc, "borrowing storage requires var^, found let^ '%s'",
                          a.storage.v[n]->readonly);
