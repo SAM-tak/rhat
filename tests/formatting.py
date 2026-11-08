@@ -125,6 +125,8 @@ def main():
            'ZERO=Self^{\nx=0\n}\nget=f^self^ {\nself^.x\n}\n}\n',
            'def^V{\n    self^{\n        x:i32^\n    }\n'
            '    ZERO = Self^{\n        x = 0\n    }\n    get = f^self^{\n        self^.x\n    }\n}\n')
+    expect('inferred_field_defaults', 'def^A{self^{i=0,s=""}}\n',
+           'def^A{self^{i = 0, s = ""}}\n')
     expect('nested_named_initializers',
            'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\nid=1,\nlocal=Xf{\nm=rotation(r),\nt=F3{\nx=1,\ny=2\n}\n},\nworld=identity()\n})\n',
            'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\n    id = 1,\n    local = Xf{\n        m = rotation(r),\n'
@@ -190,8 +192,9 @@ def main():
         assert lines[-1].startswith('print^'), lines
         suite.run([suite.compiler, 'format-check', path])
         if not suite.args.checks_only:
-            result = suite.run([suite.compiler, 'run', path, '--clang', suite.clang])
-            assert result.stdout == '42\ninvalid input\n42\n', result.stdout
+            result = suite.run([suite.compiler, 'run', path, '--clang', suite.clang], False)
+            assert result.stdout == '42\ninvalid input\n', result.stdout
+            assert 'panic: Error.Invalid' in result.stderr, result.stderr
     suite.case('errors_example_keeps_top_level_indent', errors_example)
 
     def graph_example():

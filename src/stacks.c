@@ -229,11 +229,11 @@ void plan_stacks(Program *p)
     if (callback) {
         propagate(p);
     }
-    p->stack_count = ((Instance *)p->instances.v[0])->stack_need;
+    p->stack_count = ((Instance *)p->entry->instances.v[0])->stack_need;
     // Stacks are reserved address space, so admit at least eight levels of
     // callbacks that each hold owned values across their C call.
     if (callback > (INT_MAX - p->stack_count) / 7) {
-        fail(((Instance *)p->instances.v[0])->fn->loc, "data stack count overflows");
+        fail(p->entry->loc, "data stack count overflows");
     }
     p->stack_count += 7 * callback;
 }

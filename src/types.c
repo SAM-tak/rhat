@@ -816,8 +816,8 @@ static void compose_unchecked(Program *p, Def *d)
         }
         Spec *s = d->base_specs.v[i];
         Def *declaration = b->generic ? b->generic : b;
-        tool_record(p, s->loc, declaration->loc, declaration->name, b->type, NULL,
-                    declaration, 23, false);
+        tool_record(p, s->loc, declaration->loc, declaration->name, b->type, NULL, declaration, 23,
+                    false);
         compose(p, b);
         if (b->type->kind != T_STRUCT) {
             fail(d->loc, "composition base must be a structure, found union '%s'", b->name);
@@ -901,7 +901,29 @@ static void compose_unchecked(Program *p, Def *d)
                 fail(f->loc, "duplicate field '%s'", f->name);
             }
         }
-        f->type = type_spec(p, f->spec);
+        if (f->spec) {
+            f->type = type_spec(p, f->spec);
+        }
+        else {
+            // Defaults have their declaration's scope, without a caller's locals.
+            Function *scope = mem(sizeof(*scope));
+            *scope = (Function){.name = "<field-default>",
+                                .module = d->module,
+                                .owner = d,
+                                .loc = f->loc,
+                                .procedure = true};
+            Instance *in = mem(sizeof(*in));
+            in->fn = scope;
+            Context context = {.p = p, .in = in, .access = d, .in_default = true};
+            f->type = expression_type(&context, f->init, NULL);
+            if (!f->type) {
+                infer_results(p);
+                f->type = expression_type(&context, f->init, NULL);
+            }
+            if (!f->type || f->type->kind == T_VOID || f->type->kind == T_NEVER) {
+                fail(f->loc, "cannot infer type of field '%s'; add a type annotation", f->name);
+            }
+        }
         if (f->abstract && f->priv) {
             fail(f->loc, "private abstract fields cannot be implemented by another def^");
         }

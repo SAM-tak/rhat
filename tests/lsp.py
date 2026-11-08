@@ -1344,6 +1344,21 @@ g(1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=template_path.as_uri())))
     print('PASS template call-site diagnostics, cached instances, nesting and recovery',flush=True)
 
+    inferred_fields = work/'inferred_fields.rh'
+    field_text = 'def^ A {self^{count=0,label=""}}\nlet^a=A{}\nprint^(a.count)\n'
+    client.open(inferred_fields,field_text)
+    assert client.diagnostics(inferred_fields,1) == []
+    hover = client.request('textDocument/hover',dict(
+        textDocument=dict(uri=inferred_fields.as_uri()),position=at(field_text,'count=0')))
+    assert 'i32^' in hover['contents']['value'], hover
+    client.change(inferred_fields,field_text.replace('count=0','count'),2)
+    diagnostics = client.diagnostics(inferred_fields,2)
+    assert any('requires a type annotation or an initializer' in d['message'] for d in diagnostics), diagnostics
+    client.change(inferred_fields,field_text,3)
+    assert client.diagnostics(inferred_fields,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=inferred_fields.as_uri())))
+    print('PASS inferred field defaults, hover and diagnostic recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

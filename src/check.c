@@ -908,6 +908,9 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
+        if (base && base->kind == T_STRUCT) {
+            compose(c->p, base->def);
+        }
         if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
             !strcmp(target->text, "pop")) {
             return base->elem;
@@ -1612,6 +1615,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             fail(e->loc, "contextual construction requires a single nominal struct "
                          "type; write Type{field=value}");
         }
+        compose(c->p, type->def);
         layout(type, e->loc);
         for (int j = 0; j < type->def->fields.n; j++) {
             Field *field = type->def->fields.v[j];
@@ -1679,6 +1683,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             base = base->elem;
         }
         base = error_view(base, e->text);
+        if (base && base->kind == T_STRUCT) {
+            compose(c->p, base->def);
+        }
         if (argument_pack(base)) {
             if (strcmp(e->text, "len")) {
                 fail(e->loc,
@@ -2566,7 +2573,10 @@ static void record_operand(Context *c, Expr *e)
     Var *v = (e->kind == E_NAME || e->kind == E_SELF) && e->text ? selected(c, e) : NULL;
     if (v) {
         tool_record(c->p, e->loc, v->declaration, v->name, v->type, NULL, NULL,
-                    v->parameter ? TOOL_PARAMETER : v->mut ? 13 : 14, false);
+                    v->parameter ? TOOL_PARAMETER
+                    : v->mut     ? 13
+                                 : 14,
+                    false);
     }
     record_operand(c, e->a);
     record_operand(c, e->b);

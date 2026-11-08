@@ -120,7 +120,7 @@ let^ changed:Point={y=7}
 print^(changed.x,changed.y)
 ''', '1 2 1 2\n1 7\n')
     negative('struct_no_methods', 'struct^ Point { x:i32^=0; move=f^ self^ {} }',
-             "expected ':'")
+             'self^ must be the first parameter of a method')
     negative('struct_no_bases', 'def^ Base {} struct^ Point : Base {}',
              "expected '{'")
 

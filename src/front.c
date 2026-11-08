@@ -1513,7 +1513,7 @@ static Stmt *results(Parser *p, List *values, int n, Loc loc)
     return source;
 }
 
-// Fields after { up to }, as name:T or name:T = default.
+// Fields after { up to }, with a type annotation, an initializer, or both.
 static void fields(Parser *p, Def *d)
 {
     while (!take(p, "}")) {
@@ -1533,10 +1533,14 @@ static void fields(Parser *p, Def *d)
             }
         }
         f->name = decl_word(p);
-        need(p, ":");
-        f->spec = spec(p);
+        if (take(p, ":")) {
+            f->spec = spec(p);
+        }
         if (take(p, "=") || take(p, ":=")) {
             f->init = expr(p, 0);
+        }
+        if (!f->spec && !f->init) {
+            fail(f->loc, "field '%s' requires a type annotation or an initializer", f->name);
         }
         if (f->abstract && f->init) {
             fail(f->loc, "abstract field cannot have an initializer");

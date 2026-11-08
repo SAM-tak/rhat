@@ -263,6 +263,44 @@ print^((f^ x {typed(x)})(41))
     negative('inference_recursive_owner', 'let^ call=p^ n {var^ a:i32^[grow^]={n} if^ n>0 {this^(n-1)} print^(a.len)} call(3)', 'holds local owned value')
     negative('inference_ungrounded_recursion', 'let^ forever=f^ x {this^(x)} print^(forever(1))', 'cannot infer return type')
     negative('inference_abstract_contract', 'def^ A {abstract^ read:f^ self^,x ->i32^;}', 'requires a type annotation')
+    positive('inference_field_defaults', '''
+def^ A { self^{ n=0, ratio=1.5, text="hello", enabled=true^, exact=i64^(7) } }
+struct^ B { value=2, required:i32^ }
+var^ a=A{}
+a.n:=42
+let^ b=B{required=9}
+print^(typeof^(a.n).signature^,typeof^(a.ratio).signature^,typeof^(a.exact).signature^)
+print^(a.n,a.ratio,a.text,a.enabled,b.value,b.required)
+''', 'i32^ f64^ i64^\n42 1.5 hello true 2 9\n')
+    positive('inference_field_calls_and_records', '''
+let^ make=f^ {i64^(12)}
+let^ make_inner=f^ ->Inner {Inner{}}
+def^ Outer {self^{inner=Inner{},result=make(),value=make_inner().value}}
+def^ Inner {self^{value=5}}
+let^ a=Outer{}
+print^(a.inner.value,a.result,typeof^(a.result).signature^)
+''', '5 12 i64^\n')
+    positive('inference_field_generic_and_inherited', '''
+def^ Box<T> {self^{value=T(3)}}
+def^ Base {self^{abstract^ n:i32^}}
+def^ Derived:Base {self^{n=7}}
+print^(Box<i64^>{}.value,Derived{}.n)
+''', '3 7\n')
+    positive('inference_field_owned_call', '''
+let^ make=p^ { print^("make") return^ i32^[grow^]{1,2,3} }
+def^ A {self^{items=make()}}
+let^ a=A{}
+let^ b=A{}
+print^(a.items.len,b.items[2])
+''', 'make\nmake\n3 3\n')
+    negative('inference_field_missing_type_and_default', 'def^ A {self^{n}}',
+             'requires a type annotation or an initializer')
+    negative('inference_field_context_required', 'def^ A {self^{n={}}}',
+             'contextual construction requires')
+    negative('inference_field_void', 'let^ nothing=p^ {} def^ A {self^{n=nothing()}}',
+             "cannot infer type of field 'n'")
+    negative('inference_field_abstract_default', 'def^ A {self^{abstract^ n=1}}',
+             'abstract field cannot have an initializer')
     suite.finish()
 
 

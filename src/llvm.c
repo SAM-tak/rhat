@@ -1997,9 +1997,9 @@ void emit_llvm(Program *p, const char *path)
                 "  call void @rh_runtime_init(ptr @rh_stacks, i64 %d)\n"
                 "  call void @rh_runtime_args(i32 %%argc, ptr %%argv, ptr %%args)\n"
                 "  %%strings = load { ptr, i64 }, ptr %%args\n"
-                "  call void @rh_fn_0(i64 0, { ptr, i64 } %%strings)\n"
+                "  call void @%s(i64 0, { ptr, i64 } %%strings)\n"
                 "  call void @rh_runtime_shutdown()\n  ret i32 0\n}\n",
-                p->stack_count);
+                p->stack_count, ((Instance *)p->entry->instances.v[0])->symbol);
     }
     fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
     fputs("!1 = !{!\"Rhat storage\"}\n"
