@@ -1129,7 +1129,6 @@ print^(fast(Mode.Dash), fast(Mode.Idle)) note(Mode.Walk) note(Mode.Idle)
         ('outer_this_sibling', 'let^ first=f^ {1} print^(f^ ->i32^ {this^^()}())', 'at that nesting depth'),
         ('outer_this_arity', 'print^(f^ n:i32^ ->i32^ {f^ {this^^()}()}(1))', 'expects 1 arguments'),
         ('outer_this_type', 'print^(f^ n:i32^ ->i32^ {f^ {this^^("bad")}()}(1))', "requires nominal 'i32^'"),
-        ('outer_this_capture', 'print^(f^ n:i32^ ->i32^ {f^ {this^^(n-1)}()}(1))', "unknown value 'n'"),
         ('outer_this_effect', 'let^ run=p^ n:i32^ {f^ {this^^(0)}()} run(1)', 'f^ cannot call p^'),
         ('outer_this_local_owner', '''let^ run=f^ n:i32^ ->i32^ {
 var^ scratch:i32^[grow^]={n}

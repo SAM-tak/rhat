@@ -469,6 +469,9 @@ void external_validate(Program *p, Function *f)
 
 void inferred_unused(Program *p, Function *f)
 {
+    if (f->captures.n && !f->environment) {
+        return;
+    }
     Param *param = inferred_parameter(f);
     if (f->invalid || f->templ || !param) {
         return;
@@ -660,6 +663,10 @@ static Var *infer_variable(Infer *c, Expr *e);
 // A function reaches a top-level binding through a hidden reference, written *name.
 static bool infer_let_place(Infer *c, Expr *e)
 {
+    if (e->kind == E_CAPTURE) {
+        Param *capture = c->in->fn->captures.v[e->capture_index];
+        return capture->capture && !capture->capture->mut;
+    }
     if (e->kind == E_STATE) {
         return e->state_field->binding && !e->state_field->binding->mut;
     }
@@ -817,7 +824,9 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
     Def *self = NULL;
     List actual = {0}, candidates = {0};
     if (target->kind == E_FUNCTION) {
-        f = target->function;
+        Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+        Type *type = closure_type(&scope, target->function);
+        f = type ? type->function : NULL;
     }
     else if (target->kind == E_MEMBER && !strcmp(target->text, "from_bits") &&
              target->a->kind == E_NAME && kind_float(numeric_kind(target->a->text))) {
@@ -1588,8 +1597,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
     case E_SELF:
         return infer_lookup(c, e->text);
-    case E_FUNCTION:
-        return callable_declaration(c->p, e->function);
+    case E_FUNCTION: {
+        Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
+        return closure_type(&scope, e->function);
+    }
+    case E_CAPTURE: {
+        Context scope = {.p = c->p, .in = c->in, .vars = c->vars};
+        Var *v = captured_variable(&scope, e);
+        return v->type ? v->type->elem : NULL;
+    }
     case E_CALL:
         return infer_call(c, e, expected);
     case E_RECORD: {
@@ -2113,6 +2129,8 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             }
             Var *v = mem(sizeof(*v));
             v->name = s->name;
+            v->declaration = s->loc;
+            v->mut = s->mut;
             v->lexical = c->lexical;
             v->type = callable_type(actual) ? actual : t ? t : actual;
             v->constant = !s->mut && v->type && kind_integer(v->type->kind) &&
@@ -2134,6 +2152,8 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
                 Type *actual = infer_expr(c, b->a, t);
                 Var *v = mem(sizeof(*v));
                 v->name = b->name;
+                v->declaration = b->loc;
+                v->mut = b->mut;
                 v->lexical = c->lexical;
                 v->type = callable_type(actual) ? actual : t ? t : actual;
                 v->alias = infer_alias(c, b->a);
@@ -2504,12 +2524,15 @@ static bool infer_instance_result(Program *p, Instance *in)
 {
     bool changed = false;
     Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
-    for (int k = 0; k < in->fn->params.n; k++) {
-        Param *param = in->fn->params.v[k];
+    for (int k = 0; k < in->params.n; k++) {
+        Param *param =
+            k < in->fn->params.n ? in->fn->params.v[k] : in->fn->captures.v[k - in->fn->params.n];
         Var *v = mem(sizeof(*v));
         v->name = param->name;
         v->lexical = c.lexical;
         v->type = in->params.v[k];
+        v->declaration = param->capture ? param->capture->loc : param->loc;
+        v->mut = true;
         v->captured_let = param->capture && !param->capture->mut;
         add(&c.vars, v);
     }
@@ -2745,6 +2768,18 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
     if (f->invalid || (self && self->invalid)) {
         tool_abort();
     }
+    List arguments = {0};
+    for (int j = 0; j < actual->n; j++) {
+        add(&arguments, actual->v[j]);
+    }
+    for (int j = 0; j < f->captures.n; j++) {
+        Param *capture = f->captures.v[j];
+        if (!capture->inferred) {
+            fail(at, "capture '%s' requires its enclosing call", capture->capture->name);
+        }
+        add(&arguments, capture->inferred);
+    }
+    actual = &arguments;
     for (int j = 0; j < f->instances.n; j++) {
         Instance *in = f->instances.v[j];
         if (in->self != self || in->params.n != actual->n) {

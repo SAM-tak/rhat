@@ -7,8 +7,9 @@ char *llvm_type(Type *t)
         return "void";
     case T_BOOL:
         return "i1";
-    case T_NIL:
     case T_FUNCTION:
+        return t->function && t->function->environment ? llvm_type(t->function->environment) : "i8";
+    case T_NIL:
     case T_INTERSECTION:
     case T_U8:
     case T_I8:

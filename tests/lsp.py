@@ -1409,6 +1409,33 @@ g(1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=entry_path.as_uri())))
     print('PASS entry bindings in static and instance methods, navigation and recovery',flush=True)
 
+    capture_path = work/'local_captures.rh'
+    capture_text = ('let^apply=p^cb:p^i32^; {cb(1)}\nlet^run=p^ {\n'
+                    ' var^count=0\n let^step=p^delta {count+=delta}\n'
+                    ' apply(step) print^(count)\n}\nrun()\n')
+    client.open(capture_path,capture_text)
+    assert client.diagnostics(capture_path,1) == []
+    position = at(capture_text,'count+=delta')
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=capture_path.as_uri()),
+        position=position))
+    assert 'i32^' in hover['contents']['value'], hover
+    definition = client.request('textDocument/definition',dict(textDocument=dict(uri=capture_path.as_uri()),
+        position=position))
+    if isinstance(definition,list):
+        definition = definition[0]
+    assert definition['range']['start'] == at(capture_text,'count=0'), definition
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=capture_path.as_uri()),
+        position=at(capture_text,'step=p^')))
+    assert '\x01' not in hover['contents']['value'] and 'capture_' not in hover['contents']['value'], hover
+    assert 'delta:i32^' in hover['contents']['value'], hover
+    client.change(capture_path,capture_text.replace('var^count','let^count'),2)
+    diagnostics = client.diagnostics(capture_path,2)
+    assert any('let^' in d['message'] for d in diagnostics), diagnostics
+    client.change(capture_path,capture_text,3)
+    assert client.diagnostics(capture_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=capture_path.as_uri())))
+    print('PASS local captures, callback arguments, navigation and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

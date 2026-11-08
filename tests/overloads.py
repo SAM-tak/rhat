@@ -391,7 +391,6 @@ print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
         ('callable_mutable_effect', 'def^ V {self^{n:i32^=0} m=f^mutable^ self^ ->i32^ {self^.n+=1 return^ self^.n}} var^ v=V{} let^ cb:f^ref^ V->i32^;=v.m', 'callable'),
         ('callable_bad_contract', 'let^ f=f^ n:i32^ {n} let^ g:f^i32^->string^;=f', 'callable'),
         ('callable_mutable_storage', 'let^ f=f^ n:i32^ {n} var^ g=f', 'require let^'),
-        ('callable_capture', 'let^ outer=f^ n:i32^ ->i32^ {let^ local=f^ ->i32^ {n} return^ local()} print^(outer(1))', "unknown value 'n'"),
         ('signature_runtime_field', 'def^ V {self^{cb:f^i32^->i32^;}}', 'statically selected implementation'),
     ]:
         negative(name, text, diagnostic)

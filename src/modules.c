@@ -657,6 +657,59 @@ static List top_bindings;   // S_BIND statements of the entry's top level.
 static List top_calls;      // TopCall pointers.
 static List top_references; // Function names used other than as a callee.
 
+typedef struct {
+    Function *function;
+    List names;
+} CaptureScope;
+
+static List capture_scopes;
+
+static Expr *capture_reference(Function *f, Expr *source, const char *name, Loc loc)
+{
+    int index = 0;
+    for (; index < f->captures.n; index++) {
+        Param *capture = f->captures.v[index];
+        if (!strcmp(capture->capture->name, name)) {
+            break;
+        }
+    }
+    if (index == f->captures.n) {
+        Param *capture = mem(sizeof(*capture));
+        Stmt *binding = mem(sizeof(*binding));
+        *binding = (Stmt){.name = (char *)name, .loc = loc};
+        *capture = (Param){.name = fmt("\001capture_%d", index),
+                           .loc = loc,
+                           .capture = binding,
+                           .capture_source = source};
+        add(&f->captures, capture);
+    }
+    Expr *e = mem(sizeof(*e));
+    *e = (Expr){.kind = E_CAPTURE, .loc = loc, .text = (char *)name, .capture_index = index};
+    return e;
+}
+
+static bool resolve_capture(List *names, Expr *e)
+{
+    if (!top_user || (e->kind != E_NAME && e->kind != E_SELF) || local(names, e->text)) {
+        return false;
+    }
+    for (int j = capture_scopes.n - 1; j >= 0; j--) {
+        CaptureScope *scope = capture_scopes.v[j];
+        if (!scope->function || !local(&scope->names, e->text)) {
+            continue;
+        }
+        Expr *source = mem(sizeof(*source));
+        *source = *e;
+        for (int k = j + 1; k < capture_scopes.n; k++) {
+            CaptureScope *parent = capture_scopes.v[k];
+            source = capture_reference(parent->function, source, e->text, e->loc);
+        }
+        *e = *capture_reference(top_user, source, e->text, e->loc);
+        return true;
+    }
+    return false;
+}
+
 static char *hidden_name(Stmt *binding)
 {
     return fmt("\001top_%s", binding->name);
@@ -1027,6 +1080,16 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     if (!e) {
         return;
     }
+    if (resolve_capture(names, e)) {
+        return;
+    }
+    Expr *receiver = e;
+    while (receiver->kind == E_MEMBER) {
+        receiver = receiver->a;
+    }
+    if (receiver != e) {
+        resolve_capture(names, receiver);
+    }
     long long count = 0;
     if (e->kind == E_ARRAY && e->text && !strcmp(e->text, "repeat") && e->args.n == 2 &&
         constant_integer(m, names, e->args.v[1], 0, &count) && count > 0 && count <= 1000000) {
@@ -1185,7 +1248,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             if (top_user->name && !strcmp(top_user->name, "<field-default>")) {
                 fail(e->loc, "field default cannot capture caller locals");
             }
-            if (member_function(top_user)) {
+            if (member_function(top_user) || top_user->enclosing) {
                 state_reference(p, binding_state(p, binding), e);
                 return;
             }
@@ -1280,7 +1343,10 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     resolve_local_spec(p, m, names, e->test_spec);
     resolve_local_spec(p, m, names, e->array_literal);
     if (e->kind == E_FUNCTION) {
+        CaptureScope scope = {.function = top_user ? top_user : p->entry, .names = *names};
+        add(&capture_scopes, &scope);
         resolve_function(p, m, e->function);
+        capture_scopes.n--;
         return;
     }
     if (e->kind == E_SCOPE) {
@@ -1331,6 +1397,8 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
         resolve_expr_unchecked(p, m, names, e);
         return;
     }
+    int scopes = capture_scopes.n;
+    Function *user = top_user;
     ToolRecovery recovery;
     tool_enter(&recovery);
     if (setjmp(recovery.escape)) {
@@ -1344,6 +1412,8 @@ static void resolve_expr(Program *p, Module *m, List *names, Expr *e)
         }
     }
     tool_leave(&recovery);
+    capture_scopes.n = scopes;
+    top_user = user;
 }
 
 // let^ t = a type: t names it for the rest of the scope. One that depends on typeof^ is fixed
@@ -1616,7 +1686,7 @@ static void pass_top_bindings(Program *p, Module *m)
     }
     for (int j = 0; j < top_calls.n; j++) {
         Function *caller = ((TopCall *)top_calls.v[j])->caller;
-        if (caller && caller->uses.n && !member_function(caller) &&
+        if (caller && caller->uses.n && !member_function(caller) && !caller->enclosing &&
             (caller->owner || !module_function(m, caller->name))) {
             TOOL_CHECK(p, fail(caller->loc,
                                "only top-level functions can use the top-level binding '%s'; "
@@ -1708,7 +1778,7 @@ static void pass_top_bindings(Program *p, Module *m)
             }
             Stmt *binding = top_binding(a->name + 5);
             Loc at = call->call->loc;
-            if (member_function(call->caller)) {
+            if (member_function(call->caller) || (call->caller && call->caller->enclosing)) {
                 Expr *place = name_expr(binding->name, at);
                 state_reference(p, binding_state(p, binding), place);
                 Expr *borrow = unary_expr("ref^", place);
@@ -1903,6 +1973,7 @@ void resolve_modules(Program *p)
 {
     top_bindings = top_calls = top_references = local_types = (List){0};
     top_user = NULL;
+    capture_scopes = (List){0};
     collect_aliases(p);
     // Names remain local until every module's references have been resolved.
     for (int j = 0; j < p->modules.n; j++) {

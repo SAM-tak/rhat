@@ -359,12 +359,12 @@ static char *signature_arm(Function *f, Instance *in)
 }
 
 // Parameters left to call sites list each distinct specialization as an intersection.
-static char *signature(Function *f)
+static char *signature(Function *f, const char *name)
 {
     List arms = {0};
     for (int j = 0; inferred_parameter(f) && j < f->instances.n; j++) {
         Instance *in = f->instances.v[j];
-        if (in->invalid || in->params.n != f->params.n) {
+        if (in->invalid || in->params.n != f->params.n + f->captures.n) {
             continue;
         }
         char *arm = signature_arm(f, in);
@@ -377,10 +377,10 @@ static char *signature(Function *f)
         }
     }
     if (arms.n < 2) {
-        return fmt("%s : %s", short_name(f->name),
+        return fmt("%s : %s", short_name(name),
                    arms.n ? (char *)arms.v[0] : signature_arm(f, NULL));
     }
-    char *out = fmt("%s : %s;", short_name(f->name), (char *)arms.v[0]);
+    char *out = fmt("%s : %s;", short_name(name), (char *)arms.v[0]);
     for (int j = 1; j < arms.n; j++) {
         out = fmt("%s & %s;", out, (char *)arms.v[j]);
     }
@@ -615,10 +615,11 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddBoolToObject(out, "public", public);
     cJSON_AddItemToObject(out, "use", use);
     cJSON_AddItemToObject(out, "target", decl);
-    const char *detail =
-        r->detail     ? r->detail
-        : r->function ? signature(r->function)
-                      : fmt("%s: %s", short_name(use_name), r->type ? type_name(r->type) : "?");
+    const char *detail = r->detail                     ? r->detail
+                         : r->function                 ? signature(r->function, r->function->name)
+                         : capturing_callable(r->type) ? signature(r->type->function, use_name)
+                                                       : fmt("%s: %s", short_name(use_name),
+                                                             r->type ? type_name(r->type) : "?");
     cJSON_AddStringToObject(out, "detail", detail);
     if (callable_type(r->type)) {
         cJSON *signatures = cJSON_AddArrayToObject(out, "callableSignatures");
@@ -629,7 +630,9 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         for (int j = 0; j < arms.n; j++) {
             Type *arm = arms.v[j];
             cJSON *sig = cJSON_CreateObject();
-            cJSON_AddStringToObject(sig, "label", type_name(arm));
+            cJSON_AddStringToObject(sig, "label",
+                                    capturing_callable(arm) ? signature(arm->function, use_name)
+                                                            : type_name(arm));
             cJSON *params = cJSON_AddArrayToObject(sig, "parameters");
             for (int k = 0; k < arm->params.n; k++) {
                 Param *param = arm->function ? arm->function->params.v[k] : NULL;

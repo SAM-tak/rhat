@@ -258,6 +258,18 @@ static bool capability(Type *t, bool write, List *seen)
         }
     }
     add(seen, t);
+    if (t->kind == T_FUNCTION && t->function && t->function->environment) {
+        Function *f = t->function;
+        for (int j = 0; j < f->captures.n; j++) {
+            Param *capture = f->captures.v[j];
+            if (write && f->procedure && capture->capture->mut) {
+                return true;
+            }
+            if ((!write || f->procedure) && capability(capture->inferred->elem, write, seen)) {
+                return true;
+            }
+        }
+    }
     if (t->elem && capability(t->elem, write, seen)) {
         return true;
     }

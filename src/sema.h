@@ -12,7 +12,7 @@ typedef struct Var Var;
 typedef struct Root {
     int depth;
     bool external;
-    const char *readonly; // The top-level let^ a hidden parameter refers to, or NULL.
+    const char *readonly; // The let^ binding a hidden reference refers to, or NULL.
     bool read_borrow;     // A lexical read-borrow boundary carried with reference provenance.
     // What references held in this storage point at, when a reference parameter tells the two
     // apart. They may still be the same storage, so overlap tests treat them as one.
@@ -48,7 +48,7 @@ struct Var {
     bool dispose;      // Its Disposable parts are disposed when its scope ends, however it ends.
     bool constant;     // An immutable integer binding known at specialization time.
     bool let_bound;    // A let^ binding, whose storage slices only as read^.
-    bool captured_let; // The hidden reference to a top-level let^.
+    bool captured_let; // A hidden reference to a let^ binding.
     int64_t integer;
 };
 
@@ -220,6 +220,13 @@ Type *expression_type(Context *c, Expr *e, Type *expected);
 
 // Infer an entry binding in its declaration scope, including parallel bindings.
 Type *top_binding_type(Program *p, Stmt *binding);
+
+// Specialize a local function for the types and writability of its lexical captures.
+Type *closure_type(Context *c, Function *f);
+// Whether a callable holds a lexical environment that must not escape.
+bool capturing_callable(Type *type);
+// The hidden reference parameter named by an E_CAPTURE expression.
+Var *captured_variable(Context *c, Expr *e);
 
 // A string^ method written in std.text, as a call of its function, or NULL if e is not one.
 Expr *text_library_call(Program *p, Expr *e, Type *base);

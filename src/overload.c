@@ -6,6 +6,88 @@ bool callable_type(Type *t)
     return t && (t->kind == T_FUNCTION || t->kind == T_INTERSECTION);
 }
 
+bool capturing_callable(Type *t)
+{
+    if (!callable_type(t)) {
+        return false;
+    }
+    if (t->kind == T_FUNCTION) {
+        return t->function && t->function->environment;
+    }
+    for (int j = 0; j < t->arms.n; j++) {
+        if (capturing_callable(t->arms.v[j])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Var *captured_variable(Context *c, Expr *e)
+{
+    if (e->capture_index >= c->in->fn->captures.n) {
+        fail(e->loc, "invalid lexical capture");
+    }
+    Param *param = c->in->fn->captures.v[e->capture_index];
+    Var *v = lookup(c, param->name);
+    if (!v) {
+        fail(e->loc, "capture '%s' requires its enclosing call", e->text);
+    }
+    return v;
+}
+
+Type *closure_type(Context *c, Function *f)
+{
+    if (!f->captures.n || f->environment) {
+        return callable_declaration(c->p, f);
+    }
+    if (f->params.n + f->captures.n > 64) {
+        fail(f->loc, "capturing functions support at most 64 written and hidden parameters");
+    }
+    List captures = {0}, types = {0};
+    for (int j = 0; j < f->captures.n; j++) {
+        Param *source = f->captures.v[j];
+        Expr *e = source->capture_source;
+        Type *type = expression_type(c, e, NULL);
+        if (!type) {
+            return NULL;
+        }
+        Var *v = e->kind == E_CAPTURE ? captured_variable(c, e) : selected(c, e);
+        Param *param = mem(sizeof(*param));
+        Stmt *binding = mem(sizeof(*binding));
+        *binding = *source->capture;
+        binding->mut = e->kind == E_CAPTURE ? !v->captured_let : v->mut;
+        binding->loc = v->declaration.file ? v->declaration : binding->loc;
+        *param = *source;
+        param->capture = binding;
+        param->inferred = type_wrap(c->p, T_REF, type, 0);
+        add(&captures, param);
+        add(&types, param->inferred);
+    }
+    for (int j = 0; j < c->p->functions.n; j++) {
+        Function *clone = c->p->functions.v[j];
+        if (clone->closure_origin != f || clone->captures.n != captures.n) {
+            continue;
+        }
+        bool same = true;
+        for (int k = 0; k < captures.n; k++) {
+            Param *a = captures.v[k], *b = clone->captures.v[k];
+            same &= a->inferred == b->inferred && a->capture->mut == b->capture->mut;
+        }
+        if (same) {
+            return callable_declaration(c->p, clone);
+        }
+    }
+    Function *clone = mem(sizeof(*clone));
+    *clone = *f;
+    clone->closure_origin = f;
+    clone->captures = captures;
+    clone->instances = (List){0};
+    clone->environment = type_tuple(c->p, &types, f->loc);
+    clone->environment->symbol = fmt("%%rh_capture_%d", clone->environment->id);
+    add(&c->p->functions, clone);
+    return callable_declaration(c->p, clone);
+}
+
 Type *callable_signature(Program *p, List *params, Type *result, bool procedure, Function *function)
 {
     for (int j = 0; j < p->types.n; j++) {
@@ -30,6 +112,11 @@ Type *callable_signature(Program *p, List *params, Type *result, bool procedure,
     t->procedure = procedure;
     t->function = function;
     t->size = t->align = 1;
+    if (function && function->environment) {
+        t->size = function->environment->size;
+        t->align = function->environment->align;
+        t->refs = true;
+    }
     add(&p->types, t);
     return t;
 }
@@ -45,7 +132,7 @@ Type *callable_declaration(Program *p, Function *f)
         add(&params, a->self ? type_wrap(p, T_REF, f->owner->type, 0) : parameter_type(p, a));
     }
     Type *result = f->result ? type_spec(p, f->result) : f->required_result;
-    bool known = !f->templ && !f->abstract;
+    bool known = !f->templ && !f->abstract && (!f->captures.n || f->environment);
     for (int j = 0; j < params.n; j++) {
         known &= params.v[j] != NULL;
     }
@@ -79,6 +166,9 @@ static void intersection_arms(List *arms, Type *t)
 
 Type *callable_intersection(Program *p, Type *a, Type *b, Loc loc)
 {
+    if (capturing_callable(a) || capturing_callable(b)) {
+        fail(loc, "capturing functions cannot form callable intersections");
+    }
     if (!callable_type(a) || !callable_type(b)) {
         fail(loc, "intersection '&' requires function or procedure types");
     }
@@ -248,7 +338,13 @@ List callable_candidates(Type *type, int arity)
 
 char *callable_identity(Type *type)
 {
+    if (!type) {
+        return "?";
+    }
     char *identity = type_name(type);
+    if (type->elem && type->kind != T_STRUCT) {
+        identity = fmt("%s:%s", identity, callable_identity(type->elem));
+    }
     if (type->kind == T_INTERSECTION) {
         for (int j = 0; j < type->arms.n; j++) {
             identity = fmt("%s:%s", identity, callable_identity(type->arms.v[j]));
@@ -257,6 +353,11 @@ char *callable_identity(Type *type)
     if (type->function) {
         Function *f = type->function;
         identity = fmt("%s:%s:%s:%d:%d", identity, f->loc.file, f->name, f->loc.line, f->loc.col);
+        for (int j = 0; j < f->captures.n; j++) {
+            Param *capture = f->captures.v[j];
+            identity = fmt("%s:capture:%s:%d", identity, callable_identity(capture->inferred),
+                           capture->capture->mut);
+        }
     }
     return identity;
 }

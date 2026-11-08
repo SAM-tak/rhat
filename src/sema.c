@@ -1635,6 +1635,16 @@ bool may_reference(Type *t, Type *elem)
     if (!t->refs) {
         return false;
     }
+    if (capturing_callable(t)) {
+        Function *f = t->function;
+        for (int j = 0; j < f->captures.n; j++) {
+            Param *capture = f->captures.v[j];
+            if (may_reference(capture->inferred->elem, elem)) {
+                return true;
+            }
+        }
+        return false;
+    }
     if (t->kind == T_REF || t->kind == T_SLICE) {
         return contains(elem, t->elem);
     }
@@ -1715,6 +1725,24 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
         if (roots_meet(c->param_deps[k], storage)) {
             c->in->shrinks |= UINT64_C(1) << k;
         }
+    }
+}
+
+static void shrink_argument(Context *c, Type *type, Roots deps, Value *skip, Loc loc)
+{
+    if (type->kind == T_REF) {
+        type = type->elem;
+    }
+    if (type->kind == T_FUNCTION && type->function && type->function->environment) {
+        for (int j = 0; j < type->function->captures.n; j++) {
+            Param *capture = type->function->captures.v[j];
+            shrink_argument(c, capture->inferred, deps, skip, loc);
+        }
+        return;
+    }
+    Type *elem = flex_elements(type);
+    if (elem) {
+        shrink_check(c, deps, elem, skip, loc);
     }
 }
 
@@ -2225,6 +2253,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
     }
     Function *f = NULL;
+    Value closure = {0};
     Def *self = NULL;
     List actual = {0};
     List values = {0};
@@ -2432,7 +2461,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         add(&actual, ref.type);
     }
     else if (target->kind == E_FUNCTION) {
-        f = target->function;
+        closure = expression(c, target, NULL);
+        f = closure.type->function;
     }
     else if ((f = this_function(p, c->in, target))) {
         self = f == c->in->fn ? c->in->self : NULL;
@@ -2453,9 +2483,13 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (!f) {
             fail(e->loc, "unknown function '%s'", target->text);
         }
+        if (binding && f->environment) {
+            closure = snapshot(c, variable(binding), e->loc);
+        }
     }
     else {
         Value target_value = expression(c, target, NULL);
+        closure = target_value;
         List candidates = callable_candidates(target_value.type, e->args.n);
         f = select_call(c, &candidates, e, NULL, expected);
         if (!f) {
@@ -2562,6 +2596,35 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             read_write_check(c, arg->deps, e->loc);
         }
     }
+    for (int j = 0; j < f->captures.n; j++) {
+        Param *capture = f->captures.v[j];
+        Value ref;
+        if (!closure.type && c->in->fn == f) {
+            ref = variable(lookup(c, capture->name));
+        }
+        else if (!closure.type) {
+            fail(e->loc, "capturing function requires its lexical environment");
+        }
+        else {
+            ref = (Value){.id = slot(c, capture->inferred, true),
+                          .type = capture->inferred,
+                          .deps = closure.deps,
+                          .target = closure.deps,
+                          .contents = closure.deps};
+            Instr *field = emit(c, I_FIELD, e->loc);
+            field->dst = ref.id;
+            field->a = closure.id;
+            field->type = f->environment;
+            field->label = j;
+        }
+        Value *saved = mem(sizeof(*saved));
+        *saved = ref;
+        add(&values, saved);
+        add(&c->inflight, saved);
+        if (f->procedure && (capture->capture->mut || type_writes(ref.type->elem))) {
+            read_write_check(c, ref.deps, e->loc);
+        }
+    }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
     if (p->state_fields.n && !f->external) {
         Roots state = state_roots(p);
@@ -2582,9 +2645,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     // A callee still being lowered has no summary yet; assume it shrinks.
     for (int j = 0; j < values.n && j < 64; j++) {
         Value *v = values.v[j];
-        Type *elem = flex_elements(v->type);
-        if (elem && (in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps.n) {
-            shrink_check(c, v->deps, elem, v, e->loc);
+        if ((in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps.n) {
+            shrink_argument(c, v->type, v->deps, v, e->loc);
         }
     }
     c->inflight.n = inflight;
@@ -3355,6 +3417,42 @@ static Value callable_value(Context *c, Type *type, Type *expected, Loc loc)
         fail(loc, "callable '%s' does not satisfy '%s'", type_name(type), type_name(expected));
     }
     Value out = value(c, type);
+    if (f && f->environment) {
+        if (pointer) {
+            fail(loc, "capturing functions cannot have a C address");
+        }
+        for (int j = 0; j < f->captures.n; j++) {
+            Param *capture = f->captures.v[j];
+            Value ref;
+            if (c->in->fn == f) {
+                ref = variable(lookup(c, capture->name));
+            }
+            else {
+                Value source = expression(c, capture->capture_source, NULL);
+                if (!source.addressable) {
+                    fail(loc, "capture '%s' requires a local binding", capture->capture->name);
+                }
+                ref = value(c, capture->inferred);
+                Instr *address = emit(c, I_ADDR, loc);
+                address->dst = ref.id;
+                address->a = source.id;
+                address->type = ref.type;
+                ref.deps = roots_union(source.storage, source.deps);
+            }
+            out.deps = roots_union(out.deps, lifetime_roots(c, ref.deps));
+            int part = slot(c, ref.type, true);
+            Instr *field = emit(c, I_FIELD, loc);
+            field->dst = part;
+            field->a = out.id;
+            field->type = f->environment;
+            field->label = j;
+            Instr *copy = emit(c, I_COPY, loc);
+            copy->dst = part;
+            copy->a = ref.id;
+            copy->type = ref.type;
+        }
+        return out;
+    }
     Instr *i = emit(c, I_CONST, loc);
     i->dst = out.id;
     i->type = type;
@@ -3799,7 +3897,19 @@ Value expression(Context *c, Expr *e, Type *expected)
         return chain_value(c, e);
     }
     if (e->kind == E_FUNCTION) {
-        return callable_value(c, callable_declaration(p, e->function), expected, e->loc);
+        Type *type = closure_type(c, e->function);
+        if (!type) {
+            fail(e->loc, "cannot infer lexical capture types");
+        }
+        return callable_value(c, type, expected, e->loc);
+    }
+    if (e->kind == E_CAPTURE) {
+        Var *v = captured_variable(c, e);
+        Param *capture = c->in->fn->captures.v[e->capture_index];
+        Value captured = deref(c, variable(v), e->loc);
+        tool_record(p, e->loc, capture->capture->loc, e->text, captured.type, NULL, NULL,
+                    capture->capture->mut ? 13 : 14, false);
+        return captured;
     }
     if (e->kind == E_INT) {
         return literal_int(c, e, expected);
@@ -3851,8 +3961,7 @@ Value expression(Context *c, Expr *e, Type *expected)
             }
         }
         if (!v) {
-            fail(e->loc, "unknown value '%s' (closures and global values are not supported)",
-                 e->text);
+            fail(e->loc, "unknown value '%s'", e->text);
         }
         if (v->unavailable) {
             fail(e->loc, "first^ binding '%s' is not definitely initialized here", v->name);

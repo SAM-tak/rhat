@@ -1277,6 +1277,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 }
             }
             c->read_return = old_read_return;
+            if (capturing_callable(v.type)) {
+                fail(s->loc, "capturing function cannot escape through return^");
+            }
             for (int j = 0; j < v.deps.n; j++) {
                 if (!v.deps.v[j]->external) {
                     if (v.deps.v[j]->read_borrow) {
@@ -1550,6 +1553,9 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     c.p = p;
     c.in = in;
     c.access = f->owner;
+    for (Function *outer = f->enclosing; !c.access && outer; outer = outer->enclosing) {
+        c.access = outer->owner;
+    }
     c.depth = 1;
     c.lexical = f->lexical ? f->lexical : 1;
     if (in->result->kind != T_VOID) {
@@ -1562,10 +1568,11 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
             }
         }
     }
-    for (int j = 0; j < f->params.n; j++) {
-        Param *a = f->params.v[j];
+    for (int j = 0; j < in->params.n; j++) {
+        Param *a = j < f->params.n ? f->params.v[j] : f->captures.v[j - f->params.n];
         for (int k = 0; k < j; k++) {
-            if (strcmp(a->name, "_^") && !strcmp(a->name, ((Param *)f->params.v[k])->name)) {
+            Param *previous = k < f->params.n ? f->params.v[k] : f->captures.v[k - f->params.n];
+            if (strcmp(a->name, "_^") && !strcmp(a->name, previous->name)) {
                 fail(a->loc, "duplicate parameter '%s'", a->name);
             }
         }
@@ -1605,7 +1612,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
             }
             else if (t->kind == T_REF && t->elem->refs) {
                 contents = root(&c, &a->loc, 0, true);
-                contents.v[0]->readonly = v->deps.v[0]->readonly;
+                contents.v[0]->readonly = NULL;
                 v->deps.v[0]->inner = contents.v[0];
             }
         }
@@ -1713,6 +1720,9 @@ static void initialize_definition(Program *p, Def *d, int j)
 
 static void check_declaration(Program *p, Function *f, Def *owner)
 {
+    if (f->captures.n && !f->environment) {
+        return;
+    }
     if (f->invalid || (owner && (owner->invalid || owner->abstract)) || f->templ ||
         inferred_parameter(f) || !declaration_instance_needed(p, f)) {
         return;

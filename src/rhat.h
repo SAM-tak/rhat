@@ -121,6 +121,7 @@ enum {
     E_RECORD,
     E_ARRAY,
     E_FUNCTION,
+    E_CAPTURE,
     E_IF,
     E_SAVED,     // A compiler-owned value snapshot, never parsed from source.
     E_SCOPE,     // A lexical focus scope producing one value.
@@ -146,6 +147,7 @@ enum {
 };
 
 struct Expr {
+    int capture_index;   // E_CAPTURE's index in the current function's lexical captures.
     Field *state_field;  // E_STATE's declaration, resolved before type checking.
     Spec *type_expr;     // Type application, Self^, or an explicit constructor type.
     Def *constant_owner; // A type constant retains its declaration's access rights.
@@ -235,17 +237,20 @@ typedef struct {
     char *name;
     Spec *spec;
     bool self;
-    Stmt *capture;  // Original top-level binding for a compiler-generated parameter.
-    Type *inferred; // Body-derived constraint, independent of call sites.
+    Stmt *capture;        // Original binding metadata for a compiler-generated reference.
+    Expr *capture_source; // Lexical place captured by a local function.
+    Type *inferred;       // Body-derived constraint, independent of call sites.
 } Param;
 
 struct Function {
-    bool resolved;       // Module references in this body have been resolved.
-    bool constant_value; // Synthetic validation body of a type constant.
-    bool invalid;        // Its signature or parameter constraints could not be checked.
-    Loc declaration;     // Name token for editor navigation.
-    Function *enclosing; // Lexical enclosing function, without a captured
-                         // activation.
+    List captures;            // Hidden reference parameters, after the written parameters.
+    Function *closure_origin; // Unspecialized lexical declaration, for capture-shape caching.
+    Type *environment;        // Inline record of captured references, or NULL.
+    bool resolved;            // Module references in this body have been resolved.
+    bool constant_value;      // Synthetic validation body of a type constant.
+    bool invalid;             // Its signature or parameter constraints could not be checked.
+    Loc declaration;          // Name token for editor navigation.
+    Function *enclosing;      // Lexical enclosing declaration; captures hold activation data.
     Module *module;
     bool public;
     Loc loc;
