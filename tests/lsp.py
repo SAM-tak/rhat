@@ -536,6 +536,9 @@ var^one:dynamic^Iface=ref^v
 var^two:dynamic^^Iface=ref^one
 let^many=Iface[dynamic^2]{v,ref^v}
 let^old=Iface[ref^dyn^2]{v,ref^v}
+var^direct:dynamic^Iface[2]={ref^v,ref^v}
+let^take=p^values:ref^dynamic^Iface[2] {print^(values[0].get())}
+take(ref^direct)
 let^probe=p^x:dynamic^Iface {if^x fits^dynamic^Iface {print^(x.get())}}
 probe(one)
 print^((*two).get(),many[0].get(),old[1].get())
@@ -551,6 +554,7 @@ print^((*two).get(),many[0].get(),old[1].get())
         # keyword tokens would override it with the control-flow color.
         assert (pos['line'],pos['character']) not in colored, colored
     for spelling,shift in [('dynamic^Iface',8),('dynamic^^Iface',9),
+                            ('dynamic^Iface[2]',8),('ref^dynamic^Iface[2]',12),
                             ('Iface[dynamic^2]',0),('Iface[ref^dyn^2]',0)]:
         pos=at(dynamic_source,spelling,shift=shift)
         assert colored[(pos['line'],pos['character'])] == (5,1), (spelling,colored)

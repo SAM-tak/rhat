@@ -1274,6 +1274,43 @@ static Spec *typeof_spec(Parser *p, Loc loc)
     return s;
 }
 
+// One nominal or parenthesized type, before any array suffix. dynamic^ binds
+// here, whereas ref^ continues to consume the complete following type.
+static Spec *spec_atom(Parser *p)
+{
+    Spec *s = mem(sizeof(*s));
+    s->loc = tok(p)->loc;
+    if (take(p, "typeof^")) {
+        return typeof_spec(p, s->loc);
+    }
+    if (take(p, "(")) {
+        s = spec(p);
+        if (is(p, ",")) {
+            fail(tok(p)->loc, "multiple results (A, B) are written only after ->");
+        }
+        need(p, ")");
+    }
+    else {
+        s->kind = SPEC_NAME;
+        int depth = tok(p)->kind == TOK_WORD ? self_type_depth(tok(p)->text) : 0;
+        if (depth) {
+            s->name = next(p)->text;
+            if (depth != 1 || !p->type_owner) {
+                fail(s->loc, "'%s' is outside the enclosing type definition", s->name);
+            }
+            s->self_type = p->type_owner;
+        }
+        else {
+            s->name = qualified_word(p);
+            if (type_parameter(p, s->name)) {
+                s->parameter_owner = p->type_owner;
+            }
+        }
+        type_arguments(p, s);
+    }
+    return s;
+}
+
 static Spec *spec_part(Parser *p)
 {
     Spec *s = mem(sizeof(*s));
@@ -1293,10 +1330,16 @@ static Spec *spec_part(Parser *p)
     }
     int refs = reference_depth(tok(p)->text);
     int dynamics = dynamic_depth(tok(p)->text);
-    if (refs || dynamics) {
+    if (dynamics) {
         next(p);
         bool read = take(p, "read^");
-        return reference_spec(spec_part(p), s->loc, refs ? refs : dynamics, read, dynamics != 0);
+        s = reference_spec(spec_atom(p), s->loc, dynamics, read, true);
+        return array_spec(p, s, &refs);
+    }
+    if (refs) {
+        next(p);
+        bool read = take(p, "read^");
+        return reference_spec(spec_part(p), s->loc, refs, read, false);
     }
     if (take(p, "f^") || take(p, "p^")) {
         s->kind = SPEC_FUNCTION;
@@ -1329,32 +1372,7 @@ static Spec *spec_part(Parser *p)
         s->elem = spec_part(p);
         return s;
     }
-    if (take(p, "(")) {
-        s = spec(p);
-        if (is(p, ",")) {
-            fail(tok(p)->loc, "multiple results (A, B) are written only after ->");
-        }
-        need(p, ")");
-    }
-    else {
-        s->kind = SPEC_NAME;
-        int depth = tok(p)->kind == TOK_WORD ? self_type_depth(tok(p)->text) : 0;
-        if (depth) {
-            s->name = next(p)->text;
-            if (depth != 1 || !p->type_owner) {
-                fail(s->loc, "'%s' is outside the enclosing type definition", s->name);
-            }
-            s->self_type = p->type_owner;
-        }
-        else {
-            s->name = qualified_word(p);
-            if (type_parameter(p, s->name)) {
-                s->parameter_owner = p->type_owner;
-            }
-        }
-        type_arguments(p, s);
-    }
-    return array_spec(p, s, &refs);
+    return array_spec(p, spec_atom(p), &refs);
 }
 
 static Spec *spec_intersection(Parser *p)
@@ -1873,6 +1891,22 @@ static Expr *primary(Parser *p)
         p->at--;
         e = node(E_TYPE, t->loc);
         e->type_expr = spec_part(p);
+        Spec *s = e->type_expr;
+        if (s->kind == SPEC_ARRAY || s->kind == SPEC_SLICE || s->kind == SPEC_GROW ||
+            s->kind == SPEC_BOUNDED) {
+            if (take(p, "{")) {
+                e->kind = E_ARRAY;
+                e->type_expr = NULL;
+                e->array_literal = s;
+                e->array_refs = s->elem->kind == SPEC_REF;
+                array_entries(p, e);
+            }
+            else if (is(p, "(")) {
+                e->kind = E_ARRAY;
+                e->type_expr = NULL;
+                e->test_spec = s;
+            }
+        }
     }
     else if (!strcmp(t->text, "typeof^")) {
         e = node(E_TYPE, t->loc);

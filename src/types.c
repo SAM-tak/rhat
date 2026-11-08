@@ -340,7 +340,7 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (s->kind == SPEC_REF && s->elem->kind == SPEC_DYN) {
         Type *t = type_spec(p, s->elem->elem);
         if (t->kind != T_STRUCT) {
-            fail(s->loc, "dyn^ needs a def^ type, found '%s'", type_name(t));
+            fail(s->loc, "dynamic^ needs a def^ type, found '%s'", type_name(t));
         }
         return type_wrap(p, T_DYN, t, s->count);
     }

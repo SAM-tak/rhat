@@ -54,6 +54,63 @@ let^readonly:dynamic^read^Shape=ref^a
 print^(one.area(),(*two).area(),(**three).area(),(*legacy).area(),readonly.area())
 ''', '4.0 4.0 4.0 4.0 4.0\n')
 
+    positive('dynamic_binds_before_array_suffix_and_ref', shapes + '''
+let^total=f^items:dynamic^Shape[..] ->f64^ {
+    var^sum:f64^=0.0
+    for^var^i:i64^=0 while^i<items.len next^i+=1 {sum+=items[i].area()}
+    return^sum
+}
+let^touch=p^items:ref^dynamic^Shape[2] {items[0].scale(2.0)}
+let^show=p^items:ref^(dynamic^Shape)[2] {print^(items[0].area(),items[1].area())}
+let^forward=p^items:ref^Shape[dynamic^2] {show(items)}
+var^a=Square{} var^b=Circle{}
+var^direct:dynamic^Shape[2]={ref^a,ref^b}
+var^parenthesized:(dynamic^Shape)[2]=direct
+var^attribute:Shape[dynamic^2]=direct
+let^Array=dynamic^Shape[2]
+var^aliased:Array=direct
+print^(total(direct[..]),total(parenthesized[..]),total(attribute[..]),total(aliased[..]))
+touch(ref^direct) forward(ref^direct)
+var^one:dynamic^Shape=ref^a
+let^multiple:dynamic^^Shape[2]={ref^one,ref^one}
+var^nested:dynamic^Shape[2][2]={{ref^a,ref^b},{ref^b,ref^a}}
+let^readonly:dynamic^read^Shape[2]={ref^a,ref^b}
+print^((*multiple[0]).area(),nested[1][0].area(),readonly[0].area())
+''', '7.0 7.0 7.0 7.0\n16.0 3.0\n16.0 3.0 16.0\n')
+
+    positive('dynamic_prefix_array_constructors', shapes + '''
+var^a=Square{} var^b=Circle{}
+var^fixed=dynamic^Shape[2]{a,ref^b}
+var^grow=dynamic^Shape[grow^]{a,ref^b}
+var^flex=dynamic^Shape[flex^]{a,ref^b}
+var^bound=dynamic^Shape[max^3]{a,ref^b}
+var^sized=dynamic^Shape[]{a,ref^b}
+var^copy=dynamic^Shape[](fixed[..])
+var^reserved=dynamic^Shape[max^](3)
+reserved.push(ref^a) grow.push(ref^a) flex.pop() bound.push(ref^b)
+print^(fixed[0].area(),grow.len,flex.len,bound.len,sized.len,copy[1].area(),reserved[0].area())
+''', '4.0 3 1 3 2 3.0 4.0\n')
+
+    positive('dynamic_generic_element_precedence', '''
+def^Base<T> {abstract^get:f^self^ ->T;}
+def^Item:Base<i32^> {get=f^self^ ->i32^ {7}}
+let^first=f^items:dynamic^Base<i32^>[..] ->i32^ {items[0].get()}
+var^item=Item{}
+var^items:dynamic^Base<i32^>[2]={ref^item,ref^item}
+print^(first(items[..]))
+''', '7\n')
+    positive('dynamic_typeof_element_precedence', shapes + '''
+var^a=Square{}
+let^run=p^ {
+    var^local=Square{}
+    var^items:dynamic^typeof^(local)[2]={ref^local,ref^local}
+    print^(items[0].area())
+}
+run()
+''', '4.0\n')
+    negative('dynamic_explicit_array_operand', shapes + 'let^g=p^x:dynamic^(Shape[2]) {}',
+             "dynamic^ needs a def^ type, found 'Shape[2]'")
+
     for attribute in ('ref^dyn^', 'dynamic^'):
         positive('dynamic_array_attributes_'+attribute.replace('^','_'), shapes + '''
 let^total=f^items:Shape[ATTRIBUTE..] ->f64^ {
@@ -84,8 +141,8 @@ let^read=Shape[dynamic^read^2]{a,ref^a}
 let^oldread=Shape[ref^read^dyn^2]{a,ref^a}
 print^((*two[0]).area(),(*old[1]).area(),read[0].area(),oldread[1].area())
 ''', '4.0 4.0 4.0 4.0\n')
-    negative('dynamic_not_def', 'let^g=p^x:dynamic^i32^ {}', 'dyn^ needs a def^ type')
-    negative('dynamic_array_not_def', 'var^a:i32^[dynamic^2]={}', 'dyn^ needs a def^ type')
+    negative('dynamic_not_def', 'let^g=p^x:dynamic^i32^ {}', 'dynamic^ needs a def^ type')
+    negative('dynamic_array_not_def', 'var^a:i32^[dynamic^2]={}', 'dynamic^ needs a def^ type')
     negative('dynamic_read_mutation', shapes + '''var^a=Square{}
 let^view:dynamic^read^Shape=ref^a
 view.scale(2.0)
