@@ -1034,6 +1034,10 @@ Type *dyn_fits_target(Program *p, Spec *s, Loc loc)
 {
     bool dynamic = s->kind == SPEC_DYN;
     Type *t = type_spec(p, dynamic ? s->elem : s);
+    if (t->kind == T_DYN) {
+        dynamic = true;
+        t = t->elem;
+    }
     if (t->kind == T_REF) {
         t = t->elem;
     }

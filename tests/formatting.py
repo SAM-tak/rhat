@@ -30,6 +30,9 @@ def main():
         suite.case(name, body)
 
     expect('hat_spacing', 'let^ x = self^ + 1\n', 'let^x = self^+ 1\n')
+    expect('dynamic_reference_types',
+           'let^get=p^x:dynamic^ Shape,ys:Shape[ dynamic^ .. ],zs:Shape[ ref^ dyn^ 2 ] {}\n',
+           'let^get = p^x:dynamic^Shape, ys:Shape[dynamic^..], zs:Shape[ref^dyn^2] {}\n')
     expect('space_after_hat', 'let^x=self^+1\n', 'let^ x = self^ + 1\n', 'rhat_space_after_hat=true\n')
     expect('calls_and_operators', 'let^x  =  foo ( 1 ,2 )+bar[ 3 ]\n',
            'let^x = foo(1, 2) + bar[3]\n')

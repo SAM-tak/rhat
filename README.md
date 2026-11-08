@@ -270,7 +270,7 @@ print^(value.a, value.b, value.c)
   - 返り値の型推論、無注釈引数の呼び出し形ごとの具体化、`let^ name = template^ f^ ...`。
   - キャプチャなしの無名関数、`this^` / `this^^` による再帰。
   - 型によるオーバーロード、交差型 `&`、`op^` による演算子定義（[オーバーロード](DesignDocuments/overloads.md)）。
-  - 動的ディスパッチ `ref^ dyn^ D`（[動的ディスパッチ](DesignDocuments/dyn.md)）。
+  - 動的ディスパッチ `dynamic^D`、要素が動的参照の配列 `D[dynamic^..]`（[動的ディスパッチ](DesignDocuments/dyn.md)）。
 - **文と制御構造**: `let^` / `var^`、`:=` と複合代入、並列代入、`if^` / `elseif^` / `else^`、
   `for^` / `repeat^` と `prolog^` 〜 `epilog^` の各節、`break^` / `next^` と多段脱出。
 - **数値**: 型の一致を要求する算術・比較、`bitand^` / `bitor^` / `bitxor^` / `bitshift^` / `bitnot^`、

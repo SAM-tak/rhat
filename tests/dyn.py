@@ -43,6 +43,58 @@ let^ one:ref^ dyn^ Shape = ref^ a
 one.describe()
 ''', '7.0\narea 4.0\ncircle 3.0\n28.0\narea 16.0\n', inspect=tables)
 
+    positive('dynamic_alias_and_reference_depth', shapes + '''
+let^Dynamic=dynamic^Shape
+var^a=Square{}
+var^one:Dynamic=ref^a
+var^two:dynamic^^Shape=ref^one
+let^three:dynamic^^^Shape=ref^two
+let^legacy:ref^^dyn^Shape=two
+let^readonly:dynamic^read^Shape=ref^a
+print^(one.area(),(*two).area(),(**three).area(),(*legacy).area(),readonly.area())
+''', '4.0 4.0 4.0 4.0 4.0\n')
+
+    for attribute in ('ref^dyn^', 'dynamic^'):
+        positive('dynamic_array_attributes_'+attribute.replace('^','_'), shapes + '''
+let^total=f^items:Shape[ATTRIBUTE..] ->f64^ {
+    var^sum:f64^=0.0
+    for^var^i:i64^=0 while^i<items.len next^i+=1 {sum+=items[i].area()}
+    return^sum
+}
+var^a=Square{}
+var^b=Circle{}
+var^fixed:Shape[ATTRIBUTE2]={ref^a,ref^b}
+let^literal=Shape[ATTRIBUTE2]{a,ref^b}
+var^growing=Shape[ATTRIBUTEgrow^]{a,ref^b}
+var^flexing=Shape[ATTRIBUTEflex^]{a,ref^b}
+var^bounded=Shape[ATTRIBUTEmax^3]{a,ref^b}
+let^sized=Shape[ATTRIBUTE]{a,ref^b}
+let^copy=Shape[ATTRIBUTE](fixed[..])
+var^reserved=Shape[ATTRIBUTEmax^](3)
+growing.push(ref^a) flexing.pop() bounded.push(ref^a) reserved.push(ref^a)
+print^(total(fixed[..]),total(literal[..]),total(growing[..]),total(flexing[..]),total(bounded[..]),total(sized[..]),total(copy[..]),total(reserved[..]))
+'''.replace('ATTRIBUTE',attribute), '7.0 7.0 11.0 4.0 11.0 7.0 7.0 4.0\n', inspect=tables)
+
+    positive('dynamic_array_reference_depth_and_read', shapes + '''
+var^a=Square{}
+var^one:dynamic^Shape=ref^a
+let^two=Shape[dynamic^^2]{ref^one,ref^one}
+let^old=Shape[ref^^dyn^2]{ref^one,ref^one}
+let^read=Shape[dynamic^read^2]{a,ref^a}
+let^oldread=Shape[ref^read^dyn^2]{a,ref^a}
+print^((*two[0]).area(),(*old[1]).area(),read[0].area(),oldread[1].area())
+''', '4.0 4.0 4.0 4.0\n')
+    negative('dynamic_not_def', 'let^g=p^x:dynamic^i32^ {}', 'dyn^ needs a def^ type')
+    negative('dynamic_array_not_def', 'var^a:i32^[dynamic^2]={}', 'dyn^ needs a def^ type')
+    negative('dynamic_read_mutation', shapes + '''var^a=Square{}
+let^view:dynamic^read^Shape=ref^a
+view.scale(2.0)
+''', 'read^')
+    negative('dynamic_escape', shapes + '''let^make=f^ ->dynamic^Shape {
+var^a=Square{} return^ref^a
+}
+''', 'cannot return a reference')
+
     positive('dyn_recursion_without_owned_values', '''def^ W { abstract^ go:p^ self^, n:i64^; }
 def^ A : W {
   self^{ z:i32^ = 0 }
@@ -84,6 +136,12 @@ var^ b = D2{}
 var^ c = D3{}
 g(ref^ a) g(ref^ b) g(ref^ c)
 ''', 'one 1\ntwo 2\nother d3\n')
+    positive('dynamic_downcast_composing', kinds + '''let^probe=p^x:dynamic^Base {
+    if^x fits^dynamic^D2 {print^(x.name())}
+}
+var^a=D1{} var^b=D2{} var^c=D3{}
+probe(ref^a) probe(ref^b) probe(ref^c)
+''', 'd2\nd3\n')
     negative('dyn_downcast_abstract', kinds + 'let^ g = p^ x:ref^ dyn^ Base { if^ x fits^ Base { } }', 'write fits^ dyn^ Base')
     negative('dyn_downcast_else_field', kinds + 'let^ g = p^ x:ref^ dyn^ Base { if^ x fits^ D1 { print^(x.a) else^: print^(x.a) } }',
              'field access requires')

@@ -30,6 +30,8 @@ let^ make = p^ pool:ref^ Node[grow^] -> i32^ { ... }
 `Node[ref^grow^]` は参照の伸長配列です。`[]` 内では要素の `ref^`、次に種類・容量の順に書きます。
 `Node[ref^max^10]` は `(ref^Node)[max^10]` と同じ型です。
 参照の重ね掛けは `Node[ref^^max^10]`、配列の入れ子は `Node[3][grow^]` と書けます。
+動的参照の要素も `Shape[dynamic^..]`、`Shape[dynamic^2]`、`Shape[dynamic^grow^]` と括弧なしで書けます。
+`Shape[ref^dyn^..]` も同じ型です（[動的ディスパッチ](dyn.md)）。
 
 ## 配列リテラル
 

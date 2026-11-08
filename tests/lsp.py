@@ -528,6 +528,42 @@ def^MemoryReader : Reader {}
     client.send('textDocument/didClose',dict(textDocument=dict(uri=io_path.as_uri())))
     print('PASS composition base hover, definition and semantic colors',flush=True)
 
+    dynamic_path=work/'dynamic-syntax.rh'
+    dynamic_source='''def^Iface {abstract^get:f^self^ ->i32^;}
+def^Value:Iface {get=f^self^ ->i32^ {7}}
+var^v=Value{}
+var^one:dynamic^Iface=ref^v
+var^two:dynamic^^Iface=ref^one
+let^many=Iface[dynamic^2]{v,ref^v}
+let^old=Iface[ref^dyn^2]{v,ref^v}
+let^probe=p^x:dynamic^Iface {if^x fits^dynamic^Iface {print^(x.get())}}
+probe(one)
+print^((*two).get(),many[0].get(),old[1].get())
+'''
+    client.open(dynamic_path,dynamic_source)
+    diagnostics=client.diagnostics(dynamic_path,1)
+    assert diagnostics == [], diagnostics
+    colored=tokens(dynamic_source,dynamic_path)
+    for match in re.finditer(r'(?:dynamic|ref)\^+',dynamic_source):
+        prefix=dynamic_source[:match.start()]
+        pos=dict(line=prefix.count('\n'),character=len(prefix.rsplit('\n',1)[-1]))
+        # Like ref^, dynamic^ uses TextMate's keyword.other category. Semantic
+        # keyword tokens would override it with the control-flow color.
+        assert (pos['line'],pos['character']) not in colored, colored
+    for spelling,shift in [('dynamic^Iface',8),('dynamic^^Iface',9),
+                            ('Iface[dynamic^2]',0),('Iface[ref^dyn^2]',0)]:
+        pos=at(dynamic_source,spelling,shift=shift)
+        assert colored[(pos['line'],pos['character'])] == (5,1), (spelling,colored)
+        definition=client.request('textDocument/definition',dict(textDocument=dict(uri=dynamic_path.as_uri()),position=pos))
+        assert definition['range']['start'] == at(dynamic_source,'Iface'), definition
+    pos=at(dynamic_source,'one:dynamic',shift=0)
+    hover=client.request('textDocument/hover',dict(textDocument=dict(uri=dynamic_path.as_uri()),position=pos))
+    assert 'ref^ dyn^ Iface' in hover['contents']['value'], hover
+    completion=client.request('textDocument/completion',dict(textDocument=dict(uri=dynamic_path.as_uri()),position=at(dynamic_source,'dynamic^Iface',shift=3)))
+    assert 'dynamic^' in {item['label'] for item in completion}, completion
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=dynamic_path.as_uri())))
+    print('PASS dynamic shorthand, array attributes, keyword colors and type navigation',flush=True)
+
     errors_path=work/'error-colors.rh'
     errors_source='''import^std.io
 let^io=import^std.io

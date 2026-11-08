@@ -1031,6 +1031,33 @@ static int reference_depth(const char *text)
     return text[end] ? 0 : end - 3;
 }
 
+static int dynamic_depth(const char *text)
+{
+    if (strncmp(text, "dynamic^", 8)) {
+        return 0;
+    }
+    size_t hats = strspn(text + 7, "^");
+    return text[7 + hats] ? 0 : (int)hats;
+}
+
+// A dynamic reference is the ordinary ref^(dyn^ T) representation; additional
+// hats wrap references around it. read^ qualifies the innermost reference.
+static Spec *reference_spec(Spec *elem, Loc loc, int refs, bool read, bool dynamic)
+{
+    if (dynamic) {
+        Spec *dyn = mem(sizeof(*dyn));
+        *dyn = (Spec){.kind = SPEC_DYN, .loc = loc, .elem = elem};
+        elem = dyn;
+    }
+    while (refs--) {
+        Spec *ref = mem(sizeof(*ref));
+        *ref = (Spec){.kind = SPEC_REF, .loc = loc, .elem = elem, .count = read};
+        read = false;
+        elem = ref;
+    }
+    return elem;
+}
+
 static Spec *spec(Parser *p);
 static Spec *result_spec(Parser *p);
 
@@ -1140,16 +1167,16 @@ static void read_view(Spec *s)
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
     int refs = reference_depth(tok(p)->text);
+    bool dynamic = dynamic_depth(tok(p)->text) != 0;
+    if (dynamic) {
+        refs = dynamic_depth(tok(p)->text);
+    }
     *references = refs;
     if (refs) {
         Token *token = next(p);
         bool read = take(p, "read^");
-        while (refs--) {
-            Spec *ref = mem(sizeof(*ref));
-            *ref = (Spec){.kind = SPEC_REF, .loc = token->loc, .elem = elem, .count = read};
-            read = false;
-            elem = ref;
-        }
+        dynamic = dynamic || take(p, "dyn^");
+        elem = reference_spec(elem, token->loc, refs, read, dynamic);
     }
     Spec *w = mem(sizeof(*w));
     w->loc = elem->loc;
@@ -1203,7 +1230,7 @@ static bool array_type_at(Parser *p, int k)
     }
     Token *next = p->tokens.v[k + 1];
     if (!strcmp(next->text, "]") || !strcmp(next->text, "grow^") || !strcmp(next->text, "flex^") ||
-        !strcmp(next->text, "max^") || reference_depth(next->text)) {
+        !strcmp(next->text, "max^") || reference_depth(next->text) || dynamic_depth(next->text)) {
         return true;
     }
     if (next->kind != TOK_INT || k + 3 >= p->tokens.n ||
@@ -1265,19 +1292,11 @@ static Spec *spec_part(Parser *p)
         return s;
     }
     int refs = reference_depth(tok(p)->text);
-    if (refs) {
+    int dynamics = dynamic_depth(tok(p)->text);
+    if (refs || dynamics) {
         next(p);
-        s->kind = SPEC_REF;
-        s->count = take(p, "read^") ? 1 : 0;
-        s->elem = spec_part(p);
-        while (--refs) {
-            Spec *outer = mem(sizeof(*outer));
-            outer->kind = SPEC_REF;
-            outer->loc = s->loc;
-            outer->elem = s;
-            s = outer;
-        }
-        return s;
+        bool read = take(p, "read^");
+        return reference_spec(spec_part(p), s->loc, refs ? refs : dynamics, read, dynamics != 0);
     }
     if (take(p, "f^") || take(p, "p^")) {
         s->kind = SPEC_FUNCTION;
@@ -1849,6 +1868,11 @@ static Expr *primary(Parser *p)
             e = outer;
             refs--;
         }
+    }
+    else if (dynamic_depth(t->text)) {
+        p->at--;
+        e = node(E_TYPE, t->loc);
+        e->type_expr = spec_part(p);
     }
     else if (!strcmp(t->text, "typeof^")) {
         e = node(E_TYPE, t->loc);
