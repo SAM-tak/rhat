@@ -151,6 +151,7 @@ Def *specialize_definition(Def *source, List *arguments, const char *name)
     d->type_params = d->instances = d->bases = d->base_names = (List){0};
     d->fields = d->methods = d->alternatives = (List){0};
     d->own_fields = d->own_methods = d->union_specs = d->base_specs = d->constants = (List){0};
+    d->state_fields = (List){0};
     d->state = 0;
     d->resolved = false;
     d->type = NULL;
@@ -169,6 +170,16 @@ Def *specialize_definition(Def *source, List *arguments, const char *name)
         f->init = copy_expr(&c, f->init);
         f->type = NULL;
         add(&d->own_fields, f);
+    }
+    for (int j = 0; j < source->state_fields.n; j++) {
+        Field *f = mem(sizeof(*f));
+        *f = *(Field *)source->state_fields.v[j];
+        f->owner = f->initializer_owner = d;
+        f->spec = copy_spec(&c, f->spec);
+        f->init = copy_expr(&c, f->init);
+        f->type = NULL;
+        f->state_checking = false;
+        add(&d->state_fields, f);
     }
     for (int j = 0; j < source->own_methods.n; j++) {
         add(&d->own_methods, copy_function(&c, source->own_methods.v[j]));

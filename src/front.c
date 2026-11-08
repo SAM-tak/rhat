@@ -3550,6 +3550,28 @@ static void def_member(Parser *p, Def *d)
     if (over && overload) {
         fail(tok(p)->loc, "override^ and overload^ cannot be combined");
     }
+    if (take(p, "var^")) {
+        Field *f = mem(sizeof(*f));
+        f->loc = tok(p)->loc;
+        f->owner = f->initializer_owner = d;
+        f->priv = priv;
+        f->name = decl_word(p);
+        if (abstr || over || overload) {
+            fail(f->loc, "static variables cannot be abstract^, override^ or overload^");
+        }
+        if (take(p, ":")) {
+            f->spec = spec(p);
+        }
+        if (take(p, "=") || take(p, ":=")) {
+            f->init = expr(p, 0);
+        }
+        if (!f->spec && !f->init) {
+            fail(f->loc, "static variable '%s' requires a type annotation or an initializer",
+                 f->name);
+        }
+        add(&d->state_fields, f);
+        return;
+    }
     Loc declaration = tok(p)->loc;
     char *name;
     if (take(p, "op^")) {
@@ -3649,7 +3671,7 @@ static void def_body(Parser *p, Def *d)
     Def *outer = p->type_owner;
     p->type_owner = d;
     while (!take(p, "}")) {
-        if (p->p->tooling && (is(p, "let^") || is(p, "var^") || is(p, "def^") || is(p, "struct^") ||
+        if (p->p->tooling && (is(p, "let^") || is(p, "def^") || is(p, "struct^") ||
                               is(p, "import^") || is(p, "public^"))) {
             TOOL_CHECK(p->p, fail(tok(p)->loc, "expected '}' before a top-level declaration"););
             break;

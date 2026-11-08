@@ -127,6 +127,8 @@ def main():
            '    ZERO = Self^{\n        x = 0\n    }\n    get = f^self^{\n        self^.x\n    }\n}\n')
     expect('inferred_field_defaults', 'def^A{self^{i=0,s=""}}\n',
            'def^A{self^{i = 0, s = ""}}\n')
+    expect('mutable_static_member', 'def^A{\nvar^n=0\ninc=p^{def^.n+=1}\n}\n',
+           'def^A{\n    var^n = 0\n    inc = p^{def^.n += 1}\n}\n')
     expect('nested_named_initializers',
            'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\nid=1,\nlocal=Xf{\nm=rotation(r),\nt=F3{\nx=1,\ny=2\n}\n},\nworld=identity()\n})\n',
            'def^Node{}\ndef^Xf{}\ndef^F3{}\npool.push(Node{\n    id = 1,\n    local = Xf{\n        m = rotation(r),\n'

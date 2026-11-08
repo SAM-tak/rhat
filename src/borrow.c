@@ -30,6 +30,11 @@ typedef struct {
 
 static bool flow_site(Context *c, Root *r, int *param, int *part)
 {
+    if (r == c->p->state_root) {
+        *param = -2;
+        *part = FLOW_WHOLE;
+        return true;
+    }
     for (int k = 0; k < c->in->params.n && k < 64; k++) {
         Roots roots = c->param_deps[k];
         for (int j = 0; j < roots.n; j++) {
@@ -60,6 +65,9 @@ static void flow_add(List *flows, Flow flow)
 
 bool flow_store(Context *c, Root *owner, Root *src)
 {
+    if (owner == c->p->state_root && src == c->p->state_root) {
+        return true;
+    }
     Flow flow;
     if (src->read_borrow || !flow_site(c, owner, &flow.to, &flow.to_part) ||
         !flow_site(c, src, &flow.from, &flow.from_part)) {
@@ -134,6 +142,11 @@ static Roots flow_part(Roots target, Roots held, int part)
     return part == FLOW_TARGET ? target : part == FLOW_HELD ? held : roots_union(target, held);
 }
 
+static Roots call_part(Context *c, Roots *target, Roots *held, int index, int part)
+{
+    return index == -2 ? state_roots(c->p) : flow_part(target[index], held[index], part);
+}
+
 Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
 {
     Function *f = in->fn;
@@ -178,8 +191,8 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
         changed = false;
         for (int j = 0; j < flows->n; j++) {
             Flow *flow = flows->v[j];
-            Roots src = flow_part(target[flow->from], held[flow->from], flow->from_part);
-            Roots dst = flow_part(target[flow->to], held[flow->to], flow->to_part);
+            Roots src = call_part(c, target, held, flow->from, flow->from_part);
+            Roots dst = call_part(c, target, held, flow->to, flow->to_part);
             for (int y = 0; y < count; y++) {
                 if (roots_meet(dst, roots_union(target[y], held[y]))) {
                     Roots grown = roots_union(held[y], src);
@@ -191,13 +204,15 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
     }
     for (int j = 0; j < flows->n; j++) {
         Flow *flow = flows->v[j];
-        store_check(
-            c, (Value){.storage = flow_part(target[flow->to], held[flow->to], flow->to_part)},
-            (Value){.deps = flow_part(target[flow->from], held[flow->from], flow->from_part)}, loc);
+        store_check(c, (Value){.storage = call_part(c, target, held, flow->to, flow->to_part)},
+                    (Value){.deps = call_part(c, target, held, flow->from, flow->from_part)}, loc);
     }
     Roots out = {0};
     if (!known || in->returns_unknown || values->n > 64) {
-        out = all;
+        out = roots_union(out, all);
+        if (c->p->state_fields.n) {
+            out = roots_union(out, state_roots(c->p));
+        }
         for (int j = 0; j < count; j++) {
             out = roots_union(out, held[j]);
         }
@@ -205,7 +220,7 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
     }
     for (int j = 0; j < in->returns.n; j++) {
         Flow *flow = in->returns.v[j];
-        out = roots_union(out, flow_part(target[flow->from], held[flow->from], flow->from_part));
+        out = roots_union(out, call_part(c, target, held, flow->from, flow->from_part));
     }
     return out;
 }
@@ -323,6 +338,14 @@ void read_write_check(Context *c, Roots storage, Loc loc)
 {
     for (int j = 0; j < c->read_borrows.n; j++) {
         ReadBorrow *loan = c->read_borrows.v[j];
+        if (c->p->state_fields.n && c->in->fn != c->p->entry &&
+            roots_meet(storage, state_roots(c->p))) {
+            for (int k = 0; k < loan->targets.n; k++) {
+                if (loan->targets.v[k]->external) {
+                    fail(loc, "static mutation may alias an active read^ borrow");
+                }
+            }
+        }
         if (roots_meet(storage, loan->targets)) {
             fail(loc,
                  "cannot modify storage during a read^ borrow (started at %s:%d; "
@@ -454,8 +477,32 @@ static bool propagate(Instance *caller, ReadCall *call, Instance *callee)
 
 void read_validate(Program *p)
 {
+    bool state_changed;
+    do {
+        state_changed = false;
+        for (int j = 0; j < p->instances.n; j++) {
+            Instance *in = p->instances.v[j];
+            for (int k = 0; !in->uses_state && k < in->code.n; k++) {
+                Instr *i = in->code.v[k];
+                if (i->op == I_CALL && i->callee->uses_state) {
+                    in->uses_state = state_changed = true;
+                }
+                for (int n = 0; i->op == I_DYNCALL && n < p->dyn_tables.n; n++) {
+                    DynTable *table = p->dyn_tables.v[n];
+                    Instance *target =
+                        i->label < table->entries.n ? table->entries.v[i->label] : NULL;
+                    if (target && target->uses_state) {
+                        in->uses_state = state_changed = true;
+                    }
+                }
+            }
+        }
+    } while (state_changed);
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
+        if ((in->fn->exported || in->fn->lhat_export) && in->uses_state && !in->invalid) {
+            fail(in->fn->loc, "exported function cannot access task-owned static variables");
+        }
         if ((in->indirect || in->fn->exported) && in->flows.n && !in->invalid) {
             fail(in->fn->loc,
                  "'%s' stores a reference through an argument, so it cannot be called through "

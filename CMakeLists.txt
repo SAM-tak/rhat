@@ -65,6 +65,8 @@ if(BUILD_TESTING)
   # Each suite runs its cases on all cores (tests/harness.py), so run ctest
   # without -j; child commands retain their own short timeouts there.
   set_tests_properties(integration PROPERTIES TIMEOUT 3600)
+  add_test(NAME static_members COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/static_members.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/static-member-tests")
   add_test(NAME modules COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/modules.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/module-tests")
   add_test(NAME syntax COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/syntax.py"

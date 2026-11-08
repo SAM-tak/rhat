@@ -797,6 +797,10 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             handle_statements(c, s);
         }
         else if (s->kind == S_BIND) {
+            Def *access = c->access;
+            if (s->state_field) {
+                c->access = s->state_field->owner;
+            }
             if (!strcmp(s->name, "_^")) {
                 Stmt hidden = *s;
                 hidden.name = fmt("\001discard%d", c->in->slots.n);
@@ -931,8 +935,17 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             store_check(c, dst, v, s->loc);
             // What a call hands back from this storage carries the root, so it cannot write either.
             var->root.v[0]->readonly = s->mut ? NULL : s->name;
-            tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, s->mut ? 13 : 14, true);
+            tool_record(c->p, s->loc, s->loc, s->state_field ? s->state_field->name : s->name, t,
+                        NULL, s->state_field ? s->state_field->owner : NULL, s->mut ? 13 : 14,
+                        true);
             add(&c->vars, var);
+            if (s->state_field) {
+                var->root = state_roots(c->p);
+                Instr *i = emit(c, I_STATE_BIND, s->loc);
+                i->a = var->slot;
+                i->label = s->state_field->index;
+            }
+            c->access = access;
         }
         else if (s->kind == S_BIND_MANY && s->prolog.n) {
             // let^ a, b = f(): each name views its part of the results in place,
@@ -1707,6 +1720,9 @@ void analyze(Program *p)
         Def *d = p->defs.v[j];
         TOOL_CHECK(p, initialize_definition(p, d, j););
         d->invalid |= !d->type;
+    }
+    for (int j = 0; j < p->state_fields.n; j++) {
+        TOOL_CHECK(p, state_field_type(p, p->state_fields.v[j]););
     }
     for (int j = 0; j < p->defs.n; j++) {
         TOOL_CHECK(p, compose(p, p->defs.v[j]););

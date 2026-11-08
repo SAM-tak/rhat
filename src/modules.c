@@ -847,6 +847,59 @@ static Constant *type_constant(Program *p, Def *d, const char *name, int depth)
     return result;
 }
 
+// Inherited mutable members retain the declaring type's storage.
+static Field *state_member(Program *p, Def *d, const char *name, int depth)
+{
+    if (depth > 128) {
+        fail(d->loc, "cyclic def^ composition at '%s'", d->name);
+    }
+    for (int j = 0; j < d->state_fields.n; j++) {
+        Field *f = d->state_fields.v[j];
+        if (!strcmp(f->name, name)) {
+            return f;
+        }
+    }
+    for (int j = 0; j < d->constants.n; j++) {
+        if (!strcmp(((Constant *)d->constants.v[j])->name, name)) {
+            return NULL;
+        }
+    }
+    for (int j = 0; j < d->own_methods.n; j++) {
+        if (!strcmp(((Function *)d->own_methods.v[j])->name, name)) {
+            return NULL;
+        }
+    }
+    for (int j = 0; j < d->own_fields.n; j++) {
+        if (!strcmp(((Field *)d->own_fields.v[j])->name, name)) {
+            return NULL;
+        }
+    }
+    Field *found = NULL;
+    for (int j = 0; j < d->base_specs.n; j++) {
+        Spec *s = d->base_specs.v[j];
+        resolve_spec(d->module, s);
+        Def *base = s->self_type ? s->self_type : named_definition(p, s->name);
+        Field *f = base ? state_member(p, base, name, depth + 1) : NULL;
+        if (f && found && f != found) {
+            fail(d->loc, "ambiguous static variable '%s'", name);
+        }
+        if (f) {
+            found = f;
+        }
+    }
+    return found;
+}
+
+static void state_reference(Program *p, Field *f, Expr *e)
+{
+    if (f->priv && (!top_user || top_user->owner != f->owner)) {
+        fail(e->loc, "private static variable '%s.%s'", f->owner->name, f->name);
+    }
+    Loc at = e->name_loc.file ? e->name_loc : e->loc;
+    tool_record(p, at, f->loc, f->name, f->type, NULL, f->owner, 13, false);
+    *e = (Expr){.kind = E_STATE, .loc = at, .text = f->name, .state_field = f};
+}
+
 // Whether d or a def^ it composes declares a static member name.
 static bool static_member(Program *p, Def *d, const char *name, int depth)
 {
@@ -1027,6 +1080,12 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                 return;
             }
             Def *d = s->self_type ? s->self_type : named_definition(p, s->name);
+            Field *state = d ? state_member(p, d, e->text, 0) : NULL;
+            if (state) {
+                state_reference(p, state, e);
+                e->type_expr = s;
+                return;
+            }
             Constant *c = d ? type_constant(p, d, e->text, 0) : NULL;
             if (c) {
                 expand_constant(p, c, e);
@@ -1069,6 +1128,11 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         }
     }
     if (e->kind == E_NAME && top_user && top_user->owner && !local(names, e->text)) {
+        Field *state = state_member(p, top_user->owner, e->text, 0);
+        if (state) {
+            state_reference(p, state, e);
+            return;
+        }
         Constant *c = type_constant(p, top_user->owner, e->text, 0);
         if (c) {
             expand_constant(p, c, e);
@@ -1651,6 +1715,34 @@ static void resolve_definition(Program *p, Def *d)
     d->resolved = true;
     Module *m = d->module;
     List names = {0};
+    for (int j = 0; j < d->state_fields.n; j++) {
+        Field *f = d->state_fields.v[j];
+        for (int k = 0; k < j; k++) {
+            if (!strcmp(f->name, ((Field *)d->state_fields.v[k])->name)) {
+                fail(f->loc, "duplicate static variable '%s'", f->name);
+            }
+        }
+        List *members[] = {&d->own_fields, &d->own_methods, &d->constants};
+        for (int k = 0; k < 3; k++) {
+            for (int n = 0; n < members[k]->n; n++) {
+                char *name = k == 0   ? ((Field *)members[k]->v[n])->name
+                             : k == 1 ? ((Function *)members[k]->v[n])->name
+                                      : ((Constant *)members[k]->v[n])->name;
+                if (!strcmp(f->name, name)) {
+                    fail(f->loc, "static variable/member name collision '%s'", name);
+                }
+            }
+        }
+        f->index = p->state_fields.n;
+        add(&p->state_fields, f);
+        resolve_spec(m, f->spec);
+        Function *scope = mem(sizeof(*scope));
+        *scope = (Function){.owner = d, .module = m, .name = "<static-initializer>"};
+        Function *outer = top_user;
+        top_user = scope;
+        resolve_expr(p, m, &names, f->init);
+        top_user = outer;
+    }
     for (int j = 0; j < d->base_specs.n; j++) {
         Spec *s = d->base_specs.v[j];
         resolve_spec(m, s);
@@ -1840,6 +1932,27 @@ void resolve_modules(Program *p)
         }
     }
     p->defs.n = concrete;
+    List body = {0};
+    for (int j = 0; j < p->state_fields.n; j++) {
+        Field *f = p->state_fields.v[j];
+        Stmt *s = mem(sizeof(*s));
+        *s = (Stmt){.kind = S_BIND,
+                    .loc = f->loc,
+                    .name = fmt("\001state_%d", f->index),
+                    .mut = true,
+                    .spec = f->spec,
+                    .a = f->init,
+                    .state_field = f};
+        if (!s->a) {
+            s->a = mem(sizeof(*s->a));
+            *s->a = (Expr){.kind = E_DEFAULT, .loc = f->loc, .state_field = f};
+        }
+        add(&body, s);
+    }
+    for (int j = 0; j < p->entry->body.n; j++) {
+        add(&body, p->entry->body.v[j]);
+    }
+    p->entry->body = body;
 }
 
 void parse(Program *p, const char *path)

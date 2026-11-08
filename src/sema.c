@@ -101,6 +101,15 @@ Roots root(Context *c, const void *key, int depth, bool external)
     return (Roots){v, 1};
 }
 
+Roots state_roots(Program *p)
+{
+    if (!p->state_root) {
+        p->state_root = mem(sizeof(*p->state_root));
+        p->state_root->external = true;
+    }
+    return (Roots){&p->state_root, 1};
+}
+
 static bool roots_has(Roots a, Root *r)
 {
     for (int j = 0; j < a.n; j++) {
@@ -1682,6 +1691,9 @@ static Type *flex_elements(Type *t)
 // shrinking argument itself.
 static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc loc)
 {
+    if (c->p->state_fields.n && roots_meet(storage, state_roots(c->p))) {
+        c->in->state_shrinks = true;
+    }
     for (int j = 0; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
         if (!roots_meet(v->root, storage) && roots_meet(v->deps, storage) &&
@@ -1948,6 +1960,27 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
     Type *t = dyn_result(p, f);
+    if (p->state_fields.n) {
+        Roots state = state_roots(p);
+        if (f->procedure) {
+            read_write_check(c, state, e->loc);
+            for (int j = 0; j < p->state_fields.n; j++) {
+                Type *elem = flex_elements(state_field_type(p, p->state_fields.v[j]));
+                if (elem) {
+                    for (int k = 0; k < arguments.n; k++) {
+                        Value *arg = arguments.v[k];
+                        if (roots_meet(arg->deps, state) && may_reference(arg->type, elem)) {
+                            fail(e->loc,
+                                 "cannot shrink flex^ storage while an argument may refer into it");
+                        }
+                    }
+                    shrink_check(c, state, elem, NULL, e->loc);
+                }
+            }
+            forget_roots(&c->vars, state, false);
+        }
+        deps = roots_union(deps, state);
+    }
     deps = result_holds_arguments(t) ? deps : (Roots){0};
     if (read_reference(receiver.type) && type_writes(t)) {
         fail(e->loc, "a read^ dyn^ receiver cannot expose writable references");
@@ -2435,7 +2468,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     Var *alias = target->kind == E_NAME ? selected(c, target) : NULL;
     if (alias && callable_type(alias->type)) {
         tool_record(p, target->loc, alias->declaration, alias->name, alias->type, NULL, NULL,
-                    alias->parameter ? TOOL_PARAMETER : alias->mut ? 13 : 14,
+                    alias->parameter ? TOOL_PARAMETER
+                    : alias->mut     ? 13
+                                     : 14,
                     false);
     }
     else {
@@ -2528,6 +2563,21 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
     }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
+    if (p->state_fields.n && !f->external) {
+        Roots state = state_roots(p);
+        if (f->procedure) {
+            read_write_check(c, state, e->loc);
+            forget_roots(&c->vars, state, false);
+        }
+        if (in->state != 2 || in->state_shrinks) {
+            for (int j = 0; j < p->state_fields.n; j++) {
+                Type *elem = flex_elements(state_field_type(p, p->state_fields.v[j]));
+                if (elem) {
+                    shrink_check(c, state, elem, NULL, e->loc);
+                }
+            }
+        }
+    }
     read_call_check(c, in, &values, e->loc);
     // A callee still being lowered has no summary yet; assume it shrinks.
     for (int j = 0; j < values.n && j < 64; j++) {
@@ -2750,6 +2800,22 @@ void empty_array_braces(Expr *e, Type *t)
 
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
+    if (e->kind == E_DEFAULT) {
+        if (t->kind == T_STRUCT || t->kind == T_GROW || t->kind == T_BOUNDED) {
+            Expr empty = {.kind = t->kind == T_STRUCT ? E_RECORD : E_ARRAY,
+                          .loc = e->loc,
+                          .text = t->kind == T_STRUCT ? t->def->name : NULL};
+            return construct(c, &empty, t, dst);
+        }
+        if (t->refs) {
+            fail(e->loc, "static variable '%s' needs an initializer", e->state_field->name);
+        }
+        Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+        Instr *i = emit(c, I_ZERO, e->loc);
+        i->dst = out.id;
+        i->type = t;
+        return out;
+    }
     if (e->kind == E_LOOP_PART) {
         return construct(c, loop_part(c->p, e, expression_type(c, e->a, NULL)), t, dst);
     }
@@ -3531,6 +3597,28 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
 
 Value expression(Context *c, Expr *e, Type *expected)
 {
+    if (e->kind == E_STATE) {
+        Field *f = e->state_field;
+        c->in->uses_state = true;
+        if (e->type_expr) {
+            Type *type = type_spec(c->p, e->type_expr);
+            Def *d = type->def->generic ? type->def->generic : type->def;
+            tool_record(c->p, e->type_expr->loc, d->loc, d->name, type, NULL, d, 23, false);
+        }
+        if (c->type_constant || c->in->fn->constant_value) {
+            fail(e->loc, "type constant cannot read a static variable");
+        }
+        Value out = {
+            .type = state_field_type(c->p, f), .addressable = true, .storage = state_roots(c->p)};
+        out.id = slot(c, out.type, true);
+        out.deps = out.type->refs ? out.storage : (Roots){0};
+        Instr *i = emit(c, I_STATE_REF, e->loc);
+        i->dst = out.id;
+        i->label = f->index;
+        i->type = out.type;
+        tool_record(c->p, e->loc, f->loc, f->name, out.type, NULL, f->owner, 13, false);
+        return out;
+    }
     if (e->kind == E_LOOP_PART) {
         return expression(c, loop_part(c->p, e, expression_type(c, e->a, NULL)), expected);
     }
@@ -3765,7 +3853,10 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         tool_record(p, e->loc, v->declaration, v->name,
                     v->narrowed && !c->raw_name ? v->narrowed : v->type, NULL, NULL,
-                    v->parameter ? TOOL_PARAMETER : v->mut ? 13 : 14, false);
+                    v->parameter ? TOOL_PARAMETER
+                    : v->mut     ? 13
+                                 : 14,
+                    false);
         Value result = variable(v);
         if (v->narrowed && !c->raw_name) {
             return convert_value(c, result, v->narrowed, -1, e->loc);

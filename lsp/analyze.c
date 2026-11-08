@@ -480,9 +480,10 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
                     at++;
                 }
                 const char *leaf = short_name(r->name);
-                if (!strncmp(at, leaf, strlen(leaf)) && !name_byte((unsigned char)at[strlen(leaf)])) {
-                    ToolRef use = {r->use, group->loc, group->name, group->type, NULL,
-                                   group, 23, false};
+                if (!strncmp(at, leaf, strlen(leaf)) &&
+                    !name_byte((unsigned char)at[strlen(leaf)])) {
+                    ToolRef use = {r->use, group->loc, group->name, group->type,
+                                   NULL,   group,      23,          false};
                     emit_ref(p, array, &use);
                 }
             }
@@ -578,7 +579,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     if (r->owner && r->definition) {
         for (int j = 0; j < p->defs.n; j++) {
             Def *d = p->defs.v[j];
-            bool contains = false;
+            bool contains = r->kind == 13 && derives(d, r->owner);
             List *members = r->function ? &d->methods : &d->fields;
             for (int k = 0; k < members->n; k++) {
                 Loc loc = r->function ? ((Function *)members->v[k])->declaration
@@ -596,7 +597,9 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     }
     cJSON_AddBoolToObject(out, "private", r->function ? r->function->priv : false);
     // Static members and type constants belong to the def^, not its values.
-    cJSON_AddBoolToObject(out, "static", r->function ? r->function->static_member : r->kind == 14);
+    cJSON_AddBoolToObject(out, "static",
+                          r->function ? r->function->static_member
+                                      : r->kind == 14 || (r->owner && r->kind == 13));
     bool public = r->function               ? r->function->public
                   : r->type && r->type->def ? r->type->def->public
                                             : false;
@@ -731,6 +734,16 @@ static cJSON *export_index(Session *s)
             Loc loc = f->declaration.file ? f->declaration : f->loc;
             r = (ToolRef){loc, loc, f->name, NULL, f, d, 6, true};
             emit_ref(p, refs, &r);
+        }
+        for (int k = 0; k < d->state_fields.n; k++) {
+            Field *f = d->state_fields.v[k];
+            r = (ToolRef){f->loc, f->loc, f->name, f->type, NULL, d, 13, true};
+            int count = cJSON_GetArraySize(refs);
+            emit_ref(p, refs, &r);
+            if (cJSON_GetArraySize(refs) > count) {
+                cJSON *last = cJSON_GetArrayItem(refs, count);
+                cJSON_ReplaceItemInObjectCaseSensitive(last, "private", cJSON_CreateBool(f->priv));
+            }
         }
         for (int k = 0; k < d->constants.n; k++) {
             Constant *c = d->constants.v[k];

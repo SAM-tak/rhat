@@ -304,6 +304,11 @@ _Noreturn void rh_index_fail(int32_t line)
     rh_panic("array index out of bounds", line);
 }
 
+_Noreturn void rh_state_fail(int32_t line)
+{
+    rh_panic("static variable used before initialization", line);
+}
+
 _Noreturn void rh_pop_fail(int32_t line)
 {
     rh_panic("pop from empty array", line);

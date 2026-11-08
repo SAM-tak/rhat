@@ -469,7 +469,7 @@ static void external_call(Output *o, Instr *i)
 // An exportC^ function's entry from its C wrapper: by-value def^ values come
 // by pointer, a nullable pointer as a plain one, and the data stacks start
 // where the interrupted R^ call left them.
-static void export_entry(Instance *in, FILE *f)
+static void export_entry(Program *p, Instance *in, FILE *f)
 {
     Type *t = in->result;
     // A string (exportL^ only) comes as data and length, and goes back
@@ -524,11 +524,12 @@ static void export_entry(Instance *in, FILE *f)
         }
     }
     if (t->kind == T_VOID || (out && !direct(t))) {
-        fprintf(f, "  call void @%s(i64 %%base%s%s)\n  ret void\n}\n", in->symbol,
-                out ? ", ptr %out" : "", args);
+        fprintf(f, "  call void @%s(i64 %%base%s%s%s)\n  ret void\n}\n", in->symbol,
+                p->state_fields.n ? ", ptr null" : "", out ? ", ptr %out" : "", args);
         return;
     }
-    fprintf(f, "  %%r = call %s @%s(i64 %%base%s)\n", llvm_type(t), in->symbol, args);
+    fprintf(f, "  %%r = call %s @%s(i64 %%base%s%s)\n", llvm_type(t), in->symbol,
+            p->state_fields.n ? ", ptr null" : "", args);
     if (out) {
         fprintf(f, "  store %s %%r, ptr %%out\n  ret void\n}\n", llvm_type(t));
     }
@@ -737,6 +738,19 @@ static void instruction(Output *o, Instr *i)
         return;
     }
     switch (i->op) {
+    case I_STATE_BIND:
+        a = ++o->tmp;
+        fprintf(f, "  %%t%d = getelementptr ptr, ptr %%context, i64 %d\n", a, i->label);
+        fprintf(f, "  store ptr %%p%d, ptr %%t%d\n", i->a, a);
+        break;
+    case I_STATE_REF:
+        a = ++o->tmp;
+        b = ++o->tmp;
+        fprintf(f, "  %%t%d = getelementptr ptr, ptr %%context, i64 %d\n", a, i->label);
+        fprintf(f, "  %%p%d = load ptr, ptr %%t%d\n", i->dst, a);
+        fprintf(f, "  %%t%d = icmp ne ptr %%p%d, null\n", b, i->dst);
+        check_or_fail(o, b, "state_fail", i->loc.line);
+        break;
     case I_CONST:
         save(o, i->dst, t, i->text);
         break;
@@ -1480,6 +1494,9 @@ static void instruction(Output *o, Instr *i)
         else {
             fprintf(f, "  call void @%s(i64 %%t%d", i->callee->symbol, a);
         }
+        if (o->p->state_fields.n) {
+            fputs(", ptr %context", f);
+        }
         if (t->kind != T_VOID && !direct(t)) {
             fprintf(f, ", ptr %%p%d", i->dst);
         }
@@ -1582,6 +1599,9 @@ static void instruction(Output *o, Instr *i)
         }
         else {
             fprintf(f, "  call void %%t%d(i64 %%t%d", target, a);
+        }
+        if (o->p->state_fields.n) {
+            fputs(", ptr %context", f);
         }
         if (t->kind != T_VOID && !direct(t)) {
             fprintf(f, ", ptr %%p%d", i->dst);
@@ -1911,8 +1931,9 @@ void emit_llvm(Program *p, const char *path)
                 "other:\n  call void @rh_print_integer(ptr %%p, i32 %d, i32 %d)\n  ret void\n}\n",
                 numeric_bits(base->kind), kind_unsigned(base->kind));
     }
-    const char *failures[] = {"stack_overflow", "index_fail",    "pop_fail",    "float_cast_fail",
-                              "slice_fail",     "truncate_fail", "assert_fail", "capacity_fail"};
+    const char *failures[] = {"stack_overflow",  "index_fail",    "pop_fail",
+                              "float_cast_fail", "slice_fail",    "truncate_fail",
+                              "assert_fail",     "capacity_fail", "state_fail"};
     for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++) {
         fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
     }
@@ -1934,6 +1955,9 @@ void emit_llvm(Program *p, const char *path)
                 direct(in->result) ? llvm_type(in->result) : "void", in->symbol);
         bool result = in->result->kind != T_VOID;
         fputs("i64 %sp", f);
+        if (p->state_fields.n) {
+            fputs(", ptr %context", f);
+        }
         if (result && !direct(in->result)) {
             fputs(", ptr %out", f);
         }
@@ -1986,20 +2010,26 @@ void emit_llvm(Program *p, const char *path)
         Instance *in = p->instances.v[j];
         if ((in->fn->exported || in->fn->lhat_export) &&
             (!p->emitting || in->fn->module == p->emitting)) {
-            export_entry(in, f);
+            export_entry(p, in, f);
         }
     }
     if (!p->emitting || p->emitting->root) {
         // The entry receives the command arguments as its ... string slice.
+        char *state = p->state_fields.n ? fmt("  %%context = alloca [%d x ptr]\n"
+                                              "  store [%d x ptr] zeroinitializer, ptr %%context\n",
+                                              p->state_fields.n, p->state_fields.n)
+                                        : "";
         fprintf(f,
                 "\ndefine i32 @main(i32 %%argc, ptr %%argv) {\nentry:\n"
+                "%s"
                 "  %%args = alloca { ptr, i64 }\n"
                 "  call void @rh_runtime_init(ptr @rh_stacks, i64 %d)\n"
                 "  call void @rh_runtime_args(i32 %%argc, ptr %%argv, ptr %%args)\n"
                 "  %%strings = load { ptr, i64 }, ptr %%args\n"
-                "  call void @%s(i64 0, { ptr, i64 } %%strings)\n"
+                "  call void @%s(i64 0%s, { ptr, i64 } %%strings)\n"
                 "  call void @rh_runtime_shutdown()\n  ret i32 0\n}\n",
-                p->stack_count, ((Instance *)p->entry->instances.v[0])->symbol);
+                state, p->stack_count, ((Instance *)p->entry->instances.v[0])->symbol,
+                p->state_fields.n ? ", ptr %context" : "");
     }
     fputs("\n!0 = !{!\"branch_weights\", i32 1048575, i32 1}\n", f);
     fputs("!1 = !{!\"Rhat storage\"}\n"
@@ -2063,6 +2093,8 @@ void dump_ir(Program *p, const char *path)
                            "char.check",
                            "runtime.helper",
                            "error.site",
+                           "context.ref",
+                           "context.bind",
                            "array.fill"};
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];

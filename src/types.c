@@ -401,6 +401,41 @@ Type *type_spec(Program *p, Spec *s)
     return s->type;
 }
 
+Type *state_field_type(Program *p, Field *f)
+{
+    if (f->type) {
+        return f->type;
+    }
+    if (f->state_checking) {
+        fail(f->loc, "cyclic static variable type at '%s.%s'", f->owner->name, f->name);
+    }
+    f->state_checking = true;
+    if (f->spec) {
+        f->type = type_spec(p, f->spec);
+    }
+    else {
+        Function *scope = mem(sizeof(*scope));
+        *scope = (Function){.name = "<static-initializer>",
+                            .module = f->owner->module,
+                            .owner = f->owner,
+                            .procedure = true,
+                            .loc = f->loc};
+        Instance *in = mem(sizeof(*in));
+        in->fn = scope;
+        Context c = {.p = p, .in = in, .access = f->owner};
+        f->type = expression_type(&c, f->init, NULL);
+        if (!f->type) {
+            infer_results(p);
+            f->type = expression_type(&c, f->init, NULL);
+        }
+    }
+    f->state_checking = false;
+    if (!f->type || f->type->kind == T_VOID || f->type->kind == T_NEVER) {
+        fail(f->loc, "cannot infer type of static variable '%s'; add a type annotation", f->name);
+    }
+    return f->type;
+}
+
 char *type_name(Type *t)
 {
     if (!t) {

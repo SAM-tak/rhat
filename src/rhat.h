@@ -122,28 +122,31 @@ enum {
     E_ARRAY,
     E_FUNCTION,
     E_IF,
-    E_SAVED,    // A compiler-owned value snapshot, never parsed from source.
-    E_SCOPE,    // A lexical focus scope producing one value.
-    E_EXPECT,   // Infer a contextual numeric type without evaluating the hint.
-    E_PRESENT,  // Postfix nil presence test; it does not unwrap a value.
-    E_FITS,     // Type conformance predicate; its right operand is a Spec.
-    E_TRY,      // Unwrap success or transfer an explicitly returned error.
-    E_CATCH,    // Replace an error value with a lazily evaluated expression.
-    E_COALESCE, // Lazy nil replacement, below unary and above binary operators.
-    E_CHAIN,    // Comparisons share operands and short-circuit left to right.
-    E_SLICE,    // A range index: text is ".." or "to^"; b/c are optional bounds.
-    E_PACK,     // Compiler-only: trailing arguments of a variadic call, or the
-                // single forwarded sequence in a.
-    E_PANIC,    // panic^ a: end the process; it produces no value.
-    E_RANGE,    // a .. b or a to^ b (text): a range^ value; a or b may be omitted.
-    E_CHAR,     // char^"x": the Unicode scalar value in text, as decimal digits.
-    E_INTERP,   // $"...": text and holes in args, each hole's format in names.
-    E_TYPE,     // Compile-time type expression, eliminated by module resolution.
-    E_STATIC,   // Type.text naming a static member: a is the E_TYPE; only called.
-    E_LOOP_PART // Compiler-only: a piece of for^ in^ (text) whose form follows the type of a.
+    E_SAVED,     // A compiler-owned value snapshot, never parsed from source.
+    E_SCOPE,     // A lexical focus scope producing one value.
+    E_EXPECT,    // Infer a contextual numeric type without evaluating the hint.
+    E_PRESENT,   // Postfix nil presence test; it does not unwrap a value.
+    E_FITS,      // Type conformance predicate; its right operand is a Spec.
+    E_TRY,       // Unwrap success or transfer an explicitly returned error.
+    E_CATCH,     // Replace an error value with a lazily evaluated expression.
+    E_COALESCE,  // Lazy nil replacement, below unary and above binary operators.
+    E_CHAIN,     // Comparisons share operands and short-circuit left to right.
+    E_SLICE,     // A range index: text is ".." or "to^"; b/c are optional bounds.
+    E_PACK,      // Compiler-only: trailing arguments of a variadic call, or the
+                 // single forwarded sequence in a.
+    E_PANIC,     // panic^ a: end the process; it produces no value.
+    E_RANGE,     // a .. b or a to^ b (text): a range^ value; a or b may be omitted.
+    E_CHAR,      // char^"x": the Unicode scalar value in text, as decimal digits.
+    E_INTERP,    // $"...": text and holes in args, each hole's format in names.
+    E_TYPE,      // Compile-time type expression, eliminated by module resolution.
+    E_STATIC,    // Type.text naming a static member: a is the E_TYPE; only called.
+    E_LOOP_PART, // Compiler-only: a piece of for^ in^ (text) whose form follows the type of a.
+    E_STATE,     // A mutable type member in the current execution context.
+    E_DEFAULT    // Default construction of a static member with an explicit type.
 };
 
 struct Expr {
+    Field *state_field;  // E_STATE's declaration, resolved before type checking.
     Spec *type_expr;     // Type application, Self^, or an explicit constructor type.
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
@@ -203,6 +206,7 @@ typedef struct {
 } CatchArm;
 
 struct Stmt {
+    Field *state_field;   // An entry-owned binding backing one mutable type member.
     bool public_binding;  // A public entry binding must resolve to a type alias.
     List handlers;        // Ordered CatchArm pointers for S_HANDLE.
     bool loop_handler;    // A loop catches main^ only, with outer names visible.
@@ -266,6 +270,7 @@ struct Function {
 };
 
 struct Field {
+    bool state_checking; // Guard recursive static-member type inference.
     Loc loc;
     char *name;
     Spec *spec;
@@ -282,6 +287,7 @@ typedef struct {
 } EnumMember;
 
 struct Def {
+    List state_fields; // Mutable type members, independent of instance storage.
     List type_params, type_args, instances; // Parameters, concrete arguments and cached defs.
     Def *generic;                           // The template of a concrete instantiation.
     List base_specs, constants;             // Composition types and type-level constants.
@@ -371,6 +377,8 @@ struct Type {
 };
 
 struct Program {
+    List state_fields;           // Concrete mutable type members, in initialization order.
+    struct Root *state_root;     // Borrow provenance shared by the hidden context references.
     struct FormatSyntax *format; // Optional parser trace for the source formatter.
     bool library_root;           // Check a standalone module using library rules.
     bool tooling;                // Retain source and checked resolutions for editor clients.
@@ -402,6 +410,8 @@ void resolve_modules(Program *p);
 Def *specialize_definition(Def *source, List *arguments, const char *name);
 void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
+// Resolve the fixed type of a mutable member from its annotation or initializer.
+Type *state_field_type(Program *p, Field *field);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
 // A literal's array type: its written T[...]{...} type, else the context or
@@ -465,22 +475,24 @@ enum {
     I_STACK_SAVE,   // Save the caller-owned result stack frontier.
     I_STACK_REWIND, // Restore a result construction checkpoint after an error.
     I_RANGE_GUARD,
-    I_TERMINATE, // Exit with the string in slot a; label 1 marks panic^.
-    I_DYN,       // Pair reference a with method table label.
-    I_DYNCALL,   // Call method table entry label through args[0].
-    I_DYNIS,     // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
-    I_DYNCAST,   // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
-    I_DYNDATA,   // The data reference of dyn^ a, proven to be type.
-    I_CASE_AT,   // Place dst at union a's payload for alternative label; b also sets the tag.
-    I_CHAR,      // dst (i64^) = the scalar a holds, or -1: a is the one character of a
-                 // string^, or else an i64^ to check.
-    I_HELPER,    // dst (i64^, or none when -1) = runtime function text applied to args: a
-                 // string^ or slice passes its data and length, an i64^ itself, and the
-                 // source line goes last.
-    I_SITE,      // dst = the static record of where an error is built: its source, line,
-                 // column and message; text is the source (length bytes), a NUL, the message.
-    I_FILL       // Fill owning array dst with a copies of element b during construction,
-                 // or with b < 0 reserve a elements of capacity for a T[max^].
+    I_TERMINATE,  // Exit with the string in slot a; label 1 marks panic^.
+    I_DYN,        // Pair reference a with method table label.
+    I_DYNCALL,    // Call method table entry label through args[0].
+    I_DYNIS,      // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
+    I_DYNCAST,    // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
+    I_DYNDATA,    // The data reference of dyn^ a, proven to be type.
+    I_CASE_AT,    // Place dst at union a's payload for alternative label; b also sets the tag.
+    I_CHAR,       // dst (i64^) = the scalar a holds, or -1: a is the one character of a
+                  // string^, or else an i64^ to check.
+    I_HELPER,     // dst (i64^, or none when -1) = runtime function text applied to args: a
+                  // string^ or slice passes its data and length, an i64^ itself, and the
+                  // source line goes last.
+    I_SITE,       // dst = the static record of where an error is built: its source, line,
+                  // column and message; text is the source (length bytes), a NUL, the message.
+    I_STATE_REF,  // Alias dst to context member label.
+    I_STATE_BIND, // Publish entry-owned slot a as context member label.
+    I_FILL        // Fill owning array dst with a copies of element b during construction,
+                  // or with b < 0 reserve a elements of capacity for a T[max^].
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };
@@ -525,7 +537,9 @@ typedef struct {
 } Slot;
 
 struct Instance {
-    bool invalid; // Partial editor analysis; must never produce executable code.
+    bool state_shrinks; // This call may shrink a task-owned static flex array.
+    bool uses_state;    // This instance or a reachable callee accesses the task context.
+    bool invalid;       // Partial editor analysis; must never produce executable code.
     Function *fn;
     Def *self;
     List params, slots, code;

@@ -499,6 +499,8 @@ bool dead(Value v);
 // storage from outside. The same node gives the same root, so that a loop
 // analysed again until its roots settle meets the same ones.
 Roots root(Context *c, const void *key, int depth, bool external);
+// Provenance of the current task's static-member storage.
+Roots state_roots(Program *p);
 // What references held in storage under these roots may point at.
 Roots roots_inner(Roots a);
 // Both sets of roots together.

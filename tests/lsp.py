@@ -1359,6 +1359,31 @@ g(1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=inferred_fields.as_uri())))
     print('PASS inferred field defaults, hover and diagnostic recovery',flush=True)
 
+    static_path = work/'static_members.rh'
+    static_text = ('def^ Counter {var^count=0 increment=p^ {def^.count+=1}}\n'
+                   'Counter.increment()\nprint^(Counter.count)\n')
+    client.open(static_path,static_text)
+    static_diagnostics = client.diagnostics(static_path,1)
+    assert static_diagnostics == [], static_diagnostics
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=static_path.as_uri()),
+        position=at(static_text,'count=0')))
+    assert 'i32^' in hover['contents']['value'] and '\x01' not in hover['contents']['value'], hover
+    definition = client.request('textDocument/definition',dict(textDocument=dict(uri=static_path.as_uri()),
+        position=at(static_text,'Counter.count',shift=8)))
+    if isinstance(definition,list):
+        definition = definition[0]
+    assert definition['range']['start'] == at(static_text,'count=0'), definition
+    completion = client.request('textDocument/completion',dict(textDocument=dict(uri=static_path.as_uri()),
+        position=at(static_text,'Counter.count',shift=8)))
+    items = completion['items'] if isinstance(completion,dict) else completion
+    assert 'count' in {item['label'] for item in items}, items
+    client.change(static_path,static_text.replace('count=0','count=""'),2)
+    assert client.diagnostics(static_path,2)
+    client.change(static_path,static_text,3)
+    assert client.diagnostics(static_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=static_path.as_uri())))
+    print('PASS mutable static members, hover, navigation and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

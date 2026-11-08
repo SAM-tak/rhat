@@ -1399,6 +1399,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     if (!e) {
         return type_builtin(c->p, T_VOID);
     }
+    if (e->kind == E_STATE || e->kind == E_DEFAULT) {
+        return state_field_type(c->p, e->state_field);
+    }
     if (e->kind == E_LOOP_PART) {
         Type *t = infer_expr(c, e->a, NULL);
         if (c->terminated) {
@@ -2936,6 +2939,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         return n;
     }
     switch (e->kind) {
+    case E_STATE:
+    case E_DEFAULT:
+        n->type = state_field_type(c->p, e->state_field);
+        break;
     case E_NAME:
     case E_SELF: {
         Var *v = selected(&c->scope, e);
