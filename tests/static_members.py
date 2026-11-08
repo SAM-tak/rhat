@@ -5,6 +5,129 @@ from harness import Suite
 def main():
     suite = Suite('static members')
     positive, negative = suite.positive, suite.negative
+    positive('entry_binding_methods', '''
+var^base=2
+var^count=base+1
+let^increment=p^ {count+=1}
+def^ A {
+    self^{i=0}
+    var^si=0
+    increment=p^ {count+=1 def^.si+=1}
+    step=p^self^ {count+=1 self^.i+=1 increment()}
+    read=f^self^ {count+self^.i}
+}
+var^a=A{}
+A.increment() a.step() increment()
+print^(count,a.read(),A.si)
+do^{var^count=99 a.step() print^(count)}
+print^(count,a.read())
+''', '7 8 1\n99\n9 11\n')
+    positive('entry_binding_dispatch', '''
+var^count=0
+def^ Base {abstract^step:p^self^;}
+def^ A:Base {override^step=p^self^ {count+=1}}
+def^ Counter<T> {step=p^ {count+=1}}
+var^a=A{}
+let^b:ref^dyn^Base=ref^a
+b.step() Counter<i32^>.step() Counter<i64^>.step()
+print^(count)
+''', '3\n')
+    positive('entry_binding_inference', '''
+let^next=f^n {n+1}
+var^count=next(2)
+let^argc=....len
+def^ A {step=p^ {count+=1} get=f^ {count} args=f^ {argc}}
+A.step()
+print^(A.get(),A.args())
+''', '4 0\n')
+    positive('entry_binding_parallel', '''
+let^pair=f^ {return^ 2,3}
+var^a,b=pair()
+var^c,d=4,5
+def^ A {step=p^ {a+=1 b+=2 c+=3 d+=4}}
+A.step()
+print^(a,b,c,d)
+''', '3 5 7 9\n')
+    positive('entry_let_read', '''
+let^n=7
+let^items=i32^[2]{2,3}
+let^show=f^ {n}
+def^ A {
+    self^{i=1}
+    get=f^self^ {n+items[0]+self^.i}
+    indirect=f^ {show()}
+    view=f^ {items[..]}
+}
+print^(A{}.get(),A.indirect(),A.view()[1])
+''', '10 7 3\n')
+    positive('entry_reference_binding', '''
+var^n=1
+let^r=ref^n
+def^ A {step=p^ {*r+=2}}
+A.step()
+print^(n)
+''', '3\n')
+    negative('entry_method_indirect_flex_borrow', '''
+var^items=i32^[flex^]{1,2}
+let^view=ref^items
+def^ A {first=f^ {ref^view[0]}}
+do^{let^r=A.first() items.clear() print^(*r)}
+''', 'may refer into it')
+    negative('entry_method_stored_flex_borrow', '''
+var^items=i32^[flex^]{1,2}
+let^r=ref^items[0]
+def^ A {clear=p^ {items.clear()}}
+A.clear()
+print^(*r)
+''', 'may refer into it')
+    negative('entry_method_pure_write', '''
+var^count=0
+def^ A {self^{} bad=f^self^ {count+=1}}
+A{}.bad()
+''', 'f^ cannot mutate')
+    negative('entry_static_pure_write', '''
+var^count=0
+def^ A {bad=f^ {count+=1}}
+A.bad()
+''', 'f^ cannot mutate')
+    negative('entry_method_let_slice', '''
+let^items=i32^[2]{1,2}
+def^ A {view=f^ {items[..]}}
+A.view()[0]:=3
+''', 'read^')
+    negative('entry_static_let_write', '''
+let^n=1
+def^ A {bad=p^ {n+=1}}
+A.bad()
+''', "cannot modify let^ binding 'n'")
+    negative('entry_instance_let_write', '''
+let^items=i32^[2]{1,2}
+def^ A {self^{} bad=p^self^ {items[0]:=3}}
+A{}.bad()
+''', "cannot modify let^ binding 'items'")
+    negative('entry_method_let_borrow', '''
+let^items=i32^[2]{1,2}
+def^ A {bad=p^ {let^r=ref^items print^r[0]}}
+A.bad()
+''', "requires var^, found let^ 'items'")
+    negative('entry_method_let_mutable_self', '''
+def^ B {self^{n=0} set=p^self^ {self^.n=1}}
+let^b=B{}
+def^ A {bad=p^ {b.set()}}
+A.bad()
+''', "cannot modify let^ binding 'b'")
+    negative('entry_method_flex_borrow', '''
+var^items=i32^[flex^]{1,2}
+def^ A {clear=p^ {items.clear()}}
+let^r=ref^items[1]
+A.clear()
+print^(*r)
+''', "while 'r' may refer into it")
+    negative('entry_method_export', '''
+var^n=0
+def^ A {get=f^ {n}}
+exportC^let^get=f^ ->i32^ {A.get()}
+''', 'exported function cannot access task-owned static variables')
     positive('static_basic', '''
 def^ A {
     self^{i=0}
@@ -145,6 +268,22 @@ print^(A.a)
                 result = suite.run([exe],False)
                 assert 'static variable used before initialization' in result.stderr, result.stderr
     suite.case('static_initialization_guard', initialization_guard)
+
+    def entry_initialization_guard():
+        source = suite.source('entry_initialization_guard', '''
+def^ A {step=p^ {count+=1}}
+A.step()
+var^count=0
+''')
+        if suite.args.checks_only:
+            suite.run([suite.compiler,'check',source])
+        else:
+            for opt in suite.opts:
+                exe = suite.work/f'entry_initialization_guard{opt}.exe'
+                suite.run([suite.compiler,'build',source,'-o',exe,'--clang',suite.clang,opt])
+                result = suite.run([exe],False)
+                assert 'static variable used before initialization' in result.stderr, result.stderr
+    suite.case('entry_initialization_guard', entry_initialization_guard)
     suite.finish()
 
 

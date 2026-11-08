@@ -896,8 +896,35 @@ static void state_reference(Program *p, Field *f, Expr *e)
         fail(e->loc, "private static variable '%s.%s'", f->owner->name, f->name);
     }
     Loc at = e->name_loc.file ? e->name_loc : e->loc;
-    tool_record(p, at, f->loc, f->name, f->type, NULL, f->owner, 13, false);
+    tool_record(p, at, f->loc, f->name, f->type, NULL, f->owner,
+                f->binding && !f->binding->mut ? 14 : 13, false);
     *e = (Expr){.kind = E_STATE, .loc = at, .text = f->name, .state_field = f};
+}
+
+static bool member_function(Function *f)
+{
+    for (int j = 0; f && f->owner && j < f->owner->own_methods.n; j++) {
+        if (f->owner->own_methods.v[j] == f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static Field *binding_state(Program *p, Stmt *binding)
+{
+    if (!binding->state_field) {
+        Field *f = mem(sizeof(*f));
+        *f = (Field){.binding = binding,
+                     .loc = binding->loc,
+                     .name = binding->name,
+                     .spec = binding->spec,
+                     .init = binding->a,
+                     .index = p->state_fields.n};
+        binding->state_field = f;
+        add(&p->state_fields, f);
+    }
+    return binding->state_field;
 }
 
 // Whether d or a def^ it composes declares a static member name.
@@ -1158,7 +1185,11 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             if (top_user->name && !strcmp(top_user->name, "<field-default>")) {
                 fail(e->loc, "field default cannot capture caller locals");
             }
-            // Inside a function the binding is its hidden parameter.
+            if (member_function(top_user)) {
+                state_reference(p, binding_state(p, binding), e);
+                return;
+            }
+            // Inside a top-level function the binding is its hidden parameter.
             if (top_user->owner || !module_function(m, top_user->name)) {
                 fail(e->loc,
                      "only top-level functions can use the top-level binding '%s'; pass it "
@@ -1585,7 +1616,8 @@ static void pass_top_bindings(Program *p, Module *m)
     }
     for (int j = 0; j < top_calls.n; j++) {
         Function *caller = ((TopCall *)top_calls.v[j])->caller;
-        if (caller && caller->uses.n && (caller->owner || !module_function(m, caller->name))) {
+        if (caller && caller->uses.n && !member_function(caller) &&
+            (caller->owner || !module_function(m, caller->name))) {
             TOOL_CHECK(p, fail(caller->loc,
                                "only top-level functions can use the top-level binding '%s'; "
                                "pass it as an argument",
@@ -1676,6 +1708,14 @@ static void pass_top_bindings(Program *p, Module *m)
             }
             Stmt *binding = top_binding(a->name + 5);
             Loc at = call->call->loc;
+            if (member_function(call->caller)) {
+                Expr *place = name_expr(binding->name, at);
+                state_reference(p, binding_state(p, binding), place);
+                Expr *borrow = unary_expr("ref^", place);
+                borrow->top_binding = !binding->mut;
+                add(&args, borrow);
+                continue;
+            }
             if (call->caller) {
                 add(&args, name_expr(a->name, at));
                 continue;
@@ -1704,6 +1744,18 @@ static void pass_top_bindings(Program *p, Module *m)
             add(&args, call->call->args.v[k]);
         }
         call->call->args = args;
+    }
+    // Any entry-owned referent may flow into a binding used by a method.
+    // Give those bindings the same lifetime and alias domain as the context.
+    bool state = false;
+    for (int j = 0; j < top_bindings.n; j++) {
+        state |= ((Stmt *)top_bindings.v[j])->state_field != NULL;
+    }
+    for (int j = 0; state && j < top_bindings.n; j++) {
+        Stmt *binding = top_bindings.v[j];
+        if (strcmp(binding->name, "_^")) {
+            binding_state(p, binding);
+        }
     }
 }
 
@@ -1935,6 +1987,9 @@ void resolve_modules(Program *p)
     List body = {0};
     for (int j = 0; j < p->state_fields.n; j++) {
         Field *f = p->state_fields.v[j];
+        if (f->binding) {
+            continue;
+        }
         Stmt *s = mem(sizeof(*s));
         *s = (Stmt){.kind = S_BIND,
                     .loc = f->loc,

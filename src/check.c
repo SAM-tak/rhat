@@ -660,6 +660,9 @@ static Var *infer_variable(Infer *c, Expr *e);
 // A function reaches a top-level binding through a hidden reference, written *name.
 static bool infer_let_place(Infer *c, Expr *e)
 {
+    if (e->kind == E_STATE) {
+        return e->state_field->binding && !e->state_field->binding->mut;
+    }
     if (e->kind == E_UNARY && !strcmp(e->text, "*")) {
         Var *hidden = e->a->kind == E_NAME ? infer_variable(c, e->a) : NULL;
         return hidden && hidden->captured_let;
@@ -2408,6 +2411,46 @@ static void infer_statements(Infer *c, List *body, bool scoped)
         c->vars.n = mark;
         c->lexical--;
     }
+}
+
+Type *top_binding_type(Program *p, Stmt *binding)
+{
+    Instance in = {.fn = p->entry};
+    Infer c = {.p = p, .in = &in, .lexical = 1};
+    for (int j = 0; j < p->entry->params.n; j++) {
+        Param *param = p->entry->params.v[j];
+        Var *v = mem(sizeof(*v));
+        *v = (Var){.name = param->name, .type = parameter_type(p, param), .lexical = 1};
+        add(&in.params, v->type);
+        add(&c.vars, v);
+    }
+    for (int j = 0; j < p->entry->body.n; j++) {
+        Stmt *s = p->entry->body.v[j];
+        // Only declarations are needed; executing calls here can recurse through methods.
+        if (s->kind != S_BIND && s->kind != S_BIND_MANY) {
+            continue;
+        }
+        if (s->state_field && !s->state_field->binding) {
+            continue;
+        }
+        List one = {0};
+        add(&one, s);
+        infer_statements(&c, &one, false);
+        bool found = s == binding;
+        for (int k = 0; s->kind == S_BIND_MANY && k < s->body.n; k++) {
+            found |= s->body.v[k] == binding;
+        }
+        if (found) {
+            for (int k = c.vars.n - 1; k >= 0; k--) {
+                Var *v = c.vars.v[k];
+                if (!strcmp(v->name, binding->name)) {
+                    return v->type;
+                }
+            }
+            break;
+        }
+    }
+    return NULL;
 }
 
 List first_types(Context *c, Stmt *s)

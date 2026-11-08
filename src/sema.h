@@ -217,6 +217,10 @@ Type *chain_place_type(Context *c, Expr *e);
 
 // Infer an expression from a snapshot without generating IR.
 Type *expression_type(Context *c, Expr *e, Type *expected);
+
+// Infer an entry binding in its declaration scope, including parallel bindings.
+Type *top_binding_type(Program *p, Stmt *binding);
+
 // A string^ method written in std.text, as a call of its function, or NULL if e is not one.
 Expr *text_library_call(Program *p, Expr *e, Type *base);
 // The form an E_LOOP_PART takes when its a has type t: a range^, an array or a cursor.

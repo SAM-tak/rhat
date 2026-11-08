@@ -742,6 +742,26 @@ static void binding_name(Context *c, Stmt *s)
     }
 }
 
+static void publish_state(Context *c, Stmt *s, Var *v)
+{
+    if (!s->state_field) {
+        return;
+    }
+    s->state_field->type = v->type;
+    v->root = state_roots(c->p);
+    if (v->type->refs) {
+        v->deps = roots_union(v->deps, state_roots(c->p));
+    }
+    if (!v->mut) {
+        Roots immutable = root(c, s->state_field, 0, true);
+        immutable.v[0]->readonly = s->state_field->name;
+        v->root = roots_union(v->root, immutable);
+    }
+    Instr *i = emit(c, I_STATE_BIND, s->loc);
+    i->a = v->slot;
+    i->label = s->state_field->index;
+}
+
 static void statements_unchecked(Context *c, List *body, bool scope)
 {
     int start = c->vars.n;
@@ -939,12 +959,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                         NULL, s->state_field ? s->state_field->owner : NULL, s->mut ? 13 : 14,
                         true);
             add(&c->vars, var);
-            if (s->state_field) {
-                var->root = state_roots(c->p);
-                Instr *i = emit(c, I_STATE_BIND, s->loc);
-                i->a = var->slot;
-                i->label = s->state_field->index;
-            }
+            publish_state(c, s, var);
             c->access = access;
         }
         else if (s->kind == S_BIND_MANY && s->prolog.n) {
@@ -982,6 +997,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 v->mut = s->mut;
                 v->root = source->root;
                 v->deps = source->deps;
+                publish_state(c, binding, v);
                 tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL, NULL,
                             v->mut ? 13 : 14, true);
                 add(&c->vars, v);

@@ -1384,6 +1384,31 @@ g(1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=static_path.as_uri())))
     print('PASS mutable static members, hover, navigation and recovery',flush=True)
 
+    entry_path = work/'entry_methods.rh'
+    entry_text = ('var^count=0\nlet^fixed=7\n'
+                  'def^ Counter {self^{} increment=p^ {count+=1}\n'
+                  'step=p^self^ {count+=1} read=f^self^ {count+fixed}}\n'
+                  'var^c=Counter{}\nCounter.increment() c.step() print^(c.read())\n')
+    client.open(entry_path,entry_text)
+    assert client.diagnostics(entry_path,1) == []
+    for needle in ('count+=1','count+fixed','fixed}}'):
+        position = at(entry_text,needle)
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=entry_path.as_uri()),
+            position=position))
+        assert 'i32^' in hover['contents']['value'], hover
+        definition = client.request('textDocument/definition',dict(textDocument=dict(uri=entry_path.as_uri()),
+            position=position))
+        if isinstance(definition,list):
+            definition = definition[0]
+        name = 'fixed' if needle.startswith('fixed') else 'count'
+        assert definition['range']['start'] == at(entry_text,name+'='), definition
+    client.change(entry_path,entry_text.replace('count=0','count=""'),2)
+    assert client.diagnostics(entry_path,2)
+    client.change(entry_path,entry_text,3)
+    assert client.diagnostics(entry_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=entry_path.as_uri())))
+    print('PASS entry bindings in static and instance methods, navigation and recovery',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

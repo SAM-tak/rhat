@@ -456,6 +456,15 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     if (!r->declaration.file || !r->name || *short_name(r->name) == '<') {
         return;
     }
+    // Name resolution can record a context binding before its type is inferred.
+    for (int j = 0; !r->type && !r->function && j < p->state_fields.n; j++) {
+        Field *f = p->state_fields.v[j];
+        if (!strcmp(r->name, f->name) && r->declaration.line == f->loc.line &&
+            r->declaration.col == f->loc.col &&
+            source_same_path(r->declaration.file, f->loc.file)) {
+            r->type = f->type;
+        }
+    }
     const char *decl_name = declaration_spelling(p, r);
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);

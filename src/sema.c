@@ -1696,7 +1696,7 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
     }
     for (int j = 0; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
-        if (!roots_meet(v->root, storage) && roots_meet(v->deps, storage) &&
+        if ((!roots_meet(v->root, storage) || v->type->refs) && roots_meet(v->deps, storage) &&
             may_reference(v->type, elem)) {
             fail(loc,
                  "cannot shrink flex^ storage or dispose elements while '%s' may refer into it; "
@@ -3610,13 +3610,19 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         Value out = {
             .type = state_field_type(c->p, f), .addressable = true, .storage = state_roots(c->p)};
+        if (f->binding && !f->binding->mut) {
+            Roots immutable = root(c, f, 0, true);
+            immutable.v[0]->readonly = f->name;
+            out.storage = roots_union(out.storage, immutable);
+        }
         out.id = slot(c, out.type, true);
-        out.deps = out.type->refs ? out.storage : (Roots){0};
+        out.deps = out.type->refs ? state_roots(c->p) : (Roots){0};
         Instr *i = emit(c, I_STATE_REF, e->loc);
         i->dst = out.id;
         i->label = f->index;
         i->type = out.type;
-        tool_record(c->p, e->loc, f->loc, f->name, out.type, NULL, f->owner, 13, false);
+        tool_record(c->p, e->loc, f->loc, f->name, out.type, NULL, f->owner,
+                    f->binding && !f->binding->mut ? 14 : 13, false);
         return out;
     }
     if (e->kind == E_LOOP_PART) {

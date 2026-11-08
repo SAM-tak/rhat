@@ -1205,7 +1205,6 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),
         ('top_level_hidden', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\ndo^{ var^ n:i64^ = 5\nshow() }', "which a local hides here"),
         ('top_level_value', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\nlet^ g = show', "cannot be a value"),
-        ('top_level_method', 'var^ n:i64^ = 1\ndef^ A { self^{ x:i64^ = 0 }\nget = f^ self^ -> i64^ { return^ n } }\nprint^(A{}.get())', "only top-level functions can use"),
         ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot mutate borrowed storage"),
         ('top_level_shrink', 'var^ q:i64^[flex^] = {1, 2}\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
         ('top_level_let_write', 'let^ t:i64^[2] = {1, 2}\nlet^ w = p^ { t[0] := 5 }\nw()', "cannot modify let^ binding 't'"),

@@ -407,11 +407,19 @@ Type *state_field_type(Program *p, Field *f)
         return f->type;
     }
     if (f->state_checking) {
-        fail(f->loc, "cyclic static variable type at '%s.%s'", f->owner->name, f->name);
+        fail(f->loc, "cyclic static variable type at '%s.%s'", f->owner ? f->owner->name : "entry",
+             f->name);
     }
     f->state_checking = true;
     if (f->spec) {
         f->type = type_spec(p, f->spec);
+    }
+    else if (f->binding) {
+        f->type = top_binding_type(p, f->binding);
+        if (!f->type) {
+            infer_results(p);
+            f->type = top_binding_type(p, f->binding);
+        }
     }
     else {
         Function *scope = mem(sizeof(*scope));

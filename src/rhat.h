@@ -206,7 +206,7 @@ typedef struct {
 } CatchArm;
 
 struct Stmt {
-    Field *state_field;   // An entry-owned binding backing one mutable type member.
+    Field *state_field;   // Entry-owned storage published through the task context.
     bool public_binding;  // A public entry binding must resolve to a type alias.
     List handlers;        // Ordered CatchArm pointers for S_HANDLE.
     bool loop_handler;    // A loop catches main^ only, with outer names visible.
@@ -270,6 +270,7 @@ struct Function {
 };
 
 struct Field {
+    Stmt *binding;       // Original entry binding when accessed through the task context.
     bool state_checking; // Guard recursive static-member type inference.
     Loc loc;
     char *name;
@@ -377,7 +378,7 @@ struct Type {
 };
 
 struct Program {
-    List state_fields;           // Concrete mutable type members, in initialization order.
+    List state_fields;           // Mutable type members and entry bindings in the task context.
     struct Root *state_root;     // Borrow provenance shared by the hidden context references.
     struct FormatSyntax *format; // Optional parser trace for the source formatter.
     bool library_root;           // Check a standalone module using library rules.
