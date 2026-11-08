@@ -1,0 +1,36 @@
+var^a = i32^[max^](4)
+let^src = { 7, 8 }
+a.push(1)
+let^r = a.push(2)
+a.append(src[..])
+print^(a.len, a[0], *r, a[3], a[1 ..].len)
+a.pop()
+a.truncate(1)
+print^(a.len)
+a.clear()
+for^i from^0 to^3 {
+    a.push(i32^(i) * 10)
+}
+print^(a.len, a[3])
+
+struct^W { n:i32^, xs:i64^[max^] }
+let^fill = p^b {
+    b.push(9)
+}
+let^build = f^c {
+    var^r = i64^[max^](c)
+    r.push(c)
+    return^r
+}
+var^w = W{ n = 1, xs = i64^[max^](3) }
+fill(ref^w.xs)
+fill(ref^w.xs)
+let^q = build(3)
+let^copy = i64^[](q)
+var^total:i64^= 0
+for^k from^1 to^1000 {
+    var^c = u8^[max^](10000000)
+    c.push(u8^(1))
+    total += c.len
+}
+print^(w.xs.len, w.xs[1], q.len, q[0], copy[0], total)

@@ -1,0 +1,36 @@
+def^Shape {
+    abstract^area:f^self^-> f64^;
+    abstract^scale:p^self^, k:f64^;
+    describe = p^self^{ print^("area", self^.area()) }
+}
+def^Square : Shape {
+    self^{ side:f64^= 2.0 }
+    area = f^self^-> f64^{ self^.side * self^.side }
+    scale = p^self^, k:f64^{ self^.side := self^.side * k }
+}
+def^Circle : Shape {
+    self^{ r:f64^= 1.0 }
+    area = f^self^-> f64^{ 3.0 * self^.r * self^.r }
+    scale = p^self^, k:f64^{ self^.r := self^.r * k }
+    override^describe = p^self^{ print^("circle", self^.area()) }
+}
+
+# dyn^ is deperecated.
+let^total = f^shapes: Shape[dynamic^..] -> f64^{
+    var^sum:f64^= 0.0
+    for^var^i:i64^= 0 while^i < shapes.len next^i += 1 { sum += shapes[i].area() }
+    return^sum
+}
+var^a = Square{}
+var^b = Circle{}
+# dynamic^Shape[] means same as Shape[dynamic^] or (ref^dyn^Shape)[] or Shape[ref^dyn^].
+# ref^dyn^ prefix needs parentheses.
+var^all: dynamic^Shape[2] = { ref^a, ref^b }
+print^total(all[..])
+for^var^i:i64^= 0 while^i < 2 next^i += 1 {
+    all[i].describe() all[i].scale(2.0)
+}
+print^total(all[..])
+# ref^dyn^ is still valid. means same as dynamic^.
+let^one: ref^dyn^Shape = ref^a
+one.describe()

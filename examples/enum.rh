@@ -1,0 +1,23 @@
+enum^Mode { Idle, Walk, Dash = 10, Stop }
+let^weight = f^m:Mode -> i32^{
+    for^m: when^Mode.Idle: 1 when^Mode.Walk: 2 when^Mode.Dash, Mode.Stop: 3;
+}
+let^show = p^m:Mode {
+    for^m {
+    when^Mode.Idle: print^("idle")
+    when^Mode.Walk, Mode.Dash: print^("move")
+    when^Mode.Stop: print^("stop")
+    }
+}
+let^mode = Mode.Dash
+print^(
+    mode,
+    Mode.Stop,
+    weight(mode),
+    weight(Mode.Idle),
+    i32^(Mode.Stop),
+    mode = Mode.Dash,
+    mode != Mode.Walk
+)
+show(Mode.Walk)
+show(Mode.Stop)

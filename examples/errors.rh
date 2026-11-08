@@ -10,5 +10,6 @@ do^{
     print^try^twice(-1)
 catch^Error.Invalid:
     print^"invalid input"
+    panic^it^
 }
 print^(twice(21) catch^0)
