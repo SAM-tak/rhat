@@ -54,6 +54,7 @@ C:/tools/rhat/bin/rhat.exe lsp --stdio
   表記は `reseed : p^self^:std.random.Random, seed:i64^` のように、R^ の引数リストを使います。
 - 引数型で選択したオーバーロードと、利用者定義演算子の定義移動。
 - 解決済みの型、関数、引数、変数、フィールドなどの semantic tokens。
+  `let^` の値と `enum^` のリーフは、宣言・参照とも `variable.readonly` として定数の色付けを使います。
   インポートしたモジュールのパス各部と別名は、宣言・使用箇所とも `namespace` として色付けします。
   コメント・文字列・数値・キーワード・演算子は TextMate 文法に任せ、`^` の薄い配色も上書きしません。
 - UTF-16 座標による差分編集と全文置換。日本語・補助平面文字・CRLF に対応。

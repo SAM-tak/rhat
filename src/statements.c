@@ -931,7 +931,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             store_check(c, dst, v, s->loc);
             // What a call hands back from this storage carries the root, so it cannot write either.
             var->root.v[0]->readonly = s->mut ? NULL : s->name;
-            tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, 13, true);
+            tool_record(c->p, s->loc, s->loc, s->name, t, NULL, NULL, s->mut ? 13 : 14, true);
             add(&c->vars, var);
         }
         else if (s->kind == S_BIND_MANY && s->prolog.n) {
@@ -969,8 +969,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 v->mut = s->mut;
                 v->root = source->root;
                 v->deps = source->deps;
-                tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL, NULL, 13,
-                            true);
+                tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL, NULL,
+                            v->mut ? 13 : 14, true);
                 add(&c->vars, v);
             }
         }
@@ -1008,8 +1008,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 Var *v = c->vars.v[begin + j];
                 if (strcmp(binding->name, "_^")) {
                     v->name = binding->name;
-                    tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL, NULL, 13,
-                                true);
+                    tool_record(c->p, binding->loc, binding->loc, v->name, v->type, NULL, NULL,
+                                v->mut ? 13 : 14, true);
                 }
             }
         }

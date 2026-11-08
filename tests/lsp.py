@@ -445,7 +445,7 @@ print^(read(value))
     assert request('definition','read(value)',text=recovery)['range']['start'] == at(recovery,'read=f^')
     assert request('hover','a.x}',shift=2,text=recovery)['contents']['value'] == 'x: f32^'
 
-    def tokens(text, document=path):
+    def tokens(text, document=path, with_modifiers=False):
         data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=document.as_uri())))['data']
         row=column=0
         result={}
@@ -453,7 +453,7 @@ print^(read(value))
             delta,offset,length,kind,modifiers=data[n:n+5]
             row+=delta
             column=offset if delta else column+offset
-            result[(row,column)]=(length,kind)
+            result[(row,column)]=(length,kind,modifiers) if with_modifiers else (length,kind)
         return result
 
     colored=tokens(recovery)
@@ -461,6 +461,184 @@ print^(read(value))
         pos=at(recovery,spelling)
         assert colored[(pos['line'],pos['character'])] == (2,1), colored
     print('PASS multiple diagnostics, cascade suppression and unused signature coloring',flush=True)
+
+    adjacent_path=work/'adjacent-namespace.rh'
+    adjacent_source='''import^std.fs
+let^fs=import^std.fs
+do^{
+    let^first=try^fs.read("example.csv")
+    let^second=try^ fs.read("example.csv")
+    let^third=try^std.fs.read("example.csv")
+    let^fourth=try^ std.fs.read("example.csv")
+catch^:
+    print^("failed")
+}
+'''
+    client.open(adjacent_path,adjacent_source)
+    diagnostics=client.diagnostics(adjacent_path,1)
+    assert diagnostics == [], diagnostics
+    colored=tokens(adjacent_source,adjacent_path)
+    for spelling in ('try^fs.read','try^ fs.read','try^std.fs.read','try^ std.fs.read'):
+        start=spelling.index('fs') if 'std.' not in spelling else spelling.index('std')
+        for match in re.finditer(r'\w+',spelling[start:]):
+            name=match.group()
+            pos=at(adjacent_source,spelling,shift=start+match.start())
+            assert colored[(pos['line'],pos['character'])] == (len(name),2 if name == 'read' else 11), (spelling,colored)
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=adjacent_path.as_uri())))
+    print('PASS import namespace colors immediately after try hats',flush=True)
+
+    composition_path=work/'composition.rh'
+    composition='''def^Reader {}
+def^Writer {}
+def^Stream : Reader, Writer {}
+def^MemoryReader : Reader {}
+'''
+    client.open(composition_path,composition)
+    assert client.diagnostics(composition_path,1) == []
+    colored=tokens(composition,composition_path)
+    for spelling,name,shift in [('Stream : Reader','Reader',9),
+                                ('Reader, Writer','Writer',8),
+                                ('MemoryReader : Reader','Reader',15)]:
+        pos=at(composition,spelling,shift=shift)
+        params=dict(textDocument=dict(uri=composition_path.as_uri()),position=pos)
+        hover=client.request('textDocument/hover',params)
+        assert name in hover['contents']['value'], hover
+        definition=client.request('textDocument/definition',params)
+        assert definition['uri'].lower() == composition_path.as_uri().lower(), definition
+        assert definition['range']['start'] == at(composition,name), definition
+        assert colored[(pos['line'],pos['character'])] == (len(name),1), colored
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=composition_path.as_uri())))
+    io_path=Path(__file__).resolve().parents[1]/'stdlib'/'std'/'io.rh'
+    io_source=io_path.read_text(encoding='utf-8')
+    client.open(io_path,io_source)
+    assert client.diagnostics(io_path,1) == []
+    colored=tokens(io_source,io_path)
+    for spelling,name,shift in [('Stream : Reader','Reader',9),
+                                ('Reader, Writer','Writer',8),
+                                ('MemoryReader : Reader','Reader',15),
+                                ('MemoryWriter : Writer','Writer',15)]:
+        pos=at(io_source,spelling,shift=shift)
+        params=dict(textDocument=dict(uri=io_path.as_uri()),position=pos)
+        hover=client.request('textDocument/hover',params)
+        assert name in hover['contents']['value'], hover
+        definition=client.request('textDocument/definition',params)
+        assert definition['uri'].lower() == io_path.as_uri().lower(), definition
+        assert definition['range']['start'] == at(io_source,'def^'+name,shift=4), definition
+        assert colored[(pos['line'],pos['character'])] == (len(name),1), colored
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=io_path.as_uri())))
+    print('PASS composition base hover, definition and semantic colors',flush=True)
+
+    errors_path=work/'error-colors.rh'
+    errors_source='''import^std.io
+let^io=import^std.io
+errordef^Error { OpenFailed }
+let^local=p^ ->i32^|Error.OpenFailed {return^Error.OpenFailed{}}
+let^foreign=p^ ->i32^|io.Error.Closed {return^io.Error.Closed{}}
+let^qualified=p^ ->nil^|std.io.Error.Closed {return^std.io.Error.Closed{}}
+let^spaced=p^ ->i32^|Error . OpenFailed|io . Error . Closed {return^io . Error . Closed{}}
+let^bytes=u8^[]{}
+let^value:i32^=1
+def^Primitives {self^{b:bool^, c:char^, s:string^, n:u64^, f:f32^}}
+print^("u8^ Error.OpenFailed") # i32^ Error.OpenFailed
+'''
+    client.open(errors_path,errors_source)
+    diagnostics=client.diagnostics(errors_path,1)
+    assert diagnostics == [], diagnostics
+    colored=tokens(errors_source,errors_path)
+    for spelling,target_path,target_source,leaf in [
+            ('Error.OpenFailed',errors_path,errors_source,'OpenFailed'),
+            ('Error . OpenFailed',errors_path,errors_source,'OpenFailed'),
+            ('io.Error.Closed',io_path,io_source,'Closed'),
+            ('io . Error . Closed',io_path,io_source,'Closed'),
+            ('std.io.Error.Closed',io_path,io_source,'Closed')]:
+        # Check annotations and constructions, skipping strings and comments.
+        for match in re.finditer(re.escape(spelling),errors_source):
+            if errors_source[:match.start()].count('\n') == at(errors_source,'print^')['line']:
+                continue
+            for name,offset,target in [('Error',spelling.index('Error'),'Error'),
+                                       (leaf,spelling.index(leaf),leaf)]:
+                prefix=errors_source[:match.start()+offset]
+                pos=dict(line=prefix.count('\n'),character=len(prefix.rsplit('\n',1)[-1]))
+                assert colored[(pos['line'],pos['character'])] == (len(name),1), (spelling,colored)
+                params=dict(textDocument=dict(uri=errors_path.as_uri()),position=pos)
+                definition=client.request('textDocument/definition',params)
+                assert definition['uri'].lower() == target_path.as_uri().lower(), definition
+                expected=at(target_source,'errordef^Error',shift=9) if target == 'Error' else at(target_source,target)
+                assert definition['range']['start'] == expected, (name,definition)
+                hover=client.request('textDocument/hover',params)
+                assert name in hover['contents']['value'], hover
+    for name in ('u8^','i32^','nil^','bool^','char^','string^','u64^','f32^'):
+        pos=at(errors_source,name)
+        assert colored[(pos['line'],pos['character'])] == (len(name)-1,1), (name,colored)
+    assert not any(row == at(errors_source,'print^')['line'] for row,column in colored), colored
+    for spelling in ('std.io.Error.Closed','io.Error.Closed'):
+        pos=at(errors_source,spelling)
+        assert colored[(pos['line'],pos['character'])][1] == 11, colored
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=errors_path.as_uri())))
+    fs_path=io_path.with_name('fs.rh')
+    fs_source=fs_path.read_text(encoding='utf-8')
+    client.open(fs_path,fs_source)
+    diagnostics=client.diagnostics(fs_path,1)
+    assert diagnostics == [], diagnostics
+    colored=tokens(fs_source,fs_path)
+    for spelling in ('Error.OpenFailed','io.Error.Closed','io.Error.ReadFailed','io.Error.WriteFailed'):
+        for match in re.finditer(re.escape(spelling),fs_source):
+            prefix=fs_source[:match.start()]
+            if prefix.rsplit('\n',1)[-1].lstrip().startswith('#'):
+                continue
+            for name in ('Error',spelling.rsplit('.',1)[-1]):
+                row=prefix.count('\n')
+                column=len(prefix.rsplit('\n',1)[-1])+spelling.index(name)
+                assert colored[(row,column)] == (len(name),1), (spelling,row,colored)
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=fs_path.as_uri())))
+    print('PASS local and imported error group/leaf navigation and built-in type colors',flush=True)
+
+    constants_module=work/'lib'/'constants.rh'
+    constants_module.write_text('''module^lib.constants
+public^enum^State:u8^ {Cold,Hot}
+public^let^LIMIT:i32^=7
+''',encoding='utf-8')
+    constants_path=work/'constant-colors.rh'
+    constants_source='''let^constants=import^lib.constants
+enum^Mode:u8^ {Off,On}
+let^fixed=1
+var^changing=2
+let^run=p^arg:i32^ {
+    let^local=arg+fixed
+    var^mutable=local
+    let^left,right=local,mutable
+    let^pair=f^ ->(i32^,i32^) {1,2}
+    let^a,b=pair()
+    let^alias=pair
+    let^c,d=alias()
+    print^(fixed,changing,local,mutable,left,right,a,b,c,d,Mode.On,constants.State.Hot,constants.LIMIT)
+    do^{var^local=3 print^(local)}
+    print^(local)
+}
+run(0)
+'''
+    client.open(constants_path,constants_source)
+    diagnostics=client.diagnostics(constants_path,1)
+    assert diagnostics == [], diagnostics
+    colored=tokens(constants_source,constants_path,with_modifiers=True)
+    for match in re.finditer(r'\b(?:fixed|local|left|right|a|b|c|d|alias|Off|On|Hot|LIMIT|changing|mutable|arg)\b',constants_source):
+        prefix=constants_source[:match.start()]
+        row=prefix.count('\n')
+        column=len(prefix.rsplit('\n',1)[-1])
+        name=match.group()
+        length,kind,modifiers=colored[(row,column)]
+        mutable=name in ('changing','mutable') or (name == 'local' and 'var^local' in constants_source.splitlines()[row])
+        assert length == len(name), (name,colored)
+        assert kind == (4 if name == 'arg' else 5), (name,kind)
+        assert bool(modifiers & 2) == (name != 'arg' and not mutable), (name,row,modifiers)
+    params=dict(textDocument=dict(uri=constants_path.as_uri()),position=at(constants_source,'Mode.On',shift=5))
+    definition=client.request('textDocument/definition',params)
+    assert definition['range']['start'] == at(constants_source,'On}'), definition
+    params['position']=at(constants_source,'constants.State.Hot',shift=16)
+    definition=client.request('textDocument/definition',params)
+    assert definition['uri'].lower() == constants_module.as_uri().lower(), definition
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=constants_path.as_uri())))
+    print('PASS let values, enum leaves, imported constants, shadowing and callable alias colors',flush=True)
 
     # Recovery stays inside the failed statement/member, and resets its scope.
     damaged="""let^ scan=p^n:i32^ {

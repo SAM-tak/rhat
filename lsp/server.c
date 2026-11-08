@@ -560,7 +560,7 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
             if (kind == TOOL_TRY) {
                 continue;
             }
-            if ((kind == 13 || kind == TOOL_PARAMETER) &&
+            if ((kind == 13 || kind == 14 || kind == TOOL_PARAMETER) &&
                 !in_scope(buffer, (size_t)number(use, "offset"), cursor, kind == TOOL_PARAMETER)) {
                 continue;
             }
@@ -683,34 +683,26 @@ static cJSON *signature_help(cJSON *index, const char *uri, const char *buffer, 
     return out;
 }
 
-// A dense, request-local lookup preserves symbol_at's first-match and endpoint
-// precedence while semantic tokens visit every word in the source.
+// A dense, request-local lookup preserves first-match precedence while semantic
+// tokens visit every word. Endpoints belong to caret navigation only: a name
+// immediately after try^ must not inherit the try^ symbol.
 static cJSON **symbol_lookup(cJSON *index, const char *uri, size_t length)
 {
     cJSON **lookup = calloc(length + 1, sizeof(*lookup));
     if (!lookup) {
         abort();
     }
-    for (int pass = 0; pass < 2; pass++) {
-        cJSON *s;
-        cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
-            cJSON *use = cJSON_GetObjectItem(s, "use");
-            if (strcmp(text(use, "uri"), uri)) {
-                continue;
-            }
-            size_t start = (size_t)number(use, "offset");
-            size_t end = start + (size_t)number(s, "length");
-            if (pass) {
-                if (end <= length && !lookup[end]) {
-                    lookup[end] = s;
-                }
-            }
-            else {
-                for (size_t at = start; at < end && at <= length; at++) {
-                    if (!lookup[at]) {
-                        lookup[at] = s;
-                    }
-                }
+    cJSON *s;
+    cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
+        cJSON *use = cJSON_GetObjectItem(s, "use");
+        if (strcmp(text(use, "uri"), uri)) {
+            continue;
+        }
+        size_t start = (size_t)number(use, "offset");
+        size_t end = start + (size_t)number(s, "length");
+        for (size_t at = start; at < end && at <= length; at++) {
+            if (!lookup[at]) {
+                lookup[at] = s;
             }
         }
     }
@@ -856,14 +848,27 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 kind = symbol_kind == 23               ? 1
                        : symbol_kind == 12             ? 2
                        : symbol_kind == TOOL_PARAMETER ? 4
+                       : symbol_kind == 14             ? 5
                        : symbol_kind == 8              ? 6
                        : *text(s, "owner")             ? 3
                                                        : 5;
                 modifiers = cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) ? 1 : 0;
+                if (symbol_kind == 14) {
+                    modifiers |= 2; // variable.readonly uses the theme's constant color.
+                }
             }
             else if (buffer[at - 1] != '^' &&
                      namespace_name(index, lookup, uri, buffer, start, at)) {
                 kind = 11;
+            }
+            else if (buffer[at - 1] == '^') {
+                for (int k = T_VOID; k < T_STRUCT; k++) {
+                    const char *name = builtin_name(k);
+                    if (strlen(name) == at - start && !strncmp(buffer + start, name, at - start)) {
+                        kind = 1;
+                        break;
+                    }
+                }
             }
         }
         else {
@@ -871,7 +876,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             interpolation_bracket(&scan, (char)c);
         }
         // Let TextMate style lexical tokens, including the separately dimmed hat.
-        // Semantic tokens describe resolved names only, as in the L^ client.
+        // Semantic tokens describe resolved names and built-in types.
         if (kind < 0) {
             continue;
         }

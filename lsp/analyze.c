@@ -460,11 +460,39 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
     Loc at_use = r->use;
+    bool error_leaf = r->kind == 23 && r->owner && r->owner->group;
+    if (error_leaf && !r->definition && source) {
+        // Error.Leaf contains two nominal names, each with its own target.
+        // Synthesized union alternatives point at the bare leaf declaration,
+        // so only add the group when it is actually written before a dot.
+        Def *group = r->owner->group;
+        const char *name = short_name(group->name);
+        size_t start = identifier_at(source, r->use, name);
+        const char *at = source->text + start;
+        if (!strncmp(at, name, strlen(name))) {
+            at += strlen(name);
+            while (isspace((unsigned char)*at)) {
+                at++;
+            }
+            if (*at == '.') {
+                at++;
+                while (isspace((unsigned char)*at)) {
+                    at++;
+                }
+                const char *leaf = short_name(r->name);
+                if (!strncmp(at, leaf, strlen(leaf)) && !name_byte((unsigned char)at[strlen(leaf)])) {
+                    ToolRef use = {r->use, group->loc, group->name, group->type, NULL,
+                                   group, 23, false};
+                    emit_ref(p, array, &use);
+                }
+            }
+        }
+    }
     if (r->kind == 23 && !r->definition && source &&
         !strncmp(source->text + loc_offset(source, r->use), "Self^", 5)) {
         use_name = "Self^";
     }
-    else if (r->kind == 23 && !r->definition && source) {
+    else if (r->kind == 23 && !r->definition && source && !error_leaf) {
         // A module path or import alias before a type stays a namespace; the
         // type is the segment after the longest such prefix.
         const char *start = source->text + loc_offset(source, r->use), *last = start;

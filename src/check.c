@@ -2566,7 +2566,7 @@ static void record_operand(Context *c, Expr *e)
     Var *v = (e->kind == E_NAME || e->kind == E_SELF) && e->text ? selected(c, e) : NULL;
     if (v) {
         tool_record(c->p, e->loc, v->declaration, v->name, v->type, NULL, NULL,
-                    v->parameter ? TOOL_PARAMETER : 13, false);
+                    v->parameter ? TOOL_PARAMETER : v->mut ? 13 : 14, false);
     }
     record_operand(c, e->a);
     record_operand(c, e->b);

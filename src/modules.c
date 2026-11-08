@@ -1102,7 +1102,8 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
                      binding->name);
             }
             use_binding(top_user, binding);
-            tool_record(p, e->loc, binding->loc, binding->name, NULL, NULL, NULL, 13, false);
+            tool_record(p, e->loc, binding->loc, binding->name, NULL, NULL, NULL,
+                        binding->mut ? 13 : 14, false);
             *e = *unary_expr("*", name_expr(hidden_name(binding), e->loc));
             return;
         }

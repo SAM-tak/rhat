@@ -814,6 +814,10 @@ static void compose_unchecked(Program *p, Def *d)
         if (!b) {
             fail(d->loc, "unknown composition base '%s'", n);
         }
+        Spec *s = d->base_specs.v[i];
+        Def *declaration = b->generic ? b->generic : b;
+        tool_record(p, s->loc, declaration->loc, declaration->name, b->type, NULL,
+                    declaration, 23, false);
         compose(p, b);
         if (b->type->kind != T_STRUCT) {
             fail(d->loc, "composition base must be a structure, found union '%s'", b->name);

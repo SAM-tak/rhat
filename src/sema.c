@@ -254,6 +254,7 @@ void tool_failed_binding(Program *p, List *vars, Stmt *s, int depth, int lexical
     }
     Var *v = mem(sizeof(*v));
     v->invalid = true;
+    v->mut = s->mut;
     v->name = s->name;
     v->declaration = s->loc;
     v->type = type_builtin(p, T_VOID);
@@ -262,7 +263,7 @@ void tool_failed_binding(Program *p, List *vars, Stmt *s, int depth, int lexical
     add(vars, v);
     // An invalid initializer does not invalidate an already resolved annotation.
     Type *annotated = s->spec && s->spec->resolved ? s->spec->type : NULL;
-    tool_record(p, s->loc, s->loc, s->name, annotated, NULL, NULL, 13, true);
+    tool_record(p, s->loc, s->loc, s->name, annotated, NULL, NULL, s->mut ? 13 : 14, true);
 }
 
 void forget_roots(List *vars, Roots roots, bool all)
@@ -2429,7 +2430,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     Var *alias = target->kind == E_NAME ? selected(c, target) : NULL;
     if (alias && callable_type(alias->type)) {
-        tool_record(p, target->loc, alias->declaration, alias->name, alias->type, NULL, NULL, 13,
+        tool_record(p, target->loc, alias->declaration, alias->name, alias->type, NULL, NULL,
+                    alias->parameter ? TOOL_PARAMETER : alias->mut ? 13 : 14,
                     false);
     }
     else {
@@ -3759,7 +3761,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         tool_record(p, e->loc, v->declaration, v->name,
                     v->narrowed && !c->raw_name ? v->narrowed : v->type, NULL, NULL,
-                    v->parameter ? TOOL_PARAMETER : 13, false);
+                    v->parameter ? TOOL_PARAMETER : v->mut ? 13 : 14, false);
         Value result = variable(v);
         if (v->narrowed && !c->raw_name) {
             return convert_value(c, result, v->narrowed, -1, e->loc);
