@@ -379,7 +379,7 @@ let^bump = p^t:ref^T { t.add() }
         ('let_reference_writes', 'var^t = T{}\nlet^r = ref^t\nr.add()\nbump(r)\nprint^(t.n)\n', '2\n'),
         ('let_slice_writes', 'var^t = i32^[grow^]{1}\nlet^w = t[..]\nw[0] := 2\nprint^(t[0])\n', '2\n'),
         ('let_array_of_references_writes', 'var^t = T{}\nlet^rs:T[ref^ 1] = {ref^t}\nrs[0].add()\nlet^gs = T[ref^grow^]{ ref^t }\ngs[0].add()\nlet^r = rs[0]\nr.add()\nprint^(t.n)\n', '3\n'),
-        ('let_array_of_slices_writes', 'var^x = i32^[grow^]{1}\nlet^vs:i32^[..][1] = {x[..]}\nvs[0][0] := 2\nprint^(x[0])\n', '2\n'),
+        ('let_array_of_slices_writes', 'var^x = i32^[grow^]{1}\nlet^vs:(i32^[..])[1] = {x[..]}\nvs[0][0] := 2\nprint^(x[0])\n', '2\n'),
         ('let_in_a_loop', 'var^t = T{}\nfor^i in^0 .. 2 {\n let^r = ref^t\n r.add()\n}\nprint^(t.n)\n', '2\n'),
         ('let_shadowed_by_var', 'let^a = T{}\ndo^{\n var^a = T{}\n a.add()\n print^(a.n)\n}\n', '1\n'),
     ):

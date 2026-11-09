@@ -332,8 +332,9 @@ static char *spec_text(Spec *s)
                  : s->kind == SPEC_BOUNDED ? fmt("max^%d", s->count)
                  : s->count                ? fmt("%d", s->count)
                                            : "";
-    bool wrap =
-        elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION || elem->kind == SPEC_REF;
+    bool wrap = elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION ||
+                elem->kind == SPEC_REF || elem->kind == SPEC_ARRAY || elem->kind == SPEC_GROW ||
+                elem->kind == SPEC_SLICE || elem->kind == SPEC_BOUNDED;
     return fmt(wrap ? "(%s)[%s%s%s]" : "%s[%s%s%s]", spec_text(elem), refs,
                *refs && *kind ? " " : "", kind);
 }

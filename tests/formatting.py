@@ -30,6 +30,12 @@ def main():
         suite.case(name, body)
 
     expect('hat_spacing', 'let^ x = self^ + 1\n', 'let^x = self^+ 1\n')
+    expect('nested_array_types',
+           'var^a:i32^[ [ 3 ]2 ]={{1,2,3},{4,5,6}}\nvar^b:(i32^[ 3 ])[2]=a\n',
+           'var^a:i32^[[3] 2] = {{1, 2, 3}, {4, 5, 6}}\nvar^b: (i32^[3])[2] = a\n')
+    expect('nested_array_kinds',
+           'let^f=p^a:T[ [grow^]max^64 ],b:T[[[2]3] 4] {}\n',
+           'let^f = p^a:T[[grow^] max^64], b:T[[[2] 3] 4] {}\n')
     expect('dynamic_reference_types',
            'let^get=p^x:dynamic^ Shape,ys:Shape[ dynamic^ .. ],zs:Shape[ ref^ dyn^ 2 ] {}\n',
            'let^get = p^x:dynamic^Shape, ys:Shape[dynamic^..], zs:Shape[ref^dyn^2] {}\n')

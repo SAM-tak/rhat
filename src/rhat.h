@@ -147,6 +147,7 @@ enum {
 };
 
 struct Expr {
+    bool parenthesized;  // Written grouping separates nested array constructor type suffixes.
     int capture_index;   // E_CAPTURE's index in the current function's lexical captures.
     Field *state_field;  // E_STATE's declaration, resolved before type checking.
     Spec *type_expr;     // Type application, Self^, or an explicit constructor type.

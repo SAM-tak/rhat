@@ -5,6 +5,61 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    positive('nested_brackets_and_parenthesized_types', '''
+var^a:i32^[[3] 2] = {{10,11,12},{20,21,22}}
+var^b:(i32^[3])[2] = {{30,31,32},{40,41,42}}
+let^c = i32^[[3] 2]{{50,51,52},{60,61,62}}
+let^d = (i32^[3])[2]{{70,71,72},{80,81,82}}
+var^rows:i32^[[3] grow^] = {}
+rows.push(a[0])
+rows.push(b[1])
+a[1][2] := 99
+print^(a.len,a[0].len,a[1][2],b[1][2],c[1][2],d[1][2],rows[1][2])
+''', '2 3 99 42 62 82 42\n')
+    positive('nested_reference_and_slice_elements', '''
+var^a:i32^[2] = {10,11}
+var^b:i32^[2] = {20,21}
+let^refs = i32^[[2] ref^2]{ref^a,ref^b}
+var^views:i32^[[..] grow^] = {}
+views.push(a[..])
+views.push(b[..])
+refs[0][1] := 12
+views[1][0] := 22
+let^more = (i32^[..])[2]{a[..],b[..]}
+print^(a[1],b[0],more[0][1],more[1][0])
+''', '12 22 12 22\n')
+    positive('nested_generic_fields_and_constant_lengths', '''
+let^WIDTH = 2
+def^Grid<T> { self^{cells:T[[WIDTH + 1] 2]} }
+var^grid = Grid<i32^>{cells={{10,11,12},{20,21,22}}}
+let^copy = (i32^[WIDTH + 1])[2]{{30,31,32},{40,41,42}}
+var^deep:i32^[[[2] 2] 2] = {{{1,2},{3,4}},{{5,6},{7,8}}}
+print^(grid.cells[1][2],copy[1][2],deep[1][0][1])
+''', '22 42 6\n')
+    positive('nested_borrowed_growing_rows', '''
+var^a:i32^[grow^] = {}
+var^b:i32^[grow^] = {}
+let^refs = (i32^[grow^])[ref^max^64]{ref^a,ref^b}
+let^also = i32^[[grow^] ref^max^64]{ref^a,ref^b}
+refs[0].push(10)
+also[1].push(20)
+let^fixed = i32^[[2]]{{1,2},{3,4}}
+print^(a[0],b[0],fixed[1][1])
+''', '10 20 4\n')
+    for name,source in (
+            ('annotation', 'var^a:i32^[2][3] = {}'),
+            ('constructor', 'let^a = i32^[2][3]{}'),
+            ('grow_constructor', 'let^a = i32^[grow^][max^64]{}'),
+            ('parameter', 'let^f = p^x:i32^[2][3] {}'),
+            ('return', 'let^f = f^ -> i32^[2][3] {}'),
+            ('nested_header', 'var^a:i32^[[2][3] 4] = {}'),
+            ('after_sugar', 'var^a:i32^[[2] 3][4] = {}'),
+            ('wrapped_chain', 'let^a = (i32^[2][3])[]{}')):
+        negative('nested_reject_chain_' + name, source + '\n', 'consecutive array type brackets')
+    negative('nested_owning_rows_still_unsupported',
+             'var^rows:i32^[[grow^] max^64] = {}\n', 'nonempty fixed-size')
+    negative('parenthesized_owning_rows_still_unsupported',
+             'var^rows:(i32^[grow^])[max^64] = {}\n', 'nonempty fixed-size')
     positive('literal_typed_and_contextual', '''
 var^a=i64^[max^10]{0,1,2,3}
 var^b=u32^[max^10]{0,1,2,3}
@@ -64,7 +119,7 @@ print^(calls,*refs[0],*refs[1])
     positive('literal_nominal_and_nested_elements', '''
 def^B {self^{n:i64^}}
 let^records=B[max^10]{{n=7},{n=8}}
-let^nested=i32^[2][max^3]{{1,2},{3,4}}
+let^nested=i32^[[2] max^3]{{1,2},{3,4}}
 let^grid={{1,2},{3,4}}
 print^(records[1].n,nested[1][0],grid[1][1])
 ''', '8 3 4\n')
@@ -188,8 +243,8 @@ print^(a.len,b.len,b[1])
     positive('sized_struct_and_fixed_elements', '''
 def^Pair {self^{a:i64^,b:i64^}}
 let^pairs=Pair[]{Pair{a=7,b=8} repeat^ 2}
-var^source:i64^[2][2]={{1,2},{3,4}}
-let^arrays=i64^[2][](source)
+var^source:(i64^[2])[2]={{1,2},{3,4}}
+let^arrays=(i64^[2])[](source)
 print^(pairs[1].a,pairs[1].b,arrays[1][0])
 ''', '7 8 3\n')
     positive('sized_self_elements', '''
@@ -209,7 +264,7 @@ print^(copies.len,copies[1].n)
              'owned')
     negative('sized_forbid_by_value','let^read=f^a:i32^[] {a.len} let^a=i32^[]{1 repeat^ 2} print^(read(a))',
              'reference')
-    negative('sized_forbid_owned_elements','let^a=i32^[grow^][]{}',
+    negative('sized_forbid_owned_elements','let^a=(i32^[grow^])[]{}',
              'nonempty fixed-size')
     negative('sized_wrong_element','let^a=i32^[]({"x"})', 'array or slice')
     negative('sized_wrong_source','let^a=i32^[](42)', 'array or slice')

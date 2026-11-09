@@ -1109,8 +1109,51 @@ print^(a.x)
     assert client.diagnostics(path,157) == []
     print('PASS generic definitions, aliases, type constants, navigation and edit recovery',flush=True)
 
-    threads_path = Path(__file__).resolve().parents[1]/'examples/threads.rh'
-    threads_text = threads_path.read_text(encoding='utf-8')
+    nested_path = work/'nested_array_types.rh'
+    nested_text = '''def^Cell { self^{n:i32^=0} }
+var^grid:Cell[[3] 2] = {{Cell{},Cell{},Cell{}},{Cell{},Cell{},Cell{}}}
+let^identity = template^f^x:ref^Cell[[3] 2] -> ref^(Cell[3])[2] { x }
+let^result = identity(ref^grid)
+let^deferred = template^p^x:(Cell[3])[2] {}
+print^(result[1][2].n)
+'''
+    client.open(nested_path,nested_text)
+    assert client.diagnostics(nested_path,1) == []
+    for needle in ('grid:','grid)','result ='):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=nested_path.as_uri()),
+            position=at(nested_text,needle)))
+        assert '(Cell[3])[2]' in hover['contents']['value'], hover
+        assert 'Cell[3][2]' not in hover['contents']['value'], hover
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=nested_path.as_uri()),
+        position=at(nested_text,'deferred =')))
+    assert 'x:(Cell[3])[2]' in hover['contents']['value'], hover
+    classified = tokens(nested_text,nested_path)
+    for position in (at(nested_text,'Cell[[3]'),at(nested_text,'Cell[3]')):
+        assert classified[(position['line'],position['character'])] == (4,1), classified
+        definition = client.request('textDocument/definition',dict(textDocument=dict(uri=nested_path.as_uri()),
+            position=position))
+        assert definition['range']['start'] == at(nested_text,'Cell {'), definition
+    broken = nested_text.replace('Cell[[3] 2]', 'Cell[3][2]',1)
+    client.change(nested_path,broken,2)
+    assert any('consecutive array type brackets' in d['message'] for d in client.diagnostics(nested_path,2))
+    client.change(nested_path,nested_text,3)
+    assert client.diagnostics(nested_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=nested_path.as_uri())))
+    print('PASS nested array type hover, navigation and bracket-chain recovery',flush=True)
+
+    threads_path = work/'implicit_thread_calls.rh'
+    threads_text = '''let^c = import^std.channel
+let^t = import^std.thread
+let^worker = p^out:ref^c.Channel<i32^> {
+    var^value:i32^ = 42
+    try^out.send(ref^value)
+}
+var^q = try^c.Channel<i32^>.new(1, 4)
+var^thread = try^t.spawn(worker, ref^q)
+var^result = q.receive()
+if^result fits^c.Message<i32^> { print^(result.value) }
+thread.join()
+'''
     client.open(threads_path,threads_text)
     assert client.diagnostics(threads_path,1) == []
     classified = tokens(threads_text,threads_path)

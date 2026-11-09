@@ -73,7 +73,7 @@ print^(total(direct[..]),total(parenthesized[..]),total(attribute[..]),total(ali
 touch(ref^direct) forward(ref^direct)
 var^one:dynamic^Shape=ref^a
 let^multiple:dynamic^^Shape[2]={ref^one,ref^one}
-var^nested:dynamic^Shape[2][2]={{ref^a,ref^b},{ref^b,ref^a}}
+var^nested:(dynamic^Shape[2])[2]={{ref^a,ref^b},{ref^b,ref^a}}
 let^readonly:dynamic^read^Shape[2]={ref^a,ref^b}
 print^((*multiple[0]).area(),nested[1][0].area(),readonly[0].area())
 ''', '7.0 7.0 7.0 7.0\n16.0 3.0\n16.0 3.0 16.0\n')

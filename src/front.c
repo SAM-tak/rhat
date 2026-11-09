@@ -1166,9 +1166,24 @@ static void read_view(Spec *s)
     }
 }
 
-// Parse an array type's bracket contents, leaving the closing ']' unread.
+static Spec *array_brackets(Parser *p, Spec *elem, int *references);
+
+static void array_chain_error(Loc loc)
+{
+    fail(loc, "consecutive array type brackets are not allowed; "
+              "write (T[A])[B] or T[[A] B]");
+}
+
+// Parse bracket contents, allowing an inner bracket to construct the element type.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
+    if (is(p, "[")) {
+        int inner_refs;
+        elem = array_brackets(p, elem, &inner_refs);
+        if (is(p, "[")) {
+            array_chain_error(tok(p)->loc);
+        }
+    }
     int refs = reference_depth(tok(p)->text);
     bool dynamic = dynamic_depth(tok(p)->text) != 0;
     if (dynamic) {
@@ -1224,6 +1239,19 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     return w;
 }
 
+static Spec *array_brackets(Parser *p, Spec *elem, int *references)
+{
+    int opening_at = p->at;
+    need(p, "[");
+    FormatToken *opening = format_token(p, opening_at);
+    if (opening) {
+        opening->array_type = true;
+    }
+    Spec *s = array_header(p, elem, references);
+    need(p, "]");
+    return s;
+}
+
 // Whether the '[' at token k opens an array type in an expression: a kind or
 // reference word, an empty pair, or a length followed by '{' or another one.
 static bool array_type_at(Parser *p, int k)
@@ -1232,8 +1260,9 @@ static bool array_type_at(Parser *p, int k)
         return false;
     }
     Token *next = p->tokens.v[k + 1];
-    if (!strcmp(next->text, "]") || !strcmp(next->text, "grow^") || !strcmp(next->text, "flex^") ||
-        !strcmp(next->text, "max^") || reference_depth(next->text) || dynamic_depth(next->text)) {
+    if (!strcmp(next->text, "[") || !strcmp(next->text, "]") || !strcmp(next->text, "grow^") ||
+        !strcmp(next->text, "flex^") || !strcmp(next->text, "max^") ||
+        reference_depth(next->text) || dynamic_depth(next->text)) {
         return true;
     }
     if (next->kind != TOK_INT || k + 3 >= p->tokens.n ||
@@ -1244,17 +1273,15 @@ static bool array_type_at(Parser *p, int k)
     return (!strcmp(after, "{") && !p->header) || (!strcmp(after, "[") && array_type_at(p, k + 3));
 }
 
-// The array type suffixes after s; refs counts the last bracket's ref^ depth.
+// One suffix per type atom. Parentheses or nested brackets expose array nesting.
 static Spec *array_spec(Parser *p, Spec *s, int *refs)
 {
-    while (take(p, "[")) {
-        int opening_at = p->at - 1;
-        s = array_header(p, s, refs);
-        FormatToken *opening = format_token(p, opening_at);
-        if (opening) {
-            opening->array_type = true;
+    *refs = 0;
+    if (is(p, "[")) {
+        s = array_brackets(p, s, refs);
+        if (is(p, "[")) {
+            array_chain_error(tok(p)->loc);
         }
-        need(p, "]");
     }
     return s;
 }
@@ -1392,7 +1419,7 @@ static Spec *spec_intersection(Parser *p)
     return s;
 }
 
-// A numeric subscript before an array-kind bracket denotes an element array type.
+// A parenthesized subscript/slice may spell the element type of an array constructor.
 static Spec *array_element_spec(Parser *p, Expr *e)
 {
     if (e->kind == E_TYPE) {
@@ -1400,15 +1427,27 @@ static Spec *array_element_spec(Parser *p, Expr *e)
     }
     Spec *s = mem(sizeof(*s));
     s->loc = e->loc;
-    if (e->kind == E_INDEX && !e->optional && e->b->kind == E_INT) {
+    if (e->kind == E_INDEX && !e->optional) {
+        if ((e->a->kind == E_INDEX || e->a->kind == E_SLICE) && !e->a->parenthesized) {
+            array_chain_error(e->b->loc);
+        }
         s->kind = SPEC_ARRAY;
         s->elem = array_element_spec(p, e->a);
+        if (e->b->kind != E_INT) {
+            s->length = e->b;
+            return s;
+        }
         errno = 0;
         long count = strtol(e->b->text, NULL, 10);
         if (errno || count <= 0 || count > 1000000) {
             fail(e->loc, "array length out of range (1..1000000)");
         }
         s->count = (int)count;
+        return s;
+    }
+    if (e->kind == E_SLICE && !e->optional && !e->b && !e->c && !strcmp(e->text, "..")) {
+        s->kind = SPEC_SLICE;
+        s->elem = array_element_spec(p, e->a);
         return s;
     }
     s->kind = SPEC_NAME;
@@ -1856,6 +1895,7 @@ static Expr *primary(Parser *p)
         }
         p->header = header;
         need(p, ")");
+        e->parenthesized = true;
     }
     else if (!strcmp(t->text, "[")) {
         fail(t->loc, "array literals are written {a, b} or T[...]{a, b}");
@@ -2008,6 +2048,9 @@ static Expr *primary(Parser *p)
             e = n;
         }
         else if (is(p, "[") && array_type_at(p, p->at)) {
+            if ((e->kind == E_INDEX || e->kind == E_SLICE) && !e->parenthesized) {
+                array_chain_error(tok(p)->loc);
+            }
             Spec *base = array_element_spec(p, e);
             Expr *array = node(E_ARRAY, e->loc);
             int refs;
@@ -2019,6 +2062,10 @@ static Expr *primary(Parser *p)
             }
             else if (is(p, "(")) {
                 array->test_spec = s;
+            }
+            else if (is(p, ")")) {
+                array->kind = E_TYPE;
+                array->type_expr = s;
             }
             else {
                 fail(array->loc, "an array type here needs {elements} or (arguments)");
