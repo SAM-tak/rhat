@@ -1135,6 +1135,17 @@ print^(a.x)
         hover = client.request('textDocument/hover',dict(textDocument=dict(uri=document.as_uri()),position=position))
         assert 'std.sys.Disposable' in hover['contents']['value'], hover
         if document.name == 'thread.rh':
+            position = at(text,'ThreadEntry')
+            definition = client.request('textDocument/definition',dict(
+                textDocument=dict(uri=document.as_uri()),position=position))
+            if isinstance(definition,list):
+                definition = definition[0]
+            assert definition['uri'].lower() == sys_path.as_uri().lower(), definition
+            assert definition['range']['start'] == at(sys_text,'ThreadEntry'), definition
+            assert classified[(position['line'],position['character'])] == (11,1), classified
+            hover = client.request('textDocument/hover',dict(
+                textDocument=dict(uri=document.as_uri()),position=position))
+            assert 'externC^ p^' in hover['contents']['value'], hover
             definition = client.request('textDocument/definition',dict(
                 textDocument=dict(uri=document.as_uri()), position=at(text,'rh_thread_spawn(worker')))
             if isinstance(definition,list):

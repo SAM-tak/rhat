@@ -2,7 +2,7 @@ module^std.thread
 
 import^std.sys
 
-externC^rh_thread_spawn:p^entry:externC^p^ref^std.sys.ThreadArgs;,
+externC^rh_thread_spawn:p^entry:std.sys.ThreadEntry,
     transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
     stacks:i64^ -> i64^;
 externC^rh_thread_join:p^handle:i64^;

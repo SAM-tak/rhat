@@ -122,6 +122,22 @@ R^ から `externC^` を呼ぶ直前に、呼び出し元がその時点で使�
 
 ### C の関数ポインタ
 
+署名に名前を付ける場合は `def^名前 = 署名` で型エイリアスを宣言できます。
+`f^`・`p^` の署名と、`externC^` を付けた C 関数ポインタの署名に対応し、`public^` で公開できます。
+
+```rhat
+# In std.sys:
+public^def^ThreadEntry = externC^p^ref^ThreadArgs;
+
+# In a module importing std.sys:
+externC^rh_thread_spawn:p^entry:std.sys.ThreadEntry,
+    transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
+    stacks:i64^ -> i64^;
+```
+
+型エイリアスは元の署名と同じ型です。左辺に `externC^` は付けません。
+`externC^def^名前` は C のデータ型の宣言であり、関数ポインタの型エイリアスとは区別します。
+
 ```rhat
 externC^qsort:p^base:i32^[..], n:u64^, size:u64^, compare:externC^f^ref^i32^, ref^i32^ -> i32^;;
 exportC^let^descending = f^a:ref^i32^, b:ref^i32^ -> i32^{ *b - *a }

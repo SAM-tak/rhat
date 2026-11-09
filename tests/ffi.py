@@ -617,7 +617,25 @@ let^ twice:externC^ f^ i64^ -> i64^; = r_negate
 print^(ffi_apply(r_negate, 5), ffi_apply(twice, 6), ffi_apply(nil^, 7))
 ''', '-5 -6 -1\n', extra=('--runtime', boxes))
     pointer = 'externC^ apply:p^ fn:externC^ f^ i64^ -> i64^;, x:i64^ -> i64^;\n'
+    positive('ffi_function_pointer_alias', header + '''
+def^Callback = externC^f^i64^ -> i64^;
+externC^ffi_apply:p^fn:Callback | nil^, x:i64^ -> i64^;
+exportC^let^negate = f^n:i64^ -> i64^ { -n }
+let^callback:Callback = negate
+print^(ffi_apply(callback, 17), ffi_apply(nil^, 0))
+''', '-17 -1\n', extra=('--runtime', boxes))
+    positive('callable_signature_alias', '''
+def^Function = f^i32^ -> i32^;
+let^increment:Function = f^n:i32^ -> i32^ { n + 1 }
+print^(increment(5))
+''', '6\n')
     negative('ffi_function_pointer_signature', pointer + 'externC^ abs:f^ n:i32^ -> i32^;\nprint^(apply(abs, 1))', "externC^ f^ i64^ -> i64^;")
+    negative('ffi_function_pointer_alias_signature', '''
+def^Callback = externC^f^i64^ -> i64^;
+externC^apply:p^fn:Callback, x:i64^ -> i64^;
+externC^abs:f^n:i32^ -> i32^;
+print^(apply(abs, 1))
+''', 'externC^ f^ i64^ -> i64^;')
     negative('ffi_function_pointer_r_function', pointer + 'let^ g = f^ n:i64^ -> i64^ { n }\nprint^(apply(g, 1))', 'only externC^ and exportC^ functions have a C address')
     negative('ffi_function_pointer_spec', 'externC^ apply:p^ fn:externC^ i64^ -> i64^;', 'externC^ in a type needs a signature')
     negative('ffi_struct_string_field', 'def^ P { self^{s:string^=""} }\nexternC^ f:f^ p:P ->i32^;', "parameter 'p' has no C shape")

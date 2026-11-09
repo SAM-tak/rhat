@@ -3932,6 +3932,21 @@ static void declaration(Parser *q)
     if (structure || take(q, "def^")) {
         definition(q, structure);
         Def *d = p->defs.v[p->defs.n - 1];
+        if (!d->type_params.n && d->union_specs.n == 1 &&
+            ((Spec *)d->union_specs.v[0])->kind == SPEC_FUNCTION) {
+            if (lhat_def) {
+                fail(d->loc, "exportL^ requires a nominal data type, not a callable type alias");
+            }
+            TypeAlias *alias = mem(sizeof(*alias));
+            *alias = (TypeAlias){.name = d->name,
+                                 .loc = d->loc,
+                                 .spec = d->union_specs.v[0],
+                                 .module = module,
+                                 .public = public};
+            p->defs.n--;
+            add(&module->aliases, alias);
+            return;
+        }
         d->module = module;
         d->public = public;
         d->lhat_value = lhat_def && !lhat_ref;

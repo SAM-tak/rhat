@@ -5,6 +5,7 @@ public^errordef^Error { OutOfMemory, CastFail }
 # Opaque C ABI types used by the thread bridge operations.
 public^externC^def^ThreadArgs;
 public^externC^def^ThreadTransfer;
+public^def^ThreadEntry = externC^p^ref^ThreadArgs;
 
 # A scope calls dispose when it ends. Such values cannot be copied, and dispose cannot be
 # called directly. It cannot fail; use an explicit close method for operations that can fail.
