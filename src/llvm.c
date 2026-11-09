@@ -855,25 +855,36 @@ static void instruction(Output *o, Instr *i)
         break;
     case I_THREAD: {
         Type *result = slot_type(o, i->dst);
-        int first = i->label == THREAD_SPAWN ? 0 : load(o, (int)(intptr_t)i->args.v[0] - 1);
+        if (i->label == THREAD_ENTRY) {
+            save(o, i->dst, result, fmt("@rh_worker_%d", i->callee->id));
+            break;
+        }
+        if (i->label == THREAD_TRANSFER) {
+            save(o, i->dst, result, fmt("@rh_transfer_%d", i->type->id));
+            break;
+        }
+        if (i->label == THREAD_ARGS) {
+            int data = load(o, (int)(intptr_t)i->args.v[0] - 1);
+            save(o, i->dst, result, fmt("%%t%d", data));
+            break;
+        }
+        if (i->label == THREAD_STACKS) {
+            save(o, i->dst, result, fmt("%d", o->p->stack_count));
+            break;
+        }
+        int first = load(o, (int)(intptr_t)i->args.v[0] - 1);
         int second = load(o, (int)(intptr_t)i->args.v[1] - 1);
         int status = ++o->tmp;
         if (i->label == THREAD_NEW) {
             fprintf(
                 f,
                 "  %%t%d = call i64 @rh_channel_new(ptr @rh_transfer_%d, i64 %%t%d, i64 %%t%d)\n",
-                status, t->id, first, second);
+                status, i->type->id, first, second);
         }
         else if (i->label == THREAD_SEND) {
             int blocking = load(o, (int)(intptr_t)i->args.v[2] - 1);
             fprintf(f, "  %%t%d = call i64 @rh_channel_send(i64 %%t%d, ptr %%t%d, i64 %%t%d)\n",
                     status, first, second, blocking);
-        }
-        else if (i->label == THREAD_SPAWN) {
-            fprintf(
-                f,
-                "  %%t%d = call i64 @rh_thread_spawn(ptr @rh_worker_%d, ptr @rh_transfer_%d, ptr %%t%d, i64 %d)\n",
-                status, i->callee->id, t->id, second, o->p->stack_count);
         }
         else {
             int value_tag = -1, closed_tag = -1, empty_tag = -1;

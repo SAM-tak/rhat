@@ -424,7 +424,8 @@ void external_validate(Program *p, Function *f)
         if (!c_identifier(s)) {
             fail(f->declaration, "externC^ symbol '%s' is not a usable C identifier", s);
         }
-        if (!strncmp(s, "rh_", 3) && !standard) {
+        if (!strncmp(s, "rh_", 3) && !standard && strcmp(s, "rh_thread_join") &&
+            strcmp(s, "rh_thread_spawn")) {
             fail(f->declaration, "externC^ symbols starting with rh_ are reserved for the runtime");
         }
     }

@@ -1025,9 +1025,6 @@ static cJSON *export_index(Session *s)
         Module *module = p->modules.v[j];
         for (int k = 0; k < module->defs.n; k++) {
             Def *d = module->defs.v[k];
-            if (!d->type_params.n) {
-                continue;
-            }
             List names = {0};
             for (int n = 0; n < d->type_params.n; n++) {
                 add(&names, d->type_params.v[n]);
@@ -1047,6 +1044,9 @@ static cJSON *export_index(Session *s)
             int mark = names.n;
             for (int n = 0; n < d->own_methods.n; n++) {
                 Function *f = d->own_methods.v[n];
+                if (!d->type_params.n && !f->templ) {
+                    continue;
+                }
                 for (int q = 0; q < f->params.n; q++) {
                     add(&names, ((Param *)f->params.v[q])->name);
                 }

@@ -7,10 +7,116 @@ let^c = import^std.channel
 let^t = import^std.thread
 '''
 
+BRIDGE = """
+import^std.sys
+externC^rh_thread_spawn:p^entry:externC^p^ref^std.sys.ThreadArgs;,
+    transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
+    stacks:i64^ -> i64^;
+externC^rh_thread_join:p^handle:i64^;
+"""
+
 
 def main():
     suite = Suite('threads')
     positive, negative = suite.positive, suite.negative
+
+    alternate = suite.work / 'alternate_thread.c'
+    implementation = (suite.repo / 'runtime/rhat_thread.c').as_posix()
+    alternate.write_text(f'''#define rh_thread_spawn original_thread_spawn
+#include "{implementation}"
+#undef rh_thread_spawn
+int64_t rh_thread_spawn(void (*entry)(void *), const RhTransferType *type, void *args, uint64_t stacks)
+{{
+    puts("alternate runtime");
+    return original_thread_spawn(entry, type, args, stacks);
+}}
+int64_t platform_spawn(void (*entry)(void *), const RhTransferType *type, void *args, uint64_t stacks)
+{{
+    puts("custom symbol");
+    return original_thread_spawn(entry, type, args, stacks);
+}}
+''', encoding='utf-8')
+    launch = '''
+let^worker = p^arg:ref^i32^ { print^(*arg) }
+var^arg:i32^ = 91
+let^handle = rh_thread_spawn(thread_entry^(worker, ref^arg),
+    thread_transfer_type^(ref^arg), thread_args^(ref^arg), thread_stack_count^())
+assert^(handle != 0)
+rh_thread_join(handle)
+'''
+    positive('alternate_thread_runtime', BRIDGE + launch, 'alternate runtime\n91\n',
+             extra=('--thread-runtime', alternate))
+    positive('custom_spawn_symbol', (BRIDGE + launch).replace('rh_thread_spawn', 'platform_spawn'),
+             'custom symbol\n91\n', extra=('--thread-runtime', alternate))
+
+    positive('public_spawn_without_std_thread', BRIDGE + '''
+let^worker = p^args:ref^i32^[grow^] {
+    args[0] := 42
+    print^(args[0], args.len)
+}
+var^args = i32^[grow^]{7, 8}
+let^handle = rh_thread_spawn(thread_entry^(worker, ref^args),
+    thread_transfer_type^(ref^args), thread_args^(ref^args), thread_stack_count^())
+assert^(handle != 0)
+rh_thread_join(handle)
+print^(args[0])
+''', '42 2\n7\n')
+
+    custom = suite.work / 'my'
+    custom.mkdir(exist_ok=True)
+    (custom / 'thread.rh').write_text('module^my.thread\n' + BRIDGE + '''
+public^errordef^Error { StartFailed }
+public^def^Thread : std.sys.Disposable {
+    self^{ handle:i64^ }
+    start = template^p^entry, args -> Self^ | Error.StartFailed {
+        let^handle = rh_thread_spawn(thread_entry^(entry, args),
+            thread_transfer_type^(args), thread_args^(args), thread_stack_count^())
+        if^handle = 0 { return^Error.StartFailed{} }
+        return^Self^{handle = handle}
+    }
+    dispose = p^self^ { rh_thread_join(self^.handle) }
+}
+''', encoding='utf-8')
+    positive('custom_thread_library', '''
+let^my = import^my.thread
+let^worker = p^value:ref^i32^ { print^(*value) }
+var^value:i32^ = 73
+do^{
+    var^thread = try^my.Thread.start(worker, ref^value)
+}
+print^("joined")
+''', '73\njoined\n')
+    negative('public_spawn_rejects_views', BRIDGE + '''
+let^worker = p^args:ref^string^ {}
+var^args = "parent view"
+thread_entry^(worker, ref^args)
+''', 'thread transfer refuses')
+    negative('public_spawn_requires_procedure', BRIDGE + '''
+let^worker = p^args:ref^i32^ {}
+let^start = f^args:ref^i32^ { thread_entry^(worker, args) }
+var^args:i32^ = 0
+let^callback = start(ref^args)
+''', 'thread operations require p^')
+    negative('erased_arguments_cannot_escape', BRIDGE + '''
+let^bad = p^ -> ref^read^std.sys.ThreadArgs {
+    var^local:i32^ = 1
+    return^thread_args^(ref^local)
+}
+let^escaped = bad()
+''', 'escape')
+    negative('bridge_arguments_require_reference', BRIDGE + '''
+thread_transfer_type^(1)
+''', 'must be borrowed with ref^')
+    negative('bridge_arity', 'thread_stack_count^(1)\n', 'invalid thread operation arguments')
+    positive('enum_thread_arguments', BRIDGE + '''
+enum^Mode:i32^ { Ready = 1, Done = 2 }
+let^worker = p^arg:ref^Mode { print^(*arg = Mode.Done) }
+var^arg = Mode.Done
+let^handle = rh_thread_spawn(thread_entry^(worker, ref^arg),
+    thread_transfer_type^(ref^arg), thread_args^(ref^arg), thread_stack_count^())
+assert^(handle != 0)
+rh_thread_join(handle)
+''', 'true\n')
 
     positive('bounded_and_closed', HEADER + '''
 var^q = try^c.Channel<i32^>.new(1, 4)

@@ -5,13 +5,19 @@ int thread_operation(Function *caller, Expr *target)
     if (target->kind != E_NAME) {
         return THREAD_NONE;
     }
-    const char *names[] = {"", "__rh_channel_new", "__rh_channel_send", "__rh_channel_receive",
-                           "__rh_thread_spawn"};
-    for (int j = THREAD_NEW; j <= THREAD_SPAWN; j++) {
+    const char *public_names[] = {"thread_entry^", "thread_transfer_type^", "thread_args^",
+                                  "thread_stack_count^"};
+    for (int j = 0; j < 4; j++) {
+        if (!strcmp(target->text, public_names[j])) {
+            return THREAD_ENTRY + j;
+        }
+    }
+    const char *names[] = {"", "__rh_channel_new", "__rh_channel_send", "__rh_channel_receive"};
+    for (int j = THREAD_NEW; j <= THREAD_RECEIVE; j++) {
         if (strcmp(target->text, names[j])) {
             continue;
         }
-        const char *module = j == THREAD_SPAWN ? "std.thread" : "std.channel";
+        const char *module = "std.channel";
         if (!caller->module || !caller->module->name || strcmp(caller->module->name, module)) {
             fail(target->loc, "private thread operation is restricted to %s", module);
         }
@@ -20,8 +26,29 @@ int thread_operation(Function *caller, Expr *target)
     return THREAD_NONE;
 }
 
+static Type *thread_pointer(Program *p, const char *name, bool read)
+{
+    Def *d = lookup_def(p, name);
+    if (!d) {
+        fail((Loc){p->path, 1, 1}, "thread bridge operations require import^std.sys");
+    }
+    return type_wrap(p, T_REF, d->type, read);
+}
+
 Type *thread_result(Program *p, Function *caller, int operation)
 {
+    if (operation == THREAD_ENTRY) {
+        List params = {0};
+        add(&params, thread_pointer(p, "std.sys.ThreadArgs", false));
+        Type *signature = callable_signature(p, &params, type_builtin(p, T_VOID), true, NULL);
+        return type_wrap(p, T_CFUNC, signature, 0);
+    }
+    if (operation == THREAD_TRANSFER) {
+        return thread_pointer(p, "std.sys.ThreadTransfer", true);
+    }
+    if (operation == THREAD_ARGS) {
+        return thread_pointer(p, "std.sys.ThreadArgs", true);
+    }
     return operation == THREAD_RECEIVE ? type_spec(p, caller->result) : type_builtin(p, T_I64);
 }
 
@@ -74,9 +101,12 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
     if (!c->in->fn->procedure) {
         fail(e->loc, "thread operations require p^");
     }
-    int count = operation == THREAD_SEND ? 3 : 2;
+    int count = operation == THREAD_STACKS                                 ? 0
+                : operation == THREAD_TRANSFER || operation == THREAD_ARGS ? 1
+                : operation == THREAD_SEND                                 ? 3
+                                                                           : 2;
     if (e->args.n != count) {
-        fail(e->loc, "invalid private thread operation arguments");
+        fail(e->loc, "invalid thread operation arguments");
     }
     Type *result = thread_result(c->p, c->in->fn, operation);
     Value out = {.type = result, .id = destination >= 0 ? destination : slot(c, result, false)};
@@ -85,15 +115,14 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
     }
     Value args[3] = {0};
     for (int j = 0; j < count; j++) {
-        args[j] =
-            expression(c, e->args.v[j],
-                       operation == THREAD_NEW || (j == count - 1 && operation != THREAD_SPAWN)
-                           ? type_builtin(c->p, T_I64)
-                           : NULL);
+        args[j] = expression(c, e->args.v[j],
+                             operation == THREAD_NEW || (j == count - 1 && operation < THREAD_ENTRY)
+                                 ? type_builtin(c->p, T_I64)
+                                 : NULL);
     }
     Type *payload = NULL;
     Instance *worker = NULL;
-    if (operation == THREAD_SPAWN) {
+    if (operation == THREAD_ENTRY) {
         Type *fn = args[0].type;
         Function *f = fn->kind == T_FUNCTION ? fn->function : NULL;
         if (!f || f->external || f->environment || f->uses.n || f->params.n != 1 || !f->procedure) {
@@ -121,7 +150,17 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
         }
         worker->thread_entry = true;
     }
-    else {
+    else if (operation == THREAD_TRANSFER || operation == THREAD_ARGS) {
+        if (args[0].type->kind != T_REF) {
+            fail(e->loc, "thread bridge arguments must be borrowed with ref^");
+        }
+        payload = args[0].type->elem;
+        transferable(c->p, payload, true, e->loc);
+        if (operation == THREAD_ARGS) {
+            out.deps = args[0].deps;
+        }
+    }
+    else if (operation != THREAD_STACKS) {
         Def *owner = c->in->self ? c->in->self : c->in->fn->owner;
         if (!owner || owner->type_args.n != 1) {
             fail(e->loc, "channel operation requires Channel<T>");
@@ -168,7 +207,6 @@ void emit_thread_support(Program *p, FILE *f)
           "declare i64 @rh_channel_new(ptr, i64, i64)\n"
           "declare i64 @rh_channel_send(i64, ptr, i64)\n"
           "declare void @rh_channel_receive(i64, ptr, ptr, i64, i32, i32, i32, i64)\n"
-          "declare i64 @rh_thread_spawn(ptr, ptr, ptr, i64)\n"
           "declare void @rh_thread_unhandled() cold noreturn\n",
           f);
     for (int j = 0; j < p->transfer_types.n; j++) {

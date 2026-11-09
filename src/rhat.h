@@ -498,7 +498,7 @@ enum {
                   // column and message; text is the source (length bytes), a NUL, the message.
     I_STATE_REF,  // Alias dst to context member label.
     I_STATE_BIND, // Publish entry-owned slot a as context member label.
-    I_THREAD,     // Typed channel transfer or independent worker launch; label selects operation.
+    I_THREAD,     // Typed channel transfer or thread ABI bridge; label selects operation.
     I_FILL        // Fill owning array dst with a copies of element b during construction,
                   // or with b < 0 reserve a elements of capacity for a T[max^].
 };
@@ -591,8 +591,8 @@ int run_process(char *const *args);
 // Compile each module and link them with the runtime and C libraries named
 // by --link-lib.
 int build_objects(Program *p, const char *compiler, const char *clang, const char *runtime,
-                  const char *opt, const char *out, const char *cache, bool reuse, bool verbose,
-                  List *libraries, List *c_includes);
+                  const char *thread_runtime, const char *opt, const char *out, const char *cache,
+                  bool reuse, bool verbose, List *libraries, List *c_includes);
 void dump_ir(Program *p, const char *path);
 // Write the C shims for externC^ functions that take or return a def^ by
 // value, or that come from modules with includeC^ headers (headers selects

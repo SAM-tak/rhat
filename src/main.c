@@ -108,7 +108,7 @@ static void usage(void)
     puts(
         "R^ compiler 0.1\nUsage: rhat check SOURCE\n       rhat format SOURCE\n       rhat format-check SOURCE\n       rhat emit SOURCE -o "
         "OUTPUT.ll [--dump-ir OUTPUT.rir]\n       rhat build SOURCE -o OUTPUT "
-        "[--clang PATH] [--runtime PATH] [-O0|-O2] [--emit-llvm OUTPUT.ll]\n       rhat lsp [--stdio] [--stdlib DIR]\n       rhat run SOURCE "
+        "[--clang PATH] [--runtime PATH] [--thread-runtime PATH] [-O0|-O2] [--emit-llvm OUTPUT.ll]\n       rhat lsp [--stdio] [--stdlib DIR]\n       rhat run SOURCE "
         "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
         "--dump-ir "
         "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --crt-dll, --cache-dir DIR, --no-cache, "
@@ -157,7 +157,8 @@ int main(int argc, char **argv)
         return 2;
     }
     const char *source = argv[2], *out = NULL, *ll = NULL, *rir = NULL,
-               *clang = getenv("RHAT_CLANG"), *runtime = getenv("RHAT_RUNTIME"), *opt = "-O0";
+               *clang = getenv("RHAT_CLANG"), *runtime = getenv("RHAT_RUNTIME"),
+               *thread_runtime = getenv("RHAT_THREAD_RUNTIME"), *opt = "-O0";
     if (!clang || !*clang) {
         clang = RH_DEFAULT_CLANG;
     }
@@ -224,6 +225,9 @@ int main(int argc, char **argv)
         else if (!strcmp(s, "--runtime")) {
             runtime = v;
         }
+        else if (!strcmp(s, "--thread-runtime")) {
+            thread_runtime = v;
+        }
         else if (!strcmp(s, "--emit-llvm")) {
             ll = v;
         }
@@ -249,7 +253,8 @@ int main(int argc, char **argv)
     }
     const char *outputs[] = {out, ll, rir};
     for (int j = 0; j < 3; j++) {
-        if (same_path(outputs[j], source) || same_path(outputs[j], runtime)) {
+        if (same_path(outputs[j], source) || same_path(outputs[j], runtime) ||
+            same_path(outputs[j], thread_runtime)) {
             fputs("output would overwrite a source or runtime file\n", stderr);
             return 2;
         }
@@ -297,8 +302,8 @@ int main(int argc, char **argv)
         emit_llvm(&p, ll);
     }
     char *retained = ll ? fmt("LLVM IR retained at %s\n", ll) : "";
-    int status = build_objects(&p, argv[0], clang, runtime, opt, out, cache, reuse, verbose,
-                               &libraries, &c_includes);
+    int status = build_objects(&p, argv[0], clang, runtime, thread_runtime, opt, out, cache, reuse,
+                               verbose, &libraries, &c_includes);
     if (status < 0) {
         int error = errno;
         fprintf(stderr,

@@ -2,6 +2,9 @@ module^std.thread
 
 import^std.sys
 
+externC^rh_thread_spawn:p^entry:externC^p^ref^std.sys.ThreadArgs;,
+    transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
+    stacks:i64^ -> i64^;
 externC^rh_thread_join:p^handle:i64^;
 externC^rh_hardware_threads:p^ -> i64^;
 public^errordef^Error { StartFailed }
@@ -10,7 +13,9 @@ public^errordef^Error { StartFailed }
 public^def^Thread : std.sys.Disposable {
     self^{ private^handle:i64^ }
     spawn = template^p^entry, args -> Self^ | Error.StartFailed {
-        let^h = __rh_thread_spawn(entry, args)
+        let^worker = thread_entry^(entry, args)
+        let^transfer = thread_transfer_type^(args)
+        let^h = rh_thread_spawn(worker, transfer, thread_args^(args), thread_stack_count^())
         if^h = 0 { return^Error.StartFailed{} }
         return^Self^{handle = h}
     }

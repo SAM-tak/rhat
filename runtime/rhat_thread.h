@@ -24,7 +24,7 @@ typedef struct {
     const RhTransferType *type;
 } RhTransferField;
 
-// Internal format only; never a serialization or foreign ABI contract.
+// Compiler/runtime transfer ABI for this R^ version; not a serialization format.
 struct RhTransferType {
     uint64_t kind, size, align, count, offset;
     const RhTransferType *element;
@@ -39,4 +39,9 @@ void rh_context_free(RhThreadContext *context);
 void rh_context_attach(RhThreadContext *context);
 // Allocate aligned bytes on a receiver-owned stack; exhaustion is fatal.
 void *rh_transfer_alloc(RhStack *stack, uint64_t bytes, uint64_t align);
+// Copy arguments before returning; run entry in a fresh attached context. Zero means failure.
+int64_t rh_thread_spawn(void (*entry)(void *), const RhTransferType *type, void *args,
+                        uint64_t stacks);
+// Wait for a successful spawn and release its handle; zero is a no-op.
+void rh_thread_join(int64_t handle);
 #endif

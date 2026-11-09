@@ -285,8 +285,8 @@ static char *file_stamp(const char *path)
 }
 
 int build_objects(Program *p, const char *compiler, const char *clang, const char *runtime,
-                  const char *opt, const char *out, const char *cache, bool reuse, bool verbose,
-                  List *libraries, List *c_includes)
+                  const char *thread_runtime, const char *opt, const char *out, const char *cache,
+                  bool reuse, bool verbose, List *libraries, List *c_includes)
 {
     crt_dll = p->crt_dll;
     if (!cache) {
@@ -327,7 +327,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         // unresolved. lld-link tolerated the conflict.
         add(&args, "-Wl,-nodefaultlib:libcmt");
     }
-    bool random = false, threads = false;
+    bool random = false, threads = p->transfer_types.n != 0;
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
         p->emitting = m;
@@ -372,8 +372,10 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
     add(&args,
         compile(runtime, identity, "runtime", clang_path, opt, cache, reuse, verbose, &includes));
     if (threads) {
-        add(&args, compile(tool_resource(compiler, RH_THREAD_PATH, "rhat_thread.c"), identity,
-                           "thread runtime", clang_path, opt, cache, reuse, verbose, NULL));
+        add(&args,
+            compile(thread_runtime ? thread_runtime
+                                   : tool_resource(compiler, RH_THREAD_PATH, "rhat_thread.c"),
+                    identity, "thread runtime", clang_path, opt, cache, reuse, verbose, &includes));
 #if !defined(_WIN32)
         add(&args, "-pthread");
 #endif

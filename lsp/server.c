@@ -605,6 +605,13 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
                 completion_item(out, keywords[j], "R^", 14);
             }
         }
+        const char *bridge[] = {"thread_entry^", "thread_transfer_type^", "thread_args^",
+                                "thread_stack_count^"};
+        for (size_t j = 0; j < sizeof(bridge) / sizeof(*bridge); j++) {
+            if (!strncmp(bridge[j], buffer + begin, cursor - begin)) {
+                completion_item(out, bridge[j], "R^ thread bridge", 14);
+            }
+        }
         for (int k = T_BOOL; k < T_STRUCT; k++) {
             const char *name = builtin_name(k);
             if (!strncmp(name, buffer + begin, cursor - begin)) {

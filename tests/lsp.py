@@ -1132,6 +1132,20 @@ print^(a.x)
         assert definition['range']['start'] == at(sys_text,'Disposable'), definition
         hover = client.request('textDocument/hover',dict(textDocument=dict(uri=document.as_uri()),position=position))
         assert 'std.sys.Disposable' in hover['contents']['value'], hover
+        if document.name == 'thread.rh':
+            definition = client.request('textDocument/definition',dict(
+                textDocument=dict(uri=document.as_uri()), position=at(text,'rh_thread_spawn(worker')))
+            if isinstance(definition,list):
+                definition = definition[0]
+            assert definition['uri'].lower() == document.as_uri().lower(), definition
+            assert definition['range']['start'] == at(text,'rh_thread_spawn:p^'), definition
+            position = at(text,'thread_entry^')
+            position['character'] += len('thread_')
+            completions = client.request('textDocument/completion',dict(
+                textDocument=dict(uri=document.as_uri()),position=position))
+            labels = {item['label'] for item in completions}
+            assert {'thread_entry^','thread_transfer_type^','thread_args^','thread_stack_count^'} <= labels, labels
+            assert 'thread_spawn^' not in labels, labels
         if document != channel_path:
             client.send('textDocument/didClose',dict(textDocument=dict(uri=document.as_uri())))
     for name in ('InvalidCapacity','OutOfMemory','Closed','Full','MessageTooLarge'):

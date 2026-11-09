@@ -2,8 +2,17 @@
 #define RHAT_SEMA_H
 #include "rhat.h"
 
-// Private std.thread/std.channel operations requiring typed compiler support.
-enum { THREAD_NONE, THREAD_NEW, THREAD_SEND, THREAD_RECEIVE, THREAD_SPAWN };
+// Thread creation and private channel operations requiring typed compiler support.
+enum {
+    THREAD_NONE,
+    THREAD_NEW,
+    THREAD_SEND,
+    THREAD_RECEIVE,
+    THREAD_ENTRY,
+    THREAD_TRANSFER,
+    THREAD_ARGS,
+    THREAD_STACKS
+};
 
 // The interface shared by semantic IR construction (sema.c and the files
 // split from it) and type inference (check.c).
@@ -137,7 +146,7 @@ typedef struct {
     int inline_steps; // Cumulative expansion budget for this concrete function body.
 } Context;
 
-// Recognize private transfer operations, enforcing their standard-library scope.
+// Recognize thread bridge operations and transfers restricted to std.channel.
 int thread_operation(Function *caller, Expr *target);
 // Their result type is fixed by the operation or the annotated receive method.
 Type *thread_result(Program *p, Function *caller, int operation);

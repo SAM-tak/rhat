@@ -110,6 +110,45 @@ FFI は従来どおり信頼境界です。共有する C の資源を複数ワ�
 ## スレッドの入口とトップレベル束縛
 
 `std.thread.spawn(entry, args)` は静的に解決できる `p^` を起動します。
+スレッド生成そのものは `externC^` で宣言した C 関数が担当し、コンパイラは次の
+橋渡し操作を提供します。任意のモジュールの `p^` 内で利用できます。
+
+| 操作 | 結果と役割 |
+|---|---|
+| `thread_entry^(entry, ref^args)` | 入口を検査し、`externC^p^ref^std.sys.ThreadArgs;` 型の C 用ラッパーを生成 |
+| `thread_transfer_type^(ref^args)` | 転送可能性を検査し、静的な `ref^read^std.sys.ThreadTransfer` 型の転送記述子を生成 |
+| `thread_args^(ref^args)` | 借用関係を保ったまま、`ref^read^std.sys.ThreadArgs` 型へ引数ポインタを変換 |
+| `thread_stack_count^()` | 実行コンテキストに必要なスタック数を `i64^` で取得 |
+
+`ThreadArgs` と `ThreadTransfer` は `std.sys` の不透明な C 型です。
+`std.thread` はこれらを使って通常の `externC^` 呼び出しを行います。
+
+```rhat
+import^std.sys
+externC^rh_thread_spawn:p^entry:externC^p^ref^std.sys.ThreadArgs;,
+    transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
+    stacks:i64^ -> i64^;
+
+# Inside a p^ or template^p^ body:
+let^worker = thread_entry^(entry, args)
+let^transfer = thread_transfer_type^(args)
+let^h = rh_thread_spawn(worker, transfer, thread_args^(args), thread_stack_count^())
+```
+
+標準の C 関数は成功時にハンドル、失敗時に `0` を返します。引数の読み取り・転送準備は
+呼び出しから戻るまでに完了させ、子側は独立した実行コンテキストを接続して入口を呼びます。
+親のデータスタックは共有しません。ハンドルは `rh_thread_join` に渡して回収し、
+`std.thread.Thread` はこの管理を `Disposable` で包みます。
+
+独自ライブラリは生成関数の C シンボル名も変更できます。コンパイラは生成関数の名前を
+決め打ちしません。橋渡し操作の検査は維持されますが、消去した引数・入口・転送記述子の
+型の一致や実行コンテキストの管理は FFI 側の契約です。異なる型の組を渡してはいけません。
+対応する ABI は `runtime/rhat_thread.h` にあり、コンパイラと同じ版を使います。
+
+`--thread-runtime PATH` または `RHAT_THREAD_RUNTIME` で標準のスレッド・Channel 用 C
+ランタイムを差し替えられます。独自 OS 向けには必要に応じて `--runtime` で基礎ランタイムも
+差し替えます。いずれもコンパイラ本体の再ビルドは不要です。
+
 初版の入口は「受信側で構築した引数への借用を受け、通常の結果値を返さない処理」に限定します。
 `nil^` とエラーの合併は許可し、未処理のエラーはプロセス終了として扱います。
 一般の関数値の保存や、キャプチャ付きクロージャの実装を先行条件にしません。
