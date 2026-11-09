@@ -4,26 +4,28 @@ import^std.sys
 
 externC^rh_thread_spawn:p^entry:std.sys.ThreadEntry,
     transfer:ref^read^std.sys.ThreadTransfer, args:ref^read^std.sys.ThreadArgs,
-    stacks:i64^ -> i64^;
+    stacks:i64^-> i64^;
 externC^rh_thread_join:p^handle:i64^;
-externC^rh_hardware_threads:p^ -> i64^;
+externC^rh_hardware_threads:p^-> i64^; # must be `p^`
 public^errordef^Error { StartFailed }
 
 # A joinable OS thread. Scope exit waits; close its input before waiting.
 public^def^Thread : std.sys.Disposable {
-    self^{ private^handle:i64^ }
-    spawn = template^p^entry, args -> Self^ | Error.StartFailed {
+    self^{ private^handle:i64^}
+    spawn = template^p^entry, args -> Self^| Error.StartFailed {
         let^worker = thread_entry^(entry, args)
         let^transfer = thread_transfer_type^(args)
         let^h = rh_thread_spawn(worker, transfer, thread_args^(args), thread_stack_count^())
         if^h = 0 { return^Error.StartFailed{} }
         return^Self^{handle = h}
     }
-    join = p^self^ {
+    join = p^self^{
         rh_thread_join(self^.handle)
         self^.handle := 0
     }
-    dispose = p^self^ { self^.join() }
+    dispose = p^self^{
+        self^.join()
+    }
 }
 
 # entry is a static p^ with one reference parameter; args is borrowed and copied.
@@ -32,6 +34,6 @@ public^let^spawn = template^p^entry, args -> Thread | Error.StartFailed {
 }
 # The available hardware thread count may change between calls. With no arguments to
 # determine its result, this must be p^ rather than f^; the C declaration above is p^ too.
-public^let^hardware_threads = p^ -> i64^ {
+public^let^hardware_threads = p^-> i64^{
     return^rh_hardware_threads()
 }
