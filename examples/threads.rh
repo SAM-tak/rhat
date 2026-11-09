@@ -14,6 +14,7 @@ let^worker = p^a:ref^Args {
     }
 }
 var^jobs = try^c.Channel<i32^>.new(4, 1000)
+# var^jobs2 = jobs # This cause error. Because Channel is not copyable.
 var^results = try^c.Channel<i32^>.new(4, 1000)
 var^args = Args{ jobs = jobs.clone(), results = results.clone() }
 var^one = try^t.spawn(worker, ref^args)

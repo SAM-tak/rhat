@@ -1,0 +1,67 @@
+var^count = 0
+let^increment = p^{
+    count += 1
+}
+
+# 本物のクロージャはまだ無理（メモリモデルとの食合せが悪いのでずっと無理かも）
+# let^incrementX = f^x:i32^{
+#     return^p^{
+#         count += x
+#     }
+# }
+# let^inc5 = incrementX(5)
+# inc5();
+
+let^run = p^{
+    var^count = 0
+    let^increment = p^{
+        count += 1  # run のローカルを捕捉
+    }
+    increment()
+    print^count
+}
+
+run()
+
+def^A {
+    self^{
+        i = 0
+    }
+    increment2 = p^self^{
+        count += 1
+        self^.i += 1
+        print^self^.i
+    }
+
+    # 本物のクロージャはまだ無理 （メモリモデルとの食合せが悪いのでずっと無理かも）
+    # incrementf = p^self^, x:i32^{
+    #     return^p^{
+    #         self^.i += x
+    #     }
+    # }
+
+    ssi = 0
+    var^si = 0
+    private^var^psi = 0
+    increment = p^{
+        count += 1
+        def^.si += 1
+        print^def^.si
+    }
+}
+
+let^increment2 = p^{
+    A.si += 1
+}
+
+var^a = A{}
+
+# let^af = a.incrementf(2)
+# af()
+
+A.increment()
+a.increment2()
+increment()
+increment2()
+print^count
+print^A.si
