@@ -191,7 +191,7 @@ print^(a[0].h, a[1].h)
 ''', 'dispose 1\n9 8\ndispose 8\ndispose 9\n')
 
     positive('loops', '''
-var^rows:i32^[[2] 2] = { {1, 2}, {3, 4} }
+var^rows:i32^[2 [2]] = { {1, 2}, {3, 4} }
 for^row in^rows[..] {
     let^view = row[..]
     print^(view[1])

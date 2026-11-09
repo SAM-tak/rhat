@@ -147,6 +147,7 @@ typedef struct {
     Def *type_owner;
     List tokens;
     int at, serial, scope_depth;
+    int array_length_end; // One past a trailing nested type bracket, or zero outside lengths.
     List type_names, error_names; // Declaration names indexed once after lexing.
     bool header;
     bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
@@ -1171,7 +1172,7 @@ static Spec *array_brackets(Parser *p, Spec *elem, int *references);
 static void array_chain_error(Loc loc)
 {
     fail(loc, "consecutive array type brackets are not allowed; "
-              "write (T[A])[B] or T[[A] B]");
+              "write (T[A])[B] or T[B [A]]");
 }
 
 // Store rectangular dimensions in row-major nesting while retaining their type identity.
@@ -1190,32 +1191,55 @@ static Spec *rectangular_spec(Spec *elem, List *lengths)
     return elem;
 }
 
-// Parse bracket contents, allowing an inner bracket to construct the element type.
+// A top-level bracket after a length starts the nested element type. Brackets
+// inside parentheses/calls still belong to the constant expression.
+static Expr *array_length(Parser *p)
+{
+    int saved = p->array_length_end, depth = 0;
+    bool header = p->header;
+    p->array_length_end = 0;
+    for (int j = p->at; j < p->tokens.n; j++) {
+        Token *t = p->tokens.v[j];
+        if (t->kind == TOK_STRING || t->kind == TOK_QUOTED) {
+            continue;
+        }
+        if (!depth && !strcmp(t->text, "[")) {
+            p->array_length_end = j + 1;
+            break;
+        }
+        if (!depth && (!strcmp(t->text, "]") || !strcmp(t->text, ","))) {
+            break;
+        }
+        depth += !strcmp(t->text, "(");
+        depth -= !strcmp(t->text, ")");
+    }
+    p->header = false;
+    Expr *length = expr(p, 0);
+    p->header = header;
+    p->array_length_end = saved;
+    return length;
+}
+
+// Array policies run from the outer container to its nested element type.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
-    if (is(p, "[")) {
-        int inner_refs;
-        elem = array_brackets(p, elem, &inner_refs);
-        if (is(p, "[")) {
-            array_chain_error(tok(p)->loc);
-        }
-    }
     int refs = reference_depth(tok(p)->text);
     bool dynamic = dynamic_depth(tok(p)->text) != 0;
     if (dynamic) {
         refs = dynamic_depth(tok(p)->text);
     }
     *references = refs;
+    Loc reference_loc = tok(p)->loc;
+    bool read = false;
     if (refs) {
-        Token *token = next(p);
-        bool read = take(p, "read^");
+        next(p);
+        read = take(p, "read^");
         dynamic = dynamic || take(p, "dyn^");
-        elem = reference_spec(elem, token->loc, refs, read, dynamic);
     }
     Spec *w = mem(sizeof(*w));
     w->loc = elem->loc;
-    w->elem = elem;
-    if (is(p, "]")) {
+    List lengths = {0};
+    if (is(p, "]") || is(p, "[")) {
         w->kind = SPEC_ARRAY;
     }
     else if (take(p, "..")) {
@@ -1227,45 +1251,44 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     }
     else {
         bool bounded = take(p, "max^");
-        if (bounded && is(p, "]")) {
+        if (bounded && (is(p, "]") || is(p, "["))) {
             w->kind = SPEC_GROW;
             w->count = ARRAY_CAPPED;
-            return w;
         }
-        w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
-        Token *n = tok(p);
-        if (n->kind != TOK_INT || p->at + 1 >= p->tokens.n ||
-            strcmp(((Token *)p->tokens.v[p->at + 1])->text, "]")) {
-            // A constant expression such as WIDTH * DEPTH; modules.c folds it.
-            bool header = p->header;
-            p->header = false;
-            w->length = expr(p, 0);
-            p->header = header;
-            if (is(p, ",")) {
+        else {
+            w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
+            add(&lengths, array_length(p));
+            while (take(p, ",")) {
                 if (bounded || refs) {
                     fail(w->loc,
                          "multidimensional arrays require fixed lengths without array attributes");
                 }
-                List lengths = {0};
-                add(&lengths, w->length);
-                while (take(p, ",")) {
-                    p->header = false;
-                    add(&lengths, expr(p, 0));
-                    p->header = header;
-                }
-                return rectangular_spec(elem, &lengths);
+                add(&lengths, array_length(p));
             }
-            return w;
         }
-        next(p);
-        errno = 0;
-        long k = strtol(n->text, NULL, 10);
-        if (errno || k <= 0 || k > 1000000) {
-            fail(n->loc, "array length out of range (1..1000000)");
-        }
-        w->kind = bounded ? SPEC_BOUNDED : SPEC_ARRAY;
-        w->count = (int)k;
     }
+    if (is(p, "[")) {
+        FormatToken *inner = format_token(p, p->at);
+        if (inner) {
+            inner->nested_array = true;
+        }
+        int inner_refs;
+        elem = array_brackets(p, elem, &inner_refs);
+        if (is(p, "[")) {
+            array_chain_error(tok(p)->loc);
+        }
+        if (!is(p, "]")) {
+            fail(tok(p)->loc, "nested array type must follow the outer policy; write T[B [A]]");
+        }
+    }
+    if (refs) {
+        elem = reference_spec(elem, reference_loc, refs, read, dynamic);
+    }
+    if (lengths.n > 1) {
+        return rectangular_spec(elem, &lengths);
+    }
+    w->elem = elem;
+    w->length = lengths.n ? lengths.v[0] : NULL;
     return w;
 }
 
@@ -1284,13 +1307,14 @@ static Spec *array_brackets(Parser *p, Spec *elem, int *references)
 
 // Whether the '[' at token k opens an array type in an expression: a kind or
 // reference word, an empty pair, or a length followed by '{' or another one.
-static bool array_type_at(Parser *p, int k)
+static bool array_type_at(Parser *p, int k, bool type_base)
 {
     if (k + 1 >= p->tokens.n) {
         return false;
     }
     Token *next = p->tokens.v[k + 1];
     int depth = 0;
+    bool nested = false;
     for (int j = k; j < p->tokens.n; j++) {
         Token *token = p->tokens.v[j];
         if (token->kind == TOK_STRING || token->kind == TOK_QUOTED) {
@@ -1298,12 +1322,16 @@ static bool array_type_at(Parser *p, int k)
         }
         const char *text = token->text;
         if (!strcmp(text, "[")) {
+            nested |= depth == 1;
             depth++;
         }
         else if (!strcmp(text, "]") && !--depth) {
-            if (j + 1 < p->tokens.n && !strcmp(((Token *)p->tokens.v[j + 1])->text, "{") &&
-                !p->header) {
-                return true;
+            if (j + 1 < p->tokens.n) {
+                const char *after = ((Token *)p->tokens.v[j + 1])->text;
+                if ((!strcmp(after, "{") && !p->header) ||
+                    (type_base && nested && !strcmp(after, ")"))) {
+                    return true;
+                }
             }
             break;
         }
@@ -1318,7 +1346,8 @@ static bool array_type_at(Parser *p, int k)
         return false;
     }
     const char *after = ((Token *)p->tokens.v[k + 3])->text;
-    return (!strcmp(after, "{") && !p->header) || (!strcmp(after, "[") && array_type_at(p, k + 3));
+    return (!strcmp(after, "{") && !p->header) ||
+           (!strcmp(after, "[") && array_type_at(p, k + 3, type_base));
 }
 
 // One suffix per type atom. Parentheses or nested brackets expose array nesting.
@@ -2073,6 +2102,9 @@ static Expr *primary(Parser *p)
         fail(t->loc, "expected an expression, found '%s'", t->text);
     }
     for (;;) {
+        if (p->array_length_end == p->at + 1) {
+            break;
+        }
         if (type_arguments_ahead(p) && type_constructor(p, e)) {
             Spec *s = array_element_spec(p, e);
             type_arguments(p, s);
@@ -2112,7 +2144,9 @@ static Expr *primary(Parser *p)
             }
             e = n;
         }
-        else if (is(p, "[") && array_type_at(p, p->at)) {
+        else if (is(p, "[") && array_type_at(p, p->at,
+                                             type_constructor(p, e) ||
+                                                 (e->kind == E_NAME && strchr(e->text, '^')))) {
             if ((e->kind == E_INDEX || e->kind == E_SLICE) && !e->parenthesized) {
                 array_chain_error(tok(p)->loc);
             }

@@ -1111,8 +1111,8 @@ print^(a.x)
 
     nested_path = work/'nested_array_types.rh'
     nested_text = '''def^Cell { self^{n:i32^=0} }
-var^grid:Cell[[3] 2] = {{Cell{},Cell{},Cell{}},{Cell{},Cell{},Cell{}}}
-let^identity = template^f^x:ref^Cell[[3] 2] -> ref^(Cell[3])[2] { x }
+var^grid:Cell[2 [3]] = {{Cell{},Cell{},Cell{}},{Cell{},Cell{},Cell{}}}
+let^identity = template^f^x:ref^Cell[2 [3]] -> ref^(Cell[3])[2] { x }
 let^result = identity(ref^grid)
 let^deferred = template^p^x:(Cell[3])[2] {}
 print^(result[1][2].n)
@@ -1128,12 +1128,12 @@ print^(result[1][2].n)
         position=at(nested_text,'deferred =')))
     assert 'x:(Cell[3])[2]' in hover['contents']['value'], hover
     classified = tokens(nested_text,nested_path)
-    for position in (at(nested_text,'Cell[[3]'),at(nested_text,'Cell[3]')):
+    for position in (at(nested_text,'Cell[2 [3]]'),at(nested_text,'Cell[3]')):
         assert classified[(position['line'],position['character'])] == (4,1), classified
         definition = client.request('textDocument/definition',dict(textDocument=dict(uri=nested_path.as_uri()),
             position=position))
         assert definition['range']['start'] == at(nested_text,'Cell {'), definition
-    broken = nested_text.replace('Cell[[3] 2]', 'Cell[3][2]',1)
+    broken = nested_text.replace('Cell[2 [3]]', 'Cell[3][2]',1)
     client.change(nested_path,broken,2)
     assert any('consecutive array type brackets' in d['message'] for d in client.diagnostics(nested_path,2))
     client.change(nested_path,nested_text,3)

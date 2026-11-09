@@ -31,11 +31,11 @@ def main():
 
     expect('hat_spacing', 'let^ x = self^ + 1\n', 'let^x = self^+ 1\n')
     expect('nested_array_types',
-           'var^a:i32^[ [ 3 ]2 ]={{1,2,3},{4,5,6}}\nvar^b:(i32^[ 3 ])[2]=a\n',
-           'var^a:i32^[[3] 2] = {{1, 2, 3}, {4, 5, 6}}\nvar^b: (i32^[3])[2] = a\n')
+           'var^a:i32^[ 2 [ 3 ] ]={{1,2,3},{4,5,6}}\nvar^b:(i32^[ 3 ])[2]=a\n',
+           'var^a:i32^[2 [3]] = {{1, 2, 3}, {4, 5, 6}}\nvar^b: (i32^[3])[2] = a\n')
     expect('nested_array_kinds',
-           'let^f=p^a:T[ [grow^]max^64 ],b:T[[[2]3] 4] {}\n',
-           'let^f = p^a:T[[grow^] max^64], b:T[[[2] 3] 4] {}\n')
+           'let^f=p^a:T[ max^64[grow^] ],b:T[4 [3 [2]]],c:T[grow^[3]] {}\n',
+           'let^f = p^a:T[max^64 [grow^]], b:T[4 [3 [2]]], c:T[grow^ [3]] {}\n')
     expect('rectangular_arrays',
            'var^a:i32^[2 ,3]={{1,2,3},{4,5,6}}\na[ 1 ,2 ]+=7\n',
            'var^a:i32^[2, 3] = {{1, 2, 3}, {4, 5, 6}}\na[1, 2] += 7\n')

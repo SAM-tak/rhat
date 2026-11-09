@@ -494,6 +494,9 @@ static uint32_t spacing(const Format *f, size_t i)
     if (unit_is_comment(a) || unit_is_comment(b)) {
         return kept;
     }
+    if (b->token.nested_array) {
+        return unit_is_op(a, "[") ? 0 : 1;
+    }
     if (a->kind == UNIT_TOKEN && a->token.kind == FORMAT_OP &&
         a->token.operator_role == FORMAT_OPERATOR_PREFIX) {
         return 0;
@@ -779,8 +782,9 @@ static bool same_reading(const Reading *a, const Reading *b)
     for (int j = 0; j < a->syntax.tokens.n; j++) {
         FormatToken *x = a->syntax.tokens.v[j], *y = b->syntax.tokens.v[j];
         if (x->kind != y->kind || x->clause != y->clause || x->operator_role != y->operator_role ||
-            x->array_type != y->array_type || x->parameter_separator != y->parameter_separator ||
-            x->length != y->length || memcmp(a->text + x->offset, b->text + y->offset, x->length)) {
+            x->array_type != y->array_type || x->nested_array != y->nested_array ||
+            x->parameter_separator != y->parameter_separator || x->length != y->length ||
+            memcmp(a->text + x->offset, b->text + y->offset, x->length)) {
             return false;
         }
     }

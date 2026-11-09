@@ -540,7 +540,7 @@ let^ view=refs[.. 1];
 *view[0] := 42
 var^ other:i32^[ref^ grow^]={}
 other.append(view)
-var^ views:i32^[[..] grow^]={}
+var^ views:i32^[grow^ [..]]={}
 var^ values:i32^[2]={10,20}
 views.push(values[.. 2])
 print^(x,*other[0],views[0][1])
@@ -1947,7 +1947,7 @@ do^{
 """, "reference would outlive its owner")
 negative("flow_recursion_through_byte_view", """
 def^ H {
-    self^{ items:u8^[[..] grow^] = {} }
+    self^{ items:u8^[grow^ [..]] = {} }
     add = p^self^, s:u8^[..] { self^.items.push(s) }
 }
 let^ deep = p^h:ref^ H, x:ref^ i32^[1], n:i32^ {

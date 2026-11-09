@@ -41,6 +41,7 @@ typedef struct {
     int operator_role;
     bool hat, clause; // Clause labels are identified by the parser, not their spelling.
     bool array_type, parameter_separator; // Wrapping hints supplied by the parser.
+    bool nested_array;                    // A trailing element-type bracket inside an array policy.
 } FormatToken;
 
 typedef struct {

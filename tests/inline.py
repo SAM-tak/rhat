@@ -72,7 +72,7 @@ skip(1,"two",true^)
 }
 print^(first("one",2),first(3,"four"))
 ''', 'one 3\n')
-    positive('nested_arrays', '''var^a:i32^[[2] 2]={{1,2},{3,4}}
+    positive('nested_arrays', '''var^a:i32^[2 [2]]={{1,2},{3,4}}
 var^n=0
 inline^for^row in^a {inline^for^x in^row {n+=x}}
 print^(n)

@@ -73,7 +73,7 @@ print^(r?[index(ref^calls),index(ref^calls)]??7,calls)
     for name, source, diagnostic in (
             ('too_few', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0])', 'requires 2 indices'),
             ('too_many', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,1,2])', 'requires 2 indices'),
-            ('nested', 'let^a=i32^[[3]2]{{1,2,3},{4,5,6}}\nprint^(a[0,1])', 'require a multidimensional array'),
+            ('nested', 'let^a=i32^[2 [3]]{{1,2,3},{4,5,6}}\nprint^(a[0,1])', 'require a multidimensional array'),
             ('row_shape', 'let^a=i32^[2,3]{{1,2},{3,4,5}}', 'exactly 3 elements'),
             ('zero_dimension', 'var^a:i32^[2,0] = {}', 'array length out of range'),
             ('dynamic_dimension', 'var^n=2\nvar^a:i32^[n,3] = {}', 'constant integer expression'),
@@ -84,11 +84,11 @@ print^(r?[index(ref^calls),index(ref^calls)]??7,calls)
             ('distinct_types', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nlet^b:(i32^[3])[2]=a', "expected '(i32^[3])[2]'")):
         negative('rectangular_reject_' + name, source + '\n', diagnostic)
     positive('nested_brackets_and_parenthesized_types', '''
-var^a:i32^[[3] 2] = {{10,11,12},{20,21,22}}
+var^a:i32^[2 [3]] = {{10,11,12},{20,21,22}}
 var^b:(i32^[3])[2] = {{30,31,32},{40,41,42}}
-let^c = i32^[[3] 2]{{50,51,52},{60,61,62}}
+let^c = i32^[2 [3]]{{50,51,52},{60,61,62}}
 let^d = (i32^[3])[2]{{70,71,72},{80,81,82}}
-var^rows:i32^[[3] grow^] = {}
+var^rows:i32^[grow^ [3]] = {}
 rows.push(a[0])
 rows.push(b[1])
 a[1][2] := 99
@@ -97,8 +97,8 @@ print^(a.len,a[0].len,a[1][2],b[1][2],c[1][2],d[1][2],rows[1][2])
     positive('nested_reference_and_slice_elements', '''
 var^a:i32^[2] = {10,11}
 var^b:i32^[2] = {20,21}
-let^refs = i32^[[2] ref^2]{ref^a,ref^b}
-var^views:i32^[[..] grow^] = {}
+let^refs = i32^[ref^2 [2]]{ref^a,ref^b}
+var^views:i32^[grow^ [..]] = {}
 views.push(a[..])
 views.push(b[..])
 refs[0][1] := 12
@@ -108,36 +108,52 @@ print^(a[1],b[0],more[0][1],more[1][0])
 ''', '12 22 12 22\n')
     positive('nested_generic_fields_and_constant_lengths', '''
 let^WIDTH = 2
-def^Grid<T> { self^{cells:T[[WIDTH + 1] 2]} }
+def^Grid<T> { self^{cells:T[2 [WIDTH + 1]]} }
 var^grid = Grid<i32^>{cells={{10,11,12},{20,21,22}}}
 let^copy = (i32^[WIDTH + 1])[2]{{30,31,32},{40,41,42}}
-var^deep:i32^[[[2] 2] 2] = {{{1,2},{3,4}},{{5,6},{7,8}}}
+var^deep:i32^[2 [2 [2]]] = {{{1,2},{3,4}},{{5,6},{7,8}}}
 print^(grid.cells[1][2],copy[1][2],deep[1][0][1])
 ''', '22 42 6\n')
     positive('nested_borrowed_growing_rows', '''
 var^a:i32^[grow^] = {}
 var^b:i32^[grow^] = {}
 let^refs = (i32^[grow^])[ref^max^64]{ref^a,ref^b}
-let^also = i32^[[grow^] ref^max^64]{ref^a,ref^b}
+let^also = i32^[ref^max^64 [grow^]]{ref^a,ref^b}
 refs[0].push(10)
 also[1].push(20)
 let^fixed = i32^[[2]]{{1,2},{3,4}}
 print^(a[0],b[0],fixed[1][1])
 ''', '10 20 4\n')
+    positive('nested_outer_first_lengths_and_parentheses', '''
+let^ROWS = 1
+let^COLS = 2
+let^a = (i32^[ROWS+1 [COLS+1]])[1]{{{1,2,3},{4,5,6}}}
+let^b = i32^[2,2 [3]]{{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}}
+let^c = i32^[2[(COLS+1)]]{{1,2,3},{4,5,6}}
+let^indices = {1}
+print^(a[0][1][2],b[1,0][2],c[indices[0]][2])
+''', '6 9 6\n')
     for name,source in (
             ('annotation', 'var^a:i32^[2][3] = {}'),
             ('constructor', 'let^a = i32^[2][3]{}'),
             ('grow_constructor', 'let^a = i32^[grow^][max^64]{}'),
             ('parameter', 'let^f = p^x:i32^[2][3] {}'),
             ('return', 'let^f = f^ -> i32^[2][3] {}'),
-            ('nested_header', 'var^a:i32^[[2][3] 4] = {}'),
-            ('after_sugar', 'var^a:i32^[[2] 3][4] = {}'),
+            ('nested_header', 'var^a:i32^[4 [2][3]] = {}'),
+            ('after_sugar', 'var^a:i32^[3 [2]][4] = {}'),
             ('wrapped_chain', 'let^a = (i32^[2][3])[]{}')):
         negative('nested_reject_chain_' + name, source + '\n', 'consecutive array type brackets')
     negative('nested_owning_rows_still_unsupported',
-             'var^rows:i32^[[grow^] max^64] = {}\n', 'nonempty fixed-size')
+             'var^rows:i32^[max^64 [grow^]] = {}\n', 'nonempty fixed-size')
     negative('parenthesized_owning_rows_still_unsupported',
              'var^rows:(i32^[grow^])[max^64] = {}\n', 'nonempty fixed-size')
+    for name, source in (
+            ('annotation', 'var^a:i32^[[3] 2] = {}'),
+            ('constructor', 'let^a = i32^[[3] 2]{}'),
+            ('grow', 'var^a:i32^[[grow^] max^8] = {}'),
+            ('parameter', 'let^f = p^a:i32^[[3] 2] {}')):
+        negative('nested_reject_inner_first_' + name, source + '\n',
+                 'nested array type must follow the outer policy')
     positive('literal_typed_and_contextual', '''
 var^a=i64^[max^10]{0,1,2,3}
 var^b=u32^[max^10]{0,1,2,3}
@@ -197,7 +213,7 @@ print^(calls,*refs[0],*refs[1])
     positive('literal_nominal_and_nested_elements', '''
 def^B {self^{n:i64^}}
 let^records=B[max^10]{{n=7},{n=8}}
-let^nested=i32^[[2] max^3]{{1,2},{3,4}}
+let^nested=i32^[max^3 [2]]{{1,2},{3,4}}
 let^grid={{1,2},{3,4}}
 print^(records[1].n,nested[1][0],grid[1][1])
 ''', '8 3 4\n')
