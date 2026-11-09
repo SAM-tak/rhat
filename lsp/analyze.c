@@ -1,4 +1,5 @@
 #include "analyze.h"
+#include "builtins.h"
 #include "position.h"
 #include "sema.h"
 #include "tooling.h"
@@ -279,7 +280,15 @@ static char *spec_text(Spec *s)
         return "?";
     }
     if (s->kind == SPEC_NAME) {
-        return s->name;
+        char *out = s->name;
+        for (int j = 0; j < s->type_args.n; j++) {
+            out = fmt("%s%s%s", out, j ? ", " : "<", spec_text(s->type_args.v[j]));
+        }
+        return s->type_args.n ? fmt("%s>", out) : out;
+    }
+    if (s->kind == SPEC_TYPEOF) {
+        return fmt("typeof^ %s",
+                   s->operand && s->operand->kind == E_NAME ? s->operand->text : "(...)");
     }
     if (s->kind == SPEC_UNION) {
         return fmt("%s | %s", spec_text(s->elem), spec_text(s->other));
@@ -288,7 +297,7 @@ static char *spec_text(Spec *s)
         return fmt("%s & %s", spec_text(s->elem), spec_text(s->other));
     }
     if (s->kind == SPEC_FUNCTION) {
-        char *out = str(s->procedure ? "p^" : "f^");
+        char *out = fmt("%s%s", s->foreign ? "externC^ " : "", s->procedure ? "p^" : "f^");
         for (int j = 0; j < s->params.n; j++) {
             out = fmt("%s%s%s", out, j ? ", " : " ", spec_text(s->params.v[j]));
         }
@@ -713,19 +722,159 @@ static void export_diagnostic(Program *p, cJSON *errors, Diagnostic *d)
     mem_free(seen.v);
 }
 
-// Index unambiguous function names even when a generic body has no concrete instance.
-static void generic_body(Program *p, Module *module, cJSON *refs, List *names, List *body);
+// Index only facts independent of specialization, without checking a deferred body.
+typedef struct {
+    const char *name, *type;
+    Loc loc;
+    int kind;
+} GenericLocal;
 
-static bool generic_local(List *names, const char *path)
+static void generic_body(Program *p, Module *module, cJSON *refs, List *names, List *body);
+static void generic_function(Program *p, Module *module, cJSON *refs, List *names, Function *f);
+
+static GenericLocal *generic_local(List *names, const char *path)
 {
     size_t length = strcspn(path, ".");
     for (int j = names->n - 1; j >= 0; j--) {
-        const char *name = names->v[j];
-        if (strlen(name) == length && !strncmp(name, path, length)) {
+        GenericLocal *local = names->v[j];
+        if (strlen(local->name) == length && !strncmp(local->name, path, length)) {
+            return local;
+        }
+    }
+    return NULL;
+}
+
+static void generic_binding(Program *p, cJSON *refs, List *names, const char *name, Loc loc,
+                            const char *type, int kind)
+{
+    GenericLocal *local = mem(sizeof(*local));
+    *local = (GenericLocal){name, type, loc, kind};
+    add(names, local);
+    if (loc.file) {
+        ToolRef ref = {
+            loc, loc, name, NULL, NULL, NULL, kind, true, fmt("%s: %s", name, type ? type : "?")};
+        emit_ref(p, refs, &ref);
+    }
+}
+
+static const LspBuiltin *generic_builtin(Expr *e)
+{
+    if (e && e->kind == E_NAME) {
+        for (size_t j = 0; j < sizeof(lsp_builtins) / sizeof(*lsp_builtins); j++) {
+            if (!strcmp(e->text, lsp_builtins[j].name)) {
+                return &lsp_builtins[j];
+            }
+        }
+    }
+    return NULL;
+}
+
+static bool generic_target(Module *module, const char *path, Loc loc, ToolRef *ref)
+{
+    Module *target = module;
+    const char *name = path;
+    bool imported = false;
+    if (module->name && !strncmp(path, module->name, strlen(module->name)) &&
+        path[strlen(module->name)] == '.') {
+        name = path + strlen(module->name) + 1;
+    }
+    for (int j = 0; j < module->imports.n; j++) {
+        Import *import = module->imports.v[j];
+        const char *prefix = import->alias ? import->alias : import->name;
+        size_t n = strlen(prefix);
+        if (!strncmp(path, prefix, n) && path[n] == '.') {
+            target = import->target;
+            name = path + n + 1;
+            imported = true;
+            break;
+        }
+    }
+    if (!target) {
+        return false;
+    }
+    const char *qualified = target->name ? fmt("%s.%s", target->name, name) : name;
+    for (int j = 0; j < target->defs.n; j++) {
+        Def *d = target->defs.v[j];
+        if (imported && !d->public) {
+            continue;
+        }
+        if (!strcmp(d->name, qualified)) {
+            *ref = (ToolRef){loc, d->loc, d->name, d->type, NULL, d, 23, false};
+            return true;
+        }
+        size_t n = strlen(d->name);
+        if (!strncmp(qualified, d->name, n) && qualified[n] == '.') {
+            Function *found = NULL;
+            int count = 0;
+            for (int k = 0; k < d->own_methods.n; k++) {
+                Function *f = d->own_methods.v[k];
+                if (f->static_member && (!imported || !f->priv) &&
+                    !strcmp(short_name(f->name), qualified + n + 1)) {
+                    found = f;
+                    count++;
+                }
+            }
+            if (count == 1) {
+                *ref = (ToolRef){
+                    loc,         found->declaration.file ? found->declaration : found->loc,
+                    found->name, NULL,
+                    found,       d,
+                    6,           false};
+                return true;
+            }
+        }
+    }
+    for (int j = 0; j < target->aliases.n; j++) {
+        TypeAlias *a = target->aliases.v[j];
+        if ((!imported || a->public) && !strcmp(a->name, name)) {
+            *ref = (ToolRef){loc, a->loc, qualified, a->spec->type, NULL, NULL, 23, false};
             return true;
         }
     }
-    return false;
+    Function *found = NULL;
+    int count = 0;
+    for (int j = 0; j < target->functions.n; j++) {
+        Function *f = target->functions.v[j];
+        if ((!imported || f->public) && !strcmp(short_name(f->name), name)) {
+            found = f;
+            count++;
+        }
+    }
+    // Overloads need concrete argument types; checked references take precedence.
+    if (count != 1) {
+        return false;
+    }
+    *ref = (ToolRef){loc,         found->declaration.file ? found->declaration : found->loc,
+                     found->name, NULL,
+                     found,       NULL,
+                     12,          false};
+    return true;
+}
+
+static void generic_spec(Program *p, Module *module, cJSON *refs, List *names, Spec *s)
+{
+    if (!s || s->invalid) {
+        return;
+    }
+    ToolRef ref;
+    if (s->self_type) {
+        Def *d = s->self_type;
+        ref = (ToolRef){s->loc, d->loc, d->name, d->type, NULL, d, 23, false};
+        emit_ref(p, refs, &ref);
+    }
+    else if (s->kind == SPEC_NAME && s->name && !s->parameter_owner &&
+             !generic_local(names, s->name) && generic_target(module, s->name, s->loc, &ref) &&
+             ref.kind == 23) {
+        emit_ref(p, refs, &ref);
+    }
+    generic_spec(p, module, refs, names, s->elem);
+    generic_spec(p, module, refs, names, s->other);
+    for (int j = 0; j < s->params.n; j++) {
+        generic_spec(p, module, refs, names, s->params.v[j]);
+    }
+    for (int j = 0; j < s->type_args.n; j++) {
+        generic_spec(p, module, refs, names, s->type_args.v[j]);
+    }
 }
 
 static char *generic_path(Expr *e)
@@ -736,9 +885,36 @@ static char *generic_path(Expr *e)
     if (e->kind == E_NAME) {
         return e->text;
     }
-    if (e->kind == E_MEMBER && !e->optional) {
+    if (e->kind == E_TYPE && e->type_expr && e->type_expr->kind == SPEC_NAME) {
+        return e->type_expr->self_type ? e->type_expr->self_type->name : e->type_expr->name;
+    }
+    if ((e->kind == E_MEMBER || e->kind == E_STATIC) && !e->optional) {
         char *base = generic_path(e->a);
         return base ? fmt("%s.%s", base, e->text) : NULL;
+    }
+    return NULL;
+}
+
+static const char *generic_result(Module *module, List *names, Expr *e)
+{
+    if (!e) {
+        return NULL;
+    }
+    if (e->kind == E_CALL) {
+        const LspBuiltin *builtin = generic_builtin(e->a);
+        if (builtin) {
+            return builtin->result;
+        }
+        char *path = generic_path(e->a);
+        ToolRef ref;
+        if (path && !generic_local(names, path) && generic_target(module, path, e->loc, &ref) &&
+            ref.function && ref.function->result && !ref.function->owner) {
+            return spec_text(ref.function->result);
+        }
+    }
+    if (e->kind == E_NAME) {
+        GenericLocal *local = generic_local(names, e->text);
+        return local ? local->type : NULL;
     }
     return NULL;
 }
@@ -749,54 +925,53 @@ static void generic_expr(Program *p, Module *module, cJSON *refs, List *names, E
         return;
     }
     char *path = generic_path(e);
-    if (path && !generic_local(names, path)) {
-        Module *target = module;
-        const char *name = path;
-        bool imported = false;
-        if (module->name && !strncmp(path, module->name, strlen(module->name)) &&
-            path[strlen(module->name)] == '.') {
-            name = path + strlen(module->name) + 1;
-        }
-        for (int j = 0; j < module->imports.n; j++) {
-            Import *import = module->imports.v[j];
-            const char *prefix = import->alias ? import->alias : import->name;
-            size_t n = strlen(prefix);
-            if (!strncmp(path, prefix, n) && path[n] == '.') {
-                target = import->target;
-                name = path + n + 1;
-                imported = true;
-                break;
+    const LspBuiltin *builtin = generic_builtin(e);
+    if (builtin) {
+        ToolRef ref = {e->loc, e->loc, builtin->name,     NULL, NULL, NULL,
+                       12,     false,  builtin->signature};
+        int count = cJSON_GetArraySize(refs);
+        emit_ref(p, refs, &ref);
+        if (cJSON_GetArraySize(refs) > count) {
+            cJSON *symbol = cJSON_GetArrayItem(refs, count);
+            cJSON_AddBoolToObject(symbol, "builtin", true);
+            cJSON *params = cJSON_AddArrayToObject(symbol, "parameters");
+            for (int j = 0; j < 3 && builtin->parameters[j]; j++) {
+                cJSON_AddItemToArray(params, cJSON_CreateString(builtin->parameters[j]));
             }
         }
-        Function *found = NULL;
-        int count = 0;
-        for (int j = 0; target && j < target->functions.n; j++) {
-            Function *f = target->functions.v[j];
-            if ((!imported || f->public) && !strcmp(short_name(f->name), name)) {
-                found = f;
-                count++;
-            }
+    }
+    else if (path) {
+        GenericLocal *local = generic_local(names, path);
+        ToolRef ref;
+        Loc use = e->name_loc.file ? e->name_loc : e->loc;
+        if (local && e->kind == E_NAME && local->loc.file) {
+            ref = (ToolRef){use,
+                            local->loc,
+                            local->name,
+                            NULL,
+                            NULL,
+                            NULL,
+                            local->kind,
+                            false,
+                            fmt("%s: %s", local->name, local->type ? local->type : "?")};
+            emit_ref(p, refs, &ref);
         }
-        // Overloaded names need concrete argument types; checked references take precedence.
-        if (count == 1) {
-            Loc use = e->name_loc.file ? e->name_loc : e->loc;
-            Loc declaration = found->declaration.file ? found->declaration : found->loc;
-            ToolRef ref = {use, declaration, found->name, NULL, found, NULL, 12, false};
+        else if (!local && generic_target(module, path, use, &ref)) {
             emit_ref(p, refs, &ref);
         }
     }
+    generic_spec(p, module, refs, names, e->type_expr);
+    generic_spec(p, module, refs, names, e->test_spec);
+    generic_spec(p, module, refs, names, e->array_literal);
     int mark = names->n;
     if (e->kind == E_FUNCTION && e->function) {
-        for (int j = 0; j < e->function->params.n; j++) {
-            add(names, ((Param *)e->function->params.v[j])->name);
-        }
-        generic_body(p, module, refs, names, &e->function->body);
+        generic_function(p, module, refs, names, e->function);
     }
     else {
         generic_body(p, module, refs, names, &e->bindings);
         generic_expr(p, module, refs, names, e->a);
         if (e->kind == E_CATCH) {
-            add(names, "it^");
+            generic_binding(p, refs, names, "it^", (Loc){0}, NULL, TOOL_PARAMETER);
         }
         generic_expr(p, module, refs, names, e->b);
         generic_expr(p, module, refs, names, e->c);
@@ -820,13 +995,18 @@ static void generic_body(Program *p, Module *module, cJSON *refs, List *names, L
             }
             names->n = mark;
             for (int k = 0; k < stmt->body.n; k++) {
-                add(names, ((Stmt *)stmt->body.v[k])->name);
+                Stmt *binding = stmt->body.v[k];
+                generic_spec(p, module, refs, names, binding->spec);
+                generic_binding(p, refs, names, binding->name, binding->loc,
+                                binding->spec ? spec_text(binding->spec) : NULL,
+                                binding->mut ? 13 : 14);
             }
             continue;
         }
         generic_body(p, module, refs, names, &stmt->pre);
         generic_expr(p, module, refs, names, stmt->a);
         generic_expr(p, module, refs, names, stmt->b);
+        generic_spec(p, module, refs, names, stmt->spec);
         for (int k = 0; k < stmt->targets.n; k++) {
             generic_expr(p, module, refs, names, stmt->targets.v[k]);
         }
@@ -835,7 +1015,7 @@ static void generic_body(Program *p, Module *module, cJSON *refs, List *names, L
         }
         generic_body(p, module, refs, names, &stmt->first);
         if (stmt->kind == S_INLINE) {
-            add(names, stmt->name);
+            generic_binding(p, refs, names, stmt->name, (Loc){0}, NULL, 13);
         }
         int inner = names->n;
         generic_body(p, module, refs, names, &stmt->body);
@@ -849,14 +1029,31 @@ static void generic_body(Program *p, Module *module, cJSON *refs, List *names, L
         generic_body(p, module, refs, names, &stmt->other);
         for (int k = 0; k < stmt->handlers.n; k++) {
             names->n = mark;
-            add(names, "it^");
+            generic_binding(p, refs, names, "it^", (Loc){0}, NULL, TOOL_PARAMETER);
             generic_body(p, module, refs, names, &((CatchArm *)stmt->handlers.v[k])->body);
         }
         names->n = mark;
         if (stmt->kind == S_BIND || stmt->kind == S_TYPE) {
-            add(names, stmt->name);
+            generic_binding(p, refs, names, stmt->name, stmt->loc,
+                            stmt->spec ? spec_text(stmt->spec)
+                                       : generic_result(module, names, stmt->a),
+                            stmt->mut ? 13 : 14);
         }
     }
+}
+
+static void generic_function(Program *p, Module *module, cJSON *refs, List *names, Function *f)
+{
+    int mark = names->n;
+    generic_spec(p, module, refs, names, f->result);
+    for (int j = 0; j < f->params.n; j++) {
+        Param *param = f->params.v[j];
+        generic_spec(p, module, refs, names, param->spec);
+        generic_binding(p, refs, names, param->name, param->loc,
+                        param->spec ? spec_text(param->spec) : NULL, TOOL_PARAMETER);
+    }
+    generic_body(p, module, refs, names, &f->body);
+    names->n = mark;
 }
 
 static cJSON *export_index(Session *s)
@@ -1023,35 +1220,38 @@ static cJSON *export_index(Session *s)
     }
     for (int j = 0; j < p->modules.n; j++) {
         Module *module = p->modules.v[j];
+        List module_names = {0};
+        for (int k = 0; k < module->functions.n; k++) {
+            generic_function(p, module, refs, &module_names, module->functions.v[k]);
+        }
+        if (module->entry) {
+            generic_function(p, module, refs, &module_names, module->entry);
+        }
         for (int k = 0; k < module->defs.n; k++) {
             Def *d = module->defs.v[k];
             List names = {0};
             for (int n = 0; n < d->type_params.n; n++) {
-                add(&names, d->type_params.v[n]);
+                generic_binding(p, refs, &names, d->type_params.v[n], (Loc){0}, NULL, 23);
             }
             for (int n = 0; n < d->own_methods.n; n++) {
-                add(&names, ((Function *)d->own_methods.v[n])->name);
+                generic_binding(p, refs, &names, ((Function *)d->own_methods.v[n])->name, (Loc){0},
+                                NULL, 6);
             }
             for (int n = 0; n < d->own_fields.n; n++) {
-                add(&names, ((Field *)d->own_fields.v[n])->name);
+                generic_binding(p, refs, &names, ((Field *)d->own_fields.v[n])->name, (Loc){0},
+                                NULL, 8);
             }
             for (int n = 0; n < d->constants.n; n++) {
-                add(&names, ((Constant *)d->constants.v[n])->name);
+                generic_binding(p, refs, &names, ((Constant *)d->constants.v[n])->name, (Loc){0},
+                                NULL, 14);
             }
             for (int n = 0; n < d->state_fields.n; n++) {
-                add(&names, ((Field *)d->state_fields.v[n])->name);
+                generic_binding(p, refs, &names, ((Field *)d->state_fields.v[n])->name, (Loc){0},
+                                NULL, 13);
             }
-            int mark = names.n;
             for (int n = 0; n < d->own_methods.n; n++) {
                 Function *f = d->own_methods.v[n];
-                if (!d->type_params.n && !f->templ) {
-                    continue;
-                }
-                for (int q = 0; q < f->params.n; q++) {
-                    add(&names, ((Param *)f->params.v[q])->name);
-                }
-                generic_body(p, module, refs, &names, &f->body);
-                names.n = mark;
+                generic_function(p, module, refs, &names, f);
             }
         }
     }

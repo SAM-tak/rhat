@@ -1159,11 +1159,59 @@ print^(a.x)
             labels = {item['label'] for item in completions}
             assert {'thread_entry^','thread_transfer_type^','thread_args^','thread_stack_count^'} <= labels, labels
             assert 'thread_spawn^' not in labels, labels
+            hover = client.request('textDocument/hover',dict(
+                textDocument=dict(uri=document.as_uri()),position=at(text,'spawn = template^p^',1)))
+            assert 'template^p^' in hover['contents']['value'] and 'Thread' in hover['contents']['value'], hover
+            for needle, expected in (
+                    ('worker =', 'worker: std.sys.ThreadEntry'),
+                    ('worker, transfer', 'worker: std.sys.ThreadEntry'),
+                    ('transfer =', 'transfer: ref^read^ std.sys.ThreadTransfer'),
+                    ('transfer, thread_args^', 'transfer: ref^read^ std.sys.ThreadTransfer'),
+                    ('h = rh_thread_spawn', 'h: i64^')):
+                hover = client.request('textDocument/hover',dict(
+                    textDocument=dict(uri=document.as_uri()),position=at(text,needle)))
+                assert hover['contents']['value'] == expected, (needle,hover)
+            for name, result in (
+                    ('thread_entry^', 'std.sys.ThreadEntry'),
+                    ('thread_transfer_type^', 'std.sys.ThreadTransfer'),
+                    ('thread_args^', 'std.sys.ThreadArgs'),
+                    ('thread_stack_count^', 'i64^')):
+                position = at(text,name)
+                hover = client.request('textDocument/hover',dict(
+                    textDocument=dict(uri=document.as_uri()),position=position))
+                assert name in hover['contents']['value'] and result in hover['contents']['value'], hover
+                assert client.request('textDocument/definition',dict(
+                    textDocument=dict(uri=document.as_uri()),position=position)) is None
+            help = client.request('textDocument/signatureHelp',dict(
+                textDocument=dict(uri=document.as_uri()),position=at(text,'entry, args)',shift=len('entry, '))))
+            assert help['activeParameter'] == 1, help
+            assert [p['label'] for p in help['signatures'][0]['parameters']] == ['entry','args'], help
+            for needle in ('Thread | Error.StartFailed', 'Thread.spawn(entry'):
+                position = at(text,needle)
+                assert classified[(position['line'],position['character'])] == (6,1), classified
+                definition = client.request('textDocument/definition',dict(
+                    textDocument=dict(uri=document.as_uri()),position=position))
+                assert definition['range']['start'] == at(text,'Thread :'), definition
+            position = at(text,'spawn(entry, args)')
+            hover = client.request('textDocument/hover',dict(
+                textDocument=dict(uri=document.as_uri()),position=position))
+            assert 'template^p^' in hover['contents']['value'], hover
+            definition = client.request('textDocument/definition',dict(
+                textDocument=dict(uri=document.as_uri()),position=position))
+            assert definition['range']['start'] == at(text,'spawn = template^p^'), definition
+            refs = client.request('textDocument/references',dict(
+                textDocument=dict(uri=document.as_uri()),position=at(text,'worker ='),
+                context=dict(includeDeclaration=True)))
+            assert len(refs) == 2, refs
         if document != channel_path:
             client.send('textDocument/didClose',dict(textDocument=dict(uri=document.as_uri())))
     for name in ('InvalidCapacity','OutOfMemory','Closed','Full','MessageTooLarge'):
         position = at(channel_text,name)
         assert colored[(position['line'],position['character'])] == (len(name),1), (name,colored)
+    for name in ('channel_new^','channel_send^','channel_receive^','channel_clone^','channel_close^','channel_valid^'):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=channel_path.as_uri()),
+            position=at(channel_text,name)))
+        assert name in hover['contents']['value'] and 'channel_handle^<T>' in hover['contents']['value'], hover
     refs = client.request('textDocument/references',dict(textDocument=dict(uri=channel_path.as_uri()),
         position=at(channel_text,'sent ='),context=dict(includeDeclaration=True)))
     expected = [at(channel_text,'sent ='),at(channel_text,'sent(channel_send^',0),at(channel_text,'sent(channel_send^',1)]
@@ -1186,6 +1234,9 @@ channel_close^(ref^h)
     assert client.diagnostics(handle_path,1) == []
     position = at(handle_text,'channel_handle^')
     assert tokens(handle_text,handle_path)[(position['line'],position['character'])] == (14,1)
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=handle_path.as_uri()),
+        position=at(handle_text,'channel_new^')))
+    assert 'channel_new^: p^' in hover['contents']['value'], hover
     hover = client.request('textDocument/hover',dict(textDocument=dict(uri=handle_path.as_uri()),
         position=at(handle_text,'h:')))
     assert 'channel_handle^<i32^>' in hover['contents']['value'], hover
@@ -1247,6 +1298,10 @@ public^def^Box<T> {
                 at(generic_refs_text,'cb=sent',shift=3)]
     assert len(refs) == 3 and {tuple(r['range']['start'].values()) for r in refs} == {
         tuple(p.values()) for p in expected}, refs
+    for occurrence, declaration in ((1,'sent:p^i32^;'),(2,'sent=p^n:i32^')):
+        definition = client.request('textDocument/definition',dict(
+            textDocument=dict(uri=generic_refs_path.as_uri()),position=at(generic_refs_text,'sent(0)',occurrence)))
+        assert definition['range']['start'] == at(generic_refs_text,declaration), definition
     client.send('textDocument/didClose',dict(textDocument=dict(uri=generic_refs_path.as_uri())))
     print('PASS uninstantiated generic references, channel helper navigation and lexical shadowing',flush=True)
 

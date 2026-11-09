@@ -1,5 +1,6 @@
 #include "server.h"
 #include "analyze.h"
+#include "builtins.h"
 #include "position.h"
 #include "rpc.h"
 #include "tooling.h"
@@ -605,13 +606,9 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
                 completion_item(out, keywords[j], "R^", 14);
             }
         }
-        const char *bridge[] = {"thread_entry^",       "thread_transfer_type^", "thread_args^",
-                                "thread_stack_count^", "channel_new^",          "channel_send^",
-                                "channel_receive^",    "channel_clone^",        "channel_close^",
-                                "channel_valid^"};
-        for (size_t j = 0; j < sizeof(bridge) / sizeof(*bridge); j++) {
-            if (!strncmp(bridge[j], buffer + begin, cursor - begin)) {
-                completion_item(out, bridge[j], "R^ thread bridge", 14);
+        for (size_t j = 0; j < sizeof(lsp_builtins) / sizeof(*lsp_builtins); j++) {
+            if (!strncmp(lsp_builtins[j].name, buffer + begin, cursor - begin)) {
+                completion_item(out, lsp_builtins[j].name, lsp_builtins[j].signature, 14);
             }
         }
         for (int k = T_BOOL; k < T_STRUCT; k++) {
@@ -1098,7 +1095,9 @@ static int worker(void *raw)
                     result = hover(symbol);
                 }
                 else if (!strcmp(method, "textDocument/definition")) {
-                    result = symbol ? wire_location(cJSON_GetObjectItem(symbol, "target")) : NULL;
+                    result = symbol && !cJSON_IsTrue(cJSON_GetObjectItem(symbol, "builtin"))
+                                 ? wire_location(cJSON_GetObjectItem(symbol, "target"))
+                                 : NULL;
                 }
                 else if (!strcmp(method, "textDocument/references")) {
                     cJSON *combined = combined_index(cache);
