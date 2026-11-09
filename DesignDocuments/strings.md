@@ -115,15 +115,10 @@ let^raw = s.bytes[0 .. 4]     # u8^[..]
 - `s.find(t:string^) -> i64^ | nil^`: 最初に現れる位置。
 - `s.starts_with(t)`・`s.ends_with(t)`。
 - `s.trim() -> string^`: 両端の ASCII の空白（スペース・タブ・`\r`・`\n`）を除いたビュー。Unicode の空白は除きません。
-- `s.split(t)`: 区切りの間の部分をビューとして順に返すカーソル（`std.text.Split`）。配列を作らないので確保は起きません。
-
-  ```rhat
-  for^part in^"a,b,,c".split(",") { print^(part) }   # a b （空） c
-  ```
-
-  空文字列は空の部分を一つ返し、末尾の区切りの後には空の部分が一つ残ります。空の区切りは実行時エラーです。
-
-`trim` と `split` の本体は `std.text` の R^ で書かれ、コンパイラは `string^` への呼び出しをそこへ振り替えます（`std.text.trim(s)` とも書けます）。
+- `s.split(t)`: 区切りの間の部分をビューとして順に返すカーソル（`std.text.Split`）。配列を作らないので確保は起きません。  
+  `for^part in^"a,b,,c".split(",") { print^(part) }   # a b （空） c`  
+  空文字列は空の部分を一つ返し、末尾の区切りの後には空の部分が一つ残ります。空の区切りは実行時エラーです。  
+  `trim` と `split` の本体は `std.text` の R^ で書かれ、コンパイラは `string^` への呼び出しをそこへ振り替えます（`std.text.trim(s)` とも書けます）。
 - `s = t`・`s <=> t`: バイト列としての比較。UTF-8 ではバイト順とスカラー値の順が一致します。
 
 ### 文字単位の操作

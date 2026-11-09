@@ -67,7 +67,7 @@ Channel の動的な個数は、データスタックの静的割り当てとは
 ランタイム内部に `RhThreadContext` を設け、少なくとも次を持たせます。
 
 | 状態 | 所有者 |
-|---|---|
+| --- | --- |
 | `RhStack` の管理表・個数・各領域の予約 | そのスレッド |
 | C コールバックのスタック基準位置 | そのスレッド |
 | R^ の実行コンテキストと初期化状態 | そのスレッド |
@@ -114,7 +114,7 @@ FFI は従来どおり信頼境界です。共有する C の資源を複数ワ�
 橋渡し操作を提供します。任意のモジュールの `p^` 内で利用できます。
 
 | 操作 | 結果と役割 |
-|---|---|
+| --- | --- |
 | `thread_entry^(entry, ref^args)` | 入口を検査し、`externC^p^ref^std.sys.ThreadArgs;` 型の C 用ラッパーを生成 |
 | `thread_transfer_type^(ref^args)` | 転送可能性を検査し、静的な `ref^read^std.sys.ThreadTransfer` 型の転送記述子を生成 |
 | `thread_args^(ref^args)` | 借用関係を保ったまま、`ref^read^std.sys.ThreadArgs` 型へ引数ポインタを変換 |
@@ -168,7 +168,7 @@ Goose の方針は採りません。違反は生成コードの実行時まで�
 転送可能という性質は、通常のコピー可能性や C ABI の flat 判定とは分けます。
 
 | 型 | 転送方針 |
-|---|---|
+| --- | --- |
 | 数値、`bool^`、`char^`、`nil^`、対応する列挙値 | 値をコピー |
 | 固定長配列・構造体・合併 | 要素・フィールド・有効な選択肢を再帰的に転送 |
 | 所有配列 | 要素列をメッセージへコピーし、受信側のスタックに再構築 |
@@ -211,13 +211,13 @@ Goose の方針は採りません。違反は生成コードの実行時まで�
 `ref^channel_handle^<T>` またはその読み取り専用参照、`value` は `ref^read^T` です。
 
 | 操作 | 結果 |
-|---|---|
+| --- | --- |
 | `channel_new^(T, messages, bytes)` | `channel_handle^<T>` を生成。確保失敗・不正な容量では空ハンドル |
 | `channel_valid^(h)` | 確保済みかを `bool^` で返す。close 済みでも保持があれば true |
 | `channel_clone^(h)` | 同じキューの保持を増やした新しいハンドル。空なら空を返す |
 | `channel_close^(h)` | キューを閉じ、待機中の送受信を起こす。保持の解放とは別 |
 | `channel_send^(h, value, blocking)` | 成功 0、closed 1、full 2、oversized 3、allocation failure 4 |
-| `channel_receive^(h, blocking)` | `std.channel.Message<T> | std.channel.Closed | std.channel.Empty` |
+| `channel_receive^(h, blocking)` | `std.channel.Message<T> \| std.channel.Closed \| std.channel.Empty` |
 
 容量と `blocking` は `i64^`、`blocking` の 0 は非待機です。受信操作を包む手続きには
 上記の受信結果型を明示します。コンパイラは結果型の要素型がハンドルと一致することを検査し、
@@ -233,13 +233,13 @@ Goose の方針は採りません。違反は生成コードの実行時まで�
 競合する送信はロック下の確定順に並び、公平性は保証しません。
 
 | 操作（概念上の署名） | 動作 |
-|---|---|
-| `new<T>(message_limit, byte_limit) -> Channel<T> | Error` | 正の上限で作成 |
+| --- | --- |
+| `new<T>(message_limit, byte_limit) -> Channel<T> \| Error` | 正の上限で作成 |
 | `ch.clone() -> Channel<T>` | 同じ本体への独立した保持を返す |
-| `ch.send(ref^read^ value:T) -> nil^ | Error` | 空き容量を待ってコピーを受理 |
-| `ch.try_send(ref^read^ value:T) -> nil^ | Full | Error` | 容量待ちをしない |
-| `ch.receive() -> T | Closed` | 値か、close 後の終端まで待つ |
-| `ch.try_receive() -> T | Empty | Closed` | 到着待ちをしない |
+| `ch.send(ref^read^ value:T) -> nil^ \| Error` | 空き容量を待ってコピーを受理 |
+| `ch.try_send(ref^read^ value:T) -> nil^ \| Full \| Error` | 容量待ちをしない |
+| `ch.receive() -> T \| Closed` | 値か、close 後の終端まで待つ |
+| `ch.try_receive() -> T \| Empty \| Closed` | 到着待ちをしない |
 | `ch.close()` | 以後の送信を拒否し、すべての待機者を起こす |
 
 `Error` の候補は `InvalidCapacity`・`MessageTooLarge`・`Closed`・`OutOfMemory` とします。
