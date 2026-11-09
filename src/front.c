@@ -372,6 +372,9 @@ static bool type_constructor(Parser *p, Expr *e)
     if (!name) {
         return false;
     }
+    if (!strcmp(name, "channel_handle^")) {
+        return true;
+    }
     for (int j = 0; j < p->type_names.n; j++) {
         if (!strcmp(p->type_names.v[j], name)) {
             return true;

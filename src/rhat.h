@@ -355,7 +355,8 @@ enum {
                     // elem's def.
     T_CFUNC,        // externC^ f^ ...;: a C function pointer with elem's signature.
     T_ENUM,         // enum^: a closed set of named integer constants laid out as elem.
-    T_BOUNDED       // T[max^N]: up to count elems inline after an i64 length; owns nothing.
+    T_BOUNDED,      // T[max^N]: up to count elems inline after an i64 length; owns nothing.
+    T_CHANNEL       // channel_handle^<T>: an opaque, noncopyable channel hold for elem.
 };
 
 // Owning array length policies; ARRAY_SIZED fixes length after construction,
@@ -374,7 +375,7 @@ struct Type {
     size_t size, align;
     size_t payload_align, payload_bytes, payload_offset;
     bool refs, owned;
-    bool disposable;    // A Disposable, or a value holding one; never copied. Set by layout.
+    bool disposable;    // Needs disposal: a Disposable, channel handle, or aggregate holding one.
     bool structural;    // Anonymous union identity is its canonical alternative set.
     List params, arms;  // Callable parameters or intersection members.
     Type *result;       // The result of a callable signature.

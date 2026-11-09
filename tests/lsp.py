@@ -1121,6 +1121,8 @@ print^(a.x)
         if document != channel_path:
             client.open(document,text)
             assert client.diagnostics(document,1) == []
+        if 'Disposable' not in text:
+            continue
         position = at(text,'Disposable')
         classified = tokens(text,document)
         assert classified[(position['line'],position['character'])] == (10,1), classified
@@ -1153,15 +1155,38 @@ print^(a.x)
         assert colored[(position['line'],position['character'])] == (len(name),1), (name,colored)
     refs = client.request('textDocument/references',dict(textDocument=dict(uri=channel_path.as_uri()),
         position=at(channel_text,'sent ='),context=dict(includeDeclaration=True)))
-    expected = [at(channel_text,'sent ='),at(channel_text,'sent(__rh',0),at(channel_text,'sent(__rh',1)]
+    expected = [at(channel_text,'sent ='),at(channel_text,'sent(channel_send^',0),at(channel_text,'sent(channel_send^',1)]
     assert len(refs) == 3 and {tuple(r['range']['start'].values()) for r in refs} == {
         tuple(p.values()) for p in expected}, refs
     definition = client.request('textDocument/definition',dict(textDocument=dict(uri=channel_path.as_uri()),
-        position=at(channel_text,'sent(__rh')))
+        position=at(channel_text,'sent(channel_send^')))
     if isinstance(definition,list):
         definition = definition[0]
     assert definition['range']['start'] == at(channel_text,'sent ='), definition
     client.send('textDocument/didClose',dict(textDocument=dict(uri=channel_path.as_uri())))
+
+    handle_path = work/'typed_channel.rh'
+    handle_text = '''import^std.sys
+def^Resource<T> : std.sys.Disposable { dispose = p^self^ {} }
+var^h:channel_handle^<i32^> = channel_new^(i32^, 1, 4)
+channel_close^(ref^h)
+'''
+    client.open(handle_path,handle_text)
+    assert client.diagnostics(handle_path,1) == []
+    position = at(handle_text,'channel_handle^')
+    assert tokens(handle_text,handle_path)[(position['line'],position['character'])] == (14,1)
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=handle_path.as_uri()),
+        position=at(handle_text,'h:')))
+    assert 'channel_handle^<i32^>' in hover['contents']['value'], hover
+    position = at(handle_text,'Disposable')
+    assert tokens(handle_text,handle_path)[(position['line'],position['character'])] == (10,1)
+    definition = client.request('textDocument/definition',dict(textDocument=dict(uri=handle_path.as_uri()),
+        position=position))
+    if isinstance(definition,list):
+        definition = definition[0]
+    assert definition['uri'].lower() == sys_path.as_uri().lower(), definition
+    assert definition['range']['start'] == at(sys_text,'Disposable'), definition
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=handle_path.as_uri())))
 
     short_errors_path = work/'short_errors.rh'
     short_errors_text = '''errordef^E {A,B,C,D {message=f^self^ ->string^ {"explicit"}}}

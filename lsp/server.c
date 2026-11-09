@@ -605,8 +605,10 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
                 completion_item(out, keywords[j], "R^", 14);
             }
         }
-        const char *bridge[] = {"thread_entry^", "thread_transfer_type^", "thread_args^",
-                                "thread_stack_count^"};
+        const char *bridge[] = {"thread_entry^",       "thread_transfer_type^", "thread_args^",
+                                "thread_stack_count^", "channel_new^",          "channel_send^",
+                                "channel_receive^",    "channel_clone^",        "channel_close^",
+                                "channel_valid^"};
         for (size_t j = 0; j < sizeof(bridge) / sizeof(*bridge); j++) {
             if (!strncmp(bridge[j], buffer + begin, cursor - begin)) {
                 completion_item(out, bridge[j], "R^ thread bridge", 14);
@@ -617,6 +619,9 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
             if (!strncmp(name, buffer + begin, cursor - begin)) {
                 completion_item(out, name, "built-in type", 7);
             }
+        }
+        if (!strncmp("channel_handle^", buffer + begin, cursor - begin)) {
+            completion_item(out, "channel_handle^", "built-in channel handle type", 7);
         }
     }
     return out;
@@ -870,6 +875,10 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 kind = 11;
             }
             else if (buffer[at - 1] == '^') {
+                if (at - start == strlen("channel_handle^") &&
+                    !strncmp(buffer + start, "channel_handle^", at - start)) {
+                    kind = 1;
+                }
                 for (int k = T_VOID; k < T_STRUCT; k++) {
                     const char *name = builtin_name(k);
                     if (strlen(name) == at - start && !strncmp(buffer + start, name, at - start)) {

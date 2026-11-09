@@ -779,9 +779,23 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be, Loc lo
 static Type *infer_call(Infer *c, Expr *e, Type *expected)
 {
     Expr *target = e->a;
-    int thread = thread_operation(c->in->fn, target);
+    int thread = thread_operation(target);
     if (thread) {
-        return thread_result(c->p, c->in->fn, thread);
+        Type *element = NULL;
+        if (thread == THREAD_NEW) {
+            element = channel_new_element(c->p, e);
+        }
+        else if (thread >= THREAD_SEND && thread <= THREAD_VALID) {
+            if (!e->args.n) {
+                fail(e->loc, "invalid thread operation arguments");
+            }
+            Type *handle = infer_expr(c, e->args.v[0], NULL);
+            if (!handle) {
+                return NULL;
+            }
+            element = channel_element(handle, e->loc);
+        }
+        return thread_result(c->p, c->in->fn, thread, element);
     }
     if (target->kind == E_MEMBER && !strcmp(target->text, "message") && !e->args.n &&
         error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {

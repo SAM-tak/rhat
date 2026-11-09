@@ -1,29 +1,45 @@
 #include "sema.h"
 
-int thread_operation(Function *caller, Expr *target)
+int thread_operation(Expr *target)
 {
     if (target->kind != E_NAME) {
         return THREAD_NONE;
     }
-    const char *public_names[] = {"thread_entry^", "thread_transfer_type^", "thread_args^",
-                                  "thread_stack_count^"};
-    for (int j = 0; j < 4; j++) {
-        if (!strcmp(target->text, public_names[j])) {
-            return THREAD_ENTRY + j;
+    const char *names[] = {"",
+                           "channel_new^",
+                           "channel_send^",
+                           "channel_receive^",
+                           "channel_clone^",
+                           "channel_close^",
+                           "channel_valid^",
+                           "",
+                           "thread_entry^",
+                           "thread_transfer_type^",
+                           "thread_args^",
+                           "thread_stack_count^"};
+    for (int j = THREAD_NEW; j <= THREAD_STACKS; j++) {
+        if (*names[j] && !strcmp(target->text, names[j])) {
+            return j;
         }
-    }
-    const char *names[] = {"", "__rh_channel_new", "__rh_channel_send", "__rh_channel_receive"};
-    for (int j = THREAD_NEW; j <= THREAD_RECEIVE; j++) {
-        if (strcmp(target->text, names[j])) {
-            continue;
-        }
-        const char *module = "std.channel";
-        if (!caller->module || !caller->module->name || strcmp(caller->module->name, module)) {
-            fail(target->loc, "private thread operation is restricted to %s", module);
-        }
-        return j;
     }
     return THREAD_NONE;
+}
+
+Type *channel_new_element(Program *p, Expr *e)
+{
+    Expr *type = e->args.n ? e->args.v[0] : NULL;
+    if (!type || type->kind != E_TYPE) {
+        fail(e->loc, "channel_new^ requires an element type as its first argument");
+    }
+    return type_spec(p, type->type_expr);
+}
+
+Type *channel_element(Type *reference, Loc loc)
+{
+    if (reference->kind != T_REF || reference->elem->kind != T_CHANNEL) {
+        fail(loc, "channel operation requires a reference to channel_handle^<T>");
+    }
+    return reference->elem->elem;
 }
 
 static Type *thread_pointer(Program *p, const char *name, bool read)
@@ -35,8 +51,17 @@ static Type *thread_pointer(Program *p, const char *name, bool read)
     return type_wrap(p, T_REF, d->type, read);
 }
 
-Type *thread_result(Program *p, Function *caller, int operation)
+Type *thread_result(Program *p, Function *caller, int operation, Type *element)
 {
+    if (operation == THREAD_NEW || operation == THREAD_CLONE) {
+        return type_wrap(p, T_CHANNEL, element, 0);
+    }
+    if (operation == THREAD_VALID) {
+        return type_builtin(p, T_BOOL);
+    }
+    if (operation == THREAD_CLOSE || operation == THREAD_DROP) {
+        return type_builtin(p, T_VOID);
+    }
     if (operation == THREAD_ENTRY) {
         List params = {0};
         add(&params, thread_pointer(p, "std.sys.ThreadArgs", false));
@@ -54,9 +79,10 @@ Type *thread_result(Program *p, Function *caller, int operation)
 
 static bool channel_type(Type *t)
 {
-    return t->kind == T_STRUCT && t->def->generic && t->def->generic->module->name &&
-           !strcmp(t->def->generic->module->name, "std.channel") &&
-           !strcmp(t->def->generic->name, "std.channel.Channel");
+    return t->kind == T_CHANNEL ||
+           (t->kind == T_STRUCT && t->def->generic && t->def->generic->module->name &&
+            !strcmp(t->def->generic->module->name, "std.channel") &&
+            !strcmp(t->def->generic->name, "std.channel.Channel"));
 }
 
 static void transferable(Program *p, Type *t, bool arguments, Loc loc)
@@ -101,24 +127,22 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
     if (!c->in->fn->procedure) {
         fail(e->loc, "thread operations require p^");
     }
-    int count = operation == THREAD_STACKS                                 ? 0
-                : operation == THREAD_TRANSFER || operation == THREAD_ARGS ? 1
-                : operation == THREAD_SEND                                 ? 3
-                                                                           : 2;
+    int count = operation == THREAD_STACKS ? 0
+                : operation == THREAD_TRANSFER || operation == THREAD_ARGS ||
+                        operation == THREAD_CLONE || operation == THREAD_CLOSE ||
+                        operation == THREAD_VALID
+                    ? 1
+                : operation == THREAD_SEND || operation == THREAD_NEW ? 3
+                                                                      : 2;
     if (e->args.n != count) {
         fail(e->loc, "invalid thread operation arguments");
     }
-    Type *result = thread_result(c->p, c->in->fn, operation);
-    Value out = {.type = result, .id = destination >= 0 ? destination : slot(c, result, false)};
-    if (result->owned && destination < 0) {
-        fail(e->loc, "owned receive requires a destination");
-    }
     Value args[3] = {0};
-    for (int j = 0; j < count; j++) {
-        args[j] = expression(c, e->args.v[j],
-                             operation == THREAD_NEW || (j == count - 1 && operation < THREAD_ENTRY)
-                                 ? type_builtin(c->p, T_I64)
-                                 : NULL);
+    for (int j = operation == THREAD_NEW ? 1 : 0; j < count; j++) {
+        bool integer =
+            operation == THREAD_NEW ||
+            ((operation == THREAD_SEND || operation == THREAD_RECEIVE) && j == count - 1);
+        args[j] = expression(c, e->args.v[j], integer ? type_builtin(c->p, T_I64) : NULL);
     }
     Type *payload = NULL;
     Instance *worker = NULL;
@@ -156,28 +180,60 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
         }
         payload = args[0].type->elem;
         transferable(c->p, payload, true, e->loc);
-        if (operation == THREAD_ARGS) {
-            out.deps = args[0].deps;
-        }
+    }
+    else if (operation == THREAD_NEW) {
+        payload = channel_new_element(c->p, e);
+        transferable(c->p, payload, false, e->loc);
     }
     else if (operation != THREAD_STACKS) {
-        Def *owner = c->in->self ? c->in->self : c->in->fn->owner;
-        if (!owner || owner->type_args.n != 1) {
-            fail(e->loc, "channel operation requires Channel<T>");
-        }
-        payload = type_spec(c->p, owner->type_args.v[0]);
+        payload = channel_element(args[0].type, e->loc);
         transferable(c->p, payload, false, e->loc);
         if (operation == THREAD_SEND &&
             (args[1].type->kind != T_REF || args[1].type->elem != payload)) {
-            fail(e->loc, "send requires a reference to the Channel's element type");
+            fail(e->loc, "send requires a reference to the handle's element type '%s'",
+                 type_name(payload));
         }
+    }
+    Type *result = thread_result(c->p, c->in->fn, operation, payload);
+    if (operation == THREAD_RECEIVE) {
+        bool message = false, closed = false, empty = false;
+        if (result->kind == T_UNION && result->def->alternatives.n == 3) {
+            for (int j = 0; j < result->def->alternatives.n; j++) {
+                Type *arm = result->def->alternatives.v[j];
+                if (arm->kind != T_STRUCT) {
+                    continue;
+                }
+                layout(arm, e->loc);
+                Def *d = arm->def;
+                message |= d->generic && !strcmp(d->generic->name, "std.channel.Message") &&
+                           d->fields.n == 1 && ((Field *)d->fields.v[0])->type == payload;
+                closed |= !strcmp(d->name, "std.channel.Closed");
+                empty |= !strcmp(d->name, "std.channel.Empty");
+            }
+        }
+        if (!message || !closed || !empty) {
+            fail(
+                e->loc,
+                "channel_receive^ result must be std.channel.Message<%s> | std.channel.Closed | std.channel.Empty",
+                type_name(payload));
+        }
+    }
+    Value out = {.type = result,
+                 .id = result->kind == T_VOID ? -1
+                       : destination >= 0     ? destination
+                                              : slot(c, result, false)};
+    if (result->owned && destination < 0) {
+        fail(e->loc, "owned receive requires a destination");
+    }
+    if (operation == THREAD_ARGS) {
+        out.deps = args[0].deps;
     }
     Instr *i = emit(c, I_THREAD, e->loc);
     i->dst = out.id;
     i->label = operation;
     i->type = payload;
     i->callee = worker;
-    for (int j = 0; j < count; j++) {
+    for (int j = operation == THREAD_NEW ? 1 : 0; j < count; j++) {
         add(&i->args, (void *)(intptr_t)(args[j].id + 1));
     }
     return out;
@@ -206,6 +262,9 @@ void emit_thread_support(Program *p, FILE *f)
           "%RhTransferField = type { i64, ptr }\n"
           "declare i64 @rh_channel_new(ptr, i64, i64)\n"
           "declare i64 @rh_channel_send(i64, ptr, i64)\n"
+          "declare i64 @rh_channel_clone(i64)\n"
+          "declare void @rh_channel_close(i64)\n"
+          "declare void @rh_channel_drop(i64)\n"
           "declare void @rh_channel_receive(i64, ptr, ptr, i64, i32, i32, i32, i64)\n"
           "declare void @rh_thread_unhandled() cold noreturn\n",
           f);
@@ -226,7 +285,7 @@ void emit_thread_support(Program *p, FILE *f)
                         : kind == 4 ? (t->elem->align > 8 ? t->elem->align : 8)
                         : kind == 3 ? (size_t)t->count
                                     : 0;
-        if (kind == 6) {
+        if (kind == 6 && t->kind == T_STRUCT) {
             for (int k = 0; k < t->def->fields.n; k++) {
                 if (!strcmp(((Field *)t->def->fields.v[k])->name, "handle")) {
                     offset = field_offset(t, k);

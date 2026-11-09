@@ -2,12 +2,16 @@
 #define RHAT_SEMA_H
 #include "rhat.h"
 
-// Thread creation and private channel operations requiring typed compiler support.
+// Typed channel ownership, transfer and thread bridge operations.
 enum {
     THREAD_NONE,
     THREAD_NEW,
     THREAD_SEND,
     THREAD_RECEIVE,
+    THREAD_CLONE,
+    THREAD_CLOSE,
+    THREAD_VALID,
+    THREAD_DROP,
     THREAD_ENTRY,
     THREAD_TRANSFER,
     THREAD_ARGS,
@@ -146,10 +150,14 @@ typedef struct {
     int inline_steps; // Cumulative expansion budget for this concrete function body.
 } Context;
 
-// Recognize thread bridge operations and transfers restricted to std.channel.
-int thread_operation(Function *caller, Expr *target);
+// Recognize public typed channel and thread bridge operations.
+int thread_operation(Expr *target);
+// The explicit type argument of channel_new^.
+Type *channel_new_element(Program *p, Expr *e);
+// Require a borrowed typed handle and return its element type.
+Type *channel_element(Type *reference, Loc loc);
 // Their result type is fixed by the operation or the annotated receive method.
-Type *thread_result(Program *p, Function *caller, int operation);
+Type *thread_result(Program *p, Function *caller, int operation, Type *element);
 // Lower a checked operation to typed transfer IR.
 Value thread_call(Context *c, Expr *e, int operation, int destination);
 // Emit private immutable transfer descriptors and native entry trampolines.

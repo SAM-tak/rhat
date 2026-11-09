@@ -203,6 +203,30 @@ Goose の方針は採りません。違反は生成コードの実行時まで�
 
 ## Channel の所有と API
 
+`channel_handle^<T>` は要素型を持つ、不透明な低水準のハンドルです。整数との変換や
+暗黙コピーはできず、スコープ終了時に保持を自動解放します。構造体や配列に格納した場合も
+再帰的に解放されます。明示的な複製は保持を一つ増やし、各保持を独立に解放します。
+
+次の組み込み操作は、任意のモジュールの `p^` 内で利用できます。`h` は
+`ref^channel_handle^<T>` またはその読み取り専用参照、`value` は `ref^read^T` です。
+
+| 操作 | 結果 |
+|---|---|
+| `channel_new^(T, messages, bytes)` | `channel_handle^<T>` を生成。確保失敗・不正な容量では空ハンドル |
+| `channel_valid^(h)` | 確保済みかを `bool^` で返す。close 済みでも保持があれば true |
+| `channel_clone^(h)` | 同じキューの保持を増やした新しいハンドル。空なら空を返す |
+| `channel_close^(h)` | キューを閉じ、待機中の送受信を起こす。保持の解放とは別 |
+| `channel_send^(h, value, blocking)` | 成功 0、closed 1、full 2、oversized 3、allocation failure 4 |
+| `channel_receive^(h, blocking)` | `std.channel.Message<T> | std.channel.Closed | std.channel.Empty` |
+
+容量と `blocking` は `i64^`、`blocking` の 0 は非待機です。受信操作を包む手続きには
+上記の受信結果型を明示します。コンパイラは結果型の要素型がハンドルと一致することを検査し、
+受信値を呼び出し側の構築先に再構築します。空ハンドルの送受信は closed として扱います。
+
+`std.channel.Channel<T>` はハンドルを private なフィールドに保持し、既存のメソッド API と
+エラー型で包みます。独自ライブラリも同じ組み込み操作から実装できます。
+要素型はハンドルから取得し、呼び出し元の型引数やモジュール名には依存しません。
+
 `std.channel` は `Channel<T>` を公開します。作成時にメッセージ数と総バイト数の上限を
 指定する、境界付き MPMC FIFO とします。同じ型でもインスタンスが違えば通信経路は別です。
 一つのメッセージは一人の受信者だけが取得し、ブロードキャストにはしません。
@@ -241,7 +265,8 @@ Goose の方針は採りません。違反は生成コードの実行時まで�
 
 ### Disposable と共有本体
 
-Channel のラッパーは `Disposable` とし、暗黙コピーを禁止します。
+Channel のラッパーは `channel_handle^<T>` を保持するため、暗黙コピーが禁止されます。
+`Disposable` の合成や独自の `dispose` は不要で、ハンドルが自動解放を担当します。
 `clone()` は明示的に共有本体の参照カウントを増やして新しいラッパーを作ります。
 起動引数に含む Channel も、コンパイラが生成する転送処理で保持数を増やします。
 通常の構造体コピーや任意の `Disposable` にこの操作を広げません。

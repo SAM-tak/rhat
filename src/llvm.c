@@ -24,6 +24,7 @@ char *llvm_type(Type *t)
         return "i32";
     case T_U64:
     case T_I64:
+    case T_CHANNEL:
         return "i64";
     case T_U128:
     case T_I128:
@@ -854,7 +855,13 @@ static void instruction(Output *o, Instr *i)
         range_guard(o, i);
         break;
     case I_THREAD: {
-        Type *result = slot_type(o, i->dst);
+        if (i->label == THREAD_DROP) {
+            int handle = load(o, i->a);
+            fprintf(f, "  call void @rh_channel_drop(i64 %%t%d)\n", handle);
+            fprintf(f, "  store i64 0, ptr %%p%d\n", i->a);
+            break;
+        }
+        Type *result = i->dst >= 0 ? slot_type(o, i->dst) : NULL;
         if (i->label == THREAD_ENTRY) {
             save(o, i->dst, result, fmt("@rh_worker_%d", i->callee->id));
             break;
@@ -873,6 +880,26 @@ static void instruction(Output *o, Instr *i)
             break;
         }
         int first = load(o, (int)(intptr_t)i->args.v[0] - 1);
+        if (i->label != THREAD_NEW) {
+            int handle = ++o->tmp;
+            fprintf(f, "  %%t%d = load i64, ptr %%t%d\n", handle, first);
+            first = handle;
+        }
+        if (i->label == THREAD_CLOSE) {
+            fprintf(f, "  call void @rh_channel_close(i64 %%t%d)\n", first);
+            break;
+        }
+        if (i->label == THREAD_CLONE || i->label == THREAD_VALID) {
+            int value = ++o->tmp;
+            if (i->label == THREAD_CLONE) {
+                fprintf(f, "  %%t%d = call i64 @rh_channel_clone(i64 %%t%d)\n", value, first);
+            }
+            else {
+                fprintf(f, "  %%t%d = icmp ne i64 %%t%d, 0\n", value, first);
+            }
+            save(o, i->dst, result, fmt("%%t%d", value));
+            break;
+        }
         int second = load(o, (int)(intptr_t)i->args.v[1] - 1);
         int status = ++o->tmp;
         if (i->label == THREAD_NEW) {
@@ -880,6 +907,10 @@ static void instruction(Output *o, Instr *i)
                 f,
                 "  %%t%d = call i64 @rh_channel_new(ptr @rh_transfer_%d, i64 %%t%d, i64 %%t%d)\n",
                 status, i->type->id, first, second);
+            int valid = ++o->tmp, handle = ++o->tmp;
+            fprintf(f, "  %%t%d = icmp sgt i64 %%t%d, 0\n", valid, status);
+            fprintf(f, "  %%t%d = select i1 %%t%d, i64 %%t%d, i64 0\n", handle, valid, status);
+            status = handle;
         }
         else if (i->label == THREAD_SEND) {
             int blocking = load(o, (int)(intptr_t)i->args.v[2] - 1);

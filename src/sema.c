@@ -630,7 +630,53 @@ static Roots lifetime_roots(Context *c, Roots storage)
     return out;
 }
 
-// A place keeps its Disposable value, so only a temporary, which nothing else names, or the binding
+// Locate a channel handle responsible for noncopyability, including through aggregate members.
+static Type *channel_copy_cause(Type *t, char **path)
+{
+    if (!t->disposable) {
+        return NULL;
+    }
+    if (t->kind == T_CHANNEL) {
+        return t;
+    }
+    List *parts = t->kind == T_STRUCT  ? &t->def->fields
+                  : t->kind == T_UNION ? &t->def->alternatives
+                                       : NULL;
+    if (parts) {
+        for (int j = 0; j < parts->n; j++) {
+            Field *field = t->kind == T_STRUCT ? parts->v[j] : NULL;
+            Type *cause = channel_copy_cause(field ? field->type : parts->v[j], path);
+            if (cause) {
+                if (field) {
+                    *path = *path ? fmt("%s%s%s", field->name, **path == '[' ? "" : ".", *path)
+                                  : field->name;
+                }
+                return cause;
+            }
+        }
+    }
+    else if (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED) {
+        Type *cause = channel_copy_cause(t->elem, path);
+        if (cause) {
+            *path = *path ? fmt("[]%s%s", **path == '[' ? "" : ".", *path) : "[]";
+        }
+        return cause;
+    }
+    return NULL;
+}
+
+static char *noncopy_reason(Type *t)
+{
+    char *path = NULL;
+    Type *cause = channel_copy_cause(t, &path);
+    if (cause) {
+        return path ? fmt("contains noncopyable '%s' at '%s'", type_name(cause), path)
+                    : fmt("is a noncopyable '%s'", type_name(cause));
+    }
+    return "is Disposable";
+}
+
+// A place keeps its noncopyable value, so only a temporary, which nothing else names, or the binding
 // a return^ hands over may move out.
 static void disposable_check(Context *c, Value src, Loc l)
 {
@@ -639,9 +685,9 @@ static void disposable_check(Context *c, Value src, Loc l)
                   (src.id == c->moving->slot || c->moving->narrowed == src.type);
     if (src.type->disposable && src.addressable && !handed) {
         fail(l,
-             "'%s' is Disposable and cannot be copied; store a temporary directly, or keep it "
+             "'%s' %s and cannot be copied; store a temporary directly, or keep it "
              "in a T[grow^] and borrow with 'ref^'",
-             type_name(src.type));
+             type_name(src.type), noncopy_reason(src.type));
     }
 }
 
@@ -662,9 +708,9 @@ void disposable_argument(Type *t, Loc l)
     layout(t, l);
     if (t->disposable) {
         fail(l,
-             "'%s' is Disposable and cannot be passed by value; take 'ref^', and keep the "
+             "'%s' %s and cannot be passed by value; take 'ref^', and keep the "
              "values in a T[grow^] that others refer to",
-             type_name(t));
+             type_name(t), noncopy_reason(t));
     }
 }
 
@@ -1358,6 +1404,14 @@ void dispose_value(Context *c, Value v, Loc l)
     }
     if (!c->in->fn->procedure) {
         fail(l, "'%s' needs p^: disposing it calls dispose()", type_name(t));
+    }
+    if (t->kind == T_CHANNEL) {
+        Instr *drop = emit(c, I_THREAD, l);
+        drop->dst = -1;
+        drop->label = THREAD_DROP;
+        drop->a = v.id;
+        drop->type = t;
+        return;
     }
     if (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED) {
         dispose_elements(c, v, (Value){.id = -1}, l);
@@ -2059,7 +2113,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     Program *p = c->p;
     Expr *target = e->a;
-    int thread = thread_operation(c->in->fn, target);
+    int thread = thread_operation(target);
     if (thread) {
         return thread_call(c, e, thread, destination);
     }

@@ -59,9 +59,10 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
     t->elem = e;
     t->count = n;
     t->id = p->types.n;
-    if (k == T_REF || k == T_CFUNC) {
+    if (k == T_REF || k == T_CFUNC || k == T_CHANNEL) {
         t->size = t->align = 8;
         t->refs = k == T_REF;
+        t->disposable = k == T_CHANNEL;
     }
     else if (k == T_SLICE || k == T_DYN) {
         t->size = 16;
@@ -76,6 +77,9 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
     }
     add(&e->wrappers, t);
     add(&p->types, t);
+    if (k == T_CHANNEL) {
+        add(&p->transfer_types, t);
+    }
     return t;
 }
 
@@ -301,6 +305,12 @@ Type *range_bound(Program *p, Type *range)
 
 static Type *resolve_spec_type(Program *p, Spec *s)
 {
+    if (s->kind == SPEC_NAME && !strncmp(s->name, "channel_handle^", 15)) {
+        if (s->type_args.n != 1) {
+            fail(s->loc, "channel_handle^ expects one element type");
+        }
+        return type_wrap(p, T_CHANNEL, type_spec(p, s->type_args.v[0]), 0);
+    }
     if (s->kind == SPEC_TYPEOF) {
         fail(s->loc, "typeof^ types are allowed only in annotations inside a function body");
     }
@@ -461,6 +471,9 @@ char *type_name(Type *t)
     }
     if (t->kind == T_CFUNC) {
         return fmt("externC^ %s", type_name(t->elem));
+    }
+    if (t->kind == T_CHANNEL) {
+        return fmt("channel_handle^<%s>", type_name(t->elem));
     }
     if (t->kind == T_FUNCTION) {
         char *name = str(t->procedure ? "p^" : "f^");

@@ -513,12 +513,13 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
     if (s->self_type && s->type_args.n) {
         fail(s->loc, "Self^ does not accept type arguments");
     }
-    if (s->kind == SPEC_NAME && !strcmp(s->name, "range^") && s->type_args.n) {
+    if (s->kind == SPEC_NAME &&
+        (!strcmp(s->name, "range^") || !strcmp(s->name, "channel_handle^")) && s->type_args.n) {
         if (s->type_args.n != 1) {
-            fail(s->loc, "type 'range^' expects 1 type argument, got %d", s->type_args.n);
+            fail(s->loc, "type '%s' expects 1 type argument, got %d", s->name, s->type_args.n);
         }
         resolve_spec(m, s->type_args.v[0]);
-        s->name = fmt("range^<%s>", spec_identity(s->type_args.v[0]));
+        s->name = fmt("%s<%s>", s->name, spec_identity(s->type_args.v[0]));
     }
     else if (s->kind == SPEC_NAME && !s->self_type) {
         s->name = resolve_type_name(m, s->name, s->loc);
@@ -1127,6 +1128,15 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         return;
     }
     if (e->kind == E_CALL) {
+        if (e->a->kind == E_NAME && !strcmp(e->a->text, "channel_new^") && e->args.n) {
+            Expr *arg = e->args.v[0];
+            if (arg->kind != E_TYPE) {
+                Spec *type = written_type(p, m, names, arg);
+                if (type) {
+                    *arg = (Expr){.kind = E_TYPE, .loc = arg->loc, .type_expr = type};
+                }
+            }
+        }
         Spec *s = written_type(p, m, names, e->a);
         if (s) {
             resolve_spec(m, s);

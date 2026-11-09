@@ -35,6 +35,12 @@ int64_t platform_spawn(void (*entry)(void *), const RhTransferType *type, void *
     puts("custom symbol");
     return original_thread_spawn(entry, type, args, stacks);
 }}
+int64_t test_channel_holds(const void *args)
+{{
+    int64_t handle;
+    memcpy(&handle, args, sizeof(handle));
+    return atomic_load(&channel_of(handle)->holds);
+}}
 ''', encoding='utf-8')
     launch = '''
 let^worker = p^arg:ref^i32^ { print^(*arg) }
@@ -417,8 +423,138 @@ var^thread = try^t.spawn(worker, ref^n)
     negative('reject_implicit_handle_copy', HEADER + '''
 var^q = try^c.Channel<i32^>.new(1, 4)
 var^copy = q
-''', 'cannot be copied')
-    negative('reject_private_intrinsic', '__rh_channel_new(1, 4)\n', 'private thread operation')
+''', "contains noncopyable 'channel_handle^<i32^>' at 'handle' and cannot be copied")
+    positive('public_typed_handles', '''
+let^c = import^std.channel
+let^receive = p^h:ref^channel_handle^<i32^> -> c.Message<i32^> | c.Closed | c.Empty {
+    return^channel_receive^(h, i64^(0))
+}
+var^h = channel_new^(i32^, i64^(2), i64^(8))
+print^(channel_valid^(ref^h))
+h := channel_clone^(ref^h)
+do^{
+    var^copy = channel_clone^(ref^h)
+    var^value:i32^ = 42
+    print^(channel_send^(ref^copy, ref^value, i64^(0)))
+}
+var^result = receive(ref^h)
+if^result fits^c.Message<i32^> { print^(result.value) }
+channel_close^(ref^h)
+print^(receive(ref^h) fits^c.Closed)
+var^failed = channel_new^(i32^, i64^(0), i64^(8))
+print^(channel_valid^(ref^failed))
+print^(receive(ref^failed) fits^c.Closed)
+''', 'true\n0\n42\ntrue\nfalse\ntrue\n')
+    positive('default_typed_handle_cleanup', '''
+def^Holder { self^{ h:channel_handle^<i32^> } }
+var^q:Holder = {}
+print^("empty")
+''', 'empty\n')
+    positive('typed_handle_array_cleanup', '''
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+do^{
+    var^holds:channel_handle^<i32^>[grow^] = { channel_clone^(ref^h) }
+    print^(channel_valid^(ref^holds[0]))
+}
+print^(channel_valid^(ref^h))
+channel_close^(ref^h)
+''', 'true\ntrue\n')
+    positive('typed_handle_refcounts', '''
+import^std.sys
+externC^test_channel_holds:f^args:ref^read^std.sys.ThreadArgs -> i64^;
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+print^(test_channel_holds(thread_args^(ref^h)))
+do^{
+    var^copy = channel_clone^(ref^h)
+    var^holds:channel_handle^<i32^>[grow^] = { channel_clone^(ref^h) }
+    print^(test_channel_holds(thread_args^(ref^h)))
+}
+print^(test_channel_holds(thread_args^(ref^h)))
+h := channel_clone^(ref^h)
+print^(test_channel_holds(thread_args^(ref^h)))
+''', '1\n3\n1\n1\n', extra=('--thread-runtime', alternate))
+    (custom / 'channel.rh').write_text('''module^my.channel
+let^c = import^std.channel
+public^def^Queue<T> {
+    self^{ private^h:channel_handle^<T> }
+    new = p^ -> Self^ { return^Self^{h = channel_new^(T, i64^(2), i64^(128))} }
+    clone = p^self^ -> Self^ { return^Self^{h = channel_clone^(ref^self^.h)} }
+    send = p^self^, value:ref^read^T -> i64^ {
+        return^channel_send^(ref^self^.h, value, i64^(1))
+    }
+    receive = p^self^ -> c.Message<T> | c.Closed | c.Empty {
+        return^channel_receive^(ref^self^.h, i64^(1))
+    }
+}
+''', encoding='utf-8')
+    positive('custom_channel_across_thread', HEADER + '''
+let^my = import^my.channel
+def^Args { self^{ out:my.Queue<i32^> } }
+let^worker = p^args:ref^Args {
+    var^n:i32^ = 67
+    assert^(args.out.send(ref^n) = 0)
+}
+var^q = my.Queue<i32^>.new()
+var^args = Args{out = q.clone()}
+var^thread = try^t.spawn(worker, ref^args)
+thread.join()
+var^r = q.receive()
+if^r fits^c.Message<i32^> { print^(r.value) }
+''', '67\n')
+    negative('typed_handle_send_mismatch', '''
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+var^wrong:i64^ = 1
+channel_send^(ref^h, ref^wrong, i64^(0))
+''', "handle's element type")
+    negative('typed_handle_receive_mismatch', '''
+let^c = import^std.channel
+let^bad = p^h:ref^channel_handle^<i32^> -> c.Message<i64^> | c.Closed | c.Empty {
+    return^channel_receive^(h, i64^(0))
+}
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+var^r = bad(ref^h)
+''', 'channel_receive^ result must be')
+    negative('typed_handle_cannot_be_forged',
+             'var^h:channel_handle^<i32^> = 123\n', 'channel_handle^')
+    negative('typed_handle_cannot_be_copied', '''
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+var^copy = h
+''', "is a noncopyable 'channel_handle^<i32^>' and cannot be copied")
+    handle_members = '''
+def^Inner { self^{ handle:channel_handle^<i32^> } }
+def^Outer { self^{ inner:Inner } }
+'''
+    negative('user_handle_member_copy_reason', handle_members + '''
+var^value:Outer = {}
+var^copy = value
+''', "contains noncopyable 'channel_handle^<i32^>' at 'inner.handle' and cannot be copied")
+    negative('user_handle_member_argument_reason', handle_members + '''
+let^take = p^value:Outer {}
+var^value:Outer = {}
+take(value)
+''', "contains noncopyable 'channel_handle^<i32^>' at 'inner.handle' and cannot be passed by value")
+    negative('array_handle_member_copy_reason', handle_members + '''
+def^Many { self^{ items:Inner[2] } }
+var^value:Many = {}
+var^copy = value
+''', "contains noncopyable 'channel_handle^<i32^>' at 'items[].handle'")
+    negative('union_handle_member_copy_reason', handle_members + '''
+let^make = p^ -> Outer | nil^ { return^Outer{} }
+var^value = make()
+var^copy = value
+''', "contains noncopyable 'channel_handle^<i32^>' at 'inner.handle'")
+    negative('typed_handle_clone_requires_argument', 'channel_clone^()\n', 'invalid thread operation arguments')
+    negative('typed_handle_temporary_needs_owner',
+             'channel_new^(i32^, i64^(1), i64^(8))\n', 'temporary has nothing to dispose it')
+    negative('typed_handle_rejects_integer',
+             'channel_receive^(i64^(123), i64^(0))\n', 'requires a reference to channel_handle^')
+    negative('typed_handle_cannot_be_cast_to_integer', '''
+var^h = channel_new^(i32^, i64^(1), i64^(8))
+print^(i64^(h))
+''', 'numeric conversion requires a number')
+    negative('typed_handle_rejects_message_handles', HEADER + '''
+var^q = try^c.Channel<channel_handle^<i32^>>.new(1, 128)
+''', 'Channel cannot be sent through a Channel')
     if not suite.args.checks_only:
         def native_lifetime():
             exe = suite.work / 'native-thread-lifetime.exe'
