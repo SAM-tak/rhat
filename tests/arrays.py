@@ -5,6 +5,84 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    positive('rectangular_fixed_shapes', '''
+var^a:i32^[2,3] = {{10,11,12},{20,21,22}}
+let^b = i32^[2,3]{{30,31,32},{40,41,42}}
+var^cube:i32^[2,2,2] = {{{1,2},{3,4}},{{5,6},{7,8}}}
+a[1,2] += 7
+cube[1,0,1] := 60
+let^copy = a
+print^(a.len,a[0,2],a[1,2],b[1,2],cube[1,0,1],copy[1,2])
+''', '2 12 29 42 60 29\n')
+    positive('rectangular_constants_generics_and_references', '''
+let^WIDTH = 3
+def^Grid<T> {self^{cells:T[2,WIDTH]}}
+def^Box<T> {self^{value:T}}
+let^get = f^a:ref^read^i32^[2,3] -> i32^ {a[1,2]}
+var^grid = Grid<i32^>{cells={{1,2,3},{4,5,6}}}
+let^r = ref^grid.cells[1,2];
+*r := 9
+let^box = Box<i32^[2,3]>{value={{11,12,13},{21,22,23}}}
+let^nested = Box<(i32^[3])[2]>{value={{31,32,33},{41,42,43}}}
+let^constructed = i32^[1+1,WIDTH]{{1,2,3},{4,5,6}}
+let^outer = (i32^[2,3])[1]{constructed}
+print^(get(ref^grid.cells),box.value[1,2],nested.value[1][2],outer[0][1,2])
+''', '9 23 43 6\n')
+    positive('rectangular_indices_evaluated_once_in_order', '''
+let^step = p^n:ref^i64^ -> i64^ {
+    let^before = *n;
+    *n += 1
+    return^before
+}
+let^get = p^a:ref^i32^[2,2], calls:ref^i64^ -> ref^i32^[2,2] {
+    *calls += 1
+    return^a
+}
+var^n:i64^ = 0
+var^calls:i64^ = 0
+var^a:i32^[2,2] = {{10,11},{20,21}}
+get(ref^a,ref^calls)[step(ref^n),step(ref^n)] += 5
+print^(calls,n,a[0,1])
+''', '1 2 16\n')
+    positive('rectangular_row_iteration_slices_and_layout', '''
+var^a:i32^[2,3] = {{1,2,3},{4,5,6}}
+var^sum = 0
+for^row in^a { for^x in^row { sum += x } }
+var^also = 0
+inline^for^row in^a { inline^for^x in^row { also += x } }
+let^rows = a[..]
+let^range = 0..1
+let^first = a[range]
+rows[1][2] := 60
+print^(sum,also,first[0][2],a[1,2],a.bytes.len)
+''', '21 21 3 60 24\n')
+    positive('rectangular_optional_indices_skip_when_nil', '''
+let^index = p^calls:ref^i32^ -> i64^ { *calls += 1 return^0 }
+var^a:i32^[2,3] = {{1,2,3},{4,5,6}}
+var^r:ref^i32^[2,3]|nil^ = ref^a
+var^calls = 0
+print^(r?[index(ref^calls),index(ref^calls)]??0,calls)
+r := nil^
+print^(r?[index(ref^calls),index(ref^calls)]??7,calls)
+''', '1 2\n7 2\n')
+    for name, index in (('row','2,0'), ('column','0,3'), ('negative_row','-1,0'),
+                        ('negative_column','0,-1')):
+        suite.runtime_failure('rectangular_bounds_' + name,
+                              'let^a = i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[' + index + '])\n',
+                              'index out of bounds')
+    for name, source, diagnostic in (
+            ('too_few', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0])', 'requires 2 indices'),
+            ('too_many', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,1,2])', 'requires 2 indices'),
+            ('nested', 'let^a=i32^[[3]2]{{1,2,3},{4,5,6}}\nprint^(a[0,1])', 'require a multidimensional array'),
+            ('row_shape', 'let^a=i32^[2,3]{{1,2},{3,4,5}}', 'exactly 3 elements'),
+            ('zero_dimension', 'var^a:i32^[2,0] = {}', 'array length out of range'),
+            ('dynamic_dimension', 'var^n=2\nvar^a:i32^[n,3] = {}', 'constant integer expression'),
+            ('grow_dimension', 'var^a:i32^[grow^,3] = {}', "expected ']'"),
+            ('max_dimension', 'var^a:i32^[max^2,3] = {}', 'require fixed lengths'),
+            ('mixed_range', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,0..2])', 'requires integer indices'),
+            ('wrapped_chain', 'let^a = (i32^[2][3,4])[1]{}', 'consecutive array type brackets'),
+            ('distinct_types', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nlet^b:(i32^[3])[2]=a', "expected '(i32^[3])[2]'")):
+        negative('rectangular_reject_' + name, source + '\n', diagnostic)
     positive('nested_brackets_and_parenthesized_types', '''
 var^a:i32^[[3] 2] = {{10,11,12},{20,21,22}}
 var^b:(i32^[3])[2] = {{30,31,32},{40,41,42}}

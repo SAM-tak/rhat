@@ -197,7 +197,7 @@ void inline_loop(Context *c, Stmt *s)
         else {
             Expr base = {.kind = E_SAVED, .loc = s->loc, .compiler_value = &source};
             Expr index = {.kind = E_INT, .loc = s->loc, .text = fmt("%d", j)};
-            Expr at = {.kind = E_INDEX, .loc = s->loc, .a = &base, .b = &index};
+            Expr at = {.kind = E_INDEX, .loc = s->loc, .a = &base, .b = &index, .index_count = -1};
             item = expression(c, &at, NULL);
         }
         Expr saved = {.kind = E_SAVED, .loc = s->loc, .compiler_value = &item};

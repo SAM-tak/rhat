@@ -1418,6 +1418,9 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
     }
     else {
         out = form == 1 ? part_node(E_INDEX, l, NULL, e->a, e->b) : e->b;
+        if (form == 1) {
+            out->index_count = -1;
+        }
     }
     return e->forms[form] = out;
 }
@@ -1900,8 +1903,12 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         text_bytes_only(base, "[]", e->loc);
         if (range_type(index)) {
+            if (e->index_count) {
+                fail(e->b->loc, "multidimensional indexing requires integer indices");
+            }
             return infer_view(c, e->a, base);
         }
+        check_index_rank(base, e);
         return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
                : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
                           base->kind == T_BOUNDED || base->kind == T_SLICE)
@@ -3227,6 +3234,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
+        check_index_rank(base, e);
         if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
                      base->kind == T_SLICE)) {
             n->type = base->elem;

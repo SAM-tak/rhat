@@ -1141,6 +1141,36 @@ print^(result[1][2].n)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=nested_path.as_uri())))
     print('PASS nested array type hover, navigation and bracket-chain recovery',flush=True)
 
+    rectangular_path = work/'rectangular_array_types.rh'
+    rectangular_text = '''def^Cell { self^{n:i32^=0} }
+var^grid:Cell[2,3] = {{Cell{},Cell{},Cell{}},{Cell{},Cell{},Cell{}}}
+let^deferred = template^p^x:Cell[2,3] {}
+let^cell = grid[1,2]
+print^(cell.n)
+'''
+    client.open(rectangular_path,rectangular_text)
+    assert client.diagnostics(rectangular_path,1) == []
+    for needle in ('grid:','deferred ='):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=rectangular_path.as_uri()),
+            position=at(rectangular_text,needle)))
+        assert 'Cell[2, 3]' in hover['contents']['value'], hover
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=rectangular_path.as_uri()),
+        position=at(rectangular_text,'cell =')))
+    assert 'cell: Cell' in hover['contents']['value'], hover
+    classified = tokens(rectangular_text,rectangular_path)
+    position = at(rectangular_text,'Cell[2,3]')
+    assert classified[(position['line'],position['character'])] == (4,1), classified
+    definition = client.request('textDocument/definition',dict(textDocument=dict(uri=rectangular_path.as_uri()),
+        position=position))
+    assert definition['range']['start'] == at(rectangular_text,'Cell {'), definition
+    broken = rectangular_text.replace('grid[1,2]', 'grid[1]')
+    client.change(rectangular_path,broken,2)
+    assert any('requires 2 indices' in d['message'] for d in client.diagnostics(rectangular_path,2))
+    client.change(rectangular_path,rectangular_text,3)
+    assert client.diagnostics(rectangular_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=rectangular_path.as_uri())))
+    print('PASS rectangular array type hover, navigation and index arity recovery',flush=True)
+
     threads_path = work/'implicit_thread_calls.rh'
     threads_text = '''let^c = import^std.channel
 let^t = import^std.thread

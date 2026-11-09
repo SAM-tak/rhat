@@ -335,6 +335,14 @@ static void identity_parts(List *parts, Spec *s, int kind)
 
 static char *spec_identity(Spec *s)
 {
+    if (s->rank) {
+        Spec *elem = s;
+        char *shape = str("");
+        for (int j = 0; j < s->rank; j++, elem = elem->elem) {
+            shape = fmt("%s%s%d", shape, j ? "," : "", elem->count);
+        }
+        return fmt("(%s)[%s]", spec_identity(elem), shape);
+    }
     if (s->kind == SPEC_NAME) {
         return s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;
     }

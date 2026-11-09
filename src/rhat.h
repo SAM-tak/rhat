@@ -82,6 +82,7 @@ struct Spec {
     char *name;
     Spec *elem, *other; // Binary type operands; elem holds a callable result.
     int kind, count;
+    int rank; // Fixed rectangular array dimensions; zero for ordinary array nesting.
     // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
     Expr *length;  // A constant expression for count, evaluated during name resolution.
     Expr *operand; // SPEC_TYPEOF: the unevaluated expression whose static type this names.
@@ -147,6 +148,7 @@ enum {
 };
 
 struct Expr {
+    int index_count;     // Comma arity on the first index; -1 for internal dimension accesses.
     bool parenthesized;  // Written grouping separates nested array constructor type suffixes.
     int capture_index;   // E_CAPTURE's index in the current function's lexical captures.
     Field *state_field;  // E_STATE's declaration, resolved before type checking.
@@ -369,6 +371,7 @@ struct Type {
     bool invalid; // Storage layout failed during editor analysis.
     char *symbol;
     int kind, id, count;
+    int rank; // Fixed rectangular array dimensions; zero for ordinary arrays.
     // T_REF and T_DYN use count 1 for read^; the representation is unchanged.
     Type *elem;
     List wrappers; // Canonical ref/array/etc. types whose element is this type.

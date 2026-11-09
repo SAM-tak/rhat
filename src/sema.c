@@ -3689,7 +3689,8 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
                 else {
                     Expr base = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &source};
                     Expr index = {.kind = E_INT, .loc = e->loc, .text = fmt("%d", j)};
-                    Expr at = {.kind = E_INDEX, .loc = e->loc, .a = &base, .b = &index};
+                    Expr at = {
+                        .kind = E_INDEX, .loc = e->loc, .a = &base, .b = &index, .index_count = -1};
                     item = expression(c, &at, NULL);
                 }
                 add(&args, saved_value(item, e->loc));
@@ -4184,6 +4185,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(base)) {
             return base;
         }
+        check_index_rank(base.type, e);
         temporary_check(base, e->loc);
         if (argument_pack(base.type)) {
             int index = argument_index(&c->vars, base.type, e->b, e->loc);

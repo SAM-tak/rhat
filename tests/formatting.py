@@ -36,6 +36,9 @@ def main():
     expect('nested_array_kinds',
            'let^f=p^a:T[ [grow^]max^64 ],b:T[[[2]3] 4] {}\n',
            'let^f = p^a:T[[grow^] max^64], b:T[[[2] 3] 4] {}\n')
+    expect('rectangular_arrays',
+           'var^a:i32^[2 ,3]={{1,2,3},{4,5,6}}\na[ 1 ,2 ]+=7\n',
+           'var^a:i32^[2, 3] = {{1, 2, 3}, {4, 5, 6}}\na[1, 2] += 7\n')
     expect('dynamic_reference_types',
            'let^get=p^x:dynamic^ Shape,ys:Shape[ dynamic^ .. ],zs:Shape[ ref^ dyn^ 2 ] {}\n',
            'let^get = p^x:dynamic^Shape, ys:Shape[dynamic^..], zs:Shape[ref^dyn^2] {}\n')

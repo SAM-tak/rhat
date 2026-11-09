@@ -1174,6 +1174,22 @@ static void array_chain_error(Loc loc)
               "write (T[A])[B] or T[[A] B]");
 }
 
+// Store rectangular dimensions in row-major nesting while retaining their type identity.
+static Spec *rectangular_spec(Spec *elem, List *lengths)
+{
+    for (int j = lengths->n - 1; j >= 0; j--) {
+        Expr *length = lengths->v[j];
+        Spec *s = mem(sizeof(*s));
+        *s = (Spec){.kind = SPEC_ARRAY,
+                    .loc = elem->loc,
+                    .elem = elem,
+                    .length = length,
+                    .rank = lengths->n - j > 1 ? lengths->n - j : 0};
+        elem = s;
+    }
+    return elem;
+}
+
 // Parse bracket contents, allowing an inner bracket to construct the element type.
 static Spec *array_header(Parser *p, Spec *elem, int *references)
 {
@@ -1225,6 +1241,20 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
             p->header = false;
             w->length = expr(p, 0);
             p->header = header;
+            if (is(p, ",")) {
+                if (bounded || refs) {
+                    fail(w->loc,
+                         "multidimensional arrays require fixed lengths without array attributes");
+                }
+                List lengths = {0};
+                add(&lengths, w->length);
+                while (take(p, ",")) {
+                    p->header = false;
+                    add(&lengths, expr(p, 0));
+                    p->header = header;
+                }
+                return rectangular_spec(elem, &lengths);
+            }
             return w;
         }
         next(p);
@@ -1260,6 +1290,24 @@ static bool array_type_at(Parser *p, int k)
         return false;
     }
     Token *next = p->tokens.v[k + 1];
+    int depth = 0;
+    for (int j = k; j < p->tokens.n; j++) {
+        Token *token = p->tokens.v[j];
+        if (token->kind == TOK_STRING || token->kind == TOK_QUOTED) {
+            continue;
+        }
+        const char *text = token->text;
+        if (!strcmp(text, "[")) {
+            depth++;
+        }
+        else if (!strcmp(text, "]") && !--depth) {
+            if (j + 1 < p->tokens.n && !strcmp(((Token *)p->tokens.v[j + 1])->text, "{") &&
+                !p->header) {
+                return true;
+            }
+            break;
+        }
+    }
     if (!strcmp(next->text, "[") || !strcmp(next->text, "]") || !strcmp(next->text, "grow^") ||
         !strcmp(next->text, "flex^") || !strcmp(next->text, "max^") ||
         reference_depth(next->text) || dynamic_depth(next->text)) {
@@ -1428,6 +1476,23 @@ static Spec *array_element_spec(Parser *p, Expr *e)
     Spec *s = mem(sizeof(*s));
     s->loc = e->loc;
     if (e->kind == E_INDEX && !e->optional) {
+        if (e->index_count == -1) {
+            List reversed = {0}, lengths = {0};
+            Expr *first = e;
+            while (first->index_count == -1) {
+                add(&reversed, first->b);
+                first = first->a;
+            }
+            if ((first->a->kind == E_INDEX || first->a->kind == E_SLICE) &&
+                !first->a->parenthesized) {
+                array_chain_error(first->b->loc);
+            }
+            add(&lengths, first->b);
+            for (int j = reversed.n - 1; j >= 0; j--) {
+                add(&lengths, reversed.v[j]);
+            }
+            return rectangular_spec(array_element_spec(p, first->a), &lengths);
+        }
         if ((e->a->kind == E_INDEX || e->a->kind == E_SLICE) && !e->a->parenthesized) {
             array_chain_error(e->b->loc);
         }
@@ -2086,6 +2151,24 @@ static Expr *primary(Parser *p)
                 n->text = n->b->text;
                 n->c = n->b->b;
                 n->b = n->b->a;
+            }
+            Expr *first_index = n;
+            int count = 1;
+            while (take(p, ",")) {
+                if (first_index->kind == E_SLICE) {
+                    fail(first_index->loc, "multidimensional indexing requires integer indices");
+                }
+                Expr *part = node(E_INDEX, e->loc);
+                part->a = n;
+                part->index_count = -1;
+                p->header = false;
+                part->b = expr(p, 0);
+                p->header = header;
+                if (part->b->kind == E_RANGE) {
+                    fail(part->b->loc, "multidimensional indexing requires integer indices");
+                }
+                n = part;
+                first_index->index_count = ++count;
             }
             need(p, "]");
             e = n;

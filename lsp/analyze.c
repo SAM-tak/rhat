@@ -319,6 +319,15 @@ static char *spec_text(Spec *s)
                        : "ref^%s %s",
                    s->count ? "read^" : "", spec_text(s->elem));
     }
+    if (s->rank) {
+        Spec *elem = s;
+        char *shape = str("");
+        for (int j = 0; j < s->rank; j++, elem = elem->elem) {
+            shape = fmt("%s%s%d", shape, j ? ", " : "", elem->count);
+        }
+        bool wrap = elem->kind != SPEC_NAME && elem->kind != SPEC_TYPEOF;
+        return fmt(wrap ? "(%s)[%s]" : "%s[%s]", spec_text(elem), shape);
+    }
     Spec *elem = s->elem;
     char *refs = "";
     while (elem->kind == SPEC_REF && !elem->count && elem->elem->kind != SPEC_DYN) {

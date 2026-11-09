@@ -46,11 +46,11 @@ Type *type_builtin(Program *p, int k)
     return t;
 }
 
-Type *type_wrap(Program *p, int k, Type *e, int n)
+static Type *wrap_rank(Program *p, int k, Type *e, int n, int rank)
 {
     for (int i = 0; i < e->wrappers.n; i++) {
         Type *t = e->wrappers.v[i];
-        if (t->kind == k && t->count == n) {
+        if (t->kind == k && t->count == n && t->rank == rank) {
             return t;
         }
     }
@@ -58,6 +58,7 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
     t->kind = k;
     t->elem = e;
     t->count = n;
+    t->rank = rank;
     t->id = p->types.n;
     if (k == T_REF || k == T_CFUNC || k == T_CHANNEL) {
         t->size = t->align = 8;
@@ -81,6 +82,27 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
         add(&p->transfer_types, t);
     }
     return t;
+}
+
+Type *type_wrap(Program *p, int k, Type *e, int n)
+{
+    return wrap_rank(p, k, e, n, 0);
+}
+
+void check_index_rank(Type *t, Expr *e)
+{
+    if (!t || e->index_count == -1) {
+        return;
+    }
+    if (t->kind == T_REF) {
+        t = t->elem;
+    }
+    if (t->rank && e->index_count != t->rank) {
+        fail(e->b->loc, "'%s' requires %d indices in one bracket pair", type_name(t), t->rank);
+    }
+    if (!t->rank && e->index_count > 1) {
+        fail(e->b->loc, "comma-separated indices require a multidimensional array");
+    }
 }
 
 static void union_arms(List *arms, Type *t)
@@ -355,13 +377,13 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         return type_wrap(p, T_DYN, t, s->count);
     }
     if (s->kind != SPEC_NAME) {
-        return type_wrap(p,
+        return wrap_rank(p,
                          s->kind == SPEC_REF       ? T_REF
                          : s->kind == SPEC_GROW    ? T_GROW
                          : s->kind == SPEC_SLICE   ? T_SLICE
                          : s->kind == SPEC_BOUNDED ? T_BOUNDED
                                                    : T_ARRAY,
-                         type_spec(p, s->elem), s->count);
+                         type_spec(p, s->elem), s->count, s->rank);
     }
     for (int k = T_BOOL; k < T_STRUCT; k++) {
         if (!strcmp(s->name, builtin_name(k))) {
@@ -495,6 +517,15 @@ char *type_name(Type *t)
     }
     if (t->kind == T_DYN) {
         return fmt("ref^%s dyn^ %s", t->count ? "read^" : "", type_name(t->elem));
+    }
+    if (t->rank) {
+        char *shape = str("");
+        Type *elem = t;
+        for (int j = 0; j < t->rank; j++, elem = elem->elem) {
+            shape = fmt("%s%s%d", shape, j ? ", " : "", elem->count);
+        }
+        bool wrap = elem->kind >= T_STRUCT && elem->kind != T_STRUCT && elem->kind != T_ENUM;
+        return fmt(wrap ? "(%s)[%s]" : "%s[%s]", type_name(elem), shape);
     }
     Type *elem = t->elem;
     char *refs = "";
