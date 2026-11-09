@@ -427,9 +427,18 @@ static bool first_reference(char *key)
 }
 
 // Later overload arms have no written name: navigation points at their keyword.
+static bool implicit_error_method(Function *f)
+{
+    return f && f->owner && f->owner->group && f->declaration.line == f->owner->loc.line &&
+           f->declaration.col == f->owner->loc.col;
+}
+
 static const char *declaration_spelling(Program *p, ToolRef *r)
 {
     Function *f = r->function;
+    if (implicit_error_method(f)) {
+        return f->owner->name;
+    }
     if (f && r->declaration.line == f->loc.line && r->declaration.col == f->loc.col) {
         Source *s = source_for(p, r->declaration.file);
         if (s) {
@@ -453,9 +462,12 @@ static bool name_byte(unsigned char c)
 
 static void emit_ref(Program *p, cJSON *array, ToolRef *r)
 {
-    if (!r->declaration.file || !r->name || *short_name(r->name) == '<') {
+    if (!r->declaration.file || !r->name || *short_name(r->name) == '<' ||
+        (unsigned char)*short_name(r->name) < 32) {
         return;
     }
+    // Keep implicit methods for completion, without giving them a source token range.
+    bool implicit = r->definition && implicit_error_method(r->function);
     // Name resolution can record a context binding before its type is inferred.
     for (int j = 0; !r->type && !r->function && j < p->state_fields.n; j++) {
         Field *f = p->state_fields.v[j];
@@ -468,6 +480,10 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     const char *decl_name = declaration_spelling(p, r);
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
+    if (source && r->kind == TOOL_PARAMETER && !strcmp(r->name, "self^") &&
+        strncmp(source->text + loc_offset(source, r->use), "self^", 5)) {
+        return; // Generated error bodies also place their implicit self^ at the variant name.
+    }
     Loc at_use = r->use;
     bool error_leaf = r->kind == 23 && r->owner && r->owner->group;
     if (error_leaf && !r->definition && source) {
@@ -578,7 +594,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(out, "id", key);
     cJSON_AddStringToObject(out, "name", short_name(r->name));
-    cJSON_AddNumberToObject(out, "length", (double)strlen(short_name(use_name)));
+    cJSON_AddNumberToObject(out, "length", implicit ? 0 : (double)strlen(short_name(use_name)));
     cJSON_AddStringToObject(out, "qualified", r->name);
     cJSON_AddNumberToObject(out, "kind", r->kind);
     cJSON_AddBoolToObject(out, "declaration", r->definition);
@@ -695,6 +711,152 @@ static void export_diagnostic(Program *p, cJSON *errors, Diagnostic *d)
         mem_free(trace.v);
     }
     mem_free(seen.v);
+}
+
+// Index unambiguous function names even when a generic body has no concrete instance.
+static void generic_body(Program *p, Module *module, cJSON *refs, List *names, List *body);
+
+static bool generic_local(List *names, const char *path)
+{
+    size_t length = strcspn(path, ".");
+    for (int j = names->n - 1; j >= 0; j--) {
+        const char *name = names->v[j];
+        if (strlen(name) == length && !strncmp(name, path, length)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static char *generic_path(Expr *e)
+{
+    if (!e) {
+        return NULL;
+    }
+    if (e->kind == E_NAME) {
+        return e->text;
+    }
+    if (e->kind == E_MEMBER && !e->optional) {
+        char *base = generic_path(e->a);
+        return base ? fmt("%s.%s", base, e->text) : NULL;
+    }
+    return NULL;
+}
+
+static void generic_expr(Program *p, Module *module, cJSON *refs, List *names, Expr *e)
+{
+    if (!e || e->invalid) {
+        return;
+    }
+    char *path = generic_path(e);
+    if (path && !generic_local(names, path)) {
+        Module *target = module;
+        const char *name = path;
+        bool imported = false;
+        if (module->name && !strncmp(path, module->name, strlen(module->name)) &&
+            path[strlen(module->name)] == '.') {
+            name = path + strlen(module->name) + 1;
+        }
+        for (int j = 0; j < module->imports.n; j++) {
+            Import *import = module->imports.v[j];
+            const char *prefix = import->alias ? import->alias : import->name;
+            size_t n = strlen(prefix);
+            if (!strncmp(path, prefix, n) && path[n] == '.') {
+                target = import->target;
+                name = path + n + 1;
+                imported = true;
+                break;
+            }
+        }
+        Function *found = NULL;
+        int count = 0;
+        for (int j = 0; target && j < target->functions.n; j++) {
+            Function *f = target->functions.v[j];
+            if ((!imported || f->public) && !strcmp(short_name(f->name), name)) {
+                found = f;
+                count++;
+            }
+        }
+        // Overloaded names need concrete argument types; checked references take precedence.
+        if (count == 1) {
+            Loc use = e->name_loc.file ? e->name_loc : e->loc;
+            Loc declaration = found->declaration.file ? found->declaration : found->loc;
+            ToolRef ref = {use, declaration, found->name, NULL, found, NULL, 12, false};
+            emit_ref(p, refs, &ref);
+        }
+    }
+    int mark = names->n;
+    if (e->kind == E_FUNCTION && e->function) {
+        for (int j = 0; j < e->function->params.n; j++) {
+            add(names, ((Param *)e->function->params.v[j])->name);
+        }
+        generic_body(p, module, refs, names, &e->function->body);
+    }
+    else {
+        generic_body(p, module, refs, names, &e->bindings);
+        generic_expr(p, module, refs, names, e->a);
+        if (e->kind == E_CATCH) {
+            add(names, "it^");
+        }
+        generic_expr(p, module, refs, names, e->b);
+        generic_expr(p, module, refs, names, e->c);
+        for (int j = 0; j < e->args.n; j++) {
+            generic_expr(p, module, refs, names, e->args.v[j]);
+        }
+    }
+    names->n = mark;
+}
+
+static void generic_body(Program *p, Module *module, cJSON *refs, List *names, List *body)
+{
+    for (int j = 0; j < body->n; j++) {
+        Stmt *stmt = body->v[j];
+        int mark = names->n;
+        generic_body(p, module, refs, names, &stmt->prolog);
+        if (stmt->kind == S_BIND_MANY) {
+            for (int k = 0; k < stmt->body.n; k++) {
+                Stmt *binding = stmt->body.v[k];
+                generic_expr(p, module, refs, names, binding->a);
+            }
+            names->n = mark;
+            for (int k = 0; k < stmt->body.n; k++) {
+                add(names, ((Stmt *)stmt->body.v[k])->name);
+            }
+            continue;
+        }
+        generic_body(p, module, refs, names, &stmt->pre);
+        generic_expr(p, module, refs, names, stmt->a);
+        generic_expr(p, module, refs, names, stmt->b);
+        for (int k = 0; k < stmt->targets.n; k++) {
+            generic_expr(p, module, refs, names, stmt->targets.v[k]);
+        }
+        for (int k = 0; k < stmt->values.n; k++) {
+            generic_expr(p, module, refs, names, stmt->values.v[k]);
+        }
+        generic_body(p, module, refs, names, &stmt->first);
+        if (stmt->kind == S_INLINE) {
+            add(names, stmt->name);
+        }
+        int inner = names->n;
+        generic_body(p, module, refs, names, &stmt->body);
+        names->n = inner;
+        generic_body(p, module, refs, names, &stmt->update);
+        names->n = inner;
+        generic_body(p, module, refs, names, &stmt->last);
+        names->n = inner;
+        generic_body(p, module, refs, names, &stmt->epilog);
+        names->n = mark;
+        generic_body(p, module, refs, names, &stmt->other);
+        for (int k = 0; k < stmt->handlers.n; k++) {
+            names->n = mark;
+            add(names, "it^");
+            generic_body(p, module, refs, names, &((CatchArm *)stmt->handlers.v[k])->body);
+        }
+        names->n = mark;
+        if (stmt->kind == S_BIND || stmt->kind == S_TYPE) {
+            add(names, stmt->name);
+        }
+    }
 }
 
 static cJSON *export_index(Session *s)
@@ -853,7 +1015,45 @@ static cJSON *export_index(Session *s)
         emit_ref(p, refs, &r);
     }
     for (int j = 0; j < p->resolutions.n; j++) {
-        emit_ref(p, refs, p->resolutions.v[j]);
+        ToolRef *ref = p->resolutions.v[j];
+        if (ref->kind == 23 && !ref->type && ref->owner) {
+            ref->type = ref->owner->type;
+        }
+        emit_ref(p, refs, ref);
+    }
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *module = p->modules.v[j];
+        for (int k = 0; k < module->defs.n; k++) {
+            Def *d = module->defs.v[k];
+            if (!d->type_params.n) {
+                continue;
+            }
+            List names = {0};
+            for (int n = 0; n < d->type_params.n; n++) {
+                add(&names, d->type_params.v[n]);
+            }
+            for (int n = 0; n < d->own_methods.n; n++) {
+                add(&names, ((Function *)d->own_methods.v[n])->name);
+            }
+            for (int n = 0; n < d->own_fields.n; n++) {
+                add(&names, ((Field *)d->own_fields.v[n])->name);
+            }
+            for (int n = 0; n < d->constants.n; n++) {
+                add(&names, ((Constant *)d->constants.v[n])->name);
+            }
+            for (int n = 0; n < d->state_fields.n; n++) {
+                add(&names, ((Field *)d->state_fields.v[n])->name);
+            }
+            int mark = names.n;
+            for (int n = 0; n < d->own_methods.n; n++) {
+                Function *f = d->own_methods.v[n];
+                for (int q = 0; q < f->params.n; q++) {
+                    add(&names, ((Param *)f->params.v[q])->name);
+                }
+                generic_body(p, module, refs, &names, &f->body);
+                names.n = mark;
+            }
+        }
     }
     cJSON *errors = cJSON_AddArrayToObject(out, "diagnostics");
     for (int j = 0; j < s->diagnostics.n; j++) {

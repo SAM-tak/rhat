@@ -1,10 +1,11 @@
 # 資源の解放 Disposable
 
 `Disposable` を合成した型の値は、スコープを抜けるときに `dispose` が呼ばれます。Rust の `Drop` に相当します。
-`Disposable` は標準ライブラリの `std.disposable` にあり、import なしで書けます。
+`Disposable` は標準ライブラリの `std.sys.Disposable` に定義されており、利用には `import^std.sys` が必要です。
 
 ```rhat
-def^Device : Disposable {
+import^std.sys
+def^Device : std.sys.Disposable {
     self^{ private^raw:i64^ }
     dispose = p^self^ { rh_device_close(self^.raw) }
 }

@@ -427,26 +427,18 @@ static void syntax_regions(Format *f, const Reading *r)
                     owner = a;
                 }
             }
-            // A colon-form expression inside these braces owns its own labels.
-            bool colon = false;
-            for (int j = 0; j < r->syntax.spans.n; j++) {
-                FormatSpan *s = r->syntax.spans.v[j];
-                if (s->kind == 100 + E_IF || s->kind == 100 + E_SCOPE) {
-                    size_t a = unit_at(f, s->start), b = unit_at(f, s->end - 1);
-                    colon |= a > (size_t)brace && a < i && b >= i;
-                }
-            }
-            if (!colon) {
-                u->label_owner = (int32_t)owner;
-            }
+            u->label_owner = (int32_t)owner;
         }
         size_t limit = brace >= 0 ? (size_t)f->units[brace].match : f->unit_count;
         for (int j = 0; j < r->syntax.spans.n; j++) {
             FormatSpan *s = r->syntax.spans.v[j];
             if (s->kind == 100 + E_IF || s->kind == 100 + E_SCOPE) {
                 size_t a = unit_at(f, s->start), b = unit_at(f, s->end - 1);
-                if (a < i && b >= i && (brace < 0 || a > (size_t)brace) && b < limit) {
+                // The innermost colon-form expression owns its labels.
+                if (a < i && b >= i && (brace < 0 || a > (size_t)brace) &&
+                    (b < limit || (b == limit && (int32_t)a > u->label_owner))) {
                     limit = b;
+                    u->label_owner = (int32_t)a;
                 }
             }
         }

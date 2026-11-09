@@ -278,7 +278,8 @@ def^Hidden { self^{ q:c.Channel<i32^> } }
 var^q = try^c.Channel<Hidden>.new(1, 128)
 ''', 'Channel cannot be sent through a Channel')
     negative('reject_disposable', HEADER + '''
-def^Resource : Disposable { dispose = p^self^ {} }
+import^std.sys
+def^Resource : std.sys.Disposable { dispose = p^self^ {} }
 var^q = try^c.Channel<Resource>.new(1, 128)
 ''', 'thread transfer refuses Disposable')
     negative('reject_thread_argument', HEADER + '''

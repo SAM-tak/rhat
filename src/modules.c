@@ -1829,9 +1829,40 @@ static void pass_top_bindings(Program *p, Module *m)
     }
 }
 
+// Record a generic composition's written types without instantiating its dependent bases.
+static void generic_base_reference(Program *p, Def *owner, Spec *s)
+{
+    if (!s || s->invalid) {
+        return;
+    }
+    if (s->kind == SPEC_NAME && !s->self_type && !local(&owner->type_params, s->name)) {
+        char *name = resolve_type_name(owner->module, s->name, s->loc);
+        Def *d = named_definition(p, name);
+        TypeAlias *a = named_alias(p, name);
+        if (d || a) {
+            tool_record(p, s->loc, d ? d->loc : a->loc, name, d ? d->type : a->spec->type, NULL, d,
+                        23, false);
+        }
+    }
+    for (int j = 0; j < s->type_args.n; j++) {
+        generic_base_reference(p, owner, s->type_args.v[j]);
+    }
+    generic_base_reference(p, owner, s->elem);
+    generic_base_reference(p, owner, s->other);
+    for (int j = 0; j < s->params.n; j++) {
+        generic_base_reference(p, owner, s->params.v[j]);
+    }
+}
+
 static void resolve_definition(Program *p, Def *d)
 {
-    if (d->resolved || d->type_params.n || d->invalid) {
+    if (d->resolved || d->invalid) {
+        return;
+    }
+    if (d->type_params.n) {
+        for (int j = 0; compiler_hooks && j < d->base_specs.n; j++) {
+            generic_base_reference(p, d, d->base_specs.v[j]);
+        }
         return;
     }
     d->resolved = true;

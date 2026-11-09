@@ -3,9 +3,11 @@
 from harness import Suite
 
 DEVICE = '''
+import^std.sys
+
 let^c = import^std.collections
 errordef^E { Bad }
-def^D : Disposable {
+def^D : std.sys.Disposable {
     self^{ h:i64^ }
     id = f^self^ -> i64^ { return^self^.h }
     dispose = p^self^ { print^("dispose", self^.h) }
@@ -66,7 +68,7 @@ print^("end")
      'dispose 6\nbetween\ndispose 5\ndispose 7\ncaught\nend\ndispose 8\n')
 
     positive('parts', DEVICE + '''
-def^Holder : Disposable {
+def^Holder : std.sys.Disposable {
     self^{ a:D, n:i32^ = 0, b:D }
     dispose = p^self^ { print^("holder", self^.n) }
 }
@@ -225,7 +227,7 @@ print^("end")
 ''', '1\n1\n2\nend\ndispose 2\ndispose 1\n')
 
     positive('union_in_place', DEVICE + '''
-def^Counter : Disposable {
+def^Counter : std.sys.Disposable {
     self^{ n:i32^ = 0 }
     add = p^self^ { self^.n += 1 }
     dispose = p^self^ { print^("counter", self^.n) }
@@ -241,7 +243,7 @@ print^(y.h)
 ''', '2\n5\ndispose 5\ndispose 2\ncounter 2\n')
 
     positive('match', DEVICE + '''
-def^Counter : Disposable {
+def^Counter : std.sys.Disposable {
     self^{ n:i32^ = 0 }
     add = p^self^ { self^.n += 1 }
     dispose = p^self^ { print^("counter", self^.n) }
@@ -295,13 +297,13 @@ print^(other.d.h)
 ''', '1\n2\n2 1\n2\ndispose 2\ndispose 1\n')
 
     positive('composition_and_generic', DEVICE + '''
-def^Base : Disposable {
+def^Base : std.sys.Disposable {
     self^{ n:i32^ = 1 }
     dispose = p^self^ { print^("base", self^.n) }
 }
 def^Derived : Base {}
 def^Box<T> { self^{ item:T } }
-def^Own<T> : Disposable {
+def^Own<T> : std.sys.Disposable {
     self^{ item:T }
     dispose = p^self^ { print^("own", self^.item) }
 }
@@ -337,6 +339,10 @@ var^a = build(1)
 ''', 'dispose 1\n')
 
     copied = "is Disposable and cannot be copied"
+    negative('disposable_requires_import',
+             'def^N : std.sys.Disposable { dispose = p^self^ {} }\n', 'explicitly imported')
+    negative('bare_disposable_is_not_builtin',
+             'def^N : Disposable { dispose = p^self^ {} }\n', 'unknown composition base')
     negative('let_from_name', DEVICE + 'var^a = make(1)\nlet^b = a\n', copied)
     negative('var_annotated', DEVICE + 'var^a = make(1)\nvar^b:D = a\n', copied)
     negative('assign_from_name', DEVICE + 'var^a = make(1)\nvar^b = make(2)\nb := a\n', copied)
@@ -355,7 +361,7 @@ var^a = build(1)
     negative('slice_element_out', DEVICE + 'var^xs = D[grow^]{ make(1) }\nlet^view = xs[..]\nlet^a = view[0]\n', copied)
     negative('loop_binding', DEVICE + 'var^xs = D[grow^]{ make(1) }\nfor^x in^xs { print^(x.h) }\n', copied)
     negative('branches', DEVICE + 'var^a = make(1)\nvar^b = make(2)\nlet^x = if^true^: a el^: b;\n', copied)
-    negative('derived_copied', 'def^B : Disposable { dispose = p^self^ {} }\ndef^S : B {}\nvar^s = S{}\nvar^t = s\n', copied)
+    negative('derived_copied', 'import^std.sys\ndef^B : std.sys.Disposable { dispose = p^self^ {} }\ndef^S : B {}\nvar^s = S{}\nvar^t = s\n', copied)
     negative('generic_copied', DEVICE + 'def^Box<T> { self^{ item:T } }\nvar^b = Box<D>{item = make(1)}\nvar^o = b\n', copied)
     negative('hash_map_declared', DEVICE + 'var^m:c.HashMap<string^, D> = {}\n', copied)
 
@@ -376,16 +382,16 @@ var^a = build(1)
     negative('temporary_index', DEVICE + 'let^g = p^ -> D[2] { return^{ make(1), make(2) } }\nprint^(g()[0].h)\n', temporary)
 
     negative('tail_name', DEVICE + 'let^g = p^ -> D {\n    var^a = make(1)\n    a\n}\ng()\n', 'only calls can be expression statements')
-    negative('let_calls_p', DEVICE + 'def^M : Disposable {\n add = p^self^ {}\n dispose = p^self^ {}\n}\nlet^m = M{}\nm.add()\n', "cannot modify let^ binding 'm'")
+    negative('let_calls_p', DEVICE + 'def^M : std.sys.Disposable {\n add = p^self^ {}\n dispose = p^self^ {}\n}\nlet^m = M{}\nm.add()\n', "cannot modify let^ binding 'm'")
     negative('direct_call', DEVICE + 'var^a = make(1)\na.dispose()\n', 'it cannot be called directly')
-    negative('direct_call_on_self', 'def^N : Disposable {\n dispose = p^self^ {}\n again = p^self^ { self^.dispose() }\n}\nvar^n = N{}\nn.again()\n', 'it cannot be called directly')
-    negative('dispose_missing', 'def^N : Disposable {}\nvar^n = N{}\n', 'cannot construct abstract')
-    negative('dispose_with_argument', 'def^N : Disposable { dispose = p^self^, x:i32^ {} }\nvar^n = N{}\n', 'dispose')
-    negative('dispose_with_result', 'def^N : Disposable { dispose = p^self^ -> i32^ { return^1 } }\nvar^n = N{}\n', 'dispose')
+    negative('direct_call_on_self', 'import^std.sys\ndef^N : std.sys.Disposable {\n dispose = p^self^ {}\n again = p^self^ { self^.dispose() }\n}\nvar^n = N{}\nn.again()\n', 'it cannot be called directly')
+    negative('dispose_missing', 'import^std.sys\ndef^N : std.sys.Disposable {}\nvar^n = N{}\n', 'cannot construct abstract')
+    negative('dispose_with_argument', 'import^std.sys\ndef^N : std.sys.Disposable { dispose = p^self^, x:i32^ {} }\nvar^n = N{}\n', 'dispose')
+    negative('dispose_with_result', 'import^std.sys\ndef^N : std.sys.Disposable { dispose = p^self^ -> i32^ { return^1 } }\nvar^n = N{}\n', 'dispose')
     negative('needs_procedure', DEVICE + 'let^g = f^ -> i64^ {\n    let^d = D{h = 1}\n    return^d.h\n}\nprint^(g())\n', 'needs p^')
     negative('first_binding', DEVICE + 'for^i in^0 .. i64^(2) {\nfirst^:\n    var^d = make(i)\nmain^:\n    print^(i)\n}\n', 'cannot hold a Disposable')
     negative('assign_many', DEVICE + 'var^a = make(1)\nvar^b = make(2)\na, b := make(3), make(4)\n', 'one at a time')
-    negative('slice_element_written', DEVICE + 'def^M : Disposable {\n self^{ n:i32^ = 0 }\n add = p^self^ { self^.n += 1 }\n dispose = p^self^ {}\n}\nvar^xs = M[grow^]{ M{} }\nlet^view:read^M[..] = xs[..]\nview[0].add()\n', 'read')
+    negative('slice_element_written', DEVICE + 'def^M : std.sys.Disposable {\n self^{ n:i32^ = 0 }\n add = p^self^ { self^.n += 1 }\n dispose = p^self^ {}\n}\nvar^xs = M[grow^]{ M{} }\nlet^view:read^M[..] = xs[..]\nview[0].add()\n', 'read')
     negative('repeat', DEVICE + 'var^xs = D[grow^]{ make(1) repeat^2 }\n', 'would copy Disposable')
     negative('fixed_repeat', DEVICE + 'var^xs:D[2] = { make(1) repeat^2 }\n', 'would copy Disposable')
     negative('source', DEVICE + 'var^xs = D[grow^]{ make(1) }\nvar^ys = D[grow^]{ xs... }\n', 'would copy Disposable')

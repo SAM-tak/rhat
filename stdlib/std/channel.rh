@@ -1,5 +1,7 @@
 module^std.channel
 
+import^std.sys
+
 externC^rh_channel_clone:p^handle:i64^ -> i64^;
 externC^rh_channel_drop:p^handle:i64^;
 externC^rh_channel_close:p^handle:i64^;
@@ -18,7 +20,7 @@ let^sent = p^status:i64^ -> nil^ | Error {
 }
 
 # A bounded queue with explicit shared holds. The element type must own its data.
-public^def^Channel<T> : Disposable {
+public^def^Channel<T> : std.sys.Disposable {
     self^{ private^handle:i64^ }
 
     new = p^messages:i64^, bytes:i64^ -> Self^ | Error {

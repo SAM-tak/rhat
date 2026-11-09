@@ -1109,6 +1109,97 @@ print^(a.x)
     assert client.diagnostics(path,157) == []
     print('PASS generic definitions, aliases, type constants, navigation and edit recovery',flush=True)
 
+    channel_path = Path(__file__).resolve().parents[1]/'stdlib/std/channel.rh'
+    channel_text = channel_path.read_text(encoding='utf-8')
+    client.open(channel_path,channel_text)
+    assert client.diagnostics(channel_path,1) == []
+    colored = tokens(channel_text,channel_path)
+    sys_path = channel_path.with_name('sys.rh')
+    sys_text = sys_path.read_text(encoding='utf-8')
+    for document in (channel_path, channel_path.with_name('thread.rh')):
+        text = document.read_text(encoding='utf-8')
+        if document != channel_path:
+            client.open(document,text)
+            assert client.diagnostics(document,1) == []
+        position = at(text,'Disposable')
+        classified = tokens(text,document)
+        assert classified[(position['line'],position['character'])] == (10,1), classified
+        definition = client.request('textDocument/definition',dict(textDocument=dict(uri=document.as_uri()),
+            position=position))
+        if isinstance(definition,list):
+            definition = definition[0]
+        assert definition['uri'] == sys_path.as_uri(), definition
+        assert definition['range']['start'] == at(sys_text,'Disposable'), definition
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=document.as_uri()),position=position))
+        assert 'std.sys.Disposable' in hover['contents']['value'], hover
+        if document != channel_path:
+            client.send('textDocument/didClose',dict(textDocument=dict(uri=document.as_uri())))
+    for name in ('InvalidCapacity','OutOfMemory','Closed','Full','MessageTooLarge'):
+        position = at(channel_text,name)
+        assert colored[(position['line'],position['character'])] == (len(name),1), (name,colored)
+    refs = client.request('textDocument/references',dict(textDocument=dict(uri=channel_path.as_uri()),
+        position=at(channel_text,'sent ='),context=dict(includeDeclaration=True)))
+    expected = [at(channel_text,'sent ='),at(channel_text,'sent(__rh',0),at(channel_text,'sent(__rh',1)]
+    assert len(refs) == 3 and {tuple(r['range']['start'].values()) for r in refs} == {
+        tuple(p.values()) for p in expected}, refs
+    definition = client.request('textDocument/definition',dict(textDocument=dict(uri=channel_path.as_uri()),
+        position=at(channel_text,'sent(__rh')))
+    if isinstance(definition,list):
+        definition = definition[0]
+    assert definition['range']['start'] == at(channel_text,'sent ='), definition
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=channel_path.as_uri())))
+
+    short_errors_path = work/'short_errors.rh'
+    short_errors_text = '''errordef^E {A,B,C,D {message=f^self^ ->string^ {"explicit"}}}
+var^a=E.A{}
+print^(a.message())
+'''
+    client.open(short_errors_path,short_errors_text)
+    assert client.diagnostics(short_errors_path,1) == []
+    colored = tokens(short_errors_text,short_errors_path)
+    for name in ('A','B','C','D'):
+        position = at(short_errors_text,name)
+        assert colored[(position['line'],position['character'])] == (1,1), (name,colored)
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=short_errors_path.as_uri()),
+            position=position))
+        assert hover['contents']['value'] == f'{name}: E.{name}', hover
+    outline = client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=short_errors_path.as_uri())))
+    methods = [item for item in outline if item['name'] == 'message']
+    assert len(methods) == 1, methods
+    assert methods[0]['location']['range']['start'] == at(short_errors_text,'message=f^'), methods
+    completion = client.request('textDocument/completion',dict(textDocument=dict(uri=short_errors_path.as_uri()),
+        position=at(short_errors_text,'a.message()',shift=2)))
+    items = completion['items'] if isinstance(completion,dict) else completion
+    assert 'message' in {item['label'] for item in items}, items
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=short_errors_path.as_uri())))
+
+    generic_refs_path = work/'generic_refs.rh'
+    generic_refs_text = '''module^generic_refs
+let^sent=p^status:i32^ {}
+public^def^Box<T> {
+    self^{value:T}
+    send=p^self^ {sent(0)}
+    shadow=p^self^,sent:p^i32^; {sent(0)}
+    local=p^self^ {let^sent=p^n:i32^ {} sent(0)}
+    block=p^self^ {
+        do^{let^sent=p^n:i32^ {} sent(0)}
+        sent(1)
+        let^cb=sent
+        cb(2)
+    }
+}
+'''
+    client.open(generic_refs_path,generic_refs_text)
+    assert client.diagnostics(generic_refs_path,1) == []
+    refs = client.request('textDocument/references',dict(textDocument=dict(uri=generic_refs_path.as_uri()),
+        position=at(generic_refs_text,'sent=p^'),context=dict(includeDeclaration=False)))
+    expected = [at(generic_refs_text,'sent(0)'),at(generic_refs_text,'sent(1)'),
+                at(generic_refs_text,'cb=sent',shift=3)]
+    assert len(refs) == 3 and {tuple(r['range']['start'].values()) for r in refs} == {
+        tuple(p.values()) for p in expected}, refs
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=generic_refs_path.as_uri())))
+    print('PASS uninstantiated generic references, channel helper navigation and lexical shadowing',flush=True)
+
     statics="""def^ V {self^{x:i32^} ZERO=Self^{x=0} make=f^ x:i32^ ->Self^ {Self^{x=x}} get=f^ self^ ->i32^ {self^.x+def^.make(1).x}}
 let^ W=V
 let^ a=V.make(1)

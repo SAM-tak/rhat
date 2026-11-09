@@ -1,8 +1,0 @@
-module^std.disposable
-
-# What a scope releases when it ends. Composing this needs no import; a value of such a type
-# cannot be copied, and dispose cannot be called directly. It cannot fail: do what can fail in a
-# method of your own, such as close, and let dispose do nothing after it.
-public^def^Disposable {
-    abstract^dispose:p^self^;
-}

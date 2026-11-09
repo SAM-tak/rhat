@@ -137,7 +137,24 @@ def main():
            'let^v={\na={\nb={\nc=1\n}\n},\nd=2\n}\n',
            'let^v = {\n    a = {\n        b = {\n            c = 1\n        }\n    },\n    d = 2\n}\n')
     expect('match_expression', 'let^x=for^mode:\nwhen^1: "one"\nother^: "other"\n;\n',
-           'let^x = for^mode:\n    when^1: "one"\n    other^: "other"\n;\n')
+           'let^x = for^mode:\nwhen^1: "one"\nother^: "other"\n;\n')
+    expect('match_expression_in_function',
+           'let^sent=f^status {\nfor^status:\nwhen^1: 10\nwhen^2: 20\nother^: 0;\n}\n',
+           'let^sent = f^status {\n    for^status:\n    when^1: 10\n'
+           '    when^2: 20\n    other^: 0;\n}\n')
+    expect('bound_match_expression',
+           'let^f=f^status {\nlet^x=for^status:\nwhen^1:\n10\nother^:\n0;\nx\n}\n',
+           'let^f = f^status {\n    let^x = for^status:\n    when^1:\n        10\n'
+           '    other^:\n        0;\n    x\n}\n')
+    expect('match_statement_in_function',
+           'let^sent=p^status {\nfor^status {\nwhen^1:\nprint^(10)\nother^:\nprint^(0)\n}\n}\n',
+           'let^sent = p^status {\n    for^status {\n    when^1:\n        print^(10)\n'
+           '    other^:\n        print^(0)\n    }\n}\n')
+    expect('nested_match_expressions',
+           'let^f=f^a,b {\nfor^a:\nwhen^1:\nfor^b:\nwhen^2:\n20\nother^:\n0;\nother^:\n1;\n}\n',
+           'let^f = f^a, b {\n    for^a:\n    when^1:\n        for^b:\n'
+           '        when^2:\n            20\n        other^:\n            0;\n'
+           '    other^:\n        1;\n}\n')
     expect('loop_sections', 'repeat^while^true^{\nmain^:\nprint^(1)\nlast^:\nprint^(2)\n}\nprint^(3)\n',
            'repeat^while^true^{\nmain^:\n    print^(1)\nlast^:\n    print^(2)\n}\nprint^(3)\n')
     expect('catch_expression_before_do', 'print^(read(-1) catch^42)\ndo^{\nprint^(1)\n}\nprint^(2)\n',
@@ -273,6 +290,12 @@ def main():
             assert ('   op^+ = f^self^, b:Self^-> Self^{\n'
                     '      Self^{x = self^.x + b.x}\n   }\n'
                     '   get = f^self^-> T {\n      self^.x\n   }\n}\n') in formatted, formatted
+            match_source = 'let^f=f^status:i32^ {\nfor^status:\nwhen^1: 10\nother^: 0;\n}\n'
+            client.change(path, match_source, 7)
+            assert client.diagnostics(path, 7) == []
+            formatted = client.request('textDocument/formatting', params)[0]['newText']
+            assert formatted == ('let^f = f^status:i32^{\n   for^status:\n'
+                                 '   when^1: 10\n   other^: 0;\n}\n'), formatted
             # The CLI sees the same options and produces the same text.
             path.write_bytes(source.encode())
             suite.run([suite.compiler, 'format', path])

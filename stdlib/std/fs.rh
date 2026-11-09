@@ -4,6 +4,7 @@ module^std.fs
 # the system needs (UTF-16 on Windows).
 
 let^io = import^std.io
+import^std.sys
 
 externC^rh_fs_open:p^path:read^u8^[..], length:i64^, mode:string^-> i64^;
 externC^rh_fs_read:p^file:i64^, buffer:u8^[..], capacity:i64^-> i64^;
@@ -16,7 +17,7 @@ public^errordef^Error { OpenFailed }
 
 # An open file, closed when its scope ends. Close it yourself to learn whether writing it out
 # succeeded; using it after that answers io.Error.Closed.
-public^def^File : io.Stream, Disposable {
+public^def^File : io.Stream, std.sys.Disposable {
     self^{ private^handle:i64^}
 
     private^opened = p^path:string^, mode:string^-> Self^| Error.OpenFailed {

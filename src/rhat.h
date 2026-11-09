@@ -309,7 +309,7 @@ struct Def {
     List fields, methods;
     int state, id;
     bool abstract;
-    bool disposable; // Composes std.disposable.Disposable: scopes call its dispose.
+    bool disposable; // Composes std.sys.Disposable: scopes call its dispose.
     Type *type;
     char *c_name;    // externC^ def^: the C type of this name it lays out as.
     bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.

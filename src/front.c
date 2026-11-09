@@ -3274,6 +3274,9 @@ static Stmt *stmt(Parser *p)
                    (!strcmp(((Token *)p->tokens.v[first + 1])->text, "let^") ||
                     !strcmp(((Token *)p->tokens.v[first + 1])->text, "var^"));
         format_span(p, first, 2000 + out->kind, false, row);
+        if (out->kind == S_EXPR && (!strcmp(head->text, "for^") || !strcmp(head->text, "if^"))) {
+            format_span(p, first, 100 + out->a->kind, false, false);
+        }
         return out;
     }
     int start = p->at, depth = p->scope_depth;
@@ -4156,19 +4159,4 @@ void parse_file(Program *p, const char *path, Module *module)
     // Casts fail with std.text's or std.sys's errors, imported out of sight.
     hidden_import(module, q.text_cast, "std.text", path);
     hidden_import(module, q.enum_cast, "std.sys", path);
-    // Disposable is written bare everywhere, unless a module declares its own.
-    bool own = false;
-    for (int j = 0; j < module->defs.n; j++) {
-        own |= !strcmp(((Def *)module->defs.v[j])->name, "Disposable");
-    }
-    for (int j = 0; !own && j < module->defs.n; j++) {
-        List *bases = &((Def *)module->defs.v[j])->base_specs;
-        for (int k = 0; k < bases->n; k++) {
-            Spec *base = bases->v[k];
-            if (base->kind == SPEC_NAME && base->name && !strcmp(base->name, "Disposable")) {
-                base->name = "\001std.disposable.Disposable";
-                hidden_import(module, true, "std.disposable", path);
-            }
-        }
-    }
 }

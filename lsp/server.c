@@ -165,7 +165,7 @@ static cJSON *references(cJSON *index, cJSON *symbol, const char *uri, bool incl
         return out;
     }
     cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
-        if (!same_id(s, symbol)) {
+        if (!same_id(s, symbol) || !number(s, "length")) {
             continue;
         }
         if (!include_declarations && cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration"))) {
@@ -233,7 +233,7 @@ static cJSON *symbols(cJSON *index, const char *uri, const char *query)
 {
     cJSON *out = cJSON_CreateArray(), *s;
     cJSON_ArrayForEach(s, cJSON_GetObjectItem(index, "symbols")) {
-        if (!cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration"))) {
+        if (!cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) || !number(s, "length")) {
             continue;
         }
         cJSON *use = cJSON_GetObjectItem(s, "use");
@@ -591,14 +591,14 @@ static cJSON *completion(cJSON *index, const char *uri, const char *buffer, size
     }
     if (!member) {
         const char *keywords[] = {
-            "let^",    "var^",    "f^",       "p^",        "template^", "def^",      "errordef^",
-            "enum^",   "self^",   "this^",    "return^",   "if^",       "else^",     "el^",
-            "for^",    "repeat^", "while^",   "next^",     "break^",    "when^",     "from^",
-            "to^",     "until^",  "by^",      "do^",       "fits^",     "try^",      "catch^",
-            "import^", "module^", "public^",  "private^",  "abstract^", "override^", "mutable^",
-            "true^",   "false^",  "nil^",     "ref^",      "overload^", "op^",       "grow^",
-            "flex^",   "max^",    "externC^", "includeC^", "exportC^",  "exportL^",  "externLLVM^",
-            "dyn^",    "dynamic^", "panic^",  "print^",   "assert^",   "inline^",   "in^",
+            "let^",    "var^",     "f^",       "p^",        "template^", "def^",      "errordef^",
+            "enum^",   "self^",    "this^",    "return^",   "if^",       "else^",     "el^",
+            "for^",    "repeat^",  "while^",   "next^",     "break^",    "when^",     "from^",
+            "to^",     "until^",   "by^",      "do^",       "fits^",     "try^",      "catch^",
+            "import^", "module^",  "public^",  "private^",  "abstract^", "override^", "mutable^",
+            "true^",   "false^",   "nil^",     "ref^",      "overload^", "op^",       "grow^",
+            "flex^",   "max^",     "externC^", "includeC^", "exportC^",  "exportL^",  "externLLVM^",
+            "dyn^",    "dynamic^", "panic^",   "print^",    "assert^",   "inline^",   "in^",
             "typeof^"};
         for (size_t j = 0; j < sizeof(keywords) / sizeof(*keywords); j++) {
             if (!strncmp(keywords[j], buffer + begin, cursor - begin)) {

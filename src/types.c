@@ -850,7 +850,7 @@ static void compose_unchecked(Program *p, Def *d)
         d->state = 2;
         return;
     }
-    d->disposable = !strcmp(d->name, "std.disposable.Disposable");
+    d->disposable = !strcmp(d->name, "std.sys.Disposable");
     for (int i = 0; i < d->base_names.n; i++) {
         char *n = d->base_names.v[i];
         Def *b = lookup_def(p, n);

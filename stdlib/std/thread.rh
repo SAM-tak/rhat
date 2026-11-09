@@ -1,11 +1,13 @@
 module^std.thread
 
+import^std.sys
+
 externC^rh_thread_join:p^handle:i64^;
 externC^rh_hardware_threads:p^ -> i64^;
 public^errordef^Error { StartFailed }
 
 # A joinable OS thread. Scope exit waits; close its input before waiting.
-public^def^Thread : Disposable {
+public^def^Thread : std.sys.Disposable {
     self^{ private^handle:i64^ }
     spawn = template^p^entry, args -> Self^ | Error.StartFailed {
         let^h = __rh_thread_spawn(entry, args)

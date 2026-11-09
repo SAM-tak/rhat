@@ -174,7 +174,9 @@ print^(apply(f^xs:i32^[..] -> i32^ { xs[1] }))
 ''', '3\n2\n')
 
     positive('disposable_elements', '''
-def^D : Disposable {
+import^std.sys
+
+def^D : std.sys.Disposable {
     self^{ h:i64^ }
     set = p^self^, n:i64^ { self^.h := n }
     dispose = p^self^ { print^("dispose", self^.h) }
