@@ -7,18 +7,23 @@ externC^rh_thread_spawn:p^entry:std.sys.ThreadEntry,
     stacks:i64^-> i64^;
 externC^rh_thread_join:p^handle:i64^;
 externC^rh_hardware_threads:p^-> i64^; # must be `p^`
+externC^rh_thread_sleep:p^seconds:f64^;
+externC^rh_thread_current_id:p^-> i64^;
+externC^rh_thread_id:p^handle:i64^-> i64^;
 public^errordef^Error { StartFailed }
 
 # A joinable OS thread. Scope exit waits; close its input before waiting.
 public^def^Thread : std.sys.Disposable {
-    self^{ private^handle:i64^}
+    self^{ private^handle:i64^, private^identity:i64^}
     spawn = template^p^entry, args -> Self^| Error.StartFailed {
         let^worker = thread_entry^(entry, args)
         let^transfer = thread_transfer_type^(args)
         let^h = rh_thread_spawn(worker, transfer, thread_args^(args), thread_stack_count^())
         if^h = 0 { return^Error.StartFailed{} }
-        return^Self^{handle = h}
+        return^Self^{handle = h, identity = rh_thread_id(h)}
     }
+    # The cached ID stays valid after join; a default-constructed Thread has ID zero.
+    id = f^self^-> i64^{ self^.identity }
     join = p^self^{
         rh_thread_join(self^.handle)
         self^.handle := 0
@@ -36,4 +41,15 @@ public^let^spawn = template^p^entry, args -> Thread | Error.StartFailed {
 # determine its result, this must be p^ rather than f^; the C declaration above is p^ too.
 public^let^hardware_threads = p^-> i64^{
     return^rh_hardware_threads()
+}
+
+# Block the calling OS thread. Seconds may be fractional; zero or negative is a no-op.
+# Actual timing depends on the OS; this is not a yield or a task suspension.
+public^let^sleep = p^seconds:f64^{
+    rh_thread_sleep(seconds)
+}
+
+# Process-local logical ID, shared with Thread.id(). This may allocate an ID on first use.
+public^let^current_id = p^-> i64^{
+    return^rh_thread_current_id()
 }

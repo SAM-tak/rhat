@@ -12,6 +12,20 @@
 - `ch.receive()` / `ch.try_receive() -> Message<T> | Closed | Empty`
 - `std.thread.spawn(worker, ref^args) -> Thread | std.thread.Error.StartFailed`
 - `thread.join()`、スコープ終了による自動 join、`std.thread.hardware_threads()`。
+- `std.thread.sleep(seconds:f64^)`。L^ と同じ秒単位で、`sleep(0.2)` は200ミリ秒。
+- `std.thread.current_id() -> i64^`、`thread.id() -> i64^`。
+
+スレッド ID は OS のハンドルやネイティブ ID とは別の、プロセス内で一意の正の整数です。
+メインスレッドも取得でき、同一スレッドでは常に同じ値を返します。終了後も ID を再利用しません。
+ワーカーが取得する `current_id()` と、起動元の `Thread.id()` は一致します。
+`Thread` は ID を保存するため、`join()` 後も同じ値を返し、既定構築した未起動の値ではゼロです。
+`current_id` は初回に ID を割り当てることがある `p^`、`id` は保存値を読む `f^` です。
+
+`sleep` は呼び出した OS スレッドを待機させる `p^` です。有限のゼロ以下の値は即座に戻り、
+NaN・無限大はランタイムエラーです。ゼロに yield の意味は持たせません。
+実際の精度と再開時刻は OS とスケジューラに依存し、タスクのサスペンドには使いません。
+通常の `externC^rh_thread_sleep` を介し、Windows はミリ秒へ切り上げて待機、
+POSIX はナノ秒へ切り上げて `nanosleep` を呼び、シグナルで中断された残り時間は再度待機します。
 
 `Message<T>.value` に受信値が入ります。ブロッキング receive は `Empty` を返しませんが、
 両受信操作は同じ結果型を使います。`nil^` 自身も `Message<nil^>` で届くので空とは区別できます。

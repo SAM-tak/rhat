@@ -154,8 +154,28 @@ static void consumer(void *args)
     }
 }
 
+static double monotonic_seconds(void)
+{
+#if defined(_WIN32)
+    LARGE_INTEGER now, frequency;
+    assert(QueryPerformanceCounter(&now));
+    assert(QueryPerformanceFrequency(&frequency));
+    return (double)now.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec now;
+    assert(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+    return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+#endif
+}
+
 int main(void)
 {
+    rh_thread_sleep(0.0);
+    rh_thread_sleep(-1.0);
+    double before = monotonic_seconds();
+    rh_thread_sleep(0.05);
+    // Detect a seconds/milliseconds mix-up; allow OS timer granularity and late scheduling.
+    assert(monotonic_seconds() - before >= 0.025);
     RhTransferType scalar = {0, 4, 4, 0, 0, NULL, NULL};
     rh_runtime_init(1);
     int baseline = atomic_load(&live_blocks);

@@ -1,5 +1,10 @@
 // OS threads, bounded channels and copies between independent stack shards.
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include "rhat_thread.h"
+#include <errno.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +60,7 @@ static void cond_free(Condition *c)
 }
 #else
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 typedef pthread_mutex_t Mutex;
 typedef pthread_cond_t Condition;
@@ -480,12 +486,35 @@ static void release_value(const RhTransferType *t, unsigned char *value)
     }
 }
 
+// Logical IDs do not expose native handles or recycle IDs after a join.
+static atomic_uint_fast64_t next_thread_id = 1;
+static _Thread_local int64_t current_thread_id;
+
+static int64_t allocate_thread_id(void)
+{
+    uint_fast64_t id = atomic_fetch_add_explicit(&next_thread_id, 1, memory_order_relaxed);
+    if (!id || id > INT64_MAX) {
+        fputs("R^ runtime error: thread IDs exhausted\n", stderr);
+        exit(1);
+    }
+    return (int64_t)id;
+}
+
+int64_t rh_thread_current_id(void)
+{
+    if (!current_thread_id) {
+        current_thread_id = allocate_thread_id();
+    }
+    return current_thread_id;
+}
+
 typedef struct {
 #if defined(_WIN32)
     HANDLE native;
 #else
     pthread_t native;
 #endif
+    int64_t id;
     void (*entry)(void *);
     RhThreadContext *context;
     const RhTransferType *type;
@@ -500,6 +529,7 @@ static void *thread_entry(void *data)
 #endif
 {
     Thread *t = data;
+    current_thread_id = t->id;
     rh_context_attach(t->context);
     Wire w = {t->packet->bytes, 0, t->packet->size, &t->context->stacks[0], 2};
     if (!transfer(&w, t->type, t->args) || w.at != t->packet->size) {
@@ -540,6 +570,7 @@ int64_t rh_thread_spawn(void (*entry)(void *), const RhTransferType *type, void 
         t->packet = encode(type, args, measure.at);
     }
     if (t->packet) {
+        t->id = allocate_thread_id();
 #if defined(_WIN32)
         t->native = CreateThread(NULL, 0, thread_entry, t, 0, NULL);
         if (t->native) {
@@ -562,6 +593,11 @@ int64_t rh_thread_spawn(void (*entry)(void *), const RhTransferType *type, void 
     return 0;
 }
 
+int64_t rh_thread_id(int64_t handle)
+{
+    return handle ? ((Thread *)(uintptr_t)handle)->id : 0;
+}
+
 void rh_thread_join(int64_t handle)
 {
     if (!handle) {
@@ -579,6 +615,39 @@ void rh_thread_join(int64_t handle)
     }
 #endif
     free(t);
+}
+
+void rh_thread_sleep(double seconds)
+{
+    if (!isfinite(seconds)) {
+        fputs("R^ runtime error: sleep requires finite seconds\n", stderr);
+        exit(1);
+    }
+    while (seconds > 0.0) {
+        // Bound each conversion, including on platforms with a 32-bit time_t.
+        double part = seconds > 86400.0 ? 86400.0 : seconds;
+#if defined(_WIN32)
+        double ticks = part * 1000.0;
+        DWORD milliseconds = (DWORD)ticks;
+        Sleep(milliseconds + (milliseconds < ticks));
+#else
+        struct timespec delay = {.tv_sec = (time_t)part};
+        double ticks = (part - (double)delay.tv_sec) * 1000000000.0;
+        delay.tv_nsec = (long)ticks;
+        delay.tv_nsec += delay.tv_nsec < ticks;
+        if (delay.tv_nsec == 1000000000L) {
+            delay.tv_sec++;
+            delay.tv_nsec = 0;
+        }
+        while (nanosleep(&delay, &delay)) {
+            if (errno != EINTR) {
+                fputs("R^ runtime error: sleep failed\n", stderr);
+                exit(1);
+            }
+        }
+#endif
+        seconds -= part;
+    }
 }
 
 int64_t rh_hardware_threads(void)

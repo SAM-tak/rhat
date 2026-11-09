@@ -44,4 +44,10 @@ int64_t rh_thread_spawn(void (*entry)(void *), const RhTransferType *type, void 
                         uint64_t stacks);
 // Wait for a successful spawn and release its handle; zero is a no-op.
 void rh_thread_join(int64_t handle);
+// Block the caller for finite seconds; nonpositive durations return immediately.
+void rh_thread_sleep(double seconds);
+// Return the calling thread's positive, process-local logical ID, allocating it lazily.
+int64_t rh_thread_current_id(void);
+// Read a live spawn handle's logical ID; zero has no ID. Call before joining.
+int64_t rh_thread_id(int64_t handle);
 #endif

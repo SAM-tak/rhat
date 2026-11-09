@@ -489,9 +489,11 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     const char *decl_name = declaration_spelling(p, r);
     const char *use_name = r->definition ? decl_name : r->name;
     Source *source = source_for(p, r->use.file);
-    if (source && r->kind == TOOL_PARAMETER && !strcmp(r->name, "self^") &&
-        strncmp(source->text + loc_offset(source, r->use), "self^", 5)) {
-        return; // Generated error bodies also place their implicit self^ at the variant name.
+    if (source &&
+        ((r->kind == TOOL_PARAMETER && !strcmp(r->name, "self^")) || !strcmp(r->name, "it^")) &&
+        strncmp(source->text + loc_offset(source, r->use), r->name, strlen(r->name))) {
+        // Generated error and match bodies reuse source locations for implicit receivers.
+        return;
     }
     Loc at_use = r->use;
     bool error_leaf = r->kind == 23 && r->owner && r->owner->group;

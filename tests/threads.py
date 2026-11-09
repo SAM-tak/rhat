@@ -20,6 +20,81 @@ def main():
     suite = Suite('threads')
     positive, negative = suite.positive, suite.negative
 
+    positive('current_thread_id_without_spawn', HEADER + '''
+let^id = t.current_id()
+print^(id > 0, id = t.current_id())
+''', 'true true\n')
+    positive('thread_ids_match_worker_and_survive_join', HEADER + '''
+struct^Args { out:c.Channel<i64^> }
+let^worker = p^arg:ref^Args {
+    var^id = t.current_id()
+    assert^(id = t.current_id())
+    try^arg.out.send(ref^id)
+}
+let^read_id = f^value:ref^read^t.Thread -> i64^ { value.id() }
+let^main_id = t.current_id()
+var^out = try^c.Channel<i64^>.new(2, 16)
+var^arg = Args{out = out.clone()}
+var^one = try^t.spawn(worker, ref^arg)
+var^two = try^t.spawn(worker, ref^arg)
+let^one_id = read_id(ref^one)
+let^two_id = two.id()
+assert^(one_id > 0 and^ two_id > 0 and^ one_id != two_id)
+assert^(one_id != main_id and^ two_id != main_id)
+one.join()
+two.join()
+assert^(one.id() = one_id and^ two.id() = two_id)
+var^last_id = i64^(0)
+for^i from^1 to^2 {
+    var^r = out.receive()
+    if^r fits^c.Message<i64^> {
+        assert^(r.value = one_id or^ r.value = two_id)
+        assert^(r.value != last_id)
+        last_id := r.value
+    else^: assert^(false^)
+    }
+}
+var^previous = two_id
+for^i from^1 to^10 {
+    var^thread = try^t.spawn(worker, ref^arg)
+    assert^(thread.id() > previous)
+    previous := thread.id()
+    thread.join()
+    var^r = out.receive()
+    if^r fits^c.Message<i64^> { assert^(r.value = previous) }
+}
+var^empty:t.Thread = {}
+assert^(empty.id() = 0)
+assert^(t.current_id() = main_id)
+print^("thread IDs match")
+''', 'thread IDs match\n')
+    negative('current_thread_id_requires_procedure', HEADER + '''
+let^bad = f^ { t.current_id() }
+print^(bad())
+''', 'f^ cannot call p^')
+
+    positive('sleep_seconds_and_worker', HEADER + '''
+t.sleep(0)
+t.sleep(-1)
+t.sleep(0.002)
+let^worker = p^arg:ref^i32^ {
+    t.sleep(0.002)
+    print^(*arg)
+}
+var^arg:i32^ = 42
+var^thread = try^t.spawn(worker, ref^arg)
+thread.join()
+print^("awake")
+''', '42\nawake\n')
+    negative('sleep_requires_procedure', HEADER + '''
+let^bad = f^ { t.sleep(0.001) }
+bad()
+''', 'f^ cannot call p^')
+    for name, value in (('nan','m.sqrt(-1.0)'),('infinity','m.exp(1000.0)')):
+        suite.runtime_failure('sleep_rejects_' + name, HEADER +
+            'let^m = import^std.math\nt.sleep(' + value + ')\n',
+            'sleep requires finite seconds')
+
     alternate = suite.work / 'alternate_thread.c'
     implementation = (suite.repo / 'runtime/rhat_thread.c').as_posix()
     alternate.write_text(f'''#define rh_thread_spawn original_thread_spawn
