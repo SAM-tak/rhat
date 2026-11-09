@@ -340,6 +340,7 @@ C 標準ライブラリの入出力内部まで動的確保を禁止する frees
 - [型パラメータ・型別名・型定数](DesignDocuments/generics.md)。
 - [fits^](DesignDocuments/fits.md)・[ニル伝播](DesignDocuments/nil.md)・[エラー](DesignDocuments/errors.md)・[複数の返り値](DesignDocuments/results.md)・[列挙体](DesignDocuments/enums.md)。
 - [オーバーロード](DesignDocuments/overloads.md)・[動的ディスパッチ](DesignDocuments/dyn.md)。
+- [スレッドと Channel](DesignDocuments/threads.md): 独立したデータスタックのシャード、所有値の転送、容量付きキュー。
 - [C 連携](DesignDocuments/ffi.md)・[分割コンパイル](DesignDocuments/separate_compilation.md)・[言語サーバー](DesignDocuments/lsp.md)。
 
 Goose のベンチマークを R^・C++・Rust で測り直す手順と結果は

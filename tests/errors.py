@@ -300,7 +300,7 @@ void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
   return;
  }
  uint64_t bytes=0;
- for (uint64_t j=0;j<rh_stack_count;j++) bytes+=(uint64_t)(rh_stacks[j].top-rh_stacks[j].base);
+ for (uint64_t j=0;j<rh_context->count;j++) bytes+=(uint64_t)(rh_context->stacks[j].top-rh_context->stacks[j].base);
  if (bytes!=8) rh_panic("partial result was not rewound before retry",0);
  observations++;
  skip_newline=1;
@@ -311,8 +311,8 @@ void rh_print_newline(void) {
 }
 void rh_runtime_shutdown(void) {
  if (observations!=10000) rh_panic("missing error cleanup observation",0);
- for (uint64_t j=0;j<rh_stack_count;j++) {
-  if (rh_stacks[j].top!=rh_stacks[j].base) rh_panic("error cleanup leaked storage",0);
+ for (uint64_t j=0;j<rh_context->count;j++) {
+  if (rh_context->stacks[j].top!=rh_context->stacks[j].base) rh_panic("error cleanup leaked storage",0);
  }
  rh_base_shutdown();
 }

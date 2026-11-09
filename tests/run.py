@@ -178,7 +178,7 @@ void rh_print_integer(const void *value, int32_t bits, int32_t uns) {{
     return;
   }}
   if (step >= sizeof(expected)/sizeof(expected[0]) ||
-      (uint64_t)(rh_stacks[0].top-rh_stacks[0].base) != expected[step++])
+      (uint64_t)(rh_current_stacks()[0].top-rh_current_stacks()[0].base) != expected[step++])
     rh_panic("generated code lost retained stack top", 0);
   skip_newline=1;
 }}
@@ -1664,7 +1664,7 @@ let^ bad=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     return^ this^(ref^ local,n-1)
 }
 """, "cannot return a reference")
-negative("anonymous_capture", "var^ outer:i32^=3; print^(f^ -> i32^ { outer }())", "only top-level functions can use the top-level binding 'outer'")
+positive("anonymous_capture", "var^ outer:i32^=3; print^(f^ -> i32^ { outer }())", "3\n")
 negative("implicit_void_return", "let^ nothing=f^ {} let^ bad=f^ { nothing() }", "cannot return a value")
 negative("no_implicit_last_statement", "let^ bad=f^ -> i32^ { let^ n:i32^=1; n+1 }", "only calls can be expression statements")
 negative("no_implicit_procedure_return", "let^ bad=p^ -> i32^ { 1 }", "only calls can be expression statements")
@@ -1849,7 +1849,7 @@ negative("pure_mutation", 'let^ bad=f^ x:ref^ i32^ { *x := 2 }\n', "cannot mutat
 negative("pure_procedure", 'let^ bad=f^ { print^(1) }\n', "print^ requires p^")
 negative("missing_return", 'let^ bad=f^ x:i32^ -> i32^ { if^ x=0 { return^ 1 } }\n', "not all paths return")
 negative("immutable", 'let^ x:i32^=1; x := 2', "cannot modify let^")
-negative("closure_capture", 'do^{ let^ captured=1 let^ f=f^ ->i32^ { return^ captured } print^(f()) }', "unknown value 'captured'")
+positive("closure_capture", 'do^{ let^ captured=1 let^ f=f^ ->i32^ { return^ captured } print^(f()) }', "1\n")
 negative("literal_overflow", 'let^ x:i32^=2147483648', "does not fit")
 negative("unknown_type", 'let^ x:Missing=1', "unknown type")
 negative("recursive_default", 'def^ A { self^{ n:i32^=A.new().n } }\nlet^ a=A.new()', "recursive default construction")

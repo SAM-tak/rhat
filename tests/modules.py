@@ -620,7 +620,7 @@ let^ item:lib.a.Item|nil^=lib.b.Item.new()
     shutil.copy2(compiler,packed)
     share=package/'share/rhat'
     shutil.copytree(repo/'stdlib',share/'stdlib',dirs_exist_ok=True)
-    for runtime in ('rhat_runtime.c','rhat_random.c'):
+    for runtime in ('rhat_runtime.c','rhat_random.c','rhat_thread.c','rhat_thread.h'):
         shutil.copy2(repo/'runtime'/runtime,share/runtime)
     installed_random=share/'stdlib/std/random.rh'
     installed_random.write_text(installed_random.read_text()+'\npublic^ let^ portableMarker:i32^=42\n')

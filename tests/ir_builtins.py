@@ -67,7 +67,10 @@ print^(x+y,f64^(x),i32^(3.5))
     llvm=raw.read_text()
     if suite.selected('minimal_runtime_boundary_and_inlined_helpers'):
         runtime=(repo/'runtime/rhat_runtime.c').read_text()
-        exported=set(re.findall(r'(?m)^(?:_Noreturn )?(?:void|int64_t) (rh_\w+)\(',runtime))
+        exported=set(re.findall(r'(?m)^(?:_Noreturn )?(?:void|int64_t|uint64_t|RhStack|RhThreadContext)\s+\*?(rh_\w+)\(',runtime))
+        # Shard management and callback helpers are internal or emitted only on demand.
+        exported -= {'rh_context_new', 'rh_context_free', 'rh_context_attach',
+                     'rh_transfer_alloc', 'rh_callback_get', 'rh_callback_set', 'rh_callback_enter'}
         # Functions the standard library declares itself are not IR builtins.
         for module in (repo/'stdlib').rglob('*.rh'):
             exported-=set(re.findall(r'externC\^\s*(rh_\w+)',module.read_text(encoding='utf-8')))

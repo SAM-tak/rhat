@@ -1,0 +1,43 @@
+let^c = import^std.channel
+let^t = import^std.thread
+
+struct^Args { jobs:c.Channel<i32^>, results:c.Channel<i32^> }
+
+let^worker = p^a:ref^Args {
+    repeat^{
+        var^r = a.jobs.receive()
+        if^r fits^c.Closed { break^ }
+        if^r fits^c.Message<i32^> {
+            var^n = r.value * 2
+            try^a.results.send(ref^n)
+        }
+    }
+}
+var^jobs = try^c.Channel<i32^>.new(4, 1000)
+var^results = try^c.Channel<i32^>.new(4, 1000)
+var^args = Args{ jobs = jobs.clone(), results = results.clone() }
+var^one = try^t.spawn(worker, ref^args)
+var^two = t.spawn(worker, ref^args)
+if^two fits^t.Error.StartFailed {
+    jobs.close()
+    print^("could not start the second worker")
+    return^
+}
+for^i from^1 to^4 {
+    var^n:i32^ = i
+    var^sent = jobs.send(ref^n)
+    if^sent fits^c.Error {
+        jobs.close()
+        print^("could not send a job")
+        return^
+    }
+}
+jobs.close()
+var^total:i32^ = 0
+for^i from^1 to^4 {
+    var^r = results.receive()
+    if^r fits^c.Message<i32^> { total += r.value }
+}
+one.join()
+two.join()
+print^(total)

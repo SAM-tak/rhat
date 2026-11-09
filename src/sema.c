@@ -2059,6 +2059,10 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     Program *p = c->p;
     Expr *target = e->a;
+    int thread = thread_operation(c->in->fn, target);
+    if (thread) {
+        return thread_call(c, e, thread, destination);
+    }
     if (target->kind == E_MEMBER && !strcmp(target->text, "contains") && e->args.n == 1 &&
         range_type(expression_type(c, target->a, NULL))) {
         Value r = deref(c, expression(c, target->a, NULL), e->loc);
@@ -2666,7 +2670,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (t->refs) {
         out.deps = returned;
     }
-    read_call_end(c, e, t->refs);
+    read_call_end(c, e, t->refs && returned.n != 0);
     if (type_reads(t)) {
         out = read_borrow(c, out, e->loc);
     }

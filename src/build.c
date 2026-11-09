@@ -13,6 +13,9 @@
 #include <unistd.h>
 #define pid getpid
 #endif
+#ifndef RH_THREAD_PATH
+#define RH_THREAD_PATH "runtime/rhat_thread.c"
+#endif
 #ifndef RH_RANDOM_PATH
 #define RH_RANDOM_PATH "runtime/rhat_random.c"
 #endif
@@ -324,10 +327,13 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         // unresolved. lld-link tolerated the conflict.
         add(&args, "-Wl,-nodefaultlib:libcmt");
     }
-    bool random = false;
+    bool random = false, threads = false;
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
         p->emitting = m;
+        if (m->name && (!strcmp(m->name, "std.thread") || !strcmp(m->name, "std.channel"))) {
+            threads = true;
+        }
         if (m->name && !strcmp(m->name, "std.random")) {
             random = true;
         }
@@ -365,6 +371,13 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
     // A --runtime wrapper may include the same headers.
     add(&args,
         compile(runtime, identity, "runtime", clang_path, opt, cache, reuse, verbose, &includes));
+    if (threads) {
+        add(&args, compile(tool_resource(compiler, RH_THREAD_PATH, "rhat_thread.c"), identity,
+                           "thread runtime", clang_path, opt, cache, reuse, verbose, NULL));
+#if !defined(_WIN32)
+        add(&args, "-pthread");
+#endif
+    }
     if (random) {
         add(&args, compile(tool_resource(compiler, RH_RANDOM_PATH, "rhat_random.c"), identity,
                            "random OS bridge", clang_path, opt, cache, reuse, verbose, NULL));

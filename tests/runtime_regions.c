@@ -120,8 +120,8 @@ int main(int argc, char **argv) {
   _Static_assert(sizeof(RhSlice) == 16, "generated LLVM slice ABI");
   if (argc > 1 && !strcmp(argv[1], "page-failure"))
     fail_page_size = 1;
-  RhStack stacks[2] = {0};
-  rh_runtime_init(stacks, 2);
+  rh_runtime_init(2);
+  RhStack *stacks = rh_current_stacks();
   assert(queries == 1 && reserves == 2 && commits == 0);
   RhStack *s = &stacks[0];
   RhArray a = {s->top, 0, s};

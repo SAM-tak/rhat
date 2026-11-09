@@ -1,0 +1,45 @@
+module^std.channel
+
+externC^rh_channel_clone:p^handle:i64^ -> i64^;
+externC^rh_channel_drop:p^handle:i64^;
+externC^rh_channel_close:p^handle:i64^;
+
+public^errordef^Error { InvalidCapacity, OutOfMemory, Closed, Full, MessageTooLarge }
+public^def^Closed {}
+public^def^Empty {}
+public^def^Message<T> { self^{ value:T } }
+
+let^sent = p^status:i64^ -> nil^ | Error {
+    if^status = 1 { return^Error.Closed{} }
+    if^status = 2 { return^Error.Full{} }
+    if^status = 3 { return^Error.MessageTooLarge{} }
+    if^status = 4 { return^Error.OutOfMemory{} }
+    return^nil^
+}
+
+# A bounded queue with explicit shared holds. The element type must own its data.
+public^def^Channel<T> : Disposable {
+    self^{ private^handle:i64^ }
+
+    new = p^messages:i64^, bytes:i64^ -> Self^ | Error {
+        let^h = __rh_channel_new(messages, bytes)
+        if^h = -1 { return^Error.InvalidCapacity{} }
+        if^h = 0 { return^Error.OutOfMemory{} }
+        return^Self^{handle = h}
+    }
+    clone = p^self^ -> Self^ { return^Self^{handle = rh_channel_clone(self^.handle)} }
+    send = p^self^, value:ref^read^T -> nil^ | Error {
+        return^sent(__rh_channel_send(self^.handle, value, i64^(1)))
+    }
+    try_send = p^self^, value:ref^read^T -> nil^ | Error {
+        return^sent(__rh_channel_send(self^.handle, value, i64^(0)))
+    }
+    receive = p^self^ -> Message<T> | Closed | Empty {
+        return^__rh_channel_receive(self^.handle, i64^(1))
+    }
+    try_receive = p^self^ -> Message<T> | Closed | Empty {
+        return^__rh_channel_receive(self^.handle, i64^(0))
+    }
+    close = p^self^ { rh_channel_close(self^.handle) }
+    dispose = p^self^ { rh_channel_drop(self^.handle) }
+}

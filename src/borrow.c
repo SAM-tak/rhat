@@ -512,8 +512,10 @@ void read_validate(Program *p)
     } while (state_changed);
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
-        if ((in->fn->exported || in->fn->lhat_export) && in->uses_state && !in->invalid) {
-            fail(in->fn->loc, "exported function cannot access task-owned static variables");
+        if ((in->thread_entry || in->fn->exported || in->fn->lhat_export) && in->uses_state &&
+            !in->invalid) {
+            fail(in->fn->loc,
+                 "thread entry or exported function cannot access task-owned static variables");
         }
         if ((in->indirect || in->fn->exported) && in->flows.n && !in->invalid) {
             fail(in->fn->loc,

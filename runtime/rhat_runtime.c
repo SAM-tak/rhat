@@ -1,5 +1,5 @@
-// R^ runtime: OS-backed stable-address regions; no malloc/free or GC.
-#if !defined(_WIN32)
+// R^ runtime: OS-backed stable-address data stacks; no GC.
+#if !defined(_WIN32) && !defined(_DEFAULT_SOURCE)
 #define _DEFAULT_SOURCE
 #endif
 #include <errno.h>
@@ -18,10 +18,7 @@
 #include <sys/mman.h>
 #endif
 
-// Shared stack ABI. Array/view operations and descriptors live in LLVM IR.
-typedef struct {
-    unsigned char *base, *top, *limit, *committed;
-} RhStack;
+#include "rhat_thread.h"
 
 #ifndef RH_STACK_BYTES
 #define RH_STACK_BYTES (UINT64_C(1024) * 1024 * 1024)
@@ -29,8 +26,33 @@ typedef struct {
 #define RH_GUARD_BYTES (UINT64_C(1024) * 1024)
 #define RH_COMMIT_BYTES (UINT64_C(1024) * 1024)
 
-static RhStack *rh_stacks;
-static uint64_t rh_stack_count;
+static _Thread_local RhThreadContext *rh_context;
+
+RhStack *rh_current_stacks(void)
+{
+    if (!rh_context) {
+        fputs("R^ runtime error: external thread has no execution context\n", stderr);
+        abort();
+    }
+    return rh_context->stacks;
+}
+
+uint64_t rh_callback_get(void)
+{
+    rh_current_stacks();
+    return rh_context->callback_sp;
+}
+
+void rh_callback_set(uint64_t position)
+{
+    rh_current_stacks();
+    rh_context->callback_sp = position;
+}
+
+void rh_context_attach(RhThreadContext *context)
+{
+    rh_context = context;
+}
 
 static _Noreturn void rh_panic(const char *why, int32_t line)
 {
@@ -58,8 +80,11 @@ static LONG WINAPI rh_fault(EXCEPTION_POINTERS *ep)
         return EXCEPTION_CONTINUE_SEARCH;
     }
     uintptr_t hit = (uintptr_t)e->ExceptionInformation[1];
-    for (uint64_t j = 0; j < rh_stack_count; j++) {
-        RhStack *s = &rh_stacks[j];
+    if (!rh_context) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    for (uint64_t j = 0; j < rh_context->count; j++) {
+        RhStack *s = &rh_context->stacks[j];
         if (!s->base) {
             continue;
         }
@@ -94,46 +119,102 @@ static LONG WINAPI rh_fault(EXCEPTION_POINTERS *ep)
 }
 #endif
 
-void rh_runtime_init(RhStack *stacks, uint64_t count)
+void rh_context_free(RhThreadContext *context)
 {
-    rh_stacks = stacks;
-    rh_stack_count = count;
-#if defined(_WIN32)
-    if (count) {
-        SYSTEM_INFO info;
-        GetSystemInfo(&info);
-        rh_page_bytes = info.dwPageSize;
-        if (!rh_page_bytes) {
-            rh_panic("page size query failed", 0);
-        }
-        rh_fault_handler = AddVectoredExceptionHandler(1, rh_fault);
-        if (!rh_fault_handler) {
-            rh_panic("cannot install data stack fault handler", 0);
-        }
+    if (!context) {
+        return;
     }
+    for (uint64_t j = 0; j < context->count; j++) {
+        if (!context->stacks[j].base) {
+            continue;
+        }
+#if defined(_WIN32)
+        VirtualFree(context->stacks[j].base, 0, MEM_RELEASE);
+#else
+        munmap(context->stacks[j].base, (size_t)(RH_STACK_BYTES + RH_GUARD_BYTES));
 #endif
+    }
+    free(context->stacks);
+    free(context);
+}
+
+RhThreadContext *rh_context_new(uint64_t count)
+{
+    if (count > SIZE_MAX / sizeof(RhStack)) {
+        return NULL;
+    }
+    RhThreadContext *context = calloc(1, sizeof(*context));
+    if (!context) {
+        return NULL;
+    }
+    context->stacks = calloc(count ? (size_t)count : 1, sizeof(RhStack));
+    if (!context->stacks) {
+        free(context);
+        return NULL;
+    }
+    context->count = count;
     for (uint64_t j = 0; j < count; j++) {
-        RhStack *s = &stacks[j];
+        RhStack *s = &context->stacks[j];
 #if defined(_WIN32)
         s->base = VirtualAlloc(NULL, (SIZE_T)(RH_STACK_BYTES + RH_GUARD_BYTES), MEM_RESERVE,
                                PAGE_READWRITE);
         if (!s->base) {
-            rh_panic("data stack reservation failed", 0);
+            rh_context_free(context);
+            return NULL;
         }
 #else
         void *p = mmap(NULL, (size_t)(RH_STACK_BYTES + RH_GUARD_BYTES), PROT_NONE,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (p == MAP_FAILED) {
-            rh_panic("data stack reservation failed", 0);
+            rh_context_free(context);
+            return NULL;
         }
         s->base = p;
         if (mprotect(p, (size_t)RH_STACK_BYTES, PROT_READ | PROT_WRITE)) {
-            rh_panic("cannot enable data stack pages", 0);
+            rh_context_free(context);
+            return NULL;
         }
 #endif
         s->top = s->committed = s->base;
         s->limit = s->base + RH_STACK_BYTES;
     }
+    return context;
+}
+
+void rh_runtime_init(uint64_t count)
+{
+#if defined(_WIN32)
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    rh_page_bytes = info.dwPageSize;
+    if (!rh_page_bytes) {
+        rh_panic("page size query failed", 0);
+    }
+    rh_fault_handler = AddVectoredExceptionHandler(1, rh_fault);
+    if (!rh_fault_handler) {
+        rh_panic("cannot install data stack fault handler", 0);
+    }
+#endif
+    rh_context = rh_context_new(count);
+    if (!rh_context) {
+        rh_panic("data stack reservation failed", 0);
+    }
+}
+
+void *rh_transfer_alloc(RhStack *stack, uint64_t bytes, uint64_t align)
+{
+    if (!stack || bytes > SIZE_MAX || !align) {
+        rh_panic("invalid transfer storage", 0);
+    }
+    uintptr_t top = (uintptr_t)stack->top;
+    uint64_t pad = (align - top % align) % align;
+    if (pad > (uint64_t)(stack->limit - stack->top) ||
+        bytes > (uint64_t)(stack->limit - stack->top) - pad) {
+        rh_panic("data stack overflow", 0);
+    }
+    unsigned char *out = stack->top + pad;
+    stack->top = out + bytes;
+    return out;
 }
 
 #if defined(_WIN32)
@@ -267,26 +348,15 @@ int64_t rh_text_parse(const unsigned char *s, int64_t n, void *out, int64_t kind
 
 void rh_runtime_shutdown(void)
 {
-    for (uint64_t j = 0; j < rh_stack_count; j++) {
-#if defined(_WIN32)
-        if (!VirtualFree(rh_stacks[j].base, 0, MEM_RELEASE)) {
-            rh_panic("data stack release failed", 0);
-        }
-#else
-        if (munmap(rh_stacks[j].base, (size_t)(RH_STACK_BYTES + RH_GUARD_BYTES))) {
-            rh_panic("data stack release failed", 0);
-        }
-#endif
-        rh_stacks[j].base = NULL;
-    }
-    rh_stack_count = 0;
+    RhThreadContext *context = rh_context;
+    rh_context = NULL;
+    rh_context_free(context);
 #if defined(_WIN32)
     if (rh_fault_handler) {
         RemoveVectoredExceptionHandler(rh_fault_handler);
     }
     rh_fault_handler = NULL;
 #endif
-    rh_stacks = NULL;
 }
 
 _Noreturn void rh_stack_overflow(int32_t line)
@@ -331,16 +401,16 @@ _Noreturn void rh_slice_fail(int32_t line)
 
 // The first data stack an exportC^ function entered from C may use: the
 // stack index after those the R^ caller of the current externC^ call keeps.
-uint64_t rh_callback_sp;
 
 // Enter an exportC^ function needing need stacks. One level of callback is
 // planned at every C call; deeper nesting must still fit the stacks.
 uint64_t rh_callback_enter(uint64_t need)
 {
-    if (need > rh_stack_count || rh_callback_sp > rh_stack_count - need) {
+    rh_current_stacks();
+    if (need > rh_context->count || rh_context->callback_sp > rh_context->count - need) {
         rh_panic("C callbacks nest deeper than the data stacks allow", 0);
     }
-    return rh_callback_sp;
+    return rh_context->callback_sp;
 }
 
 // Return the pages of shrunk flex^ storage to the OS. One commit chunk above

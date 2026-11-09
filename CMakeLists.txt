@@ -9,7 +9,7 @@ target_include_directories(rhat_json PUBLIC vendor/cjson)
 target_compile_definitions(rhat_json PUBLIC CJSON_HIDE_SYMBOLS)
 add_executable(rhat src/main.c src/build.c src/llvm.c src/llvm_builtins.c
   src/front.c src/format.c src/modules.c src/generics.c src/sema.c src/types.c src/errors.c src/text.c src/statements.c src/check.c src/digest.c
-  src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c src/borrow.c src/inline.c
+  src/threading.c src/numeric.c src/stacks.c src/arrays.c src/ranges.c src/tooling.c src/overload.c src/borrow.c src/inline.c
   lsp/server.c lsp/analyze.c lsp/rpc.c lsp/transport.c lsp/uri.c lsp/position.c lsp/port/thread.c)
 target_include_directories(rhat PRIVATE src lsp)
 target_compile_definitions(rhat PRIVATE RH_VERSION="${PROJECT_VERSION}")
@@ -18,6 +18,8 @@ if(NOT WIN32)
   target_link_libraries(rhat PRIVATE m)
 endif()
 target_compile_definitions(rhat PRIVATE RH_STDLIB_PATH="${CMAKE_CURRENT_SOURCE_DIR}/stdlib")
+target_compile_definitions(rhat PRIVATE RH_THREAD_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_thread.c")
+
 target_compile_definitions(rhat PRIVATE RH_RANDOM_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_random.c")
 target_compile_definitions(rhat PRIVATE RH_RUNTIME_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_runtime.c")
 string(REGEX REPLACE ",.*$" "" RH_VS_ROOT "${CMAKE_GENERATOR_INSTANCE}")
@@ -111,11 +113,13 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/arrays-tests")
   add_test(NAME generics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/generics.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/generics-tests")
+  add_test(NAME threads COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/threads.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/thread-tests")
   add_test(NAME formatting COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/formatting.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/formatting-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
-install(FILES runtime/rhat_runtime.c DESTINATION share/rhat)
+install(FILES runtime/rhat_runtime.c runtime/rhat_thread.c runtime/rhat_thread.h DESTINATION share/rhat)
 install(FILES runtime/rhat_random.c DESTINATION share/rhat)
 install(DIRECTORY stdlib/ DESTINATION share/rhat/stdlib)
 install(FILES LICENSE DESTINATION share/rhat/licenses RENAME rhat.txt)

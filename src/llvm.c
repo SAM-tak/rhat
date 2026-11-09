@@ -1,4 +1,4 @@
-#include "rhat.h"
+#include "sema.h"
 
 char *llvm_type(Type *t)
 {
@@ -456,14 +456,14 @@ static void external_call(Output *o, Instr *i)
         saved = ++o->tmp;
         int mark = ++o->tmp;
         fprintf(o->f,
-                "  %%t%d = load i64, ptr @rh_callback_sp\n"
+                "  %%t%d = call i64 @rh_callback_get()\n"
                 "  %%t%d = add i64 %%sp, %d\n"
-                "  store i64 %%t%d, ptr @rh_callback_sp\n",
+                "  call void @rh_callback_set(i64 %%t%d)\n",
                 saved, mark, i->stack_index, mark);
     }
     external_invoke(o, i);
     if (saved) {
-        fprintf(o->f, "  store i64 %%t%d, ptr @rh_callback_sp\n", saved);
+        fprintf(o->f, "  call void @rh_callback_set(i64 %%t%d)\n", saved);
     }
 }
 
@@ -853,10 +853,63 @@ static void instruction(Output *o, Instr *i)
     case I_RANGE_GUARD:
         range_guard(o, i);
         break;
+    case I_THREAD: {
+        Type *result = slot_type(o, i->dst);
+        int first = i->label == THREAD_SPAWN ? 0 : load(o, (int)(intptr_t)i->args.v[0] - 1);
+        int second = load(o, (int)(intptr_t)i->args.v[1] - 1);
+        int status = ++o->tmp;
+        if (i->label == THREAD_NEW) {
+            fprintf(
+                f,
+                "  %%t%d = call i64 @rh_channel_new(ptr @rh_transfer_%d, i64 %%t%d, i64 %%t%d)\n",
+                status, t->id, first, second);
+        }
+        else if (i->label == THREAD_SEND) {
+            int blocking = load(o, (int)(intptr_t)i->args.v[2] - 1);
+            fprintf(f, "  %%t%d = call i64 @rh_channel_send(i64 %%t%d, ptr %%t%d, i64 %%t%d)\n",
+                    status, first, second, blocking);
+        }
+        else if (i->label == THREAD_SPAWN) {
+            fprintf(
+                f,
+                "  %%t%d = call i64 @rh_thread_spawn(ptr @rh_worker_%d, ptr @rh_transfer_%d, ptr %%t%d, i64 %d)\n",
+                status, i->callee->id, t->id, second, o->p->stack_count);
+        }
+        else {
+            int value_tag = -1, closed_tag = -1, empty_tag = -1;
+            for (int j = 0; j < result->def->alternatives.n; j++) {
+                Type *arm = result->def->alternatives.v[j];
+                if (arm->kind != T_STRUCT) {
+                    continue;
+                }
+                if (arm->def->generic) {
+                    value_tag = j;
+                }
+                else if (!strcmp(arm->def->name, "std.channel.Closed")) {
+                    closed_tag = j;
+                }
+                else if (!strcmp(arm->def->name, "std.channel.Empty")) {
+                    empty_tag = j;
+                }
+            }
+            if (value_tag < 0 || closed_tag < 0 || empty_tag < 0) {
+                fail(i->loc, "invalid channel receive result");
+            }
+            fprintf(f, "  store %s zeroinitializer, ptr %%p%d\n", llvm_type(result), i->dst);
+            fprintf(
+                f,
+                "  call void @rh_channel_receive(i64 %%t%d, ptr %%p%d, ptr %s, i64 %zu, i32 %d, i32 %d, i32 %d, i64 %%t%d)\n",
+                first, i->dst, result->owned ? stack_for(o, i->dst) : "null",
+                result->payload_offset, value_tag, closed_tag, empty_tag, second);
+            break;
+        }
+        save(o, i->dst, result, fmt("%%t%d", status));
+        break;
+    }
     case I_STACK_BEGIN:
         a = ++o->tmp;
         fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
-        fprintf(f, "  %%s%d = getelementptr %%RhStack, ptr @rh_stacks, i64 %%t%d\n", i->dst, a);
+        fprintf(f, "  %%s%d = getelementptr %%RhStack, ptr %%stacks, i64 %%t%d\n", i->dst, a);
         fprintf(f, "  %%markp%d = getelementptr %%RhStack, ptr %%s%d, i32 0, i32 1\n", i->dst,
                 i->dst);
         b = ++o->tmp;
@@ -1753,7 +1806,7 @@ void emit_llvm(Program *p, const char *path)
             }
             for (int k = 0; k < in->code.n; k++) {
                 Instr *i = in->code.v[k];
-                if (i->op == I_CALL && !i->callee->emitted) {
+                if ((i->op == I_CALL || (i->op == I_THREAD && i->callee)) && !i->callee->emitted) {
                     i->callee->emitted = true;
                     changed = true;
                 }
@@ -1833,13 +1886,8 @@ void emit_llvm(Program *p, const char *path)
             }
         }
     }
-    fprintf(f,
-            "\n%%RhStack = type { ptr, ptr, ptr, ptr }\n@rh_stacks = %sglobal "
-            "[%d x %%RhStack]%s\n",
-            !p->emitting        ? "internal "
-            : p->emitting->root ? ""
-                                : "external ",
-            p->stack_count, !p->emitting || p->emitting->root ? " zeroinitializer" : "");
+    fputs("\n%RhStack = type { ptr, ptr, ptr, ptr }\n", f);
+    emit_thread_support(p, f);
     emit_llvm_builtins(f);
     unsigned char *tables = mem((size_t)p->dyn_tables.n + 1);
     for (int j = 0; j < p->instances.n; j++) {
@@ -1873,7 +1921,8 @@ void emit_llvm(Program *p, const char *path)
         fputs("], comdat\n", f);
 #endif
     }
-    fputs("declare void @rh_runtime_init(ptr, i64)\n"
+    fputs("declare void @rh_runtime_init(i64)\n"
+          "declare ptr @rh_current_stacks()\n"
           "declare void @rh_runtime_args(i32, ptr, ptr)\n"
           "declare void @rh_terminate(ptr, i64, i32, i32) cold noreturn\n"
           "declare void @rh_unhandled(ptr, i64, ptr, i64, ptr, i32, i32) cold noreturn\n"
@@ -1970,6 +2019,13 @@ void emit_llvm(Program *p, const char *path)
             fprintf(f, ", %s %%arg%d", direct(param) ? llvm_type(param) : "ptr", k);
         }
         fputs(") {\nentry:\n", f);
+        bool local_stacks = false;
+        for (int k = 0; k < in->code.n; k++) {
+            local_stacks |= ((Instr *)in->code.v[k])->op == I_STACK_BEGIN;
+        }
+        if (local_stacks) {
+            fputs("  %stacks = call ptr @rh_current_stacks()\n", f);
+        }
         Output o = {f, in, 0, p};
         for (int k = 0; k < in->slots.n; k++) {
             Slot *s = in->slots.v[k];
@@ -2005,7 +2061,9 @@ void emit_llvm(Program *p, const char *path)
     }
     address_declarations(p, f);
     if (p->callbacks) {
-        fputs("\n@rh_callback_sp = external global i64\ndeclare i64 @rh_callback_enter(i64)\n", f);
+        fputs(
+            "\ndeclare i64 @rh_callback_get()\ndeclare void @rh_callback_set(i64)\ndeclare i64 @rh_callback_enter(i64)\n",
+            f);
     }
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
@@ -2024,7 +2082,7 @@ void emit_llvm(Program *p, const char *path)
                 "\ndefine i32 @main(i32 %%argc, ptr %%argv) {\nentry:\n"
                 "%s"
                 "  %%args = alloca { ptr, i64 }\n"
-                "  call void @rh_runtime_init(ptr @rh_stacks, i64 %d)\n"
+                "  call void @rh_runtime_init(i64 %d)\n"
                 "  call void @rh_runtime_args(i32 %%argc, ptr %%argv, ptr %%args)\n"
                 "  %%strings = load { ptr, i64 }, ptr %%args\n"
                 "  call void @%s(i64 0%s, { ptr, i64 } %%strings)\n"
@@ -2096,6 +2154,7 @@ void dump_ir(Program *p, const char *path)
                            "error.site",
                            "context.ref",
                            "context.bind",
+                           "thread",
                            "array.fill"};
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];

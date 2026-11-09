@@ -778,6 +778,10 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be, Loc lo
 static Type *infer_call(Infer *c, Expr *e, Type *expected)
 {
     Expr *target = e->a;
+    int thread = thread_operation(c->in->fn, target);
+    if (thread) {
+        return thread_result(c->p, c->in->fn, thread);
+    }
     if (target->kind == E_MEMBER && !strcmp(target->text, "message") && !e->args.n &&
         error_messages(c->p, target, 0, infer_expr(c, target->a, NULL))) {
         return type_builtin(c->p, T_STRING);

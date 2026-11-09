@@ -230,6 +230,15 @@ void plan_stacks(Program *p)
         propagate(p);
     }
     p->stack_count = ((Instance *)p->entry->instances.v[0])->stack_need;
+    for (int a = 0; a < n; a++) {
+        Instance *in = p->instances.v[a];
+        if (in->thread_entry && in->stack_need >= p->stack_count) {
+            if (in->stack_need == INT_MAX) {
+                fail(in->fn->loc, "data stack count overflows");
+            }
+            p->stack_count = in->stack_need + 1;
+        }
+    }
     // Stacks are reserved address space, so admit at least eight levels of
     // callbacks that each hold owned values across their C call.
     if (callback > (INT_MAX - p->stack_count) / 7) {

@@ -398,6 +398,7 @@ struct Program {
     List dyn_tables;             // DynTable records, one per converted concrete type and
                                  // dyn^ def.
     Function *entry;
+    List transfer_types;    // Validated types needing internal thread transfer descriptors.
     int inferred_instances; // Instance count at the last return-inference fixed point.
     int stack_count;
     bool callbacks; // Some exportC^ function may be entered from C.
@@ -497,6 +498,7 @@ enum {
                   // column and message; text is the source (length bytes), a NUL, the message.
     I_STATE_REF,  // Alias dst to context member label.
     I_STATE_BIND, // Publish entry-owned slot a as context member label.
+    I_THREAD,     // Typed channel transfer or independent worker launch; label selects operation.
     I_FILL        // Fill owning array dst with a copies of element b during construction,
                   // or with b < 0 reserve a elements of capacity for a T[max^].
 };
@@ -543,6 +545,7 @@ typedef struct {
 } Slot;
 
 struct Instance {
+    bool thread_entry;  // Invoked on an independent shard, never with the parent's state.
     bool state_shrinks; // This call may shrink a task-owned static flex array.
     bool uses_state;    // This instance or a reachable callee accesses the task context.
     bool invalid;       // Partial editor analysis; must never produce executable code.

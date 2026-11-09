@@ -2,6 +2,9 @@
 #define RHAT_SEMA_H
 #include "rhat.h"
 
+// Private std.thread/std.channel operations requiring typed compiler support.
+enum { THREAD_NONE, THREAD_NEW, THREAD_SEND, THREAD_RECEIVE, THREAD_SPAWN };
+
 // The interface shared by semantic IR construction (sema.c and the files
 // split from it) and type inference (check.c).
 // Local bindings and branch facts shared by inference and IR construction.
@@ -133,6 +136,15 @@ typedef struct {
     int result_part;  // One past the slot of the owned result part built in place.
     int inline_steps; // Cumulative expansion budget for this concrete function body.
 } Context;
+
+// Recognize private transfer operations, enforcing their standard-library scope.
+int thread_operation(Function *caller, Expr *target);
+// Their result type is fixed by the operation or the annotated receive method.
+Type *thread_result(Program *p, Function *caller, int operation);
+// Lower a checked operation to typed transfer IR.
+Value thread_call(Context *c, Expr *e, int operation, int destination);
+// Emit private immutable transfer descriptors and native entry trampolines.
+void emit_thread_support(Program *p, FILE *f);
 
 // Heterogeneous packs use a private record layout, never a user-storable tuple.
 Type *type_pack(Program *p, List *elems, Loc loc);
