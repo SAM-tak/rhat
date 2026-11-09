@@ -9,7 +9,11 @@ let^worker = p^a:ref^Args {
         when^fits^c.Closed:
             break^
         when^fits^c.Message<i32^>:
+            print^$"id:{t.current_id()} recieve {it^.value}"
+            print^$"id:{t.current_id()} sleep 0.5"
+            t.sleep(0.5)
             let^n = it^.value * 2
+            print^$"id:{t.current_id()} send {n}"
             try^a.results.send(ref^n)
         }
     }
@@ -28,9 +32,9 @@ if^two fits^t.Error.StartFailed {
 }
 
 for^i from^1 to^4 {
-    var^n:i32^= i
-    var^sent = jobs.send(ref^n)
-    if^sent fits^c.Error {
+    let^n:i32^= i
+    for^jobs.send(ref^n) {
+    when^fits^c.Error:
         jobs.close()
         print^("could not send a job")
         return^
@@ -41,8 +45,10 @@ jobs.close()
 
 var^total:i32^= 0
 for^i from^1 to^4 {
-    var^r = results.receive()
-    if^r fits^c.Message<i32^> { total += r.value }
+    for^results.receive() {
+    when^fits^c.Message<i32^>:
+        total += it^.value
+    }
 }
 one.join()
 two.join()
