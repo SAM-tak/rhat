@@ -2565,7 +2565,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                                      : 14,
                     false);
     }
-    else {
+    // Direct function targets also implement implicit disposal, error messages
+    // and interpolation. Only operator syntax has a written reference there.
+    else if (target->kind != E_FUNCTION || f->operator_member) {
         tool_record(p, target->name_loc.file ? target->name_loc : target->loc,
                     f->declaration.file ? f->declaration : f->loc, f->name, NULL, f, f->owner,
                     f->owner ? 6 : 12, false);

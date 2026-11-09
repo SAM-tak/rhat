@@ -76,6 +76,11 @@ static bool same_id(cJSON *a, cJSON *b)
     return !strcmp(text(a, "id"), text(b, "id"));
 }
 
+static bool identifier(unsigned char c)
+{
+    return isalnum(c) || c >= 128 || c == '_' || c == '^';
+}
+
 static cJSON *symbol_at(cJSON *index, const char *uri, size_t offset)
 {
     cJSON *s, *at_end = NULL;
@@ -90,6 +95,18 @@ static cJSON *symbol_at(cJSON *index, const char *uri, size_t offset)
             // Prefer an adjacent operator over the end of its receiver token.
             if (offset == end && !at_end) {
                 at_end = s;
+            }
+        }
+    }
+    // A caret at a token's end may still refer to it, but the next word owns
+    // its first byte even if it has no symbol record (for example try^alias).
+    if (at_end) {
+        cJSON *source;
+        cJSON_ArrayForEach(source, cJSON_GetObjectItem(index, "sources")) {
+            const char *buffer = text(source, "text");
+            if (!strcmp(text(source, "uri"), uri) && offset < strlen(buffer) &&
+                identifier((unsigned char)buffer[offset])) {
+                return NULL;
             }
         }
     }
@@ -255,11 +272,6 @@ static cJSON *symbols(cJSON *index, const char *uri, const char *query)
         cJSON_AddItemToArray(out, item);
     }
     return out;
-}
-
-static bool identifier(unsigned char c)
-{
-    return isalnum(c) || c >= 128 || c == '_' || c == '^';
 }
 
 static void completion_item(cJSON *out, const char *label, const char *detail, int kind)

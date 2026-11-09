@@ -1109,6 +1109,22 @@ print^(a.x)
     assert client.diagnostics(path,157) == []
     print('PASS generic definitions, aliases, type constants, navigation and edit recovery',flush=True)
 
+    threads_path = Path(__file__).resolve().parents[1]/'examples/threads.rh'
+    threads_text = threads_path.read_text(encoding='utf-8')
+    client.open(threads_path,threads_text)
+    assert client.diagnostics(threads_path,1) == []
+    classified = tokens(threads_text,threads_path)
+    for match in re.finditer(r'\b[ct](?=\s*=\s*import\^|\.)',threads_text):
+        position = at(threads_text,threads_text[match.start():],shift=0)
+        assert classified[(position['line'],position['character'])] == (1,11), (position,classified)
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=threads_path.as_uri()),
+            position=position))
+        assert hover is None, hover
+        assert client.request('textDocument/definition',dict(textDocument=dict(uri=threads_path.as_uri()),
+            position=position)) is None
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=threads_path.as_uri())))
+    print('PASS implicit disposal and error reporting do not replace import aliases',flush=True)
+
     channel_path = Path(__file__).resolve().parents[1]/'stdlib/std/channel.rh'
     channel_text = channel_path.read_text(encoding='utf-8')
     client.open(channel_path,channel_text)
