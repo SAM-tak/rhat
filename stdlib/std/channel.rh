@@ -5,14 +5,15 @@ import^std.sys
 public^errordef^Error { InvalidCapacity, OutOfMemory, Closed, Full, MessageTooLarge }
 public^def^Closed {}
 public^def^Empty {}
-public^def^Message<T> { self^{ value:T } }
+public^struct^Message<T> { value:T }
 
-let^sent = p^status:i64^ -> nil^ | Error {
-    if^status = 1 { return^Error.Closed{} }
-    if^status = 2 { return^Error.Full{} }
-    if^status = 3 { return^Error.MessageTooLarge{} }
-    if^status = 4 { return^Error.OutOfMemory{} }
-    return^nil^
+let^sent = f^status:i64^-> nil^| Error {
+    for^status:
+    when^1: Error.Closed{}
+    when^2: Error.Full{}
+    when^3: Error.MessageTooLarge{}
+    when^4: Error.OutOfMemory{}
+    other^: nil^;
 }
 
 # A bounded queue with explicit shared holds. The element type must own its data.
