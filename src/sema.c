@@ -2869,10 +2869,146 @@ Type *union_literal_hint(Type *t, Expr *e)
     return hint;
 }
 
-// Construct a new owner from {v repeat^ n}, a copied {source...} or a
-// {max^ capacity}, copying only its elements' reference dependencies.
+static bool array_storage(Type *t)
+{
+    return t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED || t->kind == T_SLICE;
+}
+
+// Copies rebuild owned array rows in their destination regions; references in
+// leaf elements retain the source's borrow dependencies.
+static Value copy_array(Context *c, Expr *e, Type *t, int dst)
+{
+    Value source = deref(c, expression(c, e->args.v[0], NULL), e->loc);
+    if (dead(source)) {
+        return source;
+    }
+    Type *s = source.type;
+    if (!array_storage(s) || !array_storage(t) || t->kind == T_SLICE ||
+        (t->kind == T_GROW && t->count == ARRAY_CAPPED)) {
+        fail(e->loc, "source... requires an array or slice and an owning array destination");
+    }
+    layout(t, e->loc);
+    if (t->elem->disposable || s->elem->disposable) {
+        fail(e->loc, "source... would copy Disposable elements");
+    }
+    bool recursive =
+        (t->elem->owned || t->elem != s->elem) && array_storage(t->elem) && array_storage(s->elem);
+    if ((!recursive && t->elem != s->elem) || (t->elem->owned && !recursive)) {
+        fail(e->loc, "source... cannot copy '%s' elements into '%s'", type_name(s->elem),
+             type_name(t->elem));
+    }
+    if (source.readonly && !recursive && type_writes(t->elem)) {
+        fail(e->loc,
+             "cannot copy writable references through a read^ access; use a read^ reference");
+    }
+    if (t->kind == T_ARRAY && s->kind == T_ARRAY && t->count != s->count) {
+        fail(e->loc, "fixed array copy requires exactly %d elements, found %d", t->count, s->count);
+    }
+    Value length = value(c, type_builtin(c->p, T_I64));
+    Instr *len = emit(c, I_LENGTH, e->loc);
+    len->dst = length.id;
+    len->a = source.id;
+    len->type = s;
+    if (t->kind == T_ARRAY && s->kind != T_ARRAY) {
+        Expr number = {.kind = E_INT, .loc = e->loc, .text = fmt("%d", t->count)};
+        Value count = expression(c, &number, length.type);
+        Value equal = operate(c, "=", length, count, e->loc);
+        Instr *check = emit(c, I_ASSERT, e->loc);
+        add(&check->args, (void *)(intptr_t)(equal.id + 1));
+    }
+    Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
+    out.deps = t->elem->refs ? source.deps : (Roots){0};
+    if (t->kind == T_GROW || owning_rows(t)) {
+        Instr *region = emit(c, I_REGION, e->loc);
+        region->dst = out.id;
+        region->type = t;
+    }
+    else if (t->kind == T_BOUNDED) {
+        Instr *clear = emit(c, I_CLEAR, e->loc);
+        clear->a = out.id;
+        clear->type = t;
+    }
+    // Flat owners keep the existing bulk-copy path.
+    if (t->kind == T_GROW && !recursive) {
+        Value view = value(c, type_wrap(c->p, T_SLICE, t->elem, 0));
+        Instr *slice = emit(c, I_SLICE, e->loc);
+        slice->dst = view.id;
+        slice->a = source.id;
+        slice->b = slice->other = -1;
+        slice->type = s;
+        Instr *append = emit(c, I_APPEND, e->loc);
+        append->a = out.id;
+        append->b = view.id;
+        append->type = t;
+        return out;
+    }
+    int inflight = c->inflight.n, pending = c->pending_disposals.n;
+    add(&c->inflight, &out);
+    if (t->kind != T_ARRAY || owning_rows(t)) {
+        dispose_pending(c, out);
+    }
+    Expr zero = {.kind = E_INT, .loc = e->loc, .text = "0"};
+    Expr one = {.kind = E_INT, .loc = e->loc, .text = "1"};
+    Value at = expression(c, &zero, length.type), step = expression(c, &one, length.type);
+    int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
+    nil_jump(c, test, e->loc);
+    nil_label(c, test, e->loc);
+    nil_branch(c, operate(c, "<", at, length, e->loc), body, end, e->loc);
+    nil_label(c, body, e->loc);
+    Value item = {.id = slot(c, s->elem, true),
+                  .type = s->elem,
+                  .deps = source.deps,
+                  .readonly = source.readonly,
+                  .addressable = true};
+    Instr *index = emit(c, I_INDEX, e->loc);
+    index->dst = item.id;
+    index->a = source.id;
+    index->b = at.id;
+    index->type = s;
+    Expr copy = {.kind = E_ARRAY, .loc = e->loc, .text = "copy"};
+    add(&copy.args, saved_value(item, e->loc));
+    if (owning_rows(t)) {
+        push_owned_row(c, out, &copy, e->loc);
+    }
+    else if (t->kind == T_GROW || t->kind == T_BOUNDED) {
+        Value element = recursive ? construct(c, &copy, t->elem, -1) : item;
+        Instr *push = emit(c, I_PUSH, e->loc);
+        push->a = out.id;
+        push->b = element.id;
+        push->type = t;
+    }
+    else {
+        Value place = {.id = slot(c, t->elem, true), .type = t->elem};
+        index = emit(c, I_INDEX, e->loc);
+        index->dst = place.id;
+        index->a = out.id;
+        index->b = at.id;
+        index->type = t;
+        if (recursive) {
+            construct(c, &copy, t->elem, place.id);
+        }
+        else {
+            copy_to(c, place, item, e->loc, true);
+        }
+    }
+    Value next = operate(c, "+", at, step, e->loc);
+    Instr *advance = emit(c, I_COPY, e->loc);
+    advance->dst = at.id;
+    advance->a = next.id;
+    advance->type = at.type;
+    nil_jump(c, test, e->loc);
+    nil_label(c, end, e->loc);
+    c->inflight.n = inflight;
+    c->pending_disposals.n = pending;
+    return out;
+}
+
+// Construct repeated elements, copied arrays, or reserved capacity.
 static Value sized_array(Context *c, Expr *e, Type *t, int dst)
 {
+    if (!strcmp(e->text, "copy")) {
+        return copy_array(c, e, t, dst);
+    }
     bool reserve = !strcmp(e->text, "reserve"), repeat = !strcmp(e->text, "repeat");
     if (!t) {
         fail(e->loc, "array construction needs a type; write T[...]{...} or annotate the binding");
@@ -2884,8 +3020,7 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     if (!fixed && (t->kind != T_GROW || reserve != (t->count == ARRAY_CAPPED))) {
         fail(e->loc,
              reserve ? "{max^ capacity} builds a T[max^], not '%s'"
-                     : "repeat^ builds T[N], T[] and T[grow^], and source... owning arrays, not "
-                       "'%s'",
+                     : "repeat^ builds T[N], T[] and T[grow^], not '%s'",
              type_name(t));
     }
     if (fixed && ((e->repeat_count != -1 && e->repeat_count != t->count) || t->elem->owned)) {
@@ -2896,7 +3031,7 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     }
     layout(t, e->loc);
     if (t->elem->disposable && !reserve) {
-        fail(e->loc, "repeat^ and source... would copy Disposable '%s'", type_name(t->elem));
+        fail(e->loc, "repeat^ would copy Disposable '%s'", type_name(t->elem));
     }
     Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
     Value count = {0}, source = {0};
@@ -2921,26 +3056,6 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     if (reserve) {
         source = count;
     }
-    else if (!repeat) {
-        source = deref(c, expression(c, e->args.v[0], NULL), e->loc);
-        if (!dead(source)) {
-            Type *s = source.type;
-            if ((s->kind != T_ARRAY && s->kind != T_GROW && s->kind != T_BOUNDED &&
-                 s->kind != T_SLICE) ||
-                s->elem != t->elem) {
-                fail(e->loc, "array construction needs an array or slice of '%s'",
-                     type_name(t->elem));
-            }
-            Value view = value(c, type_wrap(c->p, T_SLICE, t->elem, 0));
-            view.deps = source.deps;
-            Instr *slice = emit(c, I_SLICE, e->loc);
-            slice->dst = view.id;
-            slice->a = source.id;
-            slice->b = slice->other = -1;
-            slice->type = s;
-            source = view;
-        }
-    }
     if (dead(source)) {
         return source;
     }
@@ -2955,16 +3070,11 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
     Instr *region = emit(c, I_REGION, e->loc);
     region->dst = out.id;
     region->type = t;
-    Instr *fill = emit(c, repeat || reserve ? I_FILL : I_APPEND, e->loc);
+    Instr *fill = emit(c, I_FILL, e->loc);
     fill->type = t;
     fill->b = reserve ? -1 : source.id;
-    if (repeat || reserve) {
-        fill->dst = out.id;
-        fill->a = count.id;
-    }
-    else {
-        fill->a = out.id;
-    }
+    fill->dst = out.id;
+    fill->a = count.id;
     return out;
 }
 
@@ -3438,8 +3548,8 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
     }
     if (e->kind == E_ARRAY) {
         if (e->text) {
-            Type *named =
-                e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, t, NULL);
+            Type *source = !strcmp(e->text, "copy") ? expression_type(c, e->args.v[0], NULL) : NULL;
+            Type *named = array_literal_type(c->p, e, t, source);
             if (!named && !t) {
                 named = repeat_type(c->p, e, expression_type(c, e->args.v[0], NULL));
             }
@@ -4318,7 +4428,6 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(base)) {
             return base;
         }
-        check_index_rank(base.type, e);
         temporary_check(base, e->loc);
         if (argument_pack(base.type)) {
             int index = argument_index(&c->vars, base.type, e->b, e->loc);

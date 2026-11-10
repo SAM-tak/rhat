@@ -335,15 +335,6 @@ static void identity_parts(List *parts, Spec *s, int kind)
 
 static char *spec_identity(Spec *s)
 {
-    if (s->rank) {
-        Spec *elem = s;
-        char *shape = str("");
-        for (int j = 0; j < s->rank; j++, elem = elem->elem) {
-            char *length = elem->kind == SPEC_GROW ? "grow^" : fmt("%d", elem->count);
-            shape = fmt("%s%s%s", shape, j ? "," : "", length);
-        }
-        return fmt("(%s)[%s]", spec_identity(elem), shape);
-    }
     if (s->kind == SPEC_NAME) {
         return s->self_type ? canonical(s->self_type->module, s->self_type->name) : s->name;
     }
@@ -356,24 +347,18 @@ static char *spec_identity(Spec *s)
         }
         return parts.n == 1 ? key : fmt("(%s)", key);
     }
+    if (s->kind == SPEC_ARRAY || s->kind == SPEC_GROW || s->kind == SPEC_BOUNDED ||
+        s->kind == SPEC_SLICE) {
+        Spec *base;
+        char *shape = array_spec_shape(s, &base);
+        return fmt("%s[%s]", spec_identity(base), shape);
+    }
     char *elem = s->elem ? spec_identity(s->elem) : "";
     switch (s->kind) {
     case SPEC_REF:
         return fmt("ref^%s (%s)", s->count ? "read^" : "", elem);
     case SPEC_DYN:
         return fmt("dyn^ (%s)", elem);
-    case SPEC_ARRAY:
-        return s->count ? fmt("(%s)[%d]", elem, s->count) : fmt("(%s)[]", elem);
-    case SPEC_GROW:
-        return fmt("(%s)[%s]", elem,
-                   s->count == ARRAY_SIZED    ? ""
-                   : s->count == ARRAY_CAPPED ? "max^"
-                   : s->count                 ? "flex^"
-                                              : "grow^");
-    case SPEC_SLICE:
-        return fmt("%s(%s)[..]", s->count ? "read^ " : "", elem);
-    case SPEC_BOUNDED:
-        return fmt("(%s)[max^%d]", elem, s->count);
     default:
         break;
     }
@@ -567,6 +552,9 @@ static void require_shape(Spec *s)
 
 static void infer_shape(Module *m, List *names, Spec *s, Expr *e)
 {
+    if (e && e->text && !strcmp(e->text, "copy")) {
+        return; // Copy shapes are resolved from the source type during inference.
+    }
     if (inferred_shape(s)) {
         gather_shape(m, names, s, e);
         require_shape(s);

@@ -1139,11 +1139,11 @@ print^(result[1][2].n)
     for needle in ('grid:','grid)','result ='):
         hover = client.request('textDocument/hover',dict(textDocument=dict(uri=nested_path.as_uri()),
             position=at(nested_text,needle)))
-        assert '(Cell[3])[2]' in hover['contents']['value'], hover
+        assert 'Cell[2, 3]' in hover['contents']['value'], hover
         assert 'Cell[3][2]' not in hover['contents']['value'], hover
     hover = client.request('textDocument/hover',dict(textDocument=dict(uri=nested_path.as_uri()),
         position=at(nested_text,'deferred =')))
-    assert 'x:(Cell[3])[2]' in hover['contents']['value'], hover
+    assert 'x:Cell[2, 3]' in hover['contents']['value'], hover
     classified = tokens(nested_text,nested_path)
     for position in (at(nested_text,'Cell[2 [3]]'),at(nested_text,'Cell[3]')):
         assert classified[(position['line'],position['character'])] == (4,1), classified
@@ -1180,9 +1180,9 @@ print^(cell.n)
     definition = client.request('textDocument/definition',dict(textDocument=dict(uri=rectangular_path.as_uri()),
         position=position))
     assert definition['range']['start'] == at(rectangular_text,'Cell {'), definition
-    broken = rectangular_text.replace('grid[1,2]', 'grid[1]')
+    broken = rectangular_text.replace('grid[1,2]', 'grid[1,2,0]')
     client.change(rectangular_path,broken,2)
-    assert any('requires 2 indices' in d['message'] for d in client.diagnostics(rectangular_path,2))
+    assert any('indexing requires an array' in d['message'] for d in client.diagnostics(rectangular_path,2))
     client.change(rectangular_path,rectangular_text,3)
     assert client.diagnostics(rectangular_path,3) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=rectangular_path.as_uri())))
@@ -1202,6 +1202,38 @@ print^(grid[1,2])
         assert 'i32^[grow^, 3]' in hover['contents']['value'], hover
     client.send('textDocument/didClose',dict(textDocument=dict(uri=grow_grid_path.as_uri())))
     print('PASS growable rectangular array hover and template signatures',flush=True)
+
+    array_names_path = work/'array_canonical_names.rh'
+    array_names_text = '''var^inferred={{0 repeat^3} repeat^3}
+var^rows=(i32^[grow^])[max^8]{}
+let^deferred=template^p^a:(i32^[3])[2], b:(i32^[grow^])[max^8] {}
+print^(inferred[1,1])
+'''
+    client.open(array_names_path,array_names_text)
+    assert client.diagnostics(array_names_path,1) == []
+    for needle,signature in (('inferred=','i32^[3, 3]'),('rows=','i32^[max^8 [grow^]]'),
+                             ('deferred=','i32^[2, 3]'),('deferred=','i32^[max^8 [grow^]]')):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=array_names_path.as_uri()),
+            position=at(array_names_text,needle)))
+        assert signature in hover['contents']['value'], hover
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=array_names_path.as_uri())))
+    print('PASS unified array dimensions and canonical outer-first type names',flush=True)
+
+    spread_path = work/'spread_array_types.rh'
+    spread_text = '''var^src=i32^[2,3]{}
+var^inferred={src...}
+var^shape=i32^[_^,_^]{src...}
+var^rows=u8^[2 []]{{1},{2,3}}
+var^deep={rows...}
+'''
+    client.open(spread_path,spread_text)
+    assert client.diagnostics(spread_path,1) == []
+    for needle,signature in (('inferred=','i32^[2, 3]'),('shape=','i32^[2, 3]'),('deep=','u8^[2 []]')):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=spread_path.as_uri()),
+            position=at(spread_text,needle)))
+        assert signature in hover['contents']['value'], hover
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=spread_path.as_uri())))
+    print('PASS spread array source types, inferred shapes and deep-copy hover',flush=True)
 
     jagged_path = work/'jagged_arrays.rh'
     jagged_text = '''var^rows=i32^[max^8[grow^]]{{1},{2,3}}

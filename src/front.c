@@ -1210,17 +1210,13 @@ static void array_chain_error(Loc loc)
               "write (T[A])[B] or T[B [A]]");
 }
 
-// Store rectangular dimensions in row-major nesting while retaining their type identity.
+// Comma-separated dimensions are ordinary array nesting in outer-to-inner order.
 static Spec *rectangular_spec(Spec *elem, List *lengths)
 {
     for (int j = lengths->n - 1; j >= 0; j--) {
         Expr *length = lengths->v[j];
         Spec *s = mem(sizeof(*s));
-        *s = (Spec){.kind = SPEC_ARRAY,
-                    .loc = elem->loc,
-                    .elem = elem,
-                    .length = length,
-                    .rank = lengths->n - j > 1 ? lengths->n - j : 0};
+        *s = (Spec){.kind = SPEC_ARRAY, .loc = elem->loc, .elem = elem, .length = length};
         elem = s;
     }
     return elem;
@@ -1274,7 +1270,12 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     Spec *w = mem(sizeof(*w));
     w->loc = elem->loc;
     List lengths = {0};
-    if (is(p, "]") || is(p, "[")) {
+    if (!refs && take(p, "read^")) {
+        need(p, "..");
+        w->kind = SPEC_SLICE;
+        w->count = 1;
+    }
+    else if (is(p, "]") || is(p, "[")) {
         w->kind = SPEC_ARRAY;
     }
     else if (take(p, "..")) {
@@ -1335,7 +1336,6 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     }
     if (w->kind == SPEC_GROW && lengths.n) {
         w->elem = rectangular_spec(elem, &lengths);
-        w->rank = lengths.n + 1;
         return w;
     }
     if (lengths.n > 1) {

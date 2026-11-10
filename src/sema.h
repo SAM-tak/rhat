@@ -359,9 +359,6 @@ List join_exit_facts(List left, List right);
 // Resolve and validate the complete storage layout of a type.
 void layout(Type *t, Loc l);
 
-// Validate an index group's arity against a fixed rectangular array shape.
-void check_index_rank(Type *t, Expr *e);
-
 // Resolve a fully qualified nominal declaration.
 Def *lookup_def(Program *p, const char *n);
 

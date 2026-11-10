@@ -46,11 +46,11 @@ Type *type_builtin(Program *p, int k)
     return t;
 }
 
-static Type *wrap_rank(Program *p, int k, Type *e, int n, int rank)
+Type *type_wrap(Program *p, int k, Type *e, int n)
 {
     for (int i = 0; i < e->wrappers.n; i++) {
         Type *t = e->wrappers.v[i];
-        if (t->kind == k && t->count == n && t->rank == rank) {
+        if (t->kind == k && t->count == n) {
             return t;
         }
     }
@@ -58,7 +58,6 @@ static Type *wrap_rank(Program *p, int k, Type *e, int n, int rank)
     t->kind = k;
     t->elem = e;
     t->count = n;
-    t->rank = rank;
     t->id = p->types.n;
     if (k == T_REF || k == T_CFUNC || k == T_CHANNEL) {
         t->size = t->align = 8;
@@ -83,27 +82,6 @@ static Type *wrap_rank(Program *p, int k, Type *e, int n, int rank)
         add(&p->transfer_types, t);
     }
     return t;
-}
-
-Type *type_wrap(Program *p, int k, Type *e, int n)
-{
-    return wrap_rank(p, k, e, n, 0);
-}
-
-void check_index_rank(Type *t, Expr *e)
-{
-    if (!t || e->index_count == -1) {
-        return;
-    }
-    if (t->kind == T_REF) {
-        t = t->elem;
-    }
-    if (t->rank && e->index_count != t->rank) {
-        fail(e->b->loc, "'%s' requires %d indices in one bracket pair", type_name(t), t->rank);
-    }
-    if (!t->rank && e->index_count > 1) {
-        fail(e->b->loc, "comma-separated indices require a multidimensional array");
-    }
 }
 
 static void union_arms(List *arms, Type *t)
@@ -382,13 +360,13 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         return type_wrap(p, T_DYN, t, s->count);
     }
     if (s->kind != SPEC_NAME) {
-        return wrap_rank(p,
+        return type_wrap(p,
                          s->kind == SPEC_REF       ? T_REF
                          : s->kind == SPEC_GROW    ? T_GROW
                          : s->kind == SPEC_SLICE   ? T_SLICE
                          : s->kind == SPEC_BOUNDED ? T_BOUNDED
                                                    : T_ARRAY,
-                         type_spec(p, s->elem), s->count, s->rank);
+                         type_spec(p, s->elem), s->count);
     }
     for (int k = T_BOOL; k < T_STRUCT; k++) {
         if (!strcmp(s->name, builtin_name(k))) {
@@ -481,6 +459,65 @@ Type *state_field_type(Program *p, Field *f)
     return f->type;
 }
 
+char *array_spec_shape(Spec *s, Spec **base)
+{
+    Spec *elem = s->elem;
+    char *refs = "";
+    while (elem->kind == SPEC_REF && !elem->count && elem->elem->kind != SPEC_DYN) {
+        refs = fmt("%s^", *refs ? refs : "ref");
+        elem = elem->elem;
+    }
+    char *kind = s->kind == SPEC_SLICE     ? (s->count ? "read^ .." : "..")
+                 : s->kind == SPEC_GROW    ? (s->count == ARRAY_CAPPED  ? "max^"
+                                              : s->count == ARRAY_SIZED ? ""
+                                              : s->count                ? "flex^"
+                                                                        : "grow^")
+                 : s->kind == SPEC_BOUNDED ? fmt("max^%d", s->count)
+                 : s->count < 0            ? "_^"
+                 : s->count                ? fmt("%d", s->count)
+                                           : "";
+    char *policy = fmt("%s%s%s", refs, *refs && *kind ? " " : "", kind);
+    if (elem->kind == SPEC_ARRAY || elem->kind == SPEC_GROW || elem->kind == SPEC_BOUNDED ||
+        elem->kind == SPEC_SLICE) {
+        char *inner = array_spec_shape(elem, base);
+        bool comma = !*refs && elem->kind == SPEC_ARRAY && elem->count &&
+                     ((s->kind == SPEC_ARRAY && s->count) || (s->kind == SPEC_GROW && !s->count));
+        return comma ? fmt("%s, %s", policy, inner)
+                     : fmt("%s%s[%s]", policy, *policy ? " " : "", inner);
+    }
+    *base = elem;
+    return policy;
+}
+
+// Display array policies from outside to inside, joining fixed dimensions.
+static char *array_shape_text(Type *t, Type **base)
+{
+    Type *elem = t->elem;
+    char *refs = "";
+    while (elem->kind == T_REF && !elem->count) {
+        refs = fmt("%s^", *refs ? refs : "ref");
+        elem = elem->elem;
+    }
+    char *kind = t->kind == T_SLICE     ? (t->count ? "read^ .." : "..")
+                 : t->kind == T_GROW    ? (t->count == ARRAY_SIZED    ? ""
+                                           : t->count == ARRAY_CAPPED ? "max^"
+                                           : t->count                 ? "flex^"
+                                                                      : "grow^")
+                 : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
+                                        : fmt("%d", t->count);
+    char *policy = fmt("%s%s%s", refs, *refs && *kind ? " " : "", kind);
+    if (elem->kind == T_ARRAY || elem->kind == T_GROW || elem->kind == T_BOUNDED ||
+        elem->kind == T_SLICE) {
+        char *inner = array_shape_text(elem, base);
+        bool comma = !*refs && elem->kind == T_ARRAY &&
+                     (t->kind == T_ARRAY || (t->kind == T_GROW && !t->count));
+        return comma ? fmt("%s, %s", policy, inner)
+                     : fmt("%s%s[%s]", policy, *policy ? " " : "", inner);
+    }
+    *base = elem;
+    return policy;
+}
+
 char *type_name(Type *t)
 {
     if (!t) {
@@ -523,39 +560,38 @@ char *type_name(Type *t)
     if (t->kind == T_DYN) {
         return fmt("ref^%s dyn^ %s", t->count ? "read^" : "", type_name(t->elem));
     }
-    if (t->rank) {
-        char *shape = str("");
-        Type *elem = t;
-        for (int j = 0; j < t->rank; j++, elem = elem->elem) {
-            char *length = elem->kind == T_GROW ? "grow^" : fmt("%d", elem->count);
-            shape = fmt("%s%s%s", shape, j ? ", " : "", length);
-        }
-        bool wrap = elem->kind >= T_STRUCT && elem->kind != T_STRUCT && elem->kind != T_ENUM;
-        return fmt(wrap ? "(%s)[%s]" : "%s[%s]", type_name(elem), shape);
-    }
-    Type *elem = t->elem;
-    char *refs = "";
-    while (elem->kind == T_REF && !elem->count) {
-        refs = fmt("%s^", *refs ? refs : "ref");
-        elem = elem->elem;
-    }
-    char *kind = t->kind == T_SLICE     ? ".."
-                 : t->kind == T_GROW    ? (t->count == ARRAY_SIZED    ? ""
-                                           : t->count == ARRAY_CAPPED ? "max^"
-                                           : t->count                 ? "flex^"
-                                                                      : "grow^")
-                 : t->kind == T_BOUNDED ? fmt("max^%d", t->count)
-                                        : fmt("%d", t->count);
-    bool wrap = elem->kind == T_UNION || elem->kind == T_DYN || elem->kind == T_REF ||
-                elem->kind == T_ARRAY || elem->kind == T_GROW || elem->kind == T_SLICE ||
-                elem->kind == T_BOUNDED;
-    return fmt(wrap ? "%s(%s)[%s%s%s]" : "%s%s[%s%s%s]", read_reference(t) ? "read^ " : "",
-               type_name(elem), refs, *refs && *kind ? " " : "", kind);
+    Type *elem;
+    char *shape = array_shape_text(t, &elem);
+    bool wrap = elem->kind == T_UNION || elem->kind == T_DYN || elem->kind == T_REF;
+    return fmt(wrap ? "(%s)[%s]" : "%s[%s]", type_name(elem), shape);
 }
 
 bool owning_rows(Type *t)
 {
     return (t->kind == T_ARRAY || t->kind == T_BOUNDED) && t->elem->owned;
+}
+
+static Type *copy_shape_type(Program *p, Spec *s, Type *source)
+{
+    if (s->kind != SPEC_ARRAY && s->kind != SPEC_GROW && s->kind != SPEC_BOUNDED) {
+        return type_spec(p, s);
+    }
+    int count = s->count;
+    if (count < 0 && s->kind == SPEC_ARRAY) {
+        if (!source || source->kind != T_ARRAY) {
+            fail(s->loc, "cannot infer array length _^ from a runtime-sized source");
+        }
+        count = source->count;
+    }
+    bool array = source && (source->kind == T_ARRAY || source->kind == T_GROW ||
+                            source->kind == T_BOUNDED || source->kind == T_SLICE);
+    Type *elem = copy_shape_type(p, s->elem, array ? source->elem : NULL);
+    int kind = s->kind == SPEC_GROW ? T_GROW : s->kind == SPEC_BOUNDED ? T_BOUNDED : T_ARRAY;
+    if (s->kind == SPEC_ARRAY && !count) {
+        kind = T_GROW;
+        count = ARRAY_SIZED;
+    }
+    return type_wrap(p, kind, elem, count);
 }
 
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
@@ -567,10 +603,24 @@ Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
     if (attrs && attrs->kind == SPEC_SLICE) {
         fail(e->loc, "a slice borrows existing storage; use array[start .. end]");
     }
-    Type *t = attrs      ? type_spec(p, attrs)
-              : expected ? expected
-              : first    ? type_wrap(p, T_ARRAY, first, e->args.n)
-                         : NULL;
+    bool copy = e->text && !strcmp(e->text, "copy");
+    if (copy && first) {
+        if (first->kind == T_REF) {
+            first = first->elem;
+        }
+        if (first->kind != T_ARRAY && first->kind != T_GROW && first->kind != T_BOUNDED &&
+            first->kind != T_SLICE) {
+            fail(e->loc, "source... requires an array or slice");
+        }
+    }
+    Type *t =
+        copy && attrs ? copy_shape_type(p, attrs, first)
+        : attrs       ? type_spec(p, attrs)
+        : expected    ? expected
+        : copy && first
+            ? (first->kind == T_SLICE ? type_wrap(p, T_GROW, first->elem, ARRAY_SIZED) : first)
+        : first ? type_wrap(p, T_ARRAY, first, e->args.n)
+                : NULL;
     if (e->repeat_count == -1 && t && t->kind != T_ARRAY) {
         fail(e->loc, "repeat^max^ requires a fixed-length array type");
     }

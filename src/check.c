@@ -1704,6 +1704,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     case E_ARRAY: {
         if (e->text) {
+            if (!strcmp(e->text, "copy")) {
+                Type *source = infer_expr(c, e->args.v[0], NULL);
+                return source ? array_literal_type(c->p, e, expected, source) : expected;
+            }
             Type *type = array_literal_type(c->p, e, expected, NULL);
             for (int j = 0; j < e->args.n; j++) {
                 Type *actual = infer_expr(c, e->args.v[j], array_form_hint(c->p, e, type, j));
@@ -1915,7 +1919,6 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             }
             return infer_view(c, e->a, base);
         }
-        check_index_rank(base, e);
         if (base && (base->kind == T_ARRAY || base->kind == T_BOUNDED || base->kind == T_GROW ||
                      base->kind == T_SLICE)) {
             layout(base, e->loc);
@@ -3263,7 +3266,6 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         if (base && base->kind == T_REF) {
             base = base->elem;
         }
-        check_index_rank(base, e);
         if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
                      base->kind == T_SLICE)) {
             layout(base, e->loc);
@@ -3393,6 +3395,11 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         n->type = want;
         break;
     case E_ARRAY:
+        if (e->text && !strcmp(e->text, "copy")) {
+            BodyNode *source = body_expr(c, e->args.v[0], NULL);
+            n->type = source->type ? array_literal_type(c->p, e, want, source->type) : want;
+            break;
+        }
         n->type = array_literal_type(c->p, e, want, NULL);
         if (e->text) {
             for (int j = 0; j < e->args.n; j++) {

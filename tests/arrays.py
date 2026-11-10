@@ -400,17 +400,44 @@ print^(r?[index(ref^calls),index(ref^calls)]??7,calls)
                               'let^a = i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[' + index + '])\n',
                               'index out of bounds')
     for name, source, diagnostic in (
-            ('too_few', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0])', 'requires 2 indices'),
-            ('too_many', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,1,2])', 'requires 2 indices'),
-            ('nested', 'let^a=i32^[2 [3]]{{1,2,3},{4,5,6}}\nprint^(a[0,1])', 'require a multidimensional array'),
+            ('too_many', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,1,2])', 'indexing requires an array'),
             ('row_shape', 'let^a=i32^[2,3]{{1,2},{3,4,5}}', 'exactly 3 elements'),
             ('zero_dimension', 'var^a:i32^[2,0] = {}', 'array length out of range'),
             ('dynamic_dimension', 'var^n=2\nvar^a:i32^[n,3] = {}', 'constant integer expression'),
             ('max_dimension', 'var^a:i32^[max^2,3] = {}', 'require fixed lengths'),
             ('mixed_range', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,0..2])', 'requires integer indices'),
-            ('wrapped_chain', 'let^a = (i32^[2][3,4])[1]{}', 'consecutive array type brackets'),
-            ('distinct_types', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nlet^b:(i32^[3])[2]=a', "expected '(i32^[3])[2]'")):
+            ('wrapped_chain', 'let^a = (i32^[2][3,4])[1]{}', 'consecutive array type brackets')):
         negative('rectangular_reject_' + name, source + '\n', diagnostic)
+    positive('array_dimension_syntax_is_equivalent', '''
+var^m={{0 repeat^3} repeat^3}
+m[1,1]:=7
+m[2][0]:=9
+var^other:i32^[3,3]=m
+var^nested:i32^[3 [3]]=other
+def^Box<T> {self^{value:T}}
+var^box=Box<i32^[3,3]>{value=m}
+var^alias:Box<i32^[3 [3]]>=box
+let^row=m[1]
+print^(m[1][1],m[2,0],nested[1,1],alias.value[2][0],row[1])
+print^(typeof^(m).signature^)
+''', '7 9 7 9 7\ni32^[3, 3]\n')
+    positive('array_dimension_grow_and_jagged_indexing', '''
+var^a=i32^[grow^,3]{{1,2,3}}
+let^add=p^x:ref^i32^[grow^ [3]] {x.push({4,5,6})}
+add(ref^a)
+var^j=i32^[max^8 [grow^]]{{7},{8,9}}
+j[1,1]:=10
+var^copy={j...}
+copy[0].push(11)
+print^(a[1][2],a[1,2],j[1][1],copy[0,1])
+print^(typeof^(a).signature^,typeof^(j).signature^)
+''', '6 6 10 11\ni32^[grow^, 3] i32^[max^8 [grow^]]\n')
+    positive('array_dimension_read_slice_display_roundtrip', '''
+var^data=i32^[3]{1,2,3}
+var^views:(read^i32^[..])[2]={data[..],data[..]}
+let^same:i32^[2 [read^ ..]]=views
+print^(same[1,2],typeof^(same).signature^)
+''', '3 i32^[2 [read^ ..]]\n')
     positive('rectangular_grow_rows_and_operations', '''
 var^a=i32^[grow^,3]{}
 a.push({1,2,3})
@@ -455,10 +482,8 @@ print^(a[1,1],box.values[0,1],fixed.values[1,1],nested.values[0][1])
             ('inner_flex','var^a=i32^[grow^,flex^]{}','remaining dimensions require fixed lengths'),
             ('outer_flex','var^a=i32^[flex^,3]{}','only grow^'),
             ('row_shape','var^a=i32^[grow^,3]{} a.push({1,2})','exactly 3 elements'),
-            ('too_few','var^a=i32^[grow^,3]{} print^(a[0])','requires 2 indices'),
-            ('too_many','var^a=i32^[grow^,3]{} print^(a[0,1,2])','requires 2 indices'),
+            ('too_many','var^a=i32^[grow^,3]{} print^(a[0,1,2])','indexing requires an array'),
             ('copy','var^a=i32^[grow^,3]{} let^b=a','cannot be copied'),
-            ('distinct_nested','var^a=i32^[grow^,3]{} let^use=p^x:ref^i32^[grow^ [3]]{} use(ref^a)','requires nominal'),
             ('distinct_fixed','var^a=i32^[grow^,3]{} let^use=p^x:ref^i32^[2,3]{} use(ref^a)','requires nominal')):
         negative('rectangular_grow_reject_' + name,source,diagnostic)
     for name,index in (('row','1,0'),('column','0,3'),('negative','-1,0')):
@@ -642,6 +667,109 @@ print^(a.len,a[0],a[1],a[2],empty.len,zero.len,a.bytes.len)
         negative('reject_parenthesized_copy_' + name,
                  'var^src:i32^[2]={1,2} let^copy=' + constructor,
                  'parentheses are reserved for size/capacity')
+    positive('spread_infer_source_array_types', '''
+var^mm=i32^[]{0 repeat^5}
+var^copy={mm...}
+var^fixed={1,2,3}
+var^other={fixed...}
+mm[0]:=9
+fixed[0]:=8
+print^(copy fits^i32^[],other fits^i32^[3],copy[0],other[0],copy.len)
+''', 'true true 0 1 5\n')
+    positive('spread_fixed_rectangular_and_inferred_shapes', '''
+var^m=i32^[3,3]{}
+m[2,0]:=1
+var^a=i32^[3,3]{m...}
+var^b=i32^[_^,_^]{m...}
+var^c={m...}
+m[2,0]:=9
+a[0,0]:=7
+print^(a[2,0],b[2,0],c[2,0],b[0,0],c fits^i32^[3,3])
+var^cube=i32^[2,2,3]{}
+cube[1,1,2]:=6
+var^deep=i32^[_^,2,_^]{cube...}
+print^(deep[1,1,2])
+''', '1 1 1 0 true\n6\n')
+    positive('spread_owned_rows_deep_copy', '''
+var^cm=u8^[3 []]{{1,2},{3},{4,5,6}}
+var^a=u8^[3 []]{cm...}
+var^b=u8^[_^ []]{cm...}
+var^c={cm...}
+cm[0][0]:=9
+a[1][0]:=8
+print^(a[0][0],b[0][0],c[0][0],cm[1][0],b[1].len,c[2].len)
+var^grow=i32^[2 [grow^]]{{1},{2,3}}
+var^copy={grow...}
+grow[0].push(4)
+copy[1].push(5)
+print^(copy[0].len,grow[1].len,copy[1][2])
+''', '1 1 1 3 1 3\n1 2 5\n')
+    positive('spread_bounded_and_nested_owned_rows', '''
+var^a=i32^[max^3 [grow^]]{{1},{2,3}}
+var^b={a...}
+a.clear()
+b[0].push(4)
+var^deep=i32^[2 [2 [grow^]]]{{{1},{2}},{{3},{4}}}
+var^copy={deep...}
+deep[1][0].push(5)
+copy[0][0].push(6)
+print^(a.len,b.len,b[0][1],copy[1][0].len,deep[0][0].len,copy[0][0][1])
+''', '0 2 4 1 1 6\n')
+    positive('spread_runtime_source_to_fixed_array', '''
+var^src=i32^[]{1,2,3}
+var^a=i32^[3]{src...}
+var^b=i32^[max^4]{src...}
+var^c={src[..]...}
+print^(a[2],b.len,c[1],c fits^i32^[])
+''', '3 3 2 true\n')
+    positive('spread_deep_copy_survives_source_scope', '''
+let^make=p^ -> i32^[2 [grow^]] {
+ var^src=i32^[2 [grow^]]{{1,2},{3}}
+ return^{src...}
+}
+var^a=make()
+let^copy=p^src:ref^read^i32^[2 [grow^]] -> i32^[2 [grow^]] {return^{src...}}
+var^b=copy(ref^a)
+a[0].push(4)
+b[1].push(5)
+print^(a[0][2],b[0].len,a[1].len,b[1][1])
+''', '4 2 1 5\n')
+    positive('spread_source_evaluated_once_and_element_borrows', '''
+let^choose=p^n:ref^i32^, a:ref^i32^[3] -> ref^i32^[3] {*n+=1 return^a}
+var^calls:i32^=0
+var^a=i32^[3]{1,2,3}
+var^b={choose(ref^calls,ref^a)...}
+var^n:i32^=7
+var^refs=i32^[ref^2]{ref^n,ref^n}
+var^copy={refs...}
+n:=9
+print^(calls,b[2],*copy[0],*copy[1])
+''', '1 3 9 9\n')
+    positive('spread_convert_fixed_row_shape', '''
+var^a=i32^[2,2,2]{{{1,2},{3,4}},{{5,6},{7,8}}}
+var^b=i32^[grow^ [2 [2]]]{a...}
+var^c=i32^[max^3 [2 [2]]]{a...}
+print^(b.len,b[1][1][1],c.len,c[0][1][0])
+''', '2 8 2 3\n')
+    positive('spread_template_infers_each_source_shape', '''
+let^copy=template^p^source {return^i32^[_^,_^]{source...}}
+var^a=i32^[2,3]{}
+var^b=i32^[3,2]{}
+a[1,2]:=7
+b[2,1]:=9
+var^x=copy(ref^a)
+var^y=copy(ref^b)
+print^(x.len,x[1,2],y.len,y[2,1])
+''', '2 7 3 9\n')
+    for name,source,error in (
+            ('fixed_length','var^a=i32^[2]{{1,2,3}...}','exactly 2 elements'),
+            ('runtime_shape','var^a=i32^[]{1,2} var^b=i32^[_^]{a...}','runtime-sized source'),
+            ('scalar','var^a={42...}','requires an array or slice'),
+            ('borrow_escape','let^bad=p^ -> i32^[ref^2] {var^n:i32^=1 var^a=i32^[ref^2]{ref^n,ref^n} return^{a...}} let^b=bad()','cannot return'),
+            ('disposable','import^std.sys def^D:std.sys.Disposable {dispose=p^self^{}} var^a=D[2]{} var^b={a...}','Disposable')):
+        negative('spread_reject_' + name,source,error)
+    suite.runtime_failure('spread_runtime_fixed_length_mismatch',
+        'var^a=i32^[]{1,2} var^b=i32^[3]{a...}', 'assertion failed')
     positive('sized_copy_sources', '''
 var^fixed:i32^[3]={1,2,3}
 var^grow:i32^[grow^]={4,5}
@@ -694,7 +822,6 @@ g.push(5) e.push(6) m.push(1) k.push(2)
 print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
 ''', '7 4 2 7 2 4 1 2\n')
     for name,source,error in [
-        ('untyped_copy','let^b:i32^[]={1}\nlet^a={b...}', 'array construction needs a type'),
         ('fixed_count','let^a:i32^[3]={0 repeat^ 2}', 'built by repeat^ with the constant count 3'),
         ('capped','var^a:i32^[max^]={1 repeat^ 2}', 'repeat^ builds T[N], T[] and T[grow^]'),
         ('variable_length','var^n:i64^=2\nlet^a:i32^[n]={}', 'constant integer expression'),
@@ -702,7 +829,7 @@ print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
         ('capacity_owner','let^a:i32^[]={max^ 3}', 'builds a T[max^]'),
         ('pair','let^a=i32^[](3,0)', 'parentheses are reserved for size/capacity'),
         ('mixed','let^a:i32^[]={1, 2 repeat^ 3}', "expected '}'"),
-        ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'array or slice'),
+        ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'cannot copy'),
     ]:
         negative('form_'+name,source,error)
     positive('repeat_max_nested_fixed', '''
@@ -820,7 +947,7 @@ print^(copies.len,copies[1].n)
              'reference')
     negative('sized_forbid_owned_elements','let^a=(i32^[grow^])[]{}',
              'nonempty fixed-size')
-    negative('sized_wrong_element','let^a=i32^[]{({"x"})...}', 'array or slice')
+    negative('sized_wrong_element','let^a=i32^[]{({"x"})...}', 'cannot copy')
     negative('sized_wrong_source','let^a=i32^[]{42...}', 'array or slice')
     negative('sized_wrong_count','let^n:i32^=2 let^a=i32^[]{1 repeat^ n}', 'array length must be i64^')
     negative('sized_wrong_initial','let^a=i32^[]{"x" repeat^ 2}', "initial value must be 'i32^'")
