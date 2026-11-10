@@ -156,7 +156,7 @@ struct Expr {
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
     bool top_binding;    // ref^ of a top-level let^ for its hidden parameter: read only.
-    int repeat_count;    // {v repeat^ n}: n when a constant expression of 1..1000000, else 0.
+    int repeat_count;    // repeat^: -1 for contextual max^, 1..1000000 for constants, else 0.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec;     // The type operand of fits^, or the type of a T[max^](capacity)
                          // construction; never evaluated as a value.
@@ -427,6 +427,9 @@ Type *type_spec(Program *p, Spec *s);
 Type *state_field_type(Program *p, Field *field);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
+// Whether an inline array owns independently stored rows; its element layout must be known.
+bool owning_rows(Type *t);
+
 // A literal's array type: its written T[...]{...} type, else the context or
 // a fixed array of its first element's type.
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first);

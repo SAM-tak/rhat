@@ -66,6 +66,110 @@ repeat^1000 {
 d.push({7})
 print^(d[0][0])
 ''', '7\n', extra=['--runtime',row_runtime])
+    positive('fixed_jagged_rows_and_views', '''
+var^d = i32^[3 [grow^]]{{1},{},{7,8}}
+d[0].push(2)
+d[1].push(5)
+var^at:i32^=2
+let^row=d[at]
+row.push(9)
+var^sum:i32^=0
+for^r in^d {for^n in^r {sum+=n}}
+do^{var^view=d[1 ..] view[0].push(6)}
+print^(d.len,d[0][1],d[1].len,row[2],sum)
+''', '3 2 2 9 32\n')
+    positive('fixed_jagged_empty_rows_and_parenthesized', '''
+var^d=(i32^[grow^])[2]{{},{}}
+d[0].push(4)
+d[1].push(5)
+print^(d.len,d[0][0],d[1][0])
+''', '2 4 5\n')
+    positive('fixed_jagged_returns_and_nested_owners', '''
+let^make=f^ -> i32^[2 [grow^]] {return^i32^[2 [grow^]]{{10},{20}}}
+let^add=p^a:ref^i32^[2 [grow^]] {a[1].push(21)}
+var^d=make()
+add(ref^d)
+var^deep=i32^[2 [2 [grow^]]]{{{1},{2}},{{3},{4}}}
+deep[1][0].push(30)
+var^mixed=i32^[max^2 [2 [grow^]]]{}
+mixed.push({{5},{6}})
+mixed[0][1].push(60)
+var^reverse=i32^[2 [max^2 [grow^]]]{{{7}},{{8}}}
+reverse[1].push({9})
+print^(d[1][1],deep[1][0][1],mixed[0][1][1],reverse[1][1][0])
+''', '21 30 60 9\n')
+    positive('fixed_jagged_struct_owned_tail', '''
+def^Row {self^{id:i32^, values:i32^[grow^]}}
+struct^Table {rows:Row[2]}
+var^t=Table{rows={{id=1,values={2}},{id=3,values={4}}}}
+t.rows[1].values.push(5)
+print^(t.rows[0].id,t.rows[1].values[1])
+''', '1 5\n')
+    positive('fixed_jagged_dispose_partial_construction', '''
+import^std.sys
+errordef^E {Bad}
+def^D:std.sys.Disposable {
+ self^{n:i32^}
+ dispose=p^self^{print^(self^.n)}
+}
+let^fail=f^ -> i32^|E.Bad {E.Bad{}}
+do^{
+ var^d=D[2 [grow^]]{{D{n=1},D{n=2}},{D{n=3},D{n=try^fail()}}}
+catch^: print^(99)
+}
+do^{var^d=D[2 [grow^]]{{D{n=4}},{D{n=5}}}}
+''', '3\n2\n1\n99\n5\n4\n')
+    positive('fixed_jagged_error_return_checkpoint', '''
+errordef^E {Bad}
+let^fail=f^ -> i32^|E.Bad {E.Bad{}}
+let^make=p^ -> i32^[2 [grow^]] {
+ return^i32^[2 [grow^]]{{1,2},{3,try^fail()}}
+catch^:
+ return^i32^[2 [grow^]]{{7},{}}
+}
+repeat^1000 {
+ do^{var^d=i32^[2 [grow^]]{{1},{2,try^fail()}} catch^: assert^(1=1)}
+}
+var^d=make()
+print^(d[0][0])
+''', '7\n', extra=['--runtime',row_runtime])
+    for name, text, error in (
+            ('empty', 'var^d=i32^[2[grow^]]{}', 'exactly 2 elements'),
+            ('missing', 'var^d=i32^[2[grow^]]{{1}}', 'exactly 2 elements'),
+            ('extra', 'var^d=i32^[2[grow^]]{{},{},{}}', 'exactly 2 elements'),
+            ('copy', 'var^d=i32^[2[grow^]]{{},{}} let^copy=d', 'cannot be copied'),
+            ('row_copy', 'var^r=i32^[grow^]{} var^d=i32^[1[grow^]]{r}', 'cannot be copied'),
+            ('readonly', 'let^d=i32^[1[grow^]]{{}} d[0].push(1)', 'cannot modify'),
+            ('row_escape', 'let^bad=p^ -> ref^i32^[grow^] {var^d=i32^[1[grow^]]{{}} return^d[0]} let^r=bad()', 'cannot return'),
+            ('thread_transfer', 'let^c=import^std.channel var^q=try^c.Channel<i32^[2[grow^]]>.new(1,1024)', 'thread transfer of owning row arrays'),
+            ('repeat_copy', 'var^d=i32^[2[grow^]]{{} repeat^2}', 'repeat^ cannot copy owned elements'),
+            ('stack_overflow', 'var^d:i32^[1000000 [1000000 [grow^]]]={}', 'data stack count overflows')):
+        negative('fixed_jagged_reject_' + name,text,error)
+    positive('fixed_jagged_callee_shrink_without_borrow', '''
+let^clear=p^a:ref^i32^[2[flex^]] {a[0].clear()}
+var^d=i32^[2[flex^]]{{1},{2}}
+clear(ref^d)
+d[0].push(9)
+print^(d[0][0],d[1][0])
+''', '9 2\n')
+    negative('fixed_jagged_reject_callee_flex_shrink', '''
+let^clear=p^a:ref^i32^[2[flex^]] {a[0].clear()}
+var^d=i32^[2[flex^]]{{1},{2}}
+let^r=ref^d[0][0]
+clear(ref^d)
+print^(*r)
+''', 'cannot shrink')
+    negative('fixed_jagged_reject_callee_owned_row_shrink', '''
+let^clear=p^a:ref^i32^[2[max^2[grow^]]] {a[0].clear()}
+var^d=i32^[2[max^2[grow^]]]{{{1}},{}}
+let^r=d[0][0]
+clear(ref^d)
+print^(r.len)
+''', 'cannot shrink')
+    for method,args in [('push','{}'),('pop',''),('clear',''),('truncate','0')]:
+        negative('fixed_jagged_reject_' + method,
+                 'var^d=i32^[2[grow^]]{{},{}} d.' + method + '(' + args + ')',
+                 'method call requires a structure')
     positive('jagged_nested_owners_and_struct_rows', '''
 def^Row {self^{id:i32^, values:i32^[grow^]}}
 var^rows = Row[max^2]{{id=7,values={1,2}}}
@@ -494,6 +598,34 @@ print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
         ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'array or slice'),
     ]:
         negative('form_'+name,source,error)
+    positive('repeat_max_nested_fixed', '''
+var^a=u8^[2 [3]]{{0 repeat^max^} repeat^max^}
+var^b:u8^[2 [3]]={{4 repeat^max^} repeat^max^}
+var^c=u8^[2,3]{{5 repeat^max^} repeat^max^}
+var^d=u8^[2 [3 [4]]]{{{6 repeat^max^} repeat^max^} repeat^max^}
+a[0][1]:=9
+print^(a.len,a[0].len,a[0][1],a[1][1],b[1][2],c[1,2],d[1][2][3])
+''', '2 3 9 0 4 5 6\n')
+    positive('repeat_max_context_and_single_evaluation', '''
+let^value=p^calls:ref^i64^ ->u8^ {*calls+=1 return^u8^(7)}
+let^make=f^ ->u8^[2 [3]] {return^{{8 repeat^max^} repeat^max^}}
+def^Grid {self^{cells:u8^[2 [3]]={{3 repeat^max^} repeat^max^}}}
+var^calls:i64^=0
+var^a=u8^[2 [3]]{{value(ref^calls) repeat^max^} repeat^max^}
+let^b=make()
+let^g=Grid{}
+print^(calls,a[1][2],b[0][2],g.cells[1][2])
+''', '1 7 8 3\n')
+    for name,source in (
+            ('untyped', 'var^a={0 repeat^max^}'),
+            ('grow', 'var^a=u8^[grow^]{0 repeat^max^}'),
+            ('sized', 'var^a=u8^[]{0 repeat^max^}'),
+            ('bounded', 'var^a=u8^[max^8]{0 repeat^max^}'),
+            ('capped', 'var^a=u8^[max^]{0 repeat^max^}'),
+            ('nested_grow', 'var^a=u8^[2[grow^]]{{0 repeat^max^},{}}')):
+        negative('repeat_max_reject_' + name,source,'requires a fixed-length array type')
+    negative('repeat_max_inner_count_mismatch',
+             'var^a=u8^[2[3]]{{0 repeat^2} repeat^max^}', 'constant count 3')
     positive('constant_lengths', '''
 let^W:i64^=8
 let^H:i64^=W / 2

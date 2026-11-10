@@ -1792,7 +1792,12 @@ static void array_entries(Parser *p, Expr *e)
         add(&e->args, expr(p, 0));
         if (take(p, "repeat^")) {
             e->text = "repeat";
-            add(&e->args, expr(p, 0));
+            if (take(p, "max^")) {
+                e->repeat_count = -1;
+            }
+            else {
+                add(&e->args, expr(p, 0));
+            }
         }
         else if (take(p, "...")) {
             e->text = "copy";

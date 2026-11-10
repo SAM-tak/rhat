@@ -46,7 +46,11 @@ char *llvm_type(Type *t)
     case T_CFUNC:
         return "ptr";
     case T_ARRAY:
-        return fmt("[%d x %s]", t->count, llvm_type(t->elem));
+        if (!owning_rows(t)) {
+            return fmt("[%d x %s]", t->count, llvm_type(t->elem));
+        }
+        // Fixed row owners share the bounded representation for partial construction.
+        return fmt("{ i64, [%d x %s], ptr, [%d x ptr] }", t->count, llvm_type(t->elem), t->regions);
     case T_GROW:
         return "{ ptr, i64, ptr }";
     case T_BOUNDED:
@@ -284,7 +288,13 @@ static void range_guard(Output *o, Instr *i)
         if (arr->indirect) {
             place = fmt("%%t%d", load(o, arr->slot));
         }
-        if (arr->type->kind != T_ARRAY) {
+        if (owning_rows(arr->type)) {
+            int data = ++o->tmp;
+            fprintf(o->f, "  %%t%d = getelementptr %s, ptr %s, i32 0, i32 1\n", data,
+                    llvm_type(arr->type), place);
+            place = fmt("%%t%d", data);
+        }
+        else if (arr->type->kind != T_ARRAY) {
             int data = ++o->tmp;
             fprintf(o->f, "  %%t%d = load ptr, ptr %s\n", data, place);
             place = fmt("%%t%d", data);
@@ -782,7 +792,7 @@ static void instruction(Output *o, Instr *i)
                 i->a, i->label);
         break;
     case I_INDEX:
-        if (t->kind == T_BOUNDED && t->elem->owned) {
+        if (owning_rows(t)) {
             int groupaddr = bounded_field(o, t, i->a, 2), group = ++o->tmp, offset = ++o->tmp;
             char *index = i->b < 0 ? fmt("%d", i->label) : fmt("%%t%d", load(o, i->b));
             if (i->b >= 0 && numeric_bits(slot_type(o, i->b)->kind) != 64) {
@@ -802,7 +812,8 @@ static void instruction(Output *o, Instr *i)
         }
         if (i->b < 0) {
             fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, %si64 %d\n", i->dst,
-                    llvm_type(t), i->a, t->kind == T_BOUNDED ? "i32 1, " : "", i->label);
+                    llvm_type(t), i->a, t->kind == T_BOUNDED || owning_rows(t) ? "i32 1, " : "",
+                    i->label);
             break;
         }
         {
@@ -861,7 +872,8 @@ static void instruction(Output *o, Instr *i)
             }
             else if (t->kind == T_ARRAY || t->kind == T_BOUNDED) {
                 fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, %si64 %%t%d\n", i->dst,
-                        llvm_type(t), i->a, t->kind == T_BOUNDED ? "i32 1, " : "", a);
+                        llvm_type(t), i->a, t->kind == T_BOUNDED || owning_rows(t) ? "i32 1, " : "",
+                        a);
             }
             else {
                 b = ++o->tmp;
@@ -980,7 +992,7 @@ static void instruction(Output *o, Instr *i)
         break;
     case I_REGION: {
         char *stack = stack_for(o, i->dst);
-        if (t->kind == T_BOUNDED) {
+        if (owning_rows(t)) {
             fprintf(f, "  store i64 0, ptr %%p%d\n", i->dst);
             int group = bounded_field(o, t, i->dst, 2);
             int marks = bounded_field(o, t, i->dst, 3);
@@ -1292,7 +1304,7 @@ static void instruction(Output *o, Instr *i)
     case I_SLICE: {
         char *data, *length;
         if (t->kind == T_ARRAY) {
-            data = fmt("%%p%d", i->a);
+            data = owning_rows(t) ? fmt("%%t%d", bounded_field(o, t, i->a, 1)) : fmt("%%p%d", i->a);
             length = fmt("%d", t->count);
         }
         else if (t->kind == T_BOUNDED) {
@@ -1356,10 +1368,10 @@ static void instruction(Output *o, Instr *i)
         break;
     }
     case I_LENGTH:
-        if (t->kind == T_ARRAY) {
+        if (t->kind == T_ARRAY && !owning_rows(t)) {
             save(o, i->dst, slot_type(o, i->dst), fmt("%d", t->count));
         }
-        else if (t->kind == T_BOUNDED) {
+        else if (t->kind == T_BOUNDED || owning_rows(t)) {
             save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", bounded_length(o, t, i->a)));
         }
         else {

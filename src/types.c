@@ -548,6 +548,11 @@ char *type_name(Type *t)
                type_name(elem), refs, *refs && *kind ? " " : "", kind);
 }
 
+bool owning_rows(Type *t)
+{
+    return (t->kind == T_ARRAY || t->kind == T_BOUNDED) && t->elem->owned;
+}
+
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
 {
     if (argument_pack(first)) {
@@ -561,6 +566,9 @@ Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
               : expected ? expected
               : first    ? type_wrap(p, T_ARRAY, first, e->args.n)
                          : NULL;
+    if (e->repeat_count == -1 && t && t->kind != T_ARRAY) {
+        fail(e->loc, "repeat^max^ requires a fixed-length array type");
+    }
     // Inference also visits literals before their uses; reject invalid storage here.
     if (t) {
         layout(t, e->loc);
@@ -1205,7 +1213,7 @@ static void layout_unchecked(Type *t, Loc l)
     }
     else if (t->kind == T_ARRAY || t->kind == T_BOUNDED) {
         layout(t->elem, l);
-        if ((t->elem->owned && t->kind != T_BOUNDED) || !t->elem->size) {
+        if (!t->elem->size) {
             fail(l, "array elements must be nonempty fixed-size values");
         }
         if (t->elem->size > (SIZE_MAX - 16) / (size_t)t->count) {
@@ -1213,8 +1221,8 @@ static void layout_unchecked(Type *t, Loc l)
         }
         size = t->elem->size * (size_t)t->count;
         align = t->elem->align;
-        if (t->kind == T_BOUNDED) {
-            // The i64 length comes first; the elements follow at their alignment.
+        if (t->kind == T_BOUNDED || t->elem->owned) {
+            // Owned fixed arrays also track their initialized prefix for unwinding.
             align = align > 8 ? align : 8;
             size += align;
         }

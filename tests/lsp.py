@@ -1202,6 +1202,27 @@ print^(row.len,rows[1][0])
     assert 'parentheses are reserved for size/capacity' in diagnostics[0]['message'], diagnostics
     client.change(jagged_path,jagged_text,7)
     assert client.diagnostics(jagged_path,7) == []
+    fixed_jagged_text = jagged_text.replace('max^8','2')
+    client.change(jagged_path,fixed_jagged_text,8)
+    assert client.diagnostics(jagged_path,8) == []
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=jagged_path.as_uri()),
+        position=at(fixed_jagged_text,'row=')))
+    assert 'ref^' in hover['contents']['value'] and 'i32^[grow^]' in hover['contents']['value'], hover
+    broken = fixed_jagged_text.replace('{{1},{2,3}}','{{1}}')
+    client.change(jagged_path,broken,9)
+    assert any('exactly 2 elements' in d['message'] for d in client.diagnostics(jagged_path,9))
+    client.change(jagged_path,fixed_jagged_text,10)
+    assert client.diagnostics(jagged_path,10) == []
+    repeat_max_text = 'var^grid=u8^[2[3]]{{0 repeat^max^} repeat^max^}\nprint^(grid[1][2])\n'
+    client.change(jagged_path,repeat_max_text,11)
+    assert client.diagnostics(jagged_path,11) == []
+    bad_repeat_max = repeat_max_text.replace('u8^[2[3]]{{0 repeat^max^} repeat^max^}',
+                                            'u8^[grow^]{0 repeat^max^}')
+    client.change(jagged_path,bad_repeat_max,12)
+    assert any('requires a fixed-length array type' in d['message']
+               for d in client.diagnostics(jagged_path,12))
+    client.change(jagged_path,repeat_max_text,13)
+    assert client.diagnostics(jagged_path,13) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=jagged_path.as_uri())))
     print('PASS owned jagged row hover, borrow diagnostics and edit recovery',flush=True)
 

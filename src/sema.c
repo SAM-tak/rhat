@@ -1350,7 +1350,7 @@ void dispose_elements(Context *c, Value array, Value from, Loc l)
     }
     Type *integer = type_builtin(c->p, T_I64);
     Value at = value(c, integer);
-    if (array.type->kind == T_ARRAY) {
+    if (array.type->kind == T_ARRAY && !owning_rows(array.type)) {
         Instr *i = emit(c, I_CONST, l);
         i->dst = at.id;
         i->type = integer;
@@ -1743,7 +1743,7 @@ bool may_reference(Type *t, Type *elem)
 }
 
 // The element type of the flex^ storage an argument of type t leads a
-// callee to (the array itself or a struct's flex^ tail), or NULL.
+// callee to (including owned rows or a struct's flex^ tail), or NULL.
 static Type *flex_elements(Type *t)
 {
     if (t->kind == T_REF) {
@@ -1754,6 +1754,9 @@ static Type *flex_elements(Type *t)
     }
     if (t->kind == T_BOUNDED && t->elem->owned) {
         return t->elem;
+    }
+    if (t->kind == T_ARRAY && owning_rows(t)) {
+        return flex_elements(t->elem);
     }
     if (t->kind == T_STRUCT) {
         for (int j = 0; j < t->def->fields.n; j++) {
@@ -2875,6 +2878,9 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
         fail(e->loc, "array construction needs a type; write T[...]{...} or annotate the binding");
     }
     bool fixed = repeat && t->kind == T_ARRAY;
+    if (e->repeat_count == -1 && !fixed) {
+        fail(e->loc, "repeat^max^ requires a fixed-length array type");
+    }
     if (!fixed && (t->kind != T_GROW || reserve != (t->count == ARRAY_CAPPED))) {
         fail(e->loc,
              reserve ? "{max^ capacity} builds a T[max^], not '%s'"
@@ -2882,7 +2888,7 @@ static Value sized_array(Context *c, Expr *e, Type *t, int dst)
                        "'%s'",
              type_name(t));
     }
-    if (fixed && (e->repeat_count != t->count || t->elem->owned)) {
+    if (fixed && ((e->repeat_count != -1 && e->repeat_count != t->count) || t->elem->owned)) {
         fail(e->loc,
              t->elem->owned ? "repeat^ cannot copy owned elements into '%s'"
                             : "'%s' is built by repeat^ with the constant count %d",
@@ -2966,6 +2972,9 @@ Type *repeat_type(Program *p, Expr *e, Type *elem)
 {
     if (!elem || strcmp(e->text, "repeat")) {
         return NULL;
+    }
+    if (e->repeat_count == -1) {
+        fail(e->loc, "repeat^max^ requires a fixed-length array type");
     }
     return e->repeat_count && !elem->owned ? type_wrap(p, T_ARRAY, elem, e->repeat_count)
                                            : type_wrap(p, T_GROW, elem, ARRAY_SIZED);
@@ -3464,7 +3473,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->dst = out.id;
             a->type = t;
         }
-        if (t->kind == T_BOUNDED && t->owned) {
+        if (owning_rows(t)) {
             Instr *region = emit(c, I_REGION, e->loc);
             region->dst = out.id;
             region->type = t;
@@ -3478,12 +3487,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         }
         int inflight = c->inflight.n, pending = c->pending_disposals.n;
         add(&c->inflight, &out);
-        if (t->kind == T_GROW || t->kind == T_BOUNDED) {
-            // Its length covers what has been pushed so far.
+        if (t->kind == T_GROW || t->kind == T_BOUNDED || owning_rows(t)) {
+            // Its length covers what has been constructed so far.
             dispose_pending(c, out);
         }
         for (int j = 0; j < e->args.n; j++) {
-            if (t->kind == T_BOUNDED && t->owned) {
+            if (owning_rows(t)) {
                 Value row = push_owned_row(c, out, e->args.v[j], e->loc);
                 if (c->terminated) {
                     c->inflight.n = inflight;

@@ -164,6 +164,8 @@ def main():
            'let^f = f^a, b {\n    for^a:\n    when^1:\n        for^b:\n'
            '        when^2:\n            20\n        other^:\n            0;\n'
            '    other^:\n        1;\n}\n')
+    expect('repeat_max_nested_array', 'var^c=u8^[2[3]]{{0 repeat^max^} repeat^max^}\n',
+           'var^c = u8^[2 [3]]{{0 repeat^max^} repeat^max^}\n')
     expect('loop_sections', 'repeat^while^true^{\nmain^:\nprint^(1)\nlast^:\nprint^(2)\n}\nprint^(3)\n',
            'repeat^while^true^{\nmain^:\n    print^(1)\nlast^:\n    print^(2)\n}\nprint^(3)\n')
     expect('catch_expression_before_do', 'print^(read(-1) catch^42)\ndo^{\nprint^(1)\n}\nprint^(2)\n',

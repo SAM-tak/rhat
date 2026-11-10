@@ -88,7 +88,7 @@ static bool channel_type(Type *t)
 static void transferable(Program *p, Type *t, bool arguments, Loc loc)
 {
     layout(t, loc);
-    if (t->kind == T_BOUNDED && t->owned) {
+    if (owning_rows(t)) {
         fail(loc, "thread transfer of owning row arrays is not supported");
     }
     if (channel_type(t)) {

@@ -39,7 +39,7 @@ static void local_plan(Instance *in)
             labels[i->label] = k;
         }
         if (i->op == I_FIELD || i->op == I_CASE_AT || i->op == I_ROW_SLOT ||
-            (i->op == I_INDEX && i->type->kind == T_BOUNDED && i->type->elem->owned)) {
+            (i->op == I_INDEX && owning_rows(i->type))) {
             Slot *dst = in->slots.v[i->dst], *src = in->slots.v[i->a];
             dst->owner = src->owner;
             dst->nested_stack =
