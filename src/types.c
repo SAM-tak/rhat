@@ -361,6 +361,10 @@ static Type *resolve_spec_type(Program *p, Spec *s)
         Type *t = callable_signature(p, &params, type_spec(p, s->elem), s->procedure, NULL);
         return s->foreign ? type_wrap(p, T_CFUNC, t, 0) : t;
     }
+    if (s->kind == SPEC_ARRAY && s->count < 0) {
+        fail(s->length->loc,
+             "cannot infer array length _^; provide elements or a constant repeat^ count");
+    }
     if (s->length && !s->count) {
         fail(s->loc, "array length was not resolved");
     }

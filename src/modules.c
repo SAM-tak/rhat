@@ -499,6 +499,68 @@ static bool constant_integer(Module *m, List *locals, Expr *e, int depth, long l
     return c && constant_integer(m, NULL, c->binding->a, depth + 1, out);
 }
 
+// The placeholder is a size marker, not the ordinary identifier _.
+static bool inferred_length(Spec *s)
+{
+    return s && s->length && s->length->kind == E_NAME && !strcmp(s->length->text, "_^");
+}
+
+static bool inferred_shape(Spec *s)
+{
+    return s && (inferred_length(s) || inferred_shape(s->elem));
+}
+
+// Each row constrains the same element type, so inferred dimensions must agree.
+static void gather_shape(Module *m, List *names, Spec *s, Expr *e)
+{
+    if (!s || !e || (s->kind != SPEC_ARRAY && s->kind != SPEC_GROW && s->kind != SPEC_BOUNDED) ||
+        (e->kind != E_ARRAY && (e->kind != E_RECORD || e->text || e->type_expr || e->tuple))) {
+        return;
+    }
+    long long count = e->args.n;
+    bool repeat = e->text && !strcmp(e->text, "repeat");
+    if (e->text && !repeat) {
+        return;
+    }
+    if (repeat && (e->repeat_count == -1 || e->args.n != 2 ||
+                   !constant_integer(m, names, e->args.v[1], 0, &count))) {
+        count = -1;
+    }
+    if (inferred_length(s) && count != -1) {
+        if (count <= 0 || count > 1000000) {
+            fail(s->length->loc, "inferred array length out of range (1..1000000)");
+        }
+        if (s->count > 0 && s->count != count) {
+            fail(e->loc, "inconsistent inferred array length: expected %d elements, found %lld",
+                 s->count, count);
+        }
+        s->count = (int)count;
+    }
+    for (int j = 0; j < (repeat ? 1 : e->args.n); j++) {
+        gather_shape(m, names, s->elem, e->args.v[j]);
+    }
+}
+
+static void require_shape(Spec *s)
+{
+    if (!s) {
+        return;
+    }
+    if (inferred_length(s) && s->count < 1) {
+        fail(s->length->loc,
+             "cannot infer array length _^; provide elements or a constant repeat^ count");
+    }
+    require_shape(s->elem);
+}
+
+static void infer_shape(Module *m, List *names, Spec *s, Expr *e)
+{
+    if (inferred_shape(s)) {
+        gather_shape(m, names, s, e);
+        require_shape(s);
+    }
+}
+
 static void resolve_spec_unchecked(Module *m, Spec *s)
 {
     if (!s || s->resolved) {
@@ -508,7 +570,13 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
     if (s->kind == SPEC_TYPEOF) {
         return; // The operand is resolved with the enclosing expression's locals.
     }
-    if (s->length) {
+    if (inferred_length(s)) {
+        if (s->kind != SPEC_ARRAY) {
+            fail(s->length->loc, "_^ is only allowed for fixed array lengths");
+        }
+        s->count = -1;
+    }
+    else if (s->length) {
         long long n = 0;
         if (!constant_integer(m, NULL, s->length, 0, &n)) {
             fail(s->length->loc, "array length must be a constant integer expression");
@@ -1360,6 +1428,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
     }
     resolve_local_spec(p, m, names, e->test_spec);
     resolve_local_spec(p, m, names, e->array_literal);
+    infer_shape(m, names, e->array_literal, e);
     if (e->kind == E_FUNCTION) {
         CaptureScope scope = {.function = top_user ? top_user : p->entry, .names = *names};
         add(&capture_scopes, &scope);
@@ -1528,6 +1597,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             for (int k = 0; k < s->body.n; k++) {
                 Stmt *b = s->body.v[k];
                 resolve_local_spec(p, m, names, b->spec);
+                infer_shape(m, names, b->spec, b->a);
                 resolve_expr(p, m, names, b->a);
             }
             for (int k = 0; k < s->body.n; k++) {
@@ -1543,6 +1613,7 @@ static void resolve_body(Program *p, Module *m, List *names, List *body)
             continue;
         }
         resolve_local_spec(p, m, names, s->spec);
+        infer_shape(m, names, s->spec, s->a);
         if (s->kind == S_ASSIGN && s->targets.n) {
             for (int k = 0; k < s->targets.n; k++) {
                 resolve_expr(p, m, names, s->targets.v[k]);
@@ -1907,6 +1978,7 @@ static void resolve_definition(Program *p, Def *d)
         f->index = p->state_fields.n;
         add(&p->state_fields, f);
         resolve_spec(m, f->spec);
+        infer_shape(m, &names, f->spec, f->init);
         Function *scope = mem(sizeof(*scope));
         *scope = (Function){.owner = d, .module = m, .name = "<static-initializer>"};
         Function *outer = top_user;
@@ -1929,6 +2001,7 @@ static void resolve_definition(Program *p, Def *d)
     for (int j = 0; j < d->own_fields.n; j++) {
         Field *f = d->own_fields.v[j];
         resolve_spec(m, f->spec);
+        infer_shape(m, &names, f->spec, f->init);
         // Recorded top-level calls keep their caller beyond this loop.
         Function *scope = mem(sizeof(*scope));
         *scope = (Function){.owner = d, .name = "<field-default>", .loc = f->loc};

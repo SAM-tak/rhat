@@ -36,6 +36,9 @@ def main():
     expect('nested_array_kinds',
            'let^f=p^a:T[ max^64[grow^] ],b:T[4 [3 [2]]],c:T[grow^[3]] {}\n',
            'let^f = p^a:T[max^64 [grow^]], b:T[4 [3 [2]]], c:T[grow^ [3]] {}\n')
+    expect('inferred_array_lengths',
+           'var^a=i32^[_^]{0 repeat^5}\nvar^b=i32^[_^ ,_^]{{0 repeat^3} repeat^3}\n',
+           'var^a = i32^[_^]{0 repeat^5}\nvar^b = i32^[_^, _^]{{0 repeat^3} repeat^3}\n')
     expect('rectangular_arrays',
            'var^a:i32^[2 ,3]={{1,2,3},{4,5,6}}\na[ 1 ,2 ]+=7\n',
            'var^a:i32^[2, 3] = {{1, 2, 3}, {4, 5, 6}}\na[1, 2] += 7\n')

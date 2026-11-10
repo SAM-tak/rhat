@@ -1223,6 +1223,21 @@ print^(row.len,rows[1][0])
                for d in client.diagnostics(jagged_path,12))
     client.change(jagged_path,repeat_max_text,13)
     assert client.diagnostics(jagged_path,13) == []
+    inferred_text = ('var^a=i32^[_^]{0 repeat^5}\n'
+                     'var^b=i32^[_^,_^]{{0 repeat^3} repeat^3}\n'
+                     'var^c:i32^[2,_^]={{1,2,3},{4,5,6}}\n')
+    client.change(jagged_path,inferred_text,14)
+    assert client.diagnostics(jagged_path,14) == []
+    for needle,detail in [('a=', 'i32^[5]'),('b=', 'i32^[3, 3]'),('c:', 'i32^[2, 3]')]:
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=jagged_path.as_uri()),
+            position=at(inferred_text,needle)))
+        assert detail in hover['contents']['value'], hover
+    broken = inferred_text.replace('0 repeat^5','0 repeat^max^')
+    client.change(jagged_path,broken,15)
+    diagnostics = client.diagnostics(jagged_path,15)
+    assert len(diagnostics) == 1 and 'cannot infer array length _^' in diagnostics[0]['message'], diagnostics
+    client.change(jagged_path,inferred_text,16)
+    assert client.diagnostics(jagged_path,16) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=jagged_path.as_uri())))
     print('PASS owned jagged row hover, borrow diagnostics and edit recovery',flush=True)
 

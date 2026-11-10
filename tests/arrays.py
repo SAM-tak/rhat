@@ -626,6 +626,47 @@ print^(calls,a[1][2],b[0][2],g.cells[1][2])
         negative('repeat_max_reject_' + name,source,'requires a fixed-length array type')
     negative('repeat_max_inner_count_mismatch',
              'var^a=u8^[2[3]]{{0 repeat^2} repeat^max^}', 'constant count 3')
+    positive('inferred_lengths_fixed_and_rectangular', '''
+var^a=i32^[_^]{0 repeat^5}
+var^b=i32^[_^,_^]{{0 repeat^3} repeat^3}
+var^c=i32^[2,_^]{{1,2,3},{4,5,6}}
+var^d=i32^[_^,3]{{7 repeat^max^} repeat^2}
+var^e:i32^[_^,_^]={{8,9},{10,11}}
+a[4]:=12 b[2,2]:=13
+print^(a.len,a[4],b.len,b[2,2],c[1,2],d[1,2],e[1,1])
+''', '5 12 3 13 6 7 11\n')
+    positive('inferred_lengths_nested_and_owned', '''
+var^a=u8^[_^ [_^]]{{1,2},{3,4}}
+var^b=i32^[_^ [grow^]]{{1},{2,3}}
+b[0].push(4)
+var^c=i32^[grow^ [_^]]{{5,6},{7,8}}
+c.push({9,10})
+var^d=u8^[_^,_^,_^]{{{0 repeat^4} repeat^3} repeat^2}
+print^(a[1][1],b.len,b[0][1],c[2][1],d[1,2,3])
+''', '4 2 4 10 0\n')
+    positive('inferred_lengths_defaults_and_constants', '''
+let^N:i64^=3
+let^_:i64^=2
+def^Grid {self^{cells:u8^[_^,_^]={{7 repeat^3} repeat^2}}}
+let^make=f^ ->u8^[2,3] {return^u8^[_^,_^]{{8 repeat^3} repeat^2}}
+var^a=i32^[_^]{9 repeat^N}
+var^b=i32^[_]{10 repeat^max^}
+let^g=Grid{}
+let^v=make()
+print^(a.len,b.len,g.cells[1,2],v[1,2])
+''', '3 2 7 8\n')
+    for name,source,error in (
+            ('cycle', 'var^a=i32^[_^]{0 repeat^max^}', 'cannot infer array length _^'),
+            ('empty', 'var^a=i32^[_^]{}', 'inferred array length out of range'),
+            ('runtime', 'var^n:i64^=3 var^a=i32^[_^]{0 repeat^n}', 'cannot infer array length _^'),
+            ('ragged', 'var^a=i32^[_^,_^]{{1,2},{3}}', 'inconsistent inferred array length'),
+            ('nested_ragged', 'var^a=i32^[_^[_^]]{{1},{2,3}}', 'inconsistent inferred array length'),
+            ('inner_cycle', 'var^a=i32^[_^,_^]{{0 repeat^max^} repeat^2}', 'cannot infer array length _^'),
+            ('specified_mismatch', 'var^a=i32^[2,_^]{{1,2}}', 'exactly 2 elements'),
+            ('oversize', 'var^a=i32^[_^]{0 repeat^1000001}', 'inferred array length out of range'),
+            ('bounded', 'var^a=i32^[max^_^]{}', '_^ is only allowed for fixed array lengths'),
+            ('parameter', 'let^f=p^a:ref^i32^[_^]{}', 'cannot infer array length _^')):
+        negative('inferred_lengths_reject_' + name,source,error)
     positive('constant_lengths', '''
 let^W:i64^=8
 let^H:i64^=W / 2
