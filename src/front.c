@@ -100,6 +100,7 @@ typedef struct {
     char *text;
     Loc loc;
     int kind;
+    int numeric_kind; // Explicit numeric suffix; zero for an unsuffixed token.
     size_t length;
     uint32_t offset;
 } Token;
@@ -444,8 +445,14 @@ static const char *digits(const char *s, int base, Loc loc)
             previous = any = true;
             s++;
         }
+        else if (isdigit((unsigned char)*s)) {
+            fail(loc, "invalid digit '%c' in base-%d numeric literal", *s, base);
+        }
         else if (*s == '_') {
             int next = digit_value((unsigned char)s[1]);
+            if (previous && (next < 0 || next >= base) && strchr("uif", s[1]) && s[1]) {
+                break;
+            }
             if (!previous || next < 0 || next >= base) {
                 fail(loc, "numeric separator must be between digits");
             }
@@ -828,6 +835,7 @@ static void lex_step(Parser *p, Lexer *l)
     }
     else if (isdigit((unsigned char)*l->s)) {
         t->kind = TOK_INT;
+        bool radix = l->s[0] == '0' && l->s[1] && strchr("xXoObB", l->s[1]);
         if (l->s[0] == '0' && strchr("xXoObB", l->s[1]) && l->s[1]) {
             int base = l->s[1] == 'x' || l->s[1] == 'X'   ? 16
                        : l->s[1] == 'o' || l->s[1] == 'O' ? 8
@@ -859,8 +867,35 @@ static void lex_step(Parser *p, Lexer *l)
                 }
             }
         }
-        if (isalnum((unsigned char)*l->s) || *l->s == '_') {
-            fail(t->loc, "invalid numeric literal");
+        if (*l->s == '_') {
+            l->s++;
+        }
+        const char *suffix = l->s;
+        while (isalnum((unsigned char)*l->s) || *l->s == '_') {
+            l->s++;
+        }
+        if (l->s != suffix) {
+            size_t length = (size_t)(l->s - suffix);
+            for (int kind = T_U8; kind <= T_F64; kind++) {
+                const char *name = builtin_name(kind);
+                if (strlen(name) == length + 1 && !strncmp(name, suffix, length)) {
+                    t->numeric_kind = kind;
+                    break;
+                }
+            }
+            if (!t->numeric_kind || (t->kind == TOK_FLOAT && !kind_float(t->numeric_kind)) ||
+                (radix && kind_float(t->numeric_kind))) {
+                fail(t->loc,
+                     "invalid numeric literal suffix '%.*s'; "
+                     "specify a full numeric type such as u64 or f32",
+                     (int)length, suffix);
+            }
+            if (kind_float(t->numeric_kind)) {
+                t->kind = TOK_FLOAT;
+            }
+            if (*l->s == '^') {
+                fail(t->loc, "numeric type suffixes do not end in '^'");
+            }
         }
     }
     else if (*l->s == '"' || *l->s == '\'') {
@@ -1974,6 +2009,11 @@ static Expr *primary(Parser *p)
         e = node(t->kind == TOK_INT ? E_INT : t->kind == TOK_FLOAT ? E_FLOAT : E_STRING, t->loc);
         e->text = t->text;
         e->length = t->length;
+        if (t->numeric_kind) {
+            e->constant_spec = mem(sizeof(Spec));
+            *e->constant_spec = (Spec){
+                .kind = SPEC_NAME, .loc = t->loc, .name = (char *)builtin_name(t->numeric_kind)};
+        }
     }
     else if (!strcmp(t->text, "true^") || !strcmp(t->text, "false^")) {
         e = node(E_BOOL, t->loc);
@@ -2019,6 +2059,9 @@ static Expr *primary(Parser *p)
         int refs = reference_depth(t->text);
         e->text = refs ? "ref^" : !strcmp(t->text, "**") ? "*" : t->text;
         e->a = expr(p, 9);
+        if (!strcmp(t->text, "-") && (e->a->kind == E_INT || e->a->kind == E_FLOAT)) {
+            e->constant_spec = e->a->constant_spec;
+        }
         if (!strcmp(t->text, "**")) {
             Expr *inner = node(E_UNARY, t->loc);
             inner->text = "*";
@@ -3922,6 +3965,11 @@ static void enum_declaration(Parser *q, Program *p, Module *module, bool public)
                 fail(literal->loc, "an enum^ value is an integer literal");
             }
             following = negative ? -value : value;
+            if (literal->numeric_kind &&
+                !integer_fits(fmt("%lld", following), literal->numeric_kind)) {
+                fail(literal->loc, "integer literal does not fit '%s'",
+                     builtin_name(literal->numeric_kind));
+            }
         }
         EnumMember *member = mem(sizeof(*member));
         member->name = name;

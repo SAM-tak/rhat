@@ -11,6 +11,76 @@ def main():
         assert '-> i32^' in ir and '-> i64^' in ir and '-> string^' in ir
         assert 'malloc' not in ll
 
+    positive('numeric_suffix_types_and_radices', '''
+let^hex=0x8888_4444u64
+let^byte=0xff_u8
+let^oct=0o77i16
+let^bin=0b1010_u32
+let^a=1.25f32
+let^b=2f64
+let^c=1.125_f8
+let^d=1.5f16
+print^(hex fits^u64^,byte fits^u8^,oct fits^i16^,bin fits^u32^)
+print^(a fits^f32^,b fits^f64^,c fits^f8^,d fits^f16^)
+print^(hex,byte,oct,bin,a,b,c,d)
+''', 'true true true true\ntrue true true true\n2290631748 255 63 10 1.25 2.0 1.125 1.5\n')
+    positive('numeric_suffix_signed_limits_and_calls', '''
+let^a=-128i8
+let^b=-9223372036854775808i64
+let^c=-170141183460469231731687303715884105728i128
+let^d=340282366920938463463374607431768211455u128
+let^identity=f^x {x}
+let^make=f^ {0x88884444i64}
+let^run=p^ {
+ let^x=5u64
+ let^y=1.5f32
+ print^(identity(x) fits^u64^,identity(y) fits^f32^)
+}
+run()
+print^(a,b,c,d,make(),1u64+2,3+4u64)
+''', 'true true\n-128 -9223372036854775808 -170141183460469231731687303715884105728 340282366920938463463374607431768211455 2290631748 3 7\n')
+    positive('numeric_suffix_overloads_and_unions', '''
+let^pick=f^x:u32^ {"u32"} & f^x:u64^ {"u64"} & f^x:f32^ {"f32"}
+print^(pick(1u32),pick(1u64),pick(1f32))
+let^a:u64^|nil^=1u64
+let^b:f32^|nil^=1.5f32
+if^a fits^u64^ {print^(a)}
+if^b fits^f32^ {print^(b)}
+let^c=u64^(1u32)
+print^(c)
+''', 'u32 u64 f32\n1\n1.5\n1\n')
+    positive('numeric_suffix_array_lengths_and_defaults', '''
+let^N=3u32
+def^D {self^{x=0x88884444u64, y=1.5f32}}
+var^a=u8^[N]{0u8 repeat^3i64}
+let^d=D{}
+print^(a.len,d.x,d.y)
+''', '3 2290631748 1.5\n')
+    for name,text,error in (
+            ('short_unsigned','let^a=123u','invalid numeric literal suffix'),
+            ('short_float','let^a=1.2f','invalid numeric literal suffix'),
+            ('cpp','let^a=123ull','invalid numeric literal suffix'),
+            ('unknown','let^a=1i256','invalid numeric literal suffix'),
+            ('hat','let^a=1u64^',"suffixes do not end in '^'"),
+            ('float_integer','let^a=1.2u64','invalid numeric literal suffix'),
+            ('radix_float','let^a=0b10f32','invalid numeric literal suffix'),
+            ('octal_digit','let^a=0o78',"invalid digit '8' in base-8 numeric literal"),
+            ('octal_first_digit','let^a=0o9',"invalid digit '9' in base-8 numeric literal"),
+            ('binary_digit','let^a=0b102u8',"invalid digit '2' in base-2 numeric literal"),
+            ('binary_first_digit','let^a=0b2',"invalid digit '2' in base-2 numeric literal"),
+            ('overflow','let^a=256u8',"does not fit 'u8^'"),
+            ('underflow','let^a=-129i8',"does not fit 'i8^'"),
+            ('negative_unsigned','let^a=-1u32',"does not fit 'u32^'"),
+            ('float_overflow','let^a=1e100f32',"does not fit 'f32^'"),
+            ('annotation','let^a:u64^=1u32','type mismatch'),
+            ('call','let^f=p^a:u64^{} f(1u32)','type mismatch'),
+            ('inferred_call','let^f=p^a {let^n:u64^=a} f(1u32)','type'),
+            ('binary','let^a=1u32+2u64','type'),
+            ('default_unchanged','let^a=0x88884444',"does not fit 'i32^'"),
+            ('enum_overflow','enum^E:u16^ {A=256u8}',"does not fit 'u8^'"),
+            ('length_overflow','var^a:i32^[256u8]={0 repeat^max^}',"does not fit 'u8^'"),
+            ('repeat_overflow','var^a:i32^[256]={0 repeat^256u8}',"does not fit 'u8^'")):
+        negative('numeric_suffix_reject_' + name,text,error)
     positive('pending_mutation_argument', '''
 let^ make=f^ {42}
 let^ consume=p^value:i32^ {print^(value)}

@@ -29,6 +29,9 @@ def main():
             assert path.read_bytes() == expected.encode('utf-8'), name
         suite.case(name, body)
 
+    expect('numeric_type_suffixes',
+           'let^hex=0x8888_4444_u64\nlet^f=1.25f32\nlet^n=-128i8\n',
+           'let^hex = 0x8888_4444_u64\nlet^f = 1.25f32\nlet^n = -128i8\n')
     expect('hat_spacing', 'let^ x = self^ + 1\n', 'let^x = self^+ 1\n')
     expect('nested_array_types',
            'var^a:i32^[ 2 [ 3 ] ]={{1,2,3},{4,5,6}}\nvar^b:(i32^[ 3 ])[2]=a\n',

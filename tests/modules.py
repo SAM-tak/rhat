@@ -42,6 +42,20 @@ def main():
             assert diagnostic in p.stderr and re.search(r':\d+:\d+: error:', p.stderr), (name, p.stderr)
         suite.case(name, body)
 
+    positive('numeric_suffix_module_constants', {
+        'lib/literals.rh': '''module^lib.literals
+public^let^N=0x88884444u64
+public^let^F=1.5f32
+public^let^S=42i64
+''',
+        'main.rh': '''let^v=import^lib.literals
+print^(v.N fits^u64^,v.F fits^f32^,v.N,v.F,-v.S)
+''',
+    }, 'true true 2290631748 1.5 -42\n')
+    negative('numeric_suffix_module_type_mismatch', {
+        'lib/literals.rh':'module^lib.literals\npublic^let^N:u8^=1u64\n',
+        'main.rh':'import^lib.literals\nprint^(lib.literals.N)\n',
+    }, 'type mismatch')
     positive('self_type_import', {
         'lib/vector.rh': """module^ lib.vector
 public^ def^ Vector {

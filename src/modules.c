@@ -440,12 +440,23 @@ static bool constant_integer(Module *m, List *locals, Expr *e, int depth, long l
         return false;
     }
     if (e->kind == E_INT) {
+        int kind = e->constant_spec && e->constant_spec->kind == SPEC_NAME
+                       ? numeric_kind(e->constant_spec->name)
+                       : -1;
+        if (kind_integer(kind) && !integer_fits(e->text, kind)) {
+            fail(e->loc, "integer literal does not fit '%s'", builtin_name(kind));
+        }
         errno = 0;
         char *end = NULL;
         *out = strtoll(e->text, &end, 10);
         return !errno && end && !*end && *out <= limit;
     }
     if (e->kind == E_UNARY && !strcmp(e->text, "-")) {
+        if (e->a->kind == E_INT && e->a->constant_spec) {
+            Expr negative = *e->a;
+            negative.text = fmt("-%s", negative.text);
+            return constant_integer(m, locals, &negative, depth + 1, out);
+        }
         if (!constant_integer(m, locals, e->a, depth + 1, out)) {
             return false;
         }
@@ -1387,7 +1398,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             tool_record(p, e->name_loc.file ? e->name_loc : e->loc, c->binding->loc, resolved, NULL,
                         NULL, NULL, 14, false);
             Expr *r = copy_expr(c->binding->a);
-            r->constant_spec = c->binding->spec;
+            r->constant_spec = c->binding->spec ? c->binding->spec : r->constant_spec;
             r->loc = e->loc;
             *e = *r;
             return;

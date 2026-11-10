@@ -720,8 +720,9 @@ static Type *infer_lookup(Infer *c, const char *name)
 
 static bool integer_literal(Expr *e)
 {
-    return e && (e->kind == E_INT ||
-                 (e->kind == E_UNARY && !strcmp(e->text, "-") && e->a->kind == E_INT));
+    return e && !e->constant_spec &&
+           (e->kind == E_INT || (e->kind == E_UNARY && !strcmp(e->text, "-") &&
+                                 e->a->kind == E_INT && !e->a->constant_spec));
 }
 
 static bool numeric(Type *t)
@@ -752,16 +753,22 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be, Loc lo
         }
         return type_union(p, a, b, loc);
     }
+    if (enum_backs(b, a)) {
+        return b;
+    }
+    if (enum_backs(a, b)) {
+        return a;
+    }
     if (integer_literal(ae) && numeric(b)) {
         return b;
     }
     if (integer_literal(be) && numeric(a)) {
         return a;
     }
-    if (ae && ae->kind == E_FLOAT && b && kind_float(b->kind)) {
+    if (ae && !ae->constant_spec && ae->kind == E_FLOAT && b && kind_float(b->kind)) {
         return b;
     }
-    if (be && be->kind == E_FLOAT && a && kind_float(a->kind)) {
+    if (be && !be->constant_spec && be->kind == E_FLOAT && a && kind_float(a->kind)) {
         return a;
     }
     if (sum_accepts(a, b)) {
@@ -2044,8 +2051,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
                      !strcmp(e->text, "&&") || !strcmp(e->text, "||");
         bool comparison = strchr("=!<>", e->text[0]) != NULL;
         bool literal_left =
-            e->a->kind == E_INT || e->a->kind == E_FLOAT ||
-            (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT);
+            !e->a->constant_spec &&
+            (e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+             (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT));
         Type *right_type = !logic && literal_left ? infer_expr(c, e->b, NULL) : NULL;
         // Numeric lookahead must not fix contextual literals at their default
         // widths, especially while a nested call's result is still pending.
@@ -2053,6 +2061,15 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             right_type = NULL;
         }
         Type *left_hint = operator_hint(c->p, e->text, right_type, true, e->a);
+        bool literal_right =
+            !e->b->constant_spec && (e->b->kind == E_INT || e->b->kind == E_FLOAT ||
+                                     (e->b->kind == E_UNARY && !strcmp(e->b->text, "-") &&
+                                      (e->b->a->kind == E_INT || e->b->a->kind == E_FLOAT)));
+        if (!left_hint && right_type && strcmp(e->text, "bitshift^") && !literal_right &&
+            ((e->a->kind == E_FLOAT && kind_float(right_type->kind)) ||
+             (e->a->kind != E_FLOAT && kind_integer(right_type->kind)))) {
+            left_hint = right_type;
+        }
         Type *a = infer_expr(c, e->a,
                              left_hint             ? left_hint
                              : comparison || logic ? NULL
@@ -3086,9 +3103,13 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_INT:
     case E_FLOAT:
         // Unbound numeric literals are contextual, not evidence of a width.
-        n->type = want;
+        n->type = e->constant_spec ? type_spec(c->p, e->constant_spec) : want;
         break;
     case E_UNARY:
+        if (e->constant_spec) {
+            n->type = type_spec(c->p, e->constant_spec);
+            break;
+        }
         n->a = body_expr(c, e->a, NULL);
         if (!strcmp(e->text, "!")) {
             body_require(c, n->a, type_builtin(c->p, T_BOOL), UINT64_MAX);
@@ -3447,7 +3468,8 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
             if (hint && !callable_type(n->type)) {
                 n = body_node(hint);
             }
-            else if (s->a && (s->a->kind == E_INT || s->a->kind == E_FLOAT)) {
+            else if (s->a && !s->a->constant_spec &&
+                     (s->a->kind == E_INT || s->a->kind == E_FLOAT)) {
                 n = body_node(type_builtin(c->p, s->a->kind == E_INT ? T_I32 : T_F64));
             }
             body_bind(c, s->name, n);
@@ -3462,7 +3484,8 @@ static void body_statements(BodyCheck *c, List *list, bool scoped)
                 if (hint) {
                     n = body_node(hint);
                 }
-                else if (b->a && (b->a->kind == E_INT || b->a->kind == E_FLOAT)) {
+                else if (b->a && !b->a->constant_spec &&
+                         (b->a->kind == E_INT || b->a->kind == E_FLOAT)) {
                     n = body_node(type_builtin(c->p, b->a->kind == E_INT ? T_I32 : T_F64));
                 }
                 add(&pending, n);

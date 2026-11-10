@@ -1029,6 +1029,23 @@ print^(value.add(value.copy()).x)
     assert request('hover','message:u8^',text=repaired_binding)['contents']['value'] == 'message: u8^[max^160]'
     print('PASS resolved variable annotations survive initializer errors and recover after edits',flush=True)
 
+    suffix_path = work/'numeric_literal_suffixes.rh'
+    suffix_text = ('let^hex=0x88884444u64\nlet^small=-128i8\n'
+                   'let^floating=1.25f32\nlet^make=f^ {42u64}\nlet^result=make()\n')
+    client.open(suffix_path,suffix_text)
+    assert client.diagnostics(suffix_path,1) == []
+    for needle,detail in [('hex=', 'hex: u64^'),('small=', 'small: i8^'),
+                          ('floating=', 'floating: f32^'),('result=', 'result: u64^')]:
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=suffix_path.as_uri()),
+            position=at(suffix_text,needle)))
+        assert hover['contents']['value'] == detail, hover
+    client.change(suffix_path,suffix_text.replace('0x88884444u64','0x88884444u'),2)
+    assert any('invalid numeric literal suffix' in d['message'] for d in client.diagnostics(suffix_path,2))
+    client.change(suffix_path,suffix_text,3)
+    assert client.diagnostics(suffix_path,3) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=suffix_path.as_uri())))
+    print('PASS numeric literal suffix types, hover and edit recovery',flush=True)
+
     attributes=('def^Node {self^{n:i32^=7}}\nvar^n=Node{}\n'
                 'var^refs:Node[ref^max^10]={ref^n}\n'
                 'let^view:Node[ref^..]=refs[..]\n'

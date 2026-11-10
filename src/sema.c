@@ -4349,6 +4349,13 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (!strcmp(e->text, "-") && e->a->kind == E_INT) {
             Expr neg = *e->a;
             neg.text = fmt("-%s", neg.text);
+            if (neg.constant_spec) {
+                Type *t = type_spec(c->p, neg.constant_spec);
+                if (expected && expected != t) {
+                    fail(e->loc, "constant type mismatch");
+                }
+                expected = t;
+            }
             return literal_int(c, &neg, expected);
         }
         Value a = !strcmp(e->text, "ref^")
@@ -4425,8 +4432,9 @@ Value expression(Context *c, Expr *e, Type *expected)
                              : NULL;
         bool nil_rhs = nil_name(e->b) || (rhs_kind && rhs_kind->kind == T_NIL);
         bool literal_left =
-            e->a->kind == E_INT || e->a->kind == E_FLOAT ||
-            (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT);
+            !e->a->constant_spec &&
+            (e->a->kind == E_INT || e->a->kind == E_FLOAT ||
+             (e->a->kind == E_UNARY && !strcmp(e->a->text, "-") && e->a->a->kind == E_INT));
         Type *right_type = !logic && literal_left ? expression_type(c, e->b, NULL) : NULL;
         if (expected && (kind_integer(expected->kind) || kind_float(expected->kind)) &&
             right_type && (kind_integer(right_type->kind) || kind_float(right_type->kind))) {
@@ -4434,9 +4442,10 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         Type *left_hint = right_type ? operator_hint(p, e->text, right_type, true, e->a) : NULL;
         // 4 + n takes n's numeric type, as n + 4 does; 40 + 2 keeps the expected one.
-        bool literal_right = e->b->kind == E_INT || e->b->kind == E_FLOAT ||
-                             (e->b->kind == E_UNARY && !strcmp(e->b->text, "-") &&
-                              (e->b->a->kind == E_INT || e->b->a->kind == E_FLOAT));
+        bool literal_right =
+            !e->b->constant_spec && (e->b->kind == E_INT || e->b->kind == E_FLOAT ||
+                                     (e->b->kind == E_UNARY && !strcmp(e->b->text, "-") &&
+                                      (e->b->a->kind == E_INT || e->b->a->kind == E_FLOAT)));
         if (!left_hint && right_type && !shift && !literal_right &&
             ((e->a->kind == E_FLOAT && kind_float(right_type->kind)) ||
              (e->a->kind != E_FLOAT && kind_integer(right_type->kind)))) {
