@@ -1,6 +1,7 @@
 var^a = i32^[max^](4)
 let^src = { 7, 8 }
 a.push(1)
+# print^(a[2]) # panic at runtime
 let^r = a.push(2)
 a.append(src[..])
 print^(a.len, a[0], *r, a[3], a[1 ..].len)
@@ -34,3 +35,55 @@ for^k from^1 to^1000 {
     total += c.len
 }
 print^(w.xs.len, w.xs[1], q.len, q[0], copy[0], total)
+
+var^d = i32^[max^8[grow^]]{}
+d.push({})
+d.push({})
+d.push({})
+d[0].push(0)
+d[0].push(1)
+d[0].push(2)
+d[1].push(0)
+d[1].push(1)
+d[1].push(2)
+d[2].push(0)
+d[2].push(1)
+d[2].push(2)
+
+# var^mm = i32^[]{ 0 repeat^max^ } # 当然ダメ
+var^mm = i32^[]{ 0 repeat^5 } # これは当然OK
+var^mm2 = { 0 repeat^5 } # こう書けば i32^[5] になる
+
+var^m = i32^[3, 3]{ { 0 repeat^max^ } repeat^max^ }
+m[2, 0] := 1
+print^(m[2, 0]);
+
+
+var^cm = u8^[3 []]{{0 repeat^ 3}, {0 repeat^ 3}, {0 repeat^ 3}}
+# var^cm2 = u8^[3 []]{{0 repeat^ 3} repeat^ max^} # これはダメ
+cm[2][0] := 1
+print^(cm[2][0]);
+
+var^m2 = i32^[_^,_^]{ { 0 repeat^3 } repeat^3 }
+m2[2, 0] := 1
+print^(m2[2, 0]);
+
+# var^m3 = i32^[_^,grow^]{ { 0 repeat^3 } repeat^3 }
+# m2[2, 0] := 1
+# print^(m2[2, 0]);
+
+# 拒否	所有配列を所有配列の要素にはできない
+# let^_i00 = (i32^[])[grow^]{}
+# let^_i01 = i32^[grow^[]]{}
+# 許可	固定長2要素の行を並べる伸長配列
+let^_i10 = (i32^[2])[grow^]{}
+let^_i11 = i32^[grow^[2]]{}
+# 許可	別の置き場を借用するスライスを並べる伸長配列
+let^_i20 = (i32^[..])[grow^]{}
+let^_i21 = i32^[grow^[..]]{}
+# 許可	外側が最大8行の独立した伸長領域を所有するジャグ配列
+let^_i30 = (i32^[grow^])[max^8]{}
+let^_i31 = i32^[max^8 [grow^]]{}
+# 許可	固定8行の独立した伸長領域を所有するジャグ配列
+let^_i40 = (i32^[grow^])[8]{}
+let^_i41 = i32^[8 [grow^]]{}
