@@ -45,6 +45,9 @@ def main():
     expect('rectangular_arrays',
            'var^a:i32^[2 ,3]={{1,2,3},{4,5,6}}\na[ 1 ,2 ]+=7\n',
            'var^a:i32^[2, 3] = {{1, 2, 3}, {4, 5, 6}}\na[1, 2] += 7\n')
+    expect('rectangular_grow_arrays',
+           'var^a=i32^[grow^ ,3]{}\na.push({1,2,3})\na[0, 2]+=1\n',
+           'var^a = i32^[grow^, 3]{}\na.push({1, 2, 3})\na[0, 2] += 1\n')
     expect('dynamic_reference_types',
            'let^get=p^x:dynamic^ Shape,ys:Shape[ dynamic^ .. ],zs:Shape[ ref^ dyn^ 2 ] {}\n',
            'let^get = p^x:dynamic^Shape, ys:Shape[dynamic^..], zs:Shape[ref^dyn^2] {}\n')

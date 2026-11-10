@@ -1283,6 +1283,16 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     else if (is(p, "grow^") || is(p, "flex^")) {
         w->kind = SPEC_GROW;
         w->count = !strcmp(next(p)->text, "flex^");
+        while (take(p, ",")) {
+            if (w->count || refs) {
+                fail(w->loc, "only grow^ without array attributes may precede fixed dimensions");
+            }
+            if (is(p, "grow^") || is(p, "flex^") || is(p, "max^") || is(p, "..")) {
+                fail(tok(p)->loc, "only the first dimension may grow; remaining dimensions "
+                                  "require fixed lengths");
+            }
+            add(&lengths, array_length(p));
+        }
     }
     else {
         bool bounded = take(p, "max^");
@@ -1297,6 +1307,10 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
                 if (bounded || refs) {
                     fail(w->loc,
                          "multidimensional arrays require fixed lengths without array attributes");
+                }
+                if (is(p, "grow^") || is(p, "flex^") || is(p, "max^") || is(p, "..")) {
+                    fail(tok(p)->loc, "only the first dimension may grow; remaining dimensions "
+                                      "require fixed lengths");
                 }
                 add(&lengths, array_length(p));
             }
@@ -1318,6 +1332,11 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     }
     if (refs) {
         elem = reference_spec(elem, reference_loc, refs, read, dynamic);
+    }
+    if (w->kind == SPEC_GROW && lengths.n) {
+        w->elem = rectangular_spec(elem, &lengths);
+        w->rank = lengths.n + 1;
+        return w;
     }
     if (lengths.n > 1) {
         return rectangular_spec(elem, &lengths);

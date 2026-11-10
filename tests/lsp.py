@@ -1188,6 +1188,21 @@ print^(cell.n)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=rectangular_path.as_uri())))
     print('PASS rectangular array type hover, navigation and index arity recovery',flush=True)
 
+    grow_grid_path = work/'rectangular_grow_types.rh'
+    grow_grid_text = '''var^grid=i32^[grow^,3]{{1,2,3}}
+let^deferred=template^p^x:i32^[grow^,3] {}
+grid.push({4,5,6})
+print^(grid[1,2])
+'''
+    client.open(grow_grid_path,grow_grid_text)
+    assert client.diagnostics(grow_grid_path,1) == []
+    for needle in ('grid=','deferred='):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=grow_grid_path.as_uri()),
+            position=at(grow_grid_text,needle)))
+        assert 'i32^[grow^, 3]' in hover['contents']['value'], hover
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=grow_grid_path.as_uri())))
+    print('PASS growable rectangular array hover and template signatures',flush=True)
+
     jagged_path = work/'jagged_arrays.rh'
     jagged_text = '''var^rows=i32^[max^8[grow^]]{{1},{2,3}}
 let^row=rows[0]

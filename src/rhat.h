@@ -82,7 +82,7 @@ struct Spec {
     char *name;
     Spec *elem, *other; // Binary type operands; elem holds a callable result.
     int kind, count;
-    int rank; // Fixed rectangular array dimensions; zero for ordinary array nesting.
+    int rank; // Rectangular array dimensions; zero for ordinary array nesting.
     // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
     Expr *length;  // A constant expression for count, evaluated during name resolution.
     Expr *operand; // SPEC_TYPEOF: the unevaluated expression whose static type this names.
@@ -371,7 +371,7 @@ struct Type {
     bool invalid; // Storage layout failed during editor analysis.
     char *symbol;
     int kind, id, count;
-    int rank;    // Fixed rectangular array dimensions; zero for ordinary arrays.
+    int rank;    // Rectangular array dimensions; zero for ordinary arrays.
     int regions; // Statically reserved data stacks owned by this value.
     // T_REF and T_DYN use count 1 for read^; the representation is unchanged.
     Type *elem;

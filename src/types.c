@@ -527,7 +527,8 @@ char *type_name(Type *t)
         char *shape = str("");
         Type *elem = t;
         for (int j = 0; j < t->rank; j++, elem = elem->elem) {
-            shape = fmt("%s%s%d", shape, j ? ", " : "", elem->count);
+            char *length = elem->kind == T_GROW ? "grow^" : fmt("%d", elem->count);
+            shape = fmt("%s%s%s", shape, j ? ", " : "", length);
         }
         bool wrap = elem->kind >= T_STRUCT && elem->kind != T_STRUCT && elem->kind != T_ENUM;
         return fmt(wrap ? "(%s)[%s]" : "%s[%s]", type_name(elem), shape);

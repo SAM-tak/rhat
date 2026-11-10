@@ -339,7 +339,8 @@ static char *spec_identity(Spec *s)
         Spec *elem = s;
         char *shape = str("");
         for (int j = 0; j < s->rank; j++, elem = elem->elem) {
-            shape = fmt("%s%s%d", shape, j ? "," : "", elem->count);
+            char *length = elem->kind == SPEC_GROW ? "grow^" : fmt("%d", elem->count);
+            shape = fmt("%s%s%s", shape, j ? "," : "", length);
         }
         return fmt("(%s)[%s]", spec_identity(elem), shape);
     }

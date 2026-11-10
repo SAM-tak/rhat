@@ -56,6 +56,20 @@ print^(v.N fits^u64^,v.F fits^f32^,v.N,v.F,-v.S)
         'lib/literals.rh':'module^lib.literals\npublic^let^N:u8^=1u64\n',
         'main.rh':'import^lib.literals\nprint^(lib.literals.N)\n',
     }, 'type mismatch')
+    positive('rectangular_grow_module_types', {
+        'lib/grid.rh': '''module^lib.grid
+public^def^Box<T> {self^{data:T}}
+public^let^make=p^ -> i32^[grow^,2] {return^i32^[grow^,2]{{1,2}}}
+public^let^add=p^a:ref^i32^[grow^,2] {a.push({3,4})}
+''',
+        'main.rh': '''let^g=import^lib.grid
+var^a=g.make()
+g.add(ref^a)
+var^box=g.Box<i32^[grow^,2]>{data={{5,6}}}
+var^fixed=g.Box<i32^[2,2]>{data={{7,8},{9,10}}}
+print^(a[1,1],box.data[0,1],fixed.data[1,1])
+''',
+    }, '4 6 10\n')
     positive('self_type_import', {
         'lib/vector.rh': """module^ lib.vector
 public^ def^ Vector {

@@ -406,12 +406,64 @@ print^(r?[index(ref^calls),index(ref^calls)]??7,calls)
             ('row_shape', 'let^a=i32^[2,3]{{1,2},{3,4,5}}', 'exactly 3 elements'),
             ('zero_dimension', 'var^a:i32^[2,0] = {}', 'array length out of range'),
             ('dynamic_dimension', 'var^n=2\nvar^a:i32^[n,3] = {}', 'constant integer expression'),
-            ('grow_dimension', 'var^a:i32^[grow^,3] = {}', "expected ']'"),
             ('max_dimension', 'var^a:i32^[max^2,3] = {}', 'require fixed lengths'),
             ('mixed_range', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nprint^(a[0,0..2])', 'requires integer indices'),
             ('wrapped_chain', 'let^a = (i32^[2][3,4])[1]{}', 'consecutive array type brackets'),
             ('distinct_types', 'let^a=i32^[2,3]{{1,2,3},{4,5,6}}\nlet^b:(i32^[3])[2]=a', "expected '(i32^[3])[2]'")):
         negative('rectangular_reject_' + name, source + '\n', diagnostic)
+    positive('rectangular_grow_rows_and_operations', '''
+var^a=i32^[grow^,3]{}
+a.push({1,2,3})
+a.push({4,5,6})
+a[1,2]+=1
+let^extra=i32^[2,3]{{7,8,9},{10,11,12}}
+a.append(extra[..])
+print^(a.len,a[0,1],a[1,2],a[3,2],a.bytes.len)
+let^last=a.pop()
+print^(last[2])
+a.truncate(1)
+print^(a.len,a[0,2])
+a.clear()
+a.push({})
+print^(a.len,a[0,2])
+''', '4 2 7 12 48\n12\n1 3\n1 0\n')
+    positive('rectangular_grow_three_dimensions_and_inference', '''
+var^a=i32^[grow^,2,3]{}
+a.push({{1,2,3},{4,5,6}})
+a[0,1,2]:=9
+var^b=i32^[grow^,_^]{{10,11},{12,13}}
+let^add=p^rows:ref^i32^[grow^,2] {rows.push({14,15})}
+add(ref^b)
+print^(a.len,a[0,1,2],b.len,b[2,1])
+var^sum:i32^=0
+for^row in^b {for^n in^row {sum+=n}}
+print^(sum,b[..][1][0])
+''', '1 9 3 15\n75 12\n')
+    positive('rectangular_grow_return_and_generic_identity', '''
+let^make=p^ -> i32^[grow^,2] {return^i32^[grow^,2]{{1,2}}}
+def^Box<T> {self^{values:T}}
+var^a=make()
+var^box=Box<i32^[grow^,2]>{values={{3,4}}}
+var^fixed=Box<i32^[2,2]>{values={{5,6},{7,8}}}
+var^nested=Box<i32^[grow^ [2]]>{values={{9,10}}}
+a.push({11,12})
+print^(a[1,1],box.values[0,1],fixed.values[1,1],nested.values[0][1])
+''', '12 4 8 10\n')
+    for name, source, diagnostic in (
+            ('inner_grow','var^a=i32^[3,grow^]{}','remaining dimensions require fixed lengths'),
+            ('two_grow','var^a=i32^[grow^,grow^]{}','remaining dimensions require fixed lengths'),
+            ('inner_flex','var^a=i32^[grow^,flex^]{}','remaining dimensions require fixed lengths'),
+            ('outer_flex','var^a=i32^[flex^,3]{}','only grow^'),
+            ('row_shape','var^a=i32^[grow^,3]{} a.push({1,2})','exactly 3 elements'),
+            ('too_few','var^a=i32^[grow^,3]{} print^(a[0])','requires 2 indices'),
+            ('too_many','var^a=i32^[grow^,3]{} print^(a[0,1,2])','requires 2 indices'),
+            ('copy','var^a=i32^[grow^,3]{} let^b=a','cannot be copied'),
+            ('distinct_nested','var^a=i32^[grow^,3]{} let^use=p^x:ref^i32^[grow^ [3]]{} use(ref^a)','requires nominal'),
+            ('distinct_fixed','var^a=i32^[grow^,3]{} let^use=p^x:ref^i32^[2,3]{} use(ref^a)','requires nominal')):
+        negative('rectangular_grow_reject_' + name,source,diagnostic)
+    for name,index in (('row','1,0'),('column','0,3'),('negative','-1,0')):
+        suite.runtime_failure('rectangular_grow_bounds_' + name,
+            'var^a=i32^[grow^,3]{{1,2,3}} print^(a[' + index + '])', 'index out of bounds')
     positive('nested_brackets_and_parenthesized_types', '''
 var^a:i32^[2 [3]] = {{10,11,12},{20,21,22}}
 var^b:(i32^[3])[2] = {{30,31,32},{40,41,42}}
