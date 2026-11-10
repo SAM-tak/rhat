@@ -29,7 +29,6 @@ typedef struct Root {
     int depth;
     bool external;
     const char *readonly; // The let^ binding a hidden reference refers to, or NULL.
-    bool read_borrow;     // A lexical read-borrow boundary carried with reference provenance.
     // What references held in this storage point at, when a reference parameter tells the two
     // apart. They may still be the same storage, so overlap tests treat them as one.
     struct Root *inner;
@@ -144,11 +143,8 @@ typedef struct {
     List inflight;             // Values a statement still uses while evaluating later ones.
     Roots param_deps[64];      // The external root of each reference parameter.
     List root_keys, root_list; // Roots by the source node that made them (see root).
-    List read_borrows;         // Active lexical read loans; their boundaries also occur in deps.
-    Expr *read_call;           // A read conversion for this call initially lasts only for the call.
-    bool read_return; // A direct returned borrow of caller storage is anchored at the caller.
-    int result_part;  // One past the slot of the owned result part built in place.
-    int inline_steps; // Cumulative expansion budget for this concrete function body.
+    int result_part;           // One past the slot of the owned result part built in place.
+    int inline_steps;          // Cumulative expansion budget for this concrete function body.
 } Context;
 
 // Recognize public typed channel and thread bridge operations.
@@ -188,15 +184,8 @@ bool type_reads(Type *type);
 // Whether a value carries potentially writable reference capabilities.
 bool type_writes(Type *type);
 
-// Start a read loan or preserve the protecting boundaries of an existing loan.
-Value read_borrow(Context *c, Value value, Loc loc);
-// Reject a potential write to storage overlapping an active read loan.
-void read_write_check(Context *c, Roots storage, Loc loc);
-// End argument-only loans, or retain them when a call returns references.
-void read_call_end(Context *c, Expr *call, bool escapes);
-// Release loans belonging to exited lexical scopes.
-void read_scope_end(Context *c, int depth);
-// Retain argument aliases and their relation to the current function's parameters.
+// Reject mutations that would invalidate an owned row under construction.
+void mutation_check(Context *c, Roots storage, Loc loc);
 // Whether a value of type t may hold a reference into storage of type elem.
 bool may_reference(Type *t, Type *elem);
 // Records that a reference rooted at src is stored into a parameter's owner; false unless both
@@ -206,15 +195,15 @@ bool flow_store(Context *c, Root *owner, Root *src);
 void flow_return(Context *c, Roots deps);
 // Applies a callee's stores to its arguments and answers the roots of its result.
 Roots flow_call(Context *c, Instance *in, List *values, Loc loc);
-void read_call_check(Context *c, Instance *callee, List *values, Loc loc);
-// Retain the same provenance for each possible implementation of a dynamic call.
-void read_dyn_call_check(Context *c, Def *iface, int method, List *values, Loc loc);
 // Records that a specialization lowered this catch^ arm.
 void catch_seen(Context *c, CatchArm *arm);
 // Rejects catch^ arms that no specialization can reach.
 void catch_validate(Program *p);
-// Solve interprocedural read/write conflicts and reject aliased call arguments.
-void read_validate(Program *p);
+// Validate reference-flow and task-state restrictions at indirect and external entries.
+void flow_validate(Program *p);
+
+// Reject replacement of a union whose alternative still has live interior references.
+void replacement_check(Context *c, Value destination, Loc loc);
 
 // Retain a failed declaration in its scope without cascading errors at its uses.
 void tool_failed_binding(Program *p, List *vars, Stmt *statement, int depth, int lexical);

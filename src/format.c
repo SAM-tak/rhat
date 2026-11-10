@@ -495,7 +495,8 @@ static uint32_t spacing(const Format *f, size_t i)
         return kept;
     }
     if (b->token.nested_array) {
-        return unit_is_op(a, "[") ? 0 : 1;
+        return unit_is_op(a, "[") || (a->kind == UNIT_TOKEN && !strcmp(a->token.text, "read^")) ? 0
+                                                                                                : 1;
     }
     if (a->kind == UNIT_TOKEN && a->token.kind == FORMAT_OP &&
         a->token.operator_role == FORMAT_OPERATOR_PREFIX) {

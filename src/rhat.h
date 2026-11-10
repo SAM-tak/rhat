@@ -572,11 +572,9 @@ struct Instance {
     int stack_own, stack_need;
     int callback_need; // exportC^ entries: stacks used before any callback.
     bool may_shrink, emitted, cross_module;
-    uint64_t shrinks;            // Parameters through which this may shrink flex^ storage.
-    uint64_t read_conflicts[64]; // A read loan of parameter i overlaps a potential write via j.
-    List read_calls; // Call-site provenance used to propagate read conflicts through recursion.
-    List flows;      // Flow records: references this stores through its arguments.
-    List returns;    // Flow records: where the references in its result come from.
+    uint64_t shrinks;     // Parameters through which storage or union payloads may be invalidated.
+    List flows;           // Flow records: references this stores through its arguments.
+    List returns;         // Flow records: where the references in its result come from.
     bool returns_unknown; // A returned reference did not come from a parameter.
     bool indirect;        // Reached without a summary: dyn^, a function value or exportC^.
     List callers; // ToolInstantiation records for every use of this concrete specialization.

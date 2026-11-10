@@ -214,12 +214,12 @@ var^a=C{}
 let^r:ref^read^C=ref^a
 bad(r)
 ''', 'read^')
-    negative('iteration_read_escape', '''def^C{self^{n:i32^=0}}
+    positive('iteration_read_escape', '''def^C{self^{n:i32^=0}}
 var^a=C{}
 var^out:ref^read^C|nil^=nil^
 var^items:i32^[2]={1,2}
 inline^for^x in^items {let^r:ref^read^C=ref^a out:=r}
-''', 'protecting scope')
+''', '')
     negative('iteration_local_escape', '''var^out:ref^i32^|nil^=nil^
 var^items:i32^[2]={1,2}
 inline^for^x in^items {var^local=x out:=ref^local}

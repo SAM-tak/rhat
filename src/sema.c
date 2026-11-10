@@ -275,8 +275,20 @@ void tool_failed_binding(Program *p, List *vars, Stmt *s, int depth, int lexical
     tool_record(p, s->loc, s->loc, s->name, annotated, NULL, NULL, s->mut ? 13 : 14, true);
 }
 
+// Distinct external roots can name the same caller storage.
+static bool external_roots(Roots roots)
+{
+    for (int j = 0; j < roots.n; j++) {
+        if (roots.v[j]->external) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void forget_roots(List *vars, Roots roots, bool all)
 {
+    bool external = external_roots(roots);
     for (int j = 0; j < vars->n; j++) {
         Var *v = vars->v[j];
         bool direct = all || roots_meet(v->root, roots);
@@ -284,7 +296,8 @@ void forget_roots(List *vars, Roots roots, bool all)
             v->version++;
             v->narrowed = NULL;
         }
-        if (direct || (v->path_sensitive && roots_meet(v->deps, roots))) {
+        if (direct || (v->path_sensitive &&
+                       (roots_meet(v->deps, roots) || (external && external_roots(v->deps))))) {
             v->path_version++;
             v->paths = (List){0};
         }
@@ -569,7 +582,7 @@ void store_check(Context *c, Value dst, Value src, Loc l)
     if (dst.readonly) {
         fail(l, "cannot modify through a read^ reference");
     }
-    read_write_check(c, dst.storage, l);
+    mutation_check(c, dst.storage, l);
     if (dst.var && !dst.var->mut) {
         fail(l, "cannot modify let^ binding '%s'", dst.var->name);
     }
@@ -584,9 +597,6 @@ void store_check(Context *c, Value dst, Value src, Loc l)
         }
         for (int j = 0; j < src.deps.n; j++) {
             if (src.deps.v[j]->depth > owner->depth) {
-                if (src.deps.v[j]->read_borrow) {
-                    fail(l, "read^ borrow cannot escape its protecting scope");
-                }
                 fail(l, "reference would outlive its owner (scope %d into scope %d)",
                      src.deps.v[j]->depth, owner->depth);
             }
@@ -830,10 +840,12 @@ Value case_value(Context *c, Value src, Type *arm, Loc loc)
                        .storage = src.storage,
                        .var = src.var,
                        .addressable = src.addressable,
+                       .readonly = src.readonly,
                        .held = src.held};
     }
     Value out = value(c, arm);
     out.deps = arm->refs ? src.deps : (Roots){0};
+    out.readonly = src.readonly;
     out.guarded_copy = arm->kind == T_STRUCT || arm->kind == T_ARRAY;
     Instr *i = emit(c, I_CASE_GET, loc);
     i->dst = out.id;
@@ -873,7 +885,6 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
         return out;
     }
     if (read_reference(to) && src.type->kind == to->kind && src.type->elem == to->elem) {
-        src = read_borrow(c, src, loc);
         out.deps = src.deps;
         Instr *i = emit(c, I_COPY, loc);
         i->dst = out.id;
@@ -1742,26 +1753,29 @@ bool may_reference(Type *t, Type *elem)
     return false;
 }
 
-// The element type of the flex^ storage an argument of type t leads a
-// callee to (including owned rows or a struct's flex^ tail), or NULL.
-static Type *flex_elements(Type *t)
+// Storage reachable through t whose shrink, disposal or replacement can invalidate
+// interior references; NULL when there is no such storage.
+static Type *invalidated_elements(Type *t)
 {
     if (t->kind == T_REF) {
         t = t->elem;
     }
     if (t->kind == T_GROW) {
-        return t->count == ARRAY_FLEX ? t->elem : NULL;
+        return t->count == ARRAY_FLEX || t->elem->disposable || t->elem->owned ? t->elem : NULL;
     }
-    if (t->kind == T_BOUNDED && t->elem->owned) {
+    if (t->kind == T_UNION && t->disposable) {
+        return t;
+    }
+    if (t->kind == T_BOUNDED && (t->elem->owned || t->elem->disposable)) {
         return t->elem;
     }
-    if (t->kind == T_ARRAY && owning_rows(t)) {
-        return flex_elements(t->elem);
+    if (t->kind == T_ARRAY && (owning_rows(t) || t->elem->disposable)) {
+        return invalidated_elements(t->elem);
     }
     if (t->kind == T_STRUCT) {
         for (int j = 0; j < t->def->fields.n; j++) {
             Type *field = ((Field *)t->def->fields.v[j])->type;
-            Type *elem = flex_elements(field);
+            Type *elem = invalidated_elements(field);
             if (elem) {
                 return elem;
             }
@@ -1775,12 +1789,17 @@ static Type *flex_elements(Type *t)
 // shrinking argument itself.
 static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc loc)
 {
+    bool external = external_roots(storage);
+    if (c->in->params.n > 64 && external) {
+        fail(loc, "storage invalidation analysis supports functions with at most 64 parameters");
+    }
     if (c->p->state_fields.n && roots_meet(storage, state_roots(c->p))) {
         c->in->state_shrinks = true;
     }
     for (int j = 0; j < c->vars.n; j++) {
         Var *v = c->vars.v[j];
-        if ((!roots_meet(v->root, storage) || v->type->refs) && roots_meet(v->deps, storage) &&
+        if ((!roots_meet(v->root, storage) || v->type->refs) &&
+            (roots_meet(v->deps, storage) || (external && external_roots(v->deps))) &&
             may_reference(v->type, elem)) {
             fail(loc,
                  "cannot shrink flex^ storage or dispose elements while '%s' may refer into it; "
@@ -1790,7 +1809,8 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
     }
     for (int j = 0; j < c->inflight.n; j++) {
         Value *v = c->inflight.v[j];
-        if (v != skip && roots_meet(v->deps, storage) && may_reference(v->type, elem)) {
+        if (v != skip && (roots_meet(v->deps, storage) || (external && external_roots(v->deps))) &&
+            may_reference(v->type, elem)) {
             fail(loc, "cannot shrink flex^ storage or dispose elements while an earlier operand "
                       "may refer into it");
         }
@@ -1800,6 +1820,38 @@ static void shrink_check(Context *c, Roots storage, Type *elem, Value *skip, Loc
             c->in->shrinks |= UINT64_C(1) << k;
         }
     }
+}
+
+// Replacing a Disposable union may change the payload's type. Whole-union references
+// remain valid; references into any of its alternatives must no longer be live.
+static void replace_union(Context *c, Roots storage, Type *type, Value *skip, Loc loc)
+{
+    for (int j = 0; j < type->def->alternatives.n; j++) {
+        shrink_check(c, storage, type->def->alternatives.v[j], skip, loc);
+    }
+}
+
+static void replacement_parts(Context *c, Roots storage, Type *type, Value *skip, Loc loc)
+{
+    if (!type->disposable) {
+        return;
+    }
+    if (type->kind == T_UNION) {
+        replace_union(c, storage, type, skip, loc);
+    }
+    else if (type->kind == T_STRUCT) {
+        for (int j = 0; j < type->def->fields.n; j++) {
+            replacement_parts(c, storage, ((Field *)type->def->fields.v[j])->type, skip, loc);
+        }
+    }
+    else if (type->kind == T_ARRAY) {
+        replacement_parts(c, storage, type->elem, skip, loc);
+    }
+}
+
+void replacement_check(Context *c, Value dst, Loc loc)
+{
+    replacement_parts(c, dst.storage, dst.type, NULL, loc);
 }
 
 static void shrink_argument(Context *c, Type *type, Roots deps, Value *skip, Loc loc)
@@ -1812,11 +1864,23 @@ static void shrink_argument(Context *c, Type *type, Roots deps, Value *skip, Loc
             Param *capture = type->function->captures.v[j];
             shrink_argument(c, capture->inferred, deps, skip, loc);
         }
-        return;
     }
-    Type *elem = flex_elements(type);
-    if (elem) {
-        shrink_check(c, deps, elem, skip, loc);
+    else if (type->kind == T_STRUCT) {
+        for (int j = 0; j < type->def->fields.n; j++) {
+            shrink_argument(c, ((Field *)type->def->fields.v[j])->type, deps, skip, loc);
+        }
+    }
+    else if (type->kind == T_ARRAY && (owning_rows(type) || type->elem->disposable)) {
+        shrink_argument(c, type->elem, deps, skip, loc);
+    }
+    else if (type->kind == T_UNION && type->disposable) {
+        replace_union(c, deps, type, skip, loc);
+    }
+    else {
+        Type *elem = invalidated_elements(type);
+        if (elem) {
+            shrink_check(c, deps, elem, skip, loc);
+        }
     }
 }
 
@@ -1890,9 +1954,10 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
             return t;
         }
     }
-    // A dyn^ call has no shrink summary, so it must not reach flex^ storage.
-    if (flex_elements(concrete->type)) {
-        fail(loc, "'%s' has a flex^ field and cannot be used through dyn^", concrete->name);
+    // A dyn^ call has no invalidation summary, so it must not reach reclaimable storage.
+    if (invalidated_elements(concrete->type)) {
+        fail(loc, "'%s' has a flex^ field or replaceable payload and cannot be used through dyn^",
+             concrete->name);
     }
     DynTable *table = mem(sizeof(*table));
     *table = (DynTable){.concrete = concrete, .iface = iface, .id = p->dyn_tables.n};
@@ -1926,12 +1991,10 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
     if (dead(v) || v.type == dyn) {
         return v;
     }
-    if (read_reference(v.type) && !read_reference(dyn)) {
+    if ((v.readonly || read_reference(v.type)) && !read_reference(dyn)) {
         fail(loc, "cannot drop read^ from a reference");
     }
-    if (read_reference(dyn)) {
-        v = read_borrow(c, v, loc);
-    }
+
     if (v.type->kind == T_DYN && v.type->elem == dyn->elem) {
         return convert_value(c, v, dyn, -1, loc);
     }
@@ -1950,9 +2013,8 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
     return out;
 }
 
-// Argument-only read conversions expire at the call unless its result borrows
-// them. Evaluate nested expressions first so their lexical loans stay lexical.
-static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint, Expr *call)
+// Convert argument capabilities without changing the lifetime of the referent.
+static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint)
 {
     if (want && want->kind == T_DYN) {
         hint = arg->kind == E_UNARY && !strcmp(arg->text, "ref^")
@@ -1963,8 +2025,7 @@ static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint, 
     if (dead(v)) {
         return v;
     }
-    Expr *old_call = c->read_call;
-    c->read_call = call;
+
     if (want && want->kind == T_DYN) {
         v = dyn_value(c, v, want, arg->loc);
     }
@@ -1975,10 +2036,7 @@ static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint, 
              parameter_accepts(want, v.type)) {
         v = convert_value(c, v, type_wrap(c->p, T_REF, v.type->elem, 1), -1, arg->loc);
     }
-    if (type_reads(v.type)) {
-        v = read_borrow(c, v, arg->loc);
-    }
-    c->read_call = old_call;
+
     return v;
 }
 
@@ -2038,7 +2096,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     }
     for (int j = 0; j < e->args.n; j++) {
         Type *want = parameter_type(p, f->params.v[j + 1]);
-        Value v = call_argument_value(c, e->args.v[j], want, want, e);
+        Value v = call_argument_value(c, e->args.v[j], want, want);
         if (c->terminated) {
             return abrupt(c);
         }
@@ -2065,9 +2123,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     if (p->state_fields.n) {
         Roots state = state_roots(p);
         if (f->procedure) {
-            read_write_check(c, state, e->loc);
+            mutation_check(c, state, e->loc);
             for (int j = 0; j < p->state_fields.n; j++) {
-                Type *elem = flex_elements(state_field_type(p, p->state_fields.v[j]));
+                Type *elem = invalidated_elements(state_field_type(p, p->state_fields.v[j]));
                 if (elem) {
                     for (int k = 0; k < arguments.n; k++) {
                         Value *arg = arguments.v[k];
@@ -2076,7 +2134,8 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                                  "cannot shrink flex^ storage while an argument may refer into it");
                         }
                     }
-                    shrink_check(c, state, elem, NULL, e->loc);
+                    shrink_argument(c, state_field_type(p, p->state_fields.v[j]), state, NULL,
+                                    e->loc);
                 }
             }
             forget_roots(&c->vars, state, false);
@@ -2088,9 +2147,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         fail(e->loc, "a read^ dyn^ receiver cannot expose writable references");
     }
     for (int j = 0; j < writable.n; j++) {
-        read_write_check(c, ((Value *)writable.v[j])->deps, e->loc);
+        mutation_check(c, ((Value *)writable.v[j])->deps, e->loc);
     }
-    read_dyn_call_check(c, iface, index, &arguments, e->loc);
+
     if (expected && expected != t && !(read_reference(expected) && sum_accepts(expected, t))) {
         fail(e->loc, "call returns '%s', expected '%s'", type_name(t), type_name(expected));
     }
@@ -2099,10 +2158,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
                        : destination >= 0 ? destination
                                           : slot(c, t, false),
                  .deps = t->refs ? deps : (Roots){0}};
-    read_call_end(c, e, t->refs);
-    if (type_reads(t)) {
-        out = read_borrow(c, out, e->loc);
-    }
+
     i->dst = out.id;
     i->type = t;
     i->label = index;
@@ -2681,7 +2737,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         Param *param = f->params.v[right_self ? j : j + offset];
         Type *want = parameter_type(p, param);
         Value v =
-            call_argument_value(c, e->args.v[j], want, parameter_hint(p, param, e->args.v[j]), e);
+            call_argument_value(c, e->args.v[j], want, parameter_hint(p, param, e->args.v[j]));
         if (c->terminated) {
             c->inflight.n = inflight;
             return abrupt(c);
@@ -2739,7 +2795,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         Param *param = f->params.v[j];
         Value *arg = values.v[j];
         if ((f->procedure || (f->mutable_self && param->self)) && type_writes(arg->type)) {
-            read_write_check(c, arg->deps, e->loc);
+            mutation_check(c, arg->deps, e->loc);
         }
     }
     for (int j = 0; j < f->captures.n; j++) {
@@ -2768,30 +2824,31 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         add(&values, saved);
         add(&c->inflight, saved);
         if (f->procedure && (capture->capture->mut || type_writes(ref.type->elem))) {
-            read_write_check(c, ref.deps, e->loc);
+            mutation_check(c, ref.deps, e->loc);
         }
     }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
     if (p->state_fields.n && !f->external) {
         Roots state = state_roots(p);
         if (f->procedure) {
-            read_write_check(c, state, e->loc);
+            mutation_check(c, state, e->loc);
             forget_roots(&c->vars, state, false);
         }
         if (in->state != 2 || in->state_shrinks) {
             for (int j = 0; j < p->state_fields.n; j++) {
-                Type *elem = flex_elements(state_field_type(p, p->state_fields.v[j]));
+                Type *elem = invalidated_elements(state_field_type(p, p->state_fields.v[j]));
                 if (elem) {
-                    shrink_check(c, state, elem, NULL, e->loc);
+                    shrink_argument(c, state_field_type(p, p->state_fields.v[j]), state, NULL,
+                                    e->loc);
                 }
             }
         }
     }
-    read_call_check(c, in, &values, e->loc);
+
     // A callee still being lowered has no summary yet; assume it shrinks.
-    for (int j = 0; j < values.n && j < 64; j++) {
+    for (int j = 0; j < values.n; j++) {
         Value *v = values.v[j];
-        if ((in->state != 2 || ((in->shrinks >> j) & 1)) && v->deps.n) {
+        if ((in->state != 2 || j >= 64 || ((in->shrinks >> j) & 1)) && v->deps.n) {
             shrink_argument(c, v->type, v->deps, v, e->loc);
         }
     }
@@ -2812,10 +2869,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     if (t->refs) {
         out.deps = returned;
     }
-    read_call_end(c, e, t->refs && returned.n != 0);
-    if (type_reads(t)) {
-        out = read_borrow(c, out, e->loc);
-    }
+
     if (t->owned && destination < 0) {
         fail(e->loc, "owned return requires a binding or return destination");
     }
@@ -3264,7 +3318,6 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (dead(out)) {
             c->vars.n = begin;
             c->depth = depth;
-            read_scope_end(c, depth);
             c->lexical--;
             return out;
         }
@@ -3279,7 +3332,6 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         cleanup(c, begin, e->loc);
         c->vars.n = begin;
         c->depth = depth;
-        read_scope_end(c, depth);
         c->lexical--;
         return out;
     }
@@ -3644,6 +3696,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                     c->inflight.n = inflight;
                     c->pending_disposals.n = pending;
                     return v;
+                }
+                if (v.type != t->elem && read_reference(t->elem) && sum_accepts(t->elem, v.type)) {
+                    v = convert_value(c, v, t->elem, -1, e->loc);
                 }
                 if (v.type != t->elem) {
                     fail(e->loc, "array element type mismatch");

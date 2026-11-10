@@ -217,7 +217,7 @@ let^run=p^ {
 }
 run()
 ''', 'reference would outlive its owner')
-    negative('capture_read_borrow', '''
+    positive('capture_read_alias', '''
 let^run=p^ {
     var^n=0
     let^step=p^ {n+=1}
@@ -226,8 +226,8 @@ let^run=p^ {
     print^(*r)
 }
 run()
-''', 'read^ borrow')
-    negative('callback_read_borrow', '''
+''', '1\n')
+    positive('callback_read_alias', '''
 let^apply=p^cb:p^; {cb()}
 let^run=p^ {
     var^n=0
@@ -237,7 +237,7 @@ let^run=p^ {
     print^(*r)
 }
 run()
-''', 'read^ borrow')
+''', '1\n')
     negative('captured_callback_return', '''
 let^identity=f^cb:p^; {cb}
 let^run=p^ {var^n=0 let^step=p^ {n+=1} let^bad=identity(step)}

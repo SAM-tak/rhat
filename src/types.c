@@ -467,7 +467,7 @@ char *array_spec_shape(Spec *s, Spec **base)
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
-    char *kind = s->kind == SPEC_SLICE     ? (s->count ? "read^ .." : "..")
+    char *kind = s->kind == SPEC_SLICE     ? ".."
                  : s->kind == SPEC_GROW    ? (s->count == ARRAY_CAPPED  ? "max^"
                                               : s->count == ARRAY_SIZED ? ""
                                               : s->count                ? "flex^"
@@ -483,7 +483,8 @@ char *array_spec_shape(Spec *s, Spec **base)
         bool comma = !*refs && elem->kind == SPEC_ARRAY && elem->count &&
                      ((s->kind == SPEC_ARRAY && s->count) || (s->kind == SPEC_GROW && !s->count));
         return comma ? fmt("%s, %s", policy, inner)
-                     : fmt("%s%s[%s]", policy, *policy ? " " : "", inner);
+                     : fmt("%s%s%s[%s]", policy, *policy ? " " : "",
+                           elem->kind == SPEC_SLICE && elem->count ? "read^" : "", inner);
     }
     *base = elem;
     return policy;
@@ -498,7 +499,7 @@ static char *array_shape_text(Type *t, Type **base)
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
-    char *kind = t->kind == T_SLICE     ? (t->count ? "read^ .." : "..")
+    char *kind = t->kind == T_SLICE     ? ".."
                  : t->kind == T_GROW    ? (t->count == ARRAY_SIZED    ? ""
                                            : t->count == ARRAY_CAPPED ? "max^"
                                            : t->count                 ? "flex^"
@@ -512,7 +513,8 @@ static char *array_shape_text(Type *t, Type **base)
         bool comma = !*refs && elem->kind == T_ARRAY &&
                      (t->kind == T_ARRAY || (t->kind == T_GROW && !t->count));
         return comma ? fmt("%s, %s", policy, inner)
-                     : fmt("%s%s[%s]", policy, *policy ? " " : "", inner);
+                     : fmt("%s%s%s[%s]", policy, *policy ? " " : "",
+                           elem->kind == T_SLICE && elem->count ? "read^" : "", inner);
     }
     *base = elem;
     return policy;
@@ -563,7 +565,8 @@ char *type_name(Type *t)
     Type *elem;
     char *shape = array_shape_text(t, &elem);
     bool wrap = elem->kind == T_UNION || elem->kind == T_DYN || elem->kind == T_REF;
-    return fmt(wrap ? "(%s)[%s]" : "%s[%s]", type_name(elem), shape);
+    return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", read_reference(t) ? "read^" : "", type_name(elem),
+               shape);
 }
 
 bool owning_rows(Type *t)

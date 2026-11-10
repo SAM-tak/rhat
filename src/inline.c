@@ -217,7 +217,6 @@ void inline_loop(Context *c, Stmt *s)
         }
         c->vars.n = mark;
         c->depth--;
-        read_scope_end(c, c->depth);
         c->lexical--;
         if (!next) {
             break;

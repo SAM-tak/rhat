@@ -45,6 +45,9 @@ def main():
     expect('rectangular_arrays',
            'var^a:i32^[2 ,3]={{1,2,3},{4,5,6}}\na[ 1 ,2 ]+=7\n',
            'var^a:i32^[2, 3] = {{1, 2, 3}, {4, 5, 6}}\na[1, 2] += 7\n')
+    expect('nested_read_slice_types',
+           'let^f=p^a:read^u8^[..],b:u8^[2 read^[..]]{}\n',
+           'let^f = p^a:read^u8^[..], b:u8^[2 read^[..]]{}\n')
     expect('rectangular_grow_arrays',
            'var^a=i32^[grow^ ,3]{}\na.push({1,2,3})\na[0, 2]+=1\n',
            'var^a = i32^[grow^, 3]{}\na.push({1, 2, 3})\na[0, 2] += 1\n')

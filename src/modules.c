@@ -351,7 +351,8 @@ static char *spec_identity(Spec *s)
         s->kind == SPEC_SLICE) {
         Spec *base;
         char *shape = array_spec_shape(s, &base);
-        return fmt("%s[%s]", spec_identity(base), shape);
+        return fmt("%s%s[%s]", s->kind == SPEC_SLICE && s->count ? "read^" : "",
+                   spec_identity(base), shape);
     }
     char *elem = s->elem ? spec_identity(s->elem) : "";
     switch (s->kind) {

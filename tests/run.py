@@ -2009,10 +2009,10 @@ var^ k = Keep{}
 let^ d:ref^ dyn^ Sink = ref^ k
 d.add("x")
 """, "cannot be called through dyn^")
-negative("flow_keeps_read_loans_in_their_scope", """
+positive("flow_stores_read_references", """
 def^ R { self^{ p:ref^ read^ i32^ } }
 let^ keep = p^h:ref^ R, x:ref^ read^ i32^ { h.p := x }
-""", "cannot store nonstatic references through borrowed storage")
+""", "")
 negative("pure_mutable_call", """
 def^ Counter {
     self^{ n:i32^=0 },

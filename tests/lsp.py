@@ -1206,13 +1206,14 @@ print^(grid[1,2])
     array_names_path = work/'array_canonical_names.rh'
     array_names_text = '''var^inferred={{0 repeat^3} repeat^3}
 var^rows=(i32^[grow^])[max^8]{}
-let^deferred=template^p^a:(i32^[3])[2], b:(i32^[grow^])[max^8] {}
+let^deferred=template^p^a:(i32^[3])[2], b:(i32^[grow^])[max^8], c:(read^i32^[..])[2] {}
 print^(inferred[1,1])
 '''
     client.open(array_names_path,array_names_text)
     assert client.diagnostics(array_names_path,1) == []
     for needle,signature in (('inferred=','i32^[3, 3]'),('rows=','i32^[max^8 [grow^]]'),
-                             ('deferred=','i32^[2, 3]'),('deferred=','i32^[max^8 [grow^]]')):
+                             ('deferred=','i32^[2, 3]'),('deferred=','i32^[max^8 [grow^]]'),
+                             ('deferred=','i32^[2 read^[..]]')):
         hover = client.request('textDocument/hover',dict(textDocument=dict(uri=array_names_path.as_uri()),
             position=at(array_names_text,needle)))
         assert signature in hover['contents']['value'], hover
@@ -1608,11 +1609,14 @@ print^(typeof^(x).signature^,i32^.signature^,Box.signature^)
     assert 'ref^read^' in hover['contents']['value'], hover
     client.change(readonly_path,readonly_text+'a.x:=2\n',2)
     diagnostics = client.diagnostics(readonly_path,2)
-    assert len(diagnostics) == 1 and 'read^ borrow' in diagnostics[0]['message'], diagnostics
-    client.change(readonly_path,readonly_text,3)
-    assert client.diagnostics(readonly_path,3) == []
+    assert diagnostics == [], diagnostics
+    client.change(readonly_path,readonly_text+'r.x:=2\n',3)
+    diagnostics = client.diagnostics(readonly_path,3)
+    assert len(diagnostics) == 1 and 'read^' in diagnostics[0]['message'], diagnostics
+    client.change(readonly_path,readonly_text,4)
+    assert client.diagnostics(readonly_path,4) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=readonly_path.as_uri())))
-    print('PASS read-reference hover, lexical borrow diagnostics and recovery',flush=True)
+    print('PASS read-reference hover, alias mutation, capability diagnostics and recovery',flush=True)
 
     try_path = work/'try_destinations.rh'
     try_text = '''errordef^E { Bad, Other }
@@ -1854,6 +1858,28 @@ g(1)
     assert client.diagnostics(capture_path,3) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=capture_path.as_uri())))
     print('PASS local captures, callback arguments, navigation and recovery',flush=True)
+
+    top_capture_path = work/'top_capture_signatures.rh'
+    top_capture_text = '''var^data=i32^[grow^]{1}
+let^count:i64^=7
+let^patch=p^name:read^u8^[..] -> i64^ {data.push(2) return^count+name.len}
+let^zero=p^ -> i64^ {return^data.len}
+print^(patch("ok".bytes),zero())
+'''
+    client.open(top_capture_path,top_capture_text)
+    assert client.diagnostics(top_capture_path,1) == []
+    for needle in ('patch=p^','patch("ok"','zero=p^'):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=top_capture_path.as_uri()),
+            position=at(top_capture_text,needle)))
+        detail = hover['contents']['value']
+        assert '\x01' not in detail and 'top_' not in detail, hover
+        assert ('p^name:read^u8^[..]' if needle.startswith('patch') else 'p^ -> i64^') in detail, hover
+    help = client.request('textDocument/signatureHelp',dict(textDocument=dict(uri=top_capture_path.as_uri()),
+        position=at(top_capture_text,'patch("ok"',shift=6)))
+    assert help and help['signatures'][0]['parameters'] == [{'label':'name'}], help
+    assert '\x01' not in json.dumps(help) and '\\u0001' not in json.dumps(help), help
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=top_capture_path.as_uri())))
+    print('PASS top-level hidden parameters stay out of hover and signature help',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601

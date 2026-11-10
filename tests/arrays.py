@@ -435,9 +435,23 @@ print^(typeof^(a).signature^,typeof^(j).signature^)
     positive('array_dimension_read_slice_display_roundtrip', '''
 var^data=i32^[3]{1,2,3}
 var^views:(read^i32^[..])[2]={data[..],data[..]}
-let^same:i32^[2 [read^ ..]]=views
+let^same:i32^[2 read^[..]]=views
 print^(same[1,2],typeof^(same).signature^)
-''', '3 i32^[2 [read^ ..]]\n')
+''', '3 i32^[2 read^[..]]\n')
+    positive('nested_read_slice_and_read_reference_elements', '''
+var^data=i32^[2]{4,5}
+var^views=i32^[read^[..]]{data[..]}
+var^n:i32^=7
+let^refs=i32^[ref^read^2]{ref^n,ref^n}
+print^(views[0,1],*refs[0],typeof^(views).signature^)
+''', '5 7 i32^[read^[..]]\n')
+    positive('nested_read_alias_write', 'var^a=i32^[2]{1,2} var^views=i32^[read^[..]]{a[..]} a[0]:=3 print^(views[0,0])', '3\n')
+    for name,source,error in (
+            ('bare','let^f=p^x:i32^[read^]{}','write read^T[..]'),
+            ('slice','let^f=p^x:i32^[read^..]{}','write read^T[..]'),
+            ('non_slice','let^f=p^x:i32^[2 read^[3]]{}','read^ applies to a slice type'),
+            ('missing_inner','let^f=p^x:i32^[2 read^]{}','read^ must precede a nested')):
+        negative('nested_read_reject_' + name,source,error)
     positive('rectangular_grow_rows_and_operations', '''
 var^a=i32^[grow^,3]{}
 a.push({1,2,3})

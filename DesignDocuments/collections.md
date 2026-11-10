@@ -24,7 +24,7 @@ print^(counts.get("the") ?? 0)
 - `has(key) -> bool^`・`remove(key) -> bool^`・`len() -> i64^`・`clear()`
 - `stored_key(key) -> K | nil^`: 保持しているキー。`string^` なら保存済みの本体を指すビュー。
 - `for^k, v in^ m`: キーと値のコピーを回します。削除するまでは挿入順です。
-- `items() -> read^Entry<K, V>[..]`: 全エントリのスライス。`key`・`value` を読みます。結果を局所変数に持つ間は map を変更できません。
+- `items() -> read^Entry<K, V>[..]`: 全エントリのスライス。`key`・`value` を読みます。スライス経由では変更できませんが、別経路からの map の変更は許します。スライスの長さは取得時のままです。
 
 `HashSet<T>` は `add(value) -> bool^`（新規なら `true^`）・`has`・`get`・`remove`・`len`・`clear`・`items` を持ち、`for^v in^ s` で回せます。
 中身は `HashMap<T, bool^>` です。

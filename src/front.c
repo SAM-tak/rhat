@@ -1270,12 +1270,12 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
     Spec *w = mem(sizeof(*w));
     w->loc = elem->loc;
     List lengths = {0};
-    if (!refs && take(p, "read^")) {
-        need(p, "..");
-        w->kind = SPEC_SLICE;
-        w->count = 1;
+    if (!refs && is(p, "read^") &&
+        (p->at + 1 >= p->tokens.n || strcmp(((Token *)p->tokens.v[p->at + 1])->text, "["))) {
+        fail(tok(p)->loc, "write read^T[..], not T[read^..]; "
+                          "inside an array read^ must precede a nested [...] type");
     }
-    else if (is(p, "]") || is(p, "[")) {
+    if (is(p, "]") || is(p, "[") || (!refs && is(p, "read^"))) {
         w->kind = SPEC_ARRAY;
     }
     else if (take(p, "..")) {
@@ -1317,6 +1317,10 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
             }
         }
     }
+    bool inner_read = take(p, "read^");
+    if (inner_read && !is(p, "[")) {
+        fail(tok(p)->loc, "read^ must precede a nested [...] type");
+    }
     if (is(p, "[")) {
         FormatToken *inner = format_token(p, p->at);
         if (inner) {
@@ -1324,6 +1328,12 @@ static Spec *array_header(Parser *p, Spec *elem, int *references)
         }
         int inner_refs;
         elem = array_brackets(p, elem, &inner_refs);
+        if (inner_read) {
+            if (elem->kind != SPEC_SLICE) {
+                fail(elem->loc, "read^ applies to a slice type; write read^[..]");
+            }
+            elem->count = 1;
+        }
         if (is(p, "[")) {
             array_chain_error(tok(p)->loc);
         }

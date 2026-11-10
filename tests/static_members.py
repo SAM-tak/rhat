@@ -214,11 +214,11 @@ set(ref^n)
 ''', 'reference would outlive its owner')
     negative('static_export', 'def^ A {var^n=0 get=f^ {def^.n}} exportC^let^get=f^ ->i32^ {A.get()}',
              'exported function cannot access task-owned static variables')
-    negative('static_read_borrow', '''
+    positive('static_read_borrow', '''
 def^ A {var^n=0}
 let^bad=p^r:ref^read^i32^ {A.n+=1 print^(*r)}
 bad(ref^A.n)
-''', 'read^ borrow')
+''', '1\n')
     negative('static_flex_borrow', '''
 def^ A {var^items=i32^[flex^]{1,2} clear=p^ {def^.items.clear()}}
 let^r=ref^A.items[0]

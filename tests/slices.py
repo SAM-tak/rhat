@@ -260,16 +260,15 @@ for^k, v in^refs { print^(k, v.n) }
     negative('let_array_to_writable_local', 'let^a = i32^[grow^]{1}\nvar^w:i32^[..] = a[..]\n', 'its source is read-only')
     negative('drop_read_in_result', 'let^g = f^xs:i32^[..] -> i32^[..] { xs }\n', 'read^')
 
-    borrowed = 'cannot modify storage during a read^ borrow'
-    negative('push_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na.push(2)\nprint^(r[0])\n', borrowed)
-    negative('element_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na[0] := 2\nprint^(r[0])\n', borrowed)
-    negative('write_view_while_read', 'var^a = i32^[grow^]{1}\nlet^w = a[..]\nlet^r:read^i32^[..] = a[..]\nw[0] := 2\nprint^(r[0])\n', borrowed)
-    negative('map_set_while_items', 'let^c = import^std.collections\nvar^m:c.HashMap<string^, i32^> = {}\nlet^items = m.items()\nm.set("a", 1)\nprint^(items.len)\n', borrowed)
-    negative('read_and_write_arguments', 'let^g = p^r:read^i32^[..], w:i32^[..] {}\nvar^a = i32^[grow^]{1, 2}\ng(a[..], a[..])\n', 'read^')
-    negative('read_and_write_parts', 'let^g = p^r:read^i32^[..], w:i32^[..] {}\nvar^a = i32^[grow^]{1, 2}\ng(a[.. 1], a[1 ..])\n', 'read^')
-    negative('read_and_mutating_receiver', 'def^B {\n self^{ xs:i32^[grow^] = {} }\n put = p^self^, data:read^i32^[..] {}\n}\nvar^b = B{}\nb.put(b.xs[..])\n', 'read^')
+    positive('push_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na.push(2)\nprint^(r[0])\n', '1\n')
+    positive('element_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na[0] := 2\nprint^(r[0])\n', '2\n')
+    positive('write_view_while_read', 'var^a = i32^[grow^]{1}\nlet^w = a[..]\nlet^r:read^i32^[..] = a[..]\nw[0] := 2\nprint^(r[0])\n', '2\n')
+    positive('map_set_while_items', 'let^c = import^std.collections\nvar^m:c.HashMap<string^, i32^> = {}\nlet^items = m.items()\nm.set("a", 1)\nprint^(items.len)\n', '0\n')
+    positive('read_and_write_arguments', 'let^g = p^r:read^i32^[..], w:i32^[..] {}\nvar^a = i32^[grow^]{1, 2}\ng(a[..], a[..])\n', '')
+    positive('read_and_write_parts', 'let^g = p^r:read^i32^[..], w:i32^[..] {}\nvar^a = i32^[grow^]{1, 2}\ng(a[.. 1], a[1 ..])\n', '')
+    positive('read_and_mutating_receiver', 'def^B {\n self^{ xs:i32^[grow^] = {} }\n put = p^self^, data:read^i32^[..] {}\n}\nvar^b = B{}\nb.put(b.xs[..])\n', '')
 
-    negative('read_escapes', 'var^outer:read^i32^[..] | nil^ = nil^\nvar^a = i32^[grow^]{1}\ndo^{\n let^r:read^i32^[..] = a[..]\n outer := r\n}\n', 'cannot escape')
+    positive('read_escapes', 'var^outer:read^i32^[..] | nil^ = nil^\nvar^a = i32^[grow^]{1}\ndo^{\n let^r:read^i32^[..] = a[..]\n outer := r\n}\n', '')
     negative('outlives_owner', 'var^outer:i32^[..] | nil^ = nil^\ndo^{\n var^a = i32^[grow^]{1}\n outer := a[..]\n}\n', 'would outlive its owner')
     negative('stored_reference_outlives', '''
 def^T { self^{ n:i32^ = 0 } }

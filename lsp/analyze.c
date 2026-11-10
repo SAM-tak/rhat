@@ -323,20 +323,25 @@ static char *spec_text(Spec *s)
     char *shape = array_spec_shape(s, &elem);
     bool wrap = elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION ||
                 elem->kind == SPEC_REF || elem->kind == SPEC_DYN;
-    return fmt(wrap ? "(%s)[%s]" : "%s[%s]", spec_text(elem), shape);
+    return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", s->kind == SPEC_SLICE && s->count ? "read^" : "",
+               spec_text(elem), shape);
 }
 
 // One callable shape; a concrete instance supplies the types left to call sites.
 static char *signature_arm(Function *f, Instance *in)
 {
     char *out = fmt("%s%s", f->templ ? "template^" : "", f->procedure ? "p^" : "f^");
+    int visible = 0;
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
+        if (a->capture) {
+            continue;
+        }
         Type *t = a->self && f->owner ? f->owner->type
                   : a->inferred       ? a->inferred
                   : in                ? in->params.v[j]
                                       : NULL;
-        out = fmt("%s%s%s:%s", out, j ? ", " : "", a->name,
+        out = fmt("%s%s%s:%s", out, visible++ ? ", " : "", a->name,
                   a->spec && !strcmp(a->name, "...") ? spec_text(a->spec->elem)
                   : a->spec                          ? spec_text(a->spec)
                   : t                                ? type_name(t)
@@ -651,6 +656,9 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
             cJSON *params = cJSON_AddArrayToObject(sig, "parameters");
             for (int k = 0; k < arm->params.n; k++) {
                 Param *param = arm->function ? arm->function->params.v[k] : NULL;
+                if (param && param->capture) {
+                    continue;
+                }
                 cJSON_AddItemToArray(params,
                                      cJSON_CreateString(param ? param->name : fmt("arg%d", k + 1)));
             }
@@ -661,7 +669,7 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
         cJSON *params = cJSON_AddArrayToObject(out, "parameters");
         for (int j = 0; j < r->function->params.n; j++) {
             Param *a = r->function->params.v[j];
-            if (!a->self) {
+            if (!a->self && !a->capture) {
                 cJSON_AddItemToArray(params, cJSON_CreateString(a->name));
             }
         }
@@ -1038,6 +1046,9 @@ static void generic_function(Program *p, Module *module, cJSON *refs, List *name
     generic_spec(p, module, refs, names, f->result);
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
+        if (param->capture) {
+            continue;
+        }
         generic_spec(p, module, refs, names, param->spec);
         generic_binding(p, refs, names, param->name, param->loc,
                         param->spec ? spec_text(param->spec) : NULL, TOOL_PARAMETER);
