@@ -4523,7 +4523,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->a = base.id;
         i->b = index.id;
         i->type = base.type;
-        if (out.type->owned) {
+        if (out.type->owned && c->raw_place != e) {
             bool read = out.readonly || (base.var && !base.var->mut);
             Value ref = value(c, type_wrap(p, T_REF, out.type, read));
             Instr *addr = emit(c, I_ADDR, e->loc);
@@ -4550,7 +4550,8 @@ Value expression(Context *c, Expr *e, Type *expected)
             }
             return literal_int(c, &neg, expected);
         }
-        Value a = !strcmp(e->text, "ref^")
+        bool borrow = !strcmp(e->text, "ref^") || !strcmp(e->text, "read^");
+        Value a = borrow
                       ? place_expression(c, e->a)
                       : expression(c, e->a,
                                    (!strcmp(e->text, "-") || !strcmp(e->text, "bitnot^")) ? expected
@@ -4558,14 +4559,14 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (dead(a)) {
             return a;
         }
-        if (!strcmp(e->text, "ref^")) {
+        if (borrow) {
             if (argument_pack(a.type)) {
                 fail(e->loc, "cannot take a reference to an argument pack");
             }
             if (!a.addressable) {
                 fail(e->loc, "cannot borrow a temporary; bind it first");
             }
-            bool reading = expected && read_reference(expected);
+            bool reading = !strcmp(e->text, "read^") || (expected && read_reference(expected));
             if (a.var && !a.var->mut && !e->top_binding && !reading) {
                 fail(e->loc, "borrowing storage requires var^, found let^ '%s'", a.var->name);
             }
@@ -4575,7 +4576,7 @@ Value expression(Context *c, Expr *e, Type *expected)
                          a.storage.v[n]->readonly);
                 }
             }
-            out = value(c, type_wrap(p, T_REF, a.type, a.readonly));
+            out = value(c, type_wrap(p, T_REF, a.type, a.readonly || !strcmp(e->text, "read^")));
             out.deps = roots_union(a.storage, a.deps);
             out.target = a.storage;
             out.contents = a.deps;

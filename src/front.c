@@ -2966,7 +2966,15 @@ static Expr *loop_range(Parser *p)
 // for^ names in^, with one or more names.
 static bool for_in_ahead(Parser *p)
 {
-    for (int at = p->at; at + 1 < p->tokens.n; at += 2) {
+    int first = p->at;
+    if (is(p, "ref^") || is(p, "read^")) {
+        first++;
+        if (is(p, "ref^") && first < p->tokens.n &&
+            !strcmp(((Token *)p->tokens.v[first])->text, "read^")) {
+            first++;
+        }
+    }
+    for (int at = first; at + 1 < p->tokens.n; at += 2) {
         Token *name = p->tokens.v[at], *after = p->tokens.v[at + 1];
         if (name->kind != TOK_WORD) {
             return false;
@@ -3003,7 +3011,8 @@ static Stmt *for_in_stop(Expr *condition, Loc loc)
 // for^ names in^ value, whatever value turns out to be. A cursor answers nil^ when it runs out;
 // a range or an array is walked by a counter. Each turn takes an item, stops if there is none and
 // binds the names, so what differs by type is left to E_LOOP_PART.
-static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, Expr *value, Loc loc)
+static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, List *name_tokens,
+                             Expr *value, Loc loc, char *borrow)
 {
     char *source = fmt("\001source%d", ++p->serial), *counter = fmt("\001counter%d", p->serial);
     char *item = fmt("\001item%d", p->serial);
@@ -3017,7 +3026,10 @@ static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, Ex
     add(&loop->pre, for_in_stop(none, loc));
     add(&loop->pre, for_in_stop(for_in_part("done", source, NULL, item, loc), loc));
     if (names->n == 1) {
-        add(&loop->pre, binding(names->v[0], for_in_part("item", source, NULL, item, loc), false));
+        Stmt *part = binding(names->v[0],
+                             for_in_part(borrow ? borrow : "item", source, NULL, item, loc), false);
+        part->loc = ((Token *)name_tokens->v[0])->loc;
+        add(&loop->pre, part);
     }
     else {
         // let^ k, v = item: the same shape a written destructuring parses to.
@@ -3029,7 +3041,7 @@ static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, Ex
         add(&many->prolog, results(p, &values, names->n, loc));
         for (int j = 0; j < names->n; j++) {
             Stmt *part = binding(names->v[j], values.v[j], false);
-            part->loc = loc;
+            part->loc = ((Token *)name_tokens->v[j])->loc;
             add(&many->body, part);
         }
         add(&loop->pre, many);
@@ -3099,10 +3111,21 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
         add(&loop->focuses, focus->a->text);
     }
     else if (!repeat && for_in_ahead(p)) {
-        List names = {0};
+        char *borrow = NULL;
+        if (take(p, "ref^")) {
+            borrow = take(p, "read^") ? "read" : "ref";
+        }
+        else if (take(p, "read^")) {
+            borrow = "read";
+        }
+        List names = {0}, name_tokens = {0};
         do {
+            add(&name_tokens, tok(p));
             add(&names, take(p, "_^") ? "_^" : decl_word(p));
         } while (take(p, ","));
+        if (borrow && names.n != 1) {
+            fail(loc, "reference iteration requires one element binding");
+        }
         need(p, "in^");
         Expr *value = loop_range(p);
         if (is(p, "step^") || is(p, "downto^")) {
@@ -3110,7 +3133,7 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
                  tok(p)->text);
         }
         if (value->kind != E_RANGE) {
-            for_in_statement(p, scope, loop, &names, value, loc);
+            for_in_statement(p, scope, loop, &names, &name_tokens, value, loc, borrow);
             p->header = header;
             loop_body(p, loop);
             if (loop->last.n) {
@@ -3120,6 +3143,9 @@ static Stmt *loop_statement(Parser *p, bool repeat, Loc loc)
             }
             add(&scope->body, loop);
             return scope;
+        }
+        if (borrow) {
+            fail(loc, "for^ref^ and for^read^ require an array or slice, not a range^");
         }
         if (names.n != 1) {
             fail(loc, "a range^ gives one value at a time, not %d", names.n);

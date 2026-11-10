@@ -5,6 +5,65 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    positive('borrow_iteration_mutate', '''
+var^a={1,2,3}
+for^ref^v in^a {*v+=10}
+for^read^v in^a {print^(*v)}
+let^b={4,5}
+for^read^v in^b {print^(*v)}
+''', '11\n12\n13\n4\n5\n')
+    positive('borrow_iteration_snapshot', '''
+def^Actor {self^{n:i32^} update=p^self^ {self^.n+=1}}
+var^a=Actor[max^8]{Actor{n=1},Actor{n=2}}
+for^ref^v in^a {v.update() a.push(Actor{n=9})}
+print^(a.len,a[0].n,a[1].n,a[2].n,a[3].n)
+var^g=i32^[grow^]{1,2}
+for^ref^v in^g {*v+=1 g.push(9)}
+print^(g.len,g[0],g[1],g[2])
+''', '4 2 3 9 9\n4 2 3 9\n')
+    positive('borrow_iteration_rows', '''
+var^a=i32^[2[grow^]]{}
+for^ref^row in^a {row.push(7)}
+for^read^row in^a {print^(row.len,row[0])}
+var^b={1,2,3}
+var^s=b[..]
+for^ref^v in^s {*v+=1}
+for^ref^read^v in^s {print^(*v)}
+''', '1 7\n1 7\n2\n3\n4\n')
+    negative('borrow_iteration_immutable','let^a={1,2} for^ref^v in^a {}',
+             'requires writable elements')
+    negative('borrow_iteration_readonly','var^a={1,2} for^read^v in^a {*v+=1}',
+             'read')
+    negative('borrow_iteration_range','for^ref^v in^0 .. 3 {}', 'not a range^')
+    negative('borrow_iteration_named_range','let^r=0 .. 3 for^read^v in^r {}',
+             'require an array or slice')
+    negative('borrow_iteration_destructure','var^a={1,2} for^ref^x,y in^a {}',
+             'requires one element binding')
+    negative('borrow_iteration_shrink','var^a=i32^[max^2[grow^]]{{1},{2}} for^ref^v in^a {a.clear()}',
+             'borrow')
+    positive('borrow_iteration_source_once_and_flow', '''
+var^a={1,2,3}
+var^calls=0
+let^source=p^ -> ref^i32^[3] {calls+=1 return^ref^a}
+let^update=p^data:ref^i32^[3] {
+ for^ref^v in^data {
+  if^*v=2 {next^}
+  *v+=10
+  if^*v=13 {break^}
+ }
+}
+for^ref^v in^source() {*v+=1}
+update(ref^a)
+print^(calls,a[0],a[1],a[2])
+''', '1 2 13 4\n')
+    negative('borrow_iteration_escape', '''
+let^bad=p^ -> ref^i32^ {
+ var^a={1,2}
+ for^ref^v in^a {return^v}
+ return^ref^a[0]
+}
+let^r=bad()
+''', 'cannot return')
     def invalid_rows_at_declaration(name, text, line, error):
         def check():
             path = suite.source(name,text)

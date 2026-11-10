@@ -29,6 +29,9 @@ def main():
             assert path.read_bytes() == expected.encode('utf-8'), name
         suite.case(name, body)
 
+    expect('borrow_iteration',
+           'var^a={1,2}\nfor^ ref^ v in^ a{*v+=1}\nfor^ read^ v in^ a{print^(*v)}\n',
+           'var^a = {1, 2}\nfor^ref^v in^a{*v += 1}\nfor^read^v in^a{print^(*v)}\n')
     expect('explicit_static_declarations',
            'def^A {\nlet^step:f32^=0.2\nvar^count:i64^=0\n}\n',
            'def^A {\n    let^step:f32^= 0.2\n    var^count:i64^= 0\n}\n')

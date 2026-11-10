@@ -1902,6 +1902,17 @@ print^(patch("ok".bytes),zero())
     client.send('textDocument/didClose',dict(textDocument=dict(uri=top_capture_path.as_uri())))
     print('PASS top-level hidden parameters stay out of hover and signature help',flush=True)
 
+    borrow_path = work/'borrow_iteration.rh'
+    borrow_text = 'var^a={1,2}\nfor^ref^item in^a {*item+=1}\nfor^read^value in^a {print^(*value)}\n'
+    client.open(borrow_path,borrow_text)
+    assert client.diagnostics(borrow_path,1) == []
+    for needle, expected in (('item in^','ref^ i32^'), ('value in^','ref^read^ i32^')):
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=borrow_path.as_uri()),
+            position=at(borrow_text,needle)))
+        assert expected.replace(' ','') in hover['contents']['value'].replace(' ',''), hover
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=borrow_path.as_uri())))
+    print('PASS reference iteration hover and diagnostics',flush=True)
+
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 

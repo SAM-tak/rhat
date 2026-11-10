@@ -1394,6 +1394,13 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
     bool array = t && (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED ||
                        t->kind == T_SLICE);
     int form = range_type(t) ? 0 : array ? 1 : 2;
+    bool borrow = !strcmp(e->text, "ref") || !strcmp(e->text, "read");
+    if (borrow && form != 1) {
+        fail(e->loc, "for^ref^ and for^read^ require an array or slice");
+    }
+    if (borrow && !strcmp(e->text, "ref") && read_reference(t)) {
+        fail(e->loc, "for^ref^ requires writable elements; use for^read^ for read-only storage");
+    }
     if (e->forms[form]) {
         return e->forms[form];
     }
@@ -1428,6 +1435,10 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
         out = form == 1 ? part_node(E_INDEX, l, NULL, e->a, e->b) : e->b;
         if (form == 1) {
             out->index_count = -1;
+        }
+        if (borrow) {
+            // read^ is an internal borrow expression; surface syntax uses it in the loop header.
+            out = part_node(E_UNARY, l, !strcmp(e->text, "read") ? "read^" : "ref^", out, NULL);
         }
     }
     return e->forms[form] = out;
@@ -1922,7 +1933,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (base && (base->kind == T_ARRAY || base->kind == T_BOUNDED || base->kind == T_GROW ||
                      base->kind == T_SLICE)) {
             layout(base, e->loc);
-            if (base->elem->owned) {
+            if (base->elem->owned && c->raw_place != e) {
                 return type_wrap(c->p, T_REF, base->elem,
                                  infer_read_place(c, e) || infer_let_place(c, e));
             }
@@ -1936,7 +1947,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     case E_UNARY: {
         bool raw = c->raw_name;
         Expr *old_place = c->raw_place;
-        if (!strcmp(e->text, "ref^")) {
+        if (!strcmp(e->text, "ref^") || !strcmp(e->text, "read^")) {
             c->raw_name = e->a->kind == E_NAME;
             c->raw_place = e->a;
         }
@@ -1953,8 +1964,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if (!a) {
             return NULL;
         }
-        if (!strcmp(e->text, "ref^")) {
-            return type_wrap(c->p, T_REF, a, infer_read_place(c, e->a));
+        if (!strcmp(e->text, "ref^") || !strcmp(e->text, "read^")) {
+            return type_wrap(c->p, T_REF, a,
+                             !strcmp(e->text, "read^") || infer_read_place(c, e->a));
         }
         if (!strcmp(e->text, "*")) {
             return a->kind == T_REF ? a->elem : NULL;
@@ -2971,6 +2983,7 @@ typedef struct {
     Function *fn;
     Context scope;
     List nodes, params;
+    Expr *raw_place;
     bool blocked, ended;
 } BodyCheck;
 
@@ -3011,7 +3024,7 @@ static void body_require(BodyCheck *c, BodyNode *n, Type *want, uint64_t kinds)
         return;
     }
     if (n->kind == E_UNARY) {
-        if (!strcmp(n->op, "ref^")) {
+        if (!strcmp(n->op, "ref^") || !strcmp(n->op, "read^")) {
             if (want && want->kind == T_REF) {
                 body_require(c, n->a, want->elem, UINT64_MAX);
             }
@@ -3108,20 +3121,26 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         // Unbound numeric literals are contextual, not evidence of a width.
         n->type = e->constant_spec ? type_spec(c->p, e->constant_spec) : want;
         break;
-    case E_UNARY:
+    case E_UNARY: {
         if (e->constant_spec) {
             n->type = type_spec(c->p, e->constant_spec);
             break;
         }
+        Expr *old_place = c->raw_place;
+        if (!strcmp(e->text, "ref^") || !strcmp(e->text, "read^")) {
+            c->raw_place = e->a;
+        }
         n->a = body_expr(c, e->a, NULL);
+        c->raw_place = old_place;
         if (!strcmp(e->text, "!")) {
             body_require(c, n->a, type_builtin(c->p, T_BOOL), UINT64_MAX);
             n->type = type_builtin(c->p, T_BOOL);
             n->kind = -1;
         }
-        else if (!strcmp(e->text, "ref^")) {
+        else if (!strcmp(e->text, "ref^") || !strcmp(e->text, "read^")) {
             if (n->a->type) {
-                n->type = type_wrap(c->p, T_REF, n->a->type, n->a->readonly);
+                n->type =
+                    type_wrap(c->p, T_REF, n->a->type, !strcmp(e->text, "read^") || n->a->readonly);
             }
         }
         else if (!strcmp(e->text, "*")) {
@@ -3140,6 +3159,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             n->type = n->a->type;
         }
         break;
+    }
     case E_BIN: {
         if (type_comparison(e)) {
             // Each specialization decides it, so later demands are conditional.
@@ -3269,8 +3289,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
                      base->kind == T_SLICE)) {
             layout(base, e->loc);
-            n->type =
-                base->elem->owned ? type_wrap(c->p, T_REF, base->elem, n->readonly) : base->elem;
+            n->type = base->elem->owned && c->raw_place != e
+                          ? type_wrap(c->p, T_REF, base->elem, n->readonly)
+                          : base->elem;
         }
         break;
     }
