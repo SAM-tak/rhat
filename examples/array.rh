@@ -53,15 +53,27 @@ d[2].push(2)
 # var^mm = i32^[]{ 0 repeat^max^ } # 当然ダメ
 var^mm = i32^[]{ 0 repeat^5 } # これは当然OK
 var^mm2 = { 0 repeat^5 } # こう書けば i32^[5] になる
+var^mmc_0 = i32^[]{mm...}
+var^mmc_1 = {mm...} # 型は省略できる
 
 var^m = i32^[3, 3]{ { 0 repeat^max^ } repeat^max^ }
 m[2, 0] := 1
 print^("m", m[2, 0]);
 
 var^cm = u8^[3 []]{{0 repeat^ 3}, {0 repeat^ 3}, {0 repeat^ 3}}
-# var^cm2 = u8^[3 []]{{0 repeat^ 3} repeat^ max^} # これはダメ
+# var^cm = u8^[3 []]{{0 repeat^ 3} repeat^ max^} # これはダメ
 cm[2][0] := 1
 print^("cm", cm[2][0]);
+
+var^mc_0 = i32^[3, 3]{m...}
+var^mc_1 = i32^[_^, _^]{m...}
+var^mc_2 = {m...}
+var^mc_3 = i32^[grow^, 3]{m...}
+var^cmc_0 = u8^[3 []]{cm...}
+var^cmc_1 = u8^[_^ []]{cm...}
+var^cmc_2 = {cm...}
+# var^cmc_3 = u8^[grow^ []]{cm...} # これは出来ない
+var^cmc_4 = u8^[grow^ [max^4]]{cm...} # これはできる
 
 var^m2 = i32^[_^,_^]{ { 0 repeat^3 } repeat^3 }
 m2[2, 0] := 1
@@ -71,6 +83,9 @@ var^m3 = i32^[grow^,_^]{ { 0 repeat^3 } repeat^2 }
 m3.push({3, 3, 3})
 m3[1, 1] := 1
 print^("m3", m3[1, 1], m3[2, 0]);
+
+var^m4 = { { 0 repeat^3 } repeat^3 } # 自動で i32^[3, 3]
+print^("m4", m4[1, 1], m4[2, 0]);
 
 # 拒否	所有配列を所有配列の要素にはできない
 # let^a00 = (i32^[])[grow^]{}
