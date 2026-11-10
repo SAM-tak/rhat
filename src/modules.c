@@ -1094,6 +1094,7 @@ static void resolve_constant(Program *p, Constant *c)
     Function *outer = top_user;
     top_user = &scope;
     List names = {0};
+    resolve_spec(c->owner->module, c->binding->spec);
     resolve_expr(p, c->owner->module, &names, c->binding->a);
     top_user = outer;
     if (!constant_expr(c->binding->a, true)) {
@@ -1112,6 +1113,7 @@ static void expand_constant(Program *p, Constant *c, Expr *e)
     resolve_constant(p, c);
     tool_record(p, loc, c->binding->loc, c->name, NULL, NULL, c->owner, 14, false);
     *e = *copy_expr(c->binding->a);
+    e->constant_spec = c->binding->spec ? c->binding->spec : e->constant_spec;
     e->loc = loc;
 }
 
@@ -1304,31 +1306,6 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             }
         }
     }
-    if (e->kind == E_NAME && top_user && top_user->owner && !local(names, e->text)) {
-        Field *state = state_member(p, top_user->owner, e->text, 0);
-        if (state) {
-            state_reference(p, state, e);
-            return;
-        }
-        Constant *c = type_constant(p, top_user->owner, e->text, 0);
-        if (c) {
-            expand_constant(p, c, e);
-            return;
-        }
-    }
-    if (e->kind == E_MEMBER && top_user && top_user->owner) {
-        char *path = path_of(e);
-        if (path && !local(names, path)) {
-            char *root = str(path), *dot = strchr(root, '.');
-            if (dot) {
-                *dot = 0;
-            }
-            if (type_constant(p, top_user->owner, root, 0)) {
-                resolve_expr(p, m, names, e->a);
-                return;
-            }
-        }
-    }
     if (m->root && e->kind == E_NAME && !local(names, e->text)) {
         Stmt *binding = top_user ? top_binding(e->text) : NULL;
         if (binding) {
@@ -1409,6 +1386,12 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
             e->a = e->b = NULL;
             return;
         }
+    }
+    if (e->kind == E_NAME && top_user && top_user->owner && !local(names, e->text) &&
+        (state_member(p, top_user->owner, e->text, 0) ||
+         type_constant(p, top_user->owner, e->text, 0))) {
+        fail(e->loc, "static member '%s' requires qualification; write def^.%s or Self^.%s",
+             e->text, e->text, e->text);
     }
     if (e->kind == E_RECORD && e->text) {
         Spec *alias = local_type(p, names, e->text, e->loc);
@@ -2037,6 +2020,7 @@ static void resolve_definition(Program *p, Def *d)
         f->loc = c->binding->loc;
         f->module = m;
         f->owner = d;
+        f->result = c->binding->spec;
         f->resolved = f->constant_value = true;
         Stmt *ret = mem(sizeof(*ret));
         *ret = (Stmt){.kind = S_RETURN, .loc = f->loc, .a = copy_expr(c->binding->a)};

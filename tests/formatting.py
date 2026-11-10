@@ -29,6 +29,9 @@ def main():
             assert path.read_bytes() == expected.encode('utf-8'), name
         suite.case(name, body)
 
+    expect('explicit_static_declarations',
+           'def^A {\nlet^step:f32^=0.2\nvar^count:i64^=0\n}\n',
+           'def^A {\n    let^step:f32^= 0.2\n    var^count:i64^= 0\n}\n')
     expect('numeric_type_suffixes',
            'let^hex=0x8888_4444_u64\nlet^f=1.25f32\nlet^n=-128i8\n',
            'let^hex = 0x8888_4444_u64\nlet^f = 1.25f32\nlet^n = -128i8\n')

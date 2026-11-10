@@ -1807,6 +1807,27 @@ g(1)
     client.send('textDocument/didClose',dict(textDocument=dict(uri=static_path.as_uri())))
     print('PASS mutable static members, hover, navigation and recovery',flush=True)
 
+    typed_static_path = work/'typed_static_members.rh'
+    typed_static_text = ('def^ A {let^step:f32^=0.2 var^count:i64^=0}\n'
+                         'let^value=A.step\nA.count+=1\nprint^(value,A.count)\n')
+    client.open(typed_static_path,typed_static_text)
+    diagnostics = client.diagnostics(typed_static_path,1)
+    assert diagnostics == [], diagnostics
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=typed_static_path.as_uri()),
+        position=at(typed_static_text,'value=A')))
+    assert 'f32^' in hover['contents']['value'], hover
+    for needle,shift in [('step:f32^',0),('A.step',2)]:
+        hover = client.request('textDocument/hover',dict(textDocument=dict(uri=typed_static_path.as_uri()),
+            position=at(typed_static_text,needle,shift=shift)))
+        assert hover and 'f32^' in hover['contents']['value'], hover
+    definition = client.request('textDocument/definition',dict(
+        textDocument=dict(uri=typed_static_path.as_uri()),position=at(typed_static_text,'A.step',shift=2)))
+    if isinstance(definition,list):
+        definition = definition[0]
+    assert definition['range']['start'] == at(typed_static_text,'step:f32^'), definition
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=typed_static_path.as_uri())))
+    print('PASS explicit typed static declarations, inferred hover and navigation',flush=True)
+
     entry_path = work/'entry_methods.rh'
     entry_text = ('var^count=0\nlet^fixed=7\n'
                   'def^ Counter {self^{} increment=p^ {count+=1}\n'

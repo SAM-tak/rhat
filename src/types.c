@@ -1229,6 +1229,11 @@ static void layout_unchecked(Type *t, Loc l)
     if (t->kind == T_STRUCT && t->def->opaque) {
         fail(l, "C type '%s' is opaque; use it only through ref^", t->def->name);
     }
+    // State inference can request storage before the declaration pass composes defs.
+    // Populate fields and union alternatives before caching their size and alignment.
+    if ((t->kind == T_STRUCT || t->kind == T_UNION) && t->def->state != 2) {
+        compose(t->def->module->program, t->def);
+    }
     if (t->size == SIZE_MAX) {
         fail(l, "recursive by-value layout in '%s'", type_name(t));
     }

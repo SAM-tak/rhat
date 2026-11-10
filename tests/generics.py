@@ -91,7 +91,7 @@ print^(a.value,b.value)
 def^V {
  self^{x:i32^,y:i32^}
  ZERO=Self^{x=i32^.ZERO,y=i32^.ZERO}
- TWO=Self^{x=i32^.ONE+i32^.ONE,y=ZERO.y}
+ TWO=Self^{x=i32^.ONE+i32^.ONE,y=def^.ZERO.y}
 }
 var^a=V.TWO
 a.x:=9
@@ -101,7 +101,7 @@ print^(a.x,V.TWO.x,V.ZERO.y)
 def^V {
  self^{private^x:i32^}
  private^VALUE=7
- ZERO=Self^{x=VALUE}
+ ZERO=Self^{x=def^.VALUE}
  get=f^self^ ->i32^ {self^.x}
 }
 let^a=V.ZERO

@@ -121,9 +121,9 @@ errordef^E {Bad}
 def^Counter {
  var^calls:i32^=0
  next=p^ -> i32^|E.Bad {
-  calls+=1
-  if^calls=2 {return^E.Bad{}}
-  return^calls
+  def^.calls+=1
+  if^def^.calls=2 {return^E.Bad{}}
+  return^def^.calls
  }
 }
 def^D:std.sys.Disposable {

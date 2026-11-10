@@ -3819,6 +3819,7 @@ static void def_member(Parser *p, Def *d)
         add(&d->state_fields, f);
         return;
     }
+    take(p, "let^");
     Loc declaration = tok(p)->loc;
     char *name;
     if (take(p, "op^")) {
@@ -3837,6 +3838,10 @@ static void def_member(Parser *p, Def *d)
     else {
         name = decl_word(p);
     }
+    Spec *annotation = NULL;
+    if (!abstr && take(p, ":")) {
+        annotation = spec(p);
+    }
     if (abstr) {
         need(p, ":");
     }
@@ -3852,6 +3857,7 @@ static void def_member(Parser *p, Def *d)
         binding->kind = S_BIND;
         binding->loc = declaration;
         binding->name = name;
+        binding->spec = annotation;
         binding->a = expr(p, 0);
         constant->name = name;
         constant->binding = binding;
@@ -3859,6 +3865,9 @@ static void def_member(Parser *p, Def *d)
         constant->public = !priv;
         add(&d->constants, constant);
         return;
+    }
+    if (annotation) {
+        fail(declaration, "write a method's signature after f^ or p^");
     }
     Function *f = function(p, name, d, abstr);
     f->declaration = declaration;
@@ -3911,6 +3920,20 @@ static void def_member_checked(Parser *p, Def *d)
     tool_leave(&recovery);
 }
 
+// A column-one let^ can be a member, or follow a def^ with a missing closing brace.
+static bool def_body_closed(Parser *p)
+{
+    int braces = 0;
+    for (int j = p->at; j < p->tokens.n; j++) {
+        Token *t = p->tokens.v[j];
+        if (t->kind == '}' && !braces--) {
+            return true;
+        }
+        braces += t->kind == '{';
+    }
+    return false;
+}
+
 // An editor can still resolve the remaining methods after a damaged member.
 static void def_body(Parser *p, Def *d)
 {
@@ -3918,8 +3941,9 @@ static void def_body(Parser *p, Def *d)
     Def *outer = p->type_owner;
     p->type_owner = d;
     while (!take(p, "}")) {
-        if (p->p->tooling && (is(p, "let^") || is(p, "def^") || is(p, "struct^") ||
-                              is(p, "import^") || is(p, "public^"))) {
+        if (p->p->tooling &&
+            (is(p, "def^") || is(p, "struct^") || is(p, "import^") || is(p, "public^") ||
+             (is(p, "let^") && tok(p)->loc.col == 1 && !def_body_closed(p)))) {
             TOOL_CHECK(p->p, fail(tok(p)->loc, "expected '}' before a top-level declaration"););
             break;
         }

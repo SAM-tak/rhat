@@ -5,6 +5,70 @@ from harness import Suite
 def main():
     suite = Suite('static members')
     positive, negative = suite.positive, suite.negative
+    positive('explicit_static_declarations', '''
+def^ A {
+    let^zero=0
+    let^step:f32^=0.2
+    wide:i64^=7
+    var^value:f32^=0.2
+    let^read=f^ {def^.step}
+}
+A.value+=A.step
+print^(A.zero,A.wide,typeof^(A.step).signature^,typeof^(A.wide).signature^,A.value=A.read()+A.step)
+''', '0 7 f32^ i64^ true\n')
+    positive('typed_generic_static_constants', '''
+def^ Value<T> {let^ZERO:T=T.ZERO private^let^ONE:T=T.ONE get=f^ {def^.ONE}}
+def^ Child:Value<i64^> {}
+print^(typeof^(Value<i32^>.ZERO).signature^,typeof^(Child.ZERO).signature^,Child.get())
+''', 'i32^ i64^ 1\n')
+    positive('qualified_static_outer_name_collision', '''
+var^aaa=100
+let^step=7
+def^ A {
+    var^aaa:i32^=1
+    let^step:f32^=0.2
+    self^{}
+    change=p^self^ {def^.aaa+=1 Self^.aaa+=2}
+    read=f^self^ {def^.aaa+Self^.aaa}
+    implicit=f^self^ {aaa}
+    constant=f^self^ {def^.step=Self^.step}
+}
+var^a=A{}
+a.change()
+print^(aaa,step,A.aaa,a.read(),a.implicit(),a.constant())
+''', '100 7 4 8 100 true\n')
+    negative('unqualified_static_variable', 'def^ A {var^n=0 read=f^ {n}} A.read()',
+             'requires qualification')
+    negative('unqualified_static_constant', 'def^ A {let^n=7 read=f^ {n}} A.read()',
+             'requires qualification')
+    negative('unqualified_static_constant_member',
+             'struct^ P {x:i32^=0} def^ A {let^origin=P{} read=f^ {origin.x}} A.read()',
+             "qualified name 'origin.x'")
+    negative('explicit_static_duplicate', 'def^ A {let^aaa=0 var^aaa:f32^=0.2}',
+             'name collision')
+    negative('typed_static_constant_invalid', 'def^ A {let^bad:i32^="wrong"}',
+             'expected')
+    negative('explicit_static_private', 'def^ A {private^let^n=7} print^(A.n)',
+             'private type constant')
+    positive('entry_state_record_layout', '''
+struct^ Item {left:i64^=0, right:i64^=0}
+var^items=Item[grow^]{}
+var^count=0
+def^ Observer {touch=p^ {count+=1}}
+items.push(Item{left=10,right=20})
+items.push(Item{left=30,right=40})
+Observer.touch()
+print^(items.len,items[0].left,items[0].right,items[1].left,items[1].right,count)
+''', '2 10 20 30 40 1\n')
+    positive('static_record_layout', '''
+struct^ Item {name:u8^[max^8]={}, value:i64^=0}
+def^ Store {
+    var^items=Item[grow^]{}
+    add=p^ {def^.items.push(Item{name={65,66},value=7})}
+}
+Store.add() Store.add()
+print^(Store.items.len,Store.items[0].name.len,Store.items[0].name[1],Store.items[1].value)
+''', '2 2 66 7\n')
     positive('entry_binding_methods', '''
 var^base=2
 var^count=base+1
