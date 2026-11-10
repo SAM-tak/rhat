@@ -1345,7 +1345,7 @@ void dispose_elements(Context *c, Value array, Value from, Loc l)
 {
     layout(array.type, l);
     Type *elem = array.type->elem;
-    if (!elem->disposable) {
+    if (!elem->disposable && !elem->owned) {
         return;
     }
     Type *integer = type_builtin(c->p, T_I64);
@@ -1391,12 +1391,25 @@ void dispose_elements(Context *c, Value array, Value from, Loc l)
     index->b = at.id;
     index->type = array.type;
     dispose_value(c, item, l);
+    if (elem->owned) {
+        Instr *drop = emit(c, I_ROW_DROP, l);
+        drop->a = array.id;
+        drop->b = at.id;
+        drop->type = array.type;
+    }
     nil_jump(c, test, l);
     nil_label(c, end, l);
 }
 
 void dispose_value(Context *c, Value v, Loc l)
 {
+    if (v.row_reservation) {
+        Instr *drop = emit(c, I_ROW_DROP, l);
+        drop->a = v.row_reservation->a;
+        drop->b = v.id;
+        drop->type = v.type;
+        return;
+    }
     layout(v.type, l);
     Type *t = v.type;
     if (!t->disposable) {
@@ -1662,7 +1675,7 @@ static bool contains(Type *whole, Type *part)
     if (whole == part) {
         return true;
     }
-    if (whole->kind == T_ARRAY) {
+    if (whole->kind == T_ARRAY || whole->kind == T_BOUNDED || whole->kind == T_GROW) {
         return contains(whole->elem, part);
     }
     if (whole->kind == T_UNION) {
@@ -1739,11 +1752,15 @@ static Type *flex_elements(Type *t)
     if (t->kind == T_GROW) {
         return t->count == ARRAY_FLEX ? t->elem : NULL;
     }
+    if (t->kind == T_BOUNDED && t->elem->owned) {
+        return t->elem;
+    }
     if (t->kind == T_STRUCT) {
         for (int j = 0; j < t->def->fields.n; j++) {
             Type *field = ((Field *)t->def->fields.v[j])->type;
-            if (field->kind == T_GROW && field->count == ARRAY_FLEX) {
-                return field->elem;
+            Type *elem = flex_elements(field);
+            if (elem) {
+                return elem;
             }
         }
     }
@@ -2106,6 +2123,44 @@ static Value bit_cast(Context *c, Value v, int kind, Loc loc, int destination)
     return out;
 }
 
+// Construct owned rows directly in stable storage; no owned descriptor is copied.
+static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
+{
+    Type *elem = base.type->elem;
+    int dst = slot(c, elem, true);
+    Value index = value(c, type_builtin(c->p, T_I64));
+    Instr *length = emit(c, I_LENGTH, loc);
+    length->dst = index.id;
+    length->a = base.id;
+    length->type = base.type;
+    Instr *reserve = emit(c, I_ROW_SLOT, loc);
+    reserve->a = base.id;
+    reserve->dst = dst;
+    reserve->type = base.type;
+    reserve->label = 1;
+    int pending = c->pending_disposals.n;
+    Value *rollback = mem(sizeof(*rollback));
+    *rollback = (Value){
+        .id = index.id, .type = base.type, .storage = base.storage, .row_reservation = reserve};
+    add(&c->pending_disposals, rollback);
+    Value row = construct(c, element, elem, dst);
+    c->pending_disposals.n = pending;
+    if (c->terminated) {
+        return abrupt(c);
+    }
+    store_check(c, base, row, loc);
+    Instr *commit = emit(c, I_ROW_COMMIT, loc);
+    commit->a = base.id;
+    commit->type = base.type;
+    Value result = value(c, type_wrap(c->p, T_REF, elem, 0));
+    Instr *address = emit(c, I_ADDR, loc);
+    address->a = dst;
+    address->dst = result.id;
+    address->type = result.type;
+    result.deps = roots_union(roots_union(base.storage, base.deps), row.deps);
+    return result;
+}
+
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
     if (c->type_constant || c->in->fn->constant_value) {
@@ -2364,7 +2419,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             }
             store_check(c, base, (Value){0}, e->loc);
             layout(base.type, e->loc);
-            if (flex || base.type->elem->disposable) {
+            if (flex || base.type->elem->disposable || base.type->elem->owned) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
             }
             Type *t = type_builtin(p, T_VOID);
@@ -2391,6 +2446,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                 fail(e->loc, "append needs a slice with the same element type");
             }
             layout(base.type->elem, e->loc);
+            if (base.type->elem->owned) {
+                fail(e->loc, "append cannot copy owned rows; push a freshly constructed row");
+            }
             if (base.type->elem->disposable) {
                 fail(e->loc, "append would copy Disposable '%s'; push temporaries instead",
                      type_name(base.type->elem));
@@ -2415,8 +2473,27 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
             }
             store_check(c, base, (Value){0}, e->loc);
             layout(base.type, e->loc);
-            if (flex || base.type->elem->disposable) {
+            if (flex || base.type->elem->disposable || base.type->elem->owned) {
                 shrink_check(c, base.storage, base.type->elem, NULL, e->loc);
+            }
+            if (pop && base.type->elem->owned) {
+                Instr *last = emit(c, I_ROW_SLOT, e->loc);
+                last->a = base.id;
+                last->dst = slot(c, base.type->elem, true);
+                last->type = base.type;
+                Value length = value(c, type_builtin(p, T_I64));
+                Instr *len = emit(c, I_LENGTH, e->loc);
+                len->dst = length.id;
+                len->a = base.id;
+                len->type = base.type;
+                Value one = constant(c, T_I64, "1", e->loc);
+                Value remaining = operate(c, "-", length, one, e->loc);
+                dispose_elements(c, base, remaining, e->loc);
+                Instr *truncate = emit(c, I_TRUNCATE, e->loc);
+                truncate->a = base.id;
+                truncate->b = remaining.id;
+                truncate->type = base.type;
+                return (Value){.id = -1, .type = type_builtin(p, T_VOID)};
             }
             if (!pop) {
                 dispose_elements(c, base, (Value){.id = -1}, e->loc);
@@ -2438,6 +2515,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         if (growable && !strcmp(target->text, "push")) {
             if (e->args.n != 1) {
                 fail(e->loc, "push expects one element");
+            }
+            if (base.type->elem->owned) {
+                store_check(c, base, (Value){0}, e->loc);
+                Value row = push_owned_row(c, base, e->args.v[0], e->loc);
+                forget_roots(&c->vars, roots_union(base.storage, base.deps), false);
+                return row;
             }
             Value v = expression(c, e->args.v[0], base.type->elem);
             if (c->terminated) {
@@ -3381,7 +3464,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             a->dst = out.id;
             a->type = t;
         }
-        if (t->kind == T_BOUNDED) {
+        if (t->kind == T_BOUNDED && t->owned) {
+            Instr *region = emit(c, I_REGION, e->loc);
+            region->dst = out.id;
+            region->type = t;
+        }
+        else if (t->kind == T_BOUNDED) {
             // Only the length is set; elements past it are never read.
             layout(t, e->loc);
             Instr *a = emit(c, I_CLEAR, e->loc);
@@ -3395,7 +3483,16 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             dispose_pending(c, out);
         }
         for (int j = 0; j < e->args.n; j++) {
-            if (t->kind == T_GROW || t->kind == T_BOUNDED) {
+            if (t->kind == T_BOUNDED && t->owned) {
+                Value row = push_owned_row(c, out, e->args.v[j], e->loc);
+                if (c->terminated) {
+                    c->inflight.n = inflight;
+                    c->pending_disposals.n = pending;
+                    return abrupt(c);
+                }
+                out.deps = roots_union(out.deps, row.deps);
+            }
+            else if (t->kind == T_GROW || t->kind == T_BOUNDED) {
                 Value v = j || !first.type ? array_element(c, e, e->args.v[j], t->elem) : first;
                 if (dead(v)) {
                     c->inflight.n = inflight;
@@ -4225,6 +4322,18 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->a = base.id;
         i->b = index.id;
         i->type = base.type;
+        if (out.type->owned) {
+            bool read = out.readonly || (base.var && !base.var->mut);
+            Value ref = value(c, type_wrap(p, T_REF, out.type, read));
+            Instr *addr = emit(c, I_ADDR, e->loc);
+            addr->a = out.id;
+            addr->dst = ref.id;
+            addr->type = ref.type;
+            ref.deps = roots_union(out.storage, out.deps);
+            ref.target = out.storage;
+            ref.contents = out.deps;
+            return ref;
+        }
         return out;
     }
     if (e->kind == E_UNARY) {

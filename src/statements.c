@@ -620,7 +620,8 @@ void handle_statements(Context *c, Stmt *s)
                           .checkpoint = -1,
                           .arms = &s->handlers};
     if (c->in->result->owned) {
-        target.checkpoint = slot(c, type_builtin(c->p, T_U64), false);
+        target.checkpoint = slot(
+            c, type_wrap(c->p, T_ARRAY, type_builtin(c->p, T_U64), c->in->result->regions), false);
         Instr *i = emit(c, I_STACK_SAVE, s->loc);
         i->a = c->in->result_slot;
         i->dst = target.checkpoint;

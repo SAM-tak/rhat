@@ -74,6 +74,7 @@ static Type *wrap_rank(Program *p, int k, Type *e, int n, int rank)
         t->size = 24;
         t->align = 8;
         t->owned = true;
+        t->regions = 1;
         t->refs = e->refs;
     }
     add(&e->wrappers, t);
@@ -552,14 +553,19 @@ Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first)
     if (argument_pack(first)) {
         fail(e->loc, "argument packs cannot be stored in arrays");
     }
-    Spec *attrs = e->array_literal;
-    if (!attrs) {
-        return expected ? expected : first ? type_wrap(p, T_ARRAY, first, e->args.n) : NULL;
-    }
-    if (attrs->kind == SPEC_SLICE) {
+    Spec *attrs = e->array_literal ? e->array_literal : e->test_spec;
+    if (attrs && attrs->kind == SPEC_SLICE) {
         fail(e->loc, "a slice borrows existing storage; use array[start .. end]");
     }
-    return type_spec(p, attrs);
+    Type *t = attrs      ? type_spec(p, attrs)
+              : expected ? expected
+              : first    ? type_wrap(p, T_ARRAY, first, e->args.n)
+                         : NULL;
+    // Inference also visits literals before their uses; reject invalid storage here.
+    if (t) {
+        layout(t, e->loc);
+    }
+    return t;
 }
 
 bool derives(Def *d, Def *b)
@@ -1174,6 +1180,9 @@ static void layout_unchecked(Type *t, Loc l)
                 fail(l, "union alternative '%s' must be concrete", type_name(arm));
             }
             t->owned |= arm->owned;
+            if (arm->regions > t->regions) {
+                t->regions = arm->regions;
+            }
             t->disposable |= arm->disposable;
             if (arm->size > size) {
                 size = arm->size;
@@ -1196,7 +1205,7 @@ static void layout_unchecked(Type *t, Loc l)
     }
     else if (t->kind == T_ARRAY || t->kind == T_BOUNDED) {
         layout(t->elem, l);
-        if (t->elem->owned || !t->elem->size) {
+        if ((t->elem->owned && t->kind != T_BOUNDED) || !t->elem->size) {
             fail(l, "array elements must be nonempty fixed-size values");
         }
         if (t->elem->size > (SIZE_MAX - 16) / (size_t)t->count) {
@@ -1211,6 +1220,25 @@ static void layout_unchecked(Type *t, Loc l)
         }
         t->refs = t->elem->refs;
         t->disposable = t->elem->disposable;
+        if (t->elem->owned) {
+            if (t->elem->regions > INT_MAX / t->count) {
+                fail(l, "data stack count overflows");
+            }
+            t->owned = true;
+            t->regions = t->count * t->elem->regions;
+            if (size > SIZE_MAX - 7 || (size_t)t->regions > (SIZE_MAX - 8) / 8) {
+                fail(l, "array layout overflows");
+            }
+            size = (size + 7) / 8 * 8;
+            size_t metadata = 8 + (size_t)t->regions * 8;
+            if (size > SIZE_MAX - metadata) {
+                fail(l, "array layout overflows");
+            }
+            size += metadata;
+            if (align < 8) {
+                align = 8;
+            }
+        }
     }
     else {
         for (int i = 0; i < t->def->fields.n; i++) {
@@ -1232,6 +1260,9 @@ static void layout_unchecked(Type *t, Loc l)
             }
             t->refs |= f->type->refs;
             t->owned |= f->type->owned;
+            if (f->type->regions > t->regions) {
+                t->regions = f->type->regions;
+            }
             t->disposable |= f->type->disposable;
         }
     }

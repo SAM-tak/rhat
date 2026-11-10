@@ -1200,7 +1200,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:i32^[ref^ 1]={ref^ n}\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
         ('bytes_of_temporary', 'print^({1,2}.bytes.len)', 'cannot borrow a temporary'),
         ('bounded_literal_too_long', 'let^ a:i32^[max^2]={1,2,3}', 'holds at most 2 elements'),
-        ('bounded_owned_elements', 'var^ a:(i32^[grow^])[max^2]={}', 'nonempty fixed-size'),
+        ('unbounded_owned_elements', 'var^ a:(i32^[grow^])[grow^]={}', 'nonempty fixed-size'),
         ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),
         ('top_level_hidden', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\ndo^{ var^ n:i64^ = 5\nshow() }', "which a local hides here"),
         ('top_level_value', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\nlet^ g = show', "cannot be a value"),

@@ -79,6 +79,7 @@ typedef struct {
     bool readonly; // This place was reached through a read-only reference.
     // A reference made from a place knows where it points and what is held there.
     Roots target, contents;
+    Instr *row_reservation; // Pending row placement, restored on an error path.
 } Value;
 
 // Loop targets and scope boundaries used by control-flow analysis.

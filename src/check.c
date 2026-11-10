@@ -944,7 +944,8 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         }
         if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
             !strcmp(target->text, "pop")) {
-            return base->elem;
+            layout(base, e->loc);
+            return base->elem->owned ? type_builtin(c->p, T_VOID) : base->elem;
         }
         if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
             !strcmp(target->text, "truncate")) {
@@ -1696,8 +1697,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
     }
     case E_ARRAY: {
         if (e->text) {
-            Type *type = e->test_spec ? type_spec(c->p, e->test_spec)
-                                      : array_literal_type(c->p, e, expected, NULL);
+            Type *type = array_literal_type(c->p, e, expected, NULL);
             for (int j = 0; j < e->args.n; j++) {
                 Type *actual = infer_expr(c, e->args.v[j], array_form_hint(c->p, e, type, j));
                 if (!type && !expected && !j) {
@@ -1909,6 +1909,14 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
             return infer_view(c, e->a, base);
         }
         check_index_rank(base, e);
+        if (base && (base->kind == T_ARRAY || base->kind == T_BOUNDED || base->kind == T_GROW ||
+                     base->kind == T_SLICE)) {
+            layout(base, e->loc);
+            if (base->elem->owned) {
+                return type_wrap(c->p, T_REF, base->elem,
+                                 infer_read_place(c, e) || infer_let_place(c, e));
+            }
+        }
         return base && base->kind == T_STRING ? type_builtin(c->p, T_U8)
                : base && (base->kind == T_ARRAY || base->kind == T_GROW ||
                           base->kind == T_BOUNDED || base->kind == T_SLICE)
@@ -3237,7 +3245,9 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         check_index_rank(base, e);
         if (base && (base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
                      base->kind == T_SLICE)) {
-            n->type = base->elem;
+            layout(base, e->loc);
+            n->type =
+                base->elem->owned ? type_wrap(c->p, T_REF, base->elem, n->readonly) : base->elem;
         }
         break;
     }
@@ -3362,8 +3372,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         n->type = want;
         break;
     case E_ARRAY:
-        n->type =
-            e->test_spec ? type_spec(c->p, e->test_spec) : array_literal_type(c->p, e, want, NULL);
+        n->type = array_literal_type(c->p, e, want, NULL);
         if (e->text) {
             for (int j = 0; j < e->args.n; j++) {
                 BodyNode *arg = body_expr(c, e->args.v[j], array_form_hint(c->p, e, n->type, j));

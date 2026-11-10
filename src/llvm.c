@@ -50,7 +50,9 @@ char *llvm_type(Type *t)
     case T_GROW:
         return "{ ptr, i64, ptr }";
     case T_BOUNDED:
-        return fmt("{ i64, [%d x %s] }", t->count, llvm_type(t->elem));
+        return t->owned ? fmt("{ i64, [%d x %s], ptr, [%d x ptr] }", t->count, llvm_type(t->elem),
+                              t->regions)
+                        : fmt("{ i64, [%d x %s] }", t->count, llvm_type(t->elem));
     default:
         return t->symbol ? t->symbol : fmt("%%rh_type_%d", t->id);
     }
@@ -83,17 +85,20 @@ static bool direct(Type *t)
 
 static char *stack_for(Output *o, int id)
 {
-    int owner = ((Slot *)o->in->slots.v[id])->owner;
+    Slot *slot = o->in->slots.v[id];
+    if (slot->nested_stack) {
+        return fmt("%%nested%d", slot->nested_stack - 1);
+    }
+    int owner = slot->owner;
     if (o->in->result->owned && owner == o->in->result_slot) {
         return "%result_stack";
     }
     return fmt("%%s%d", owner);
 }
 
-// A non-owning value cannot contain an owning array descriptor. Array
-// elements are non-owning; references cannot expose descriptor fields or
-// reinterpret storage. Keep aggregates containing owned fields unclassified
-// so their whole-value copies may alias either category.
+// Non-owning storage and owning descriptors use separate TBAA classes.
+// Keep aggregates containing owned fields, including bounded row owners,
+// unclassified so their accesses may alias either category.
 static const char *memory_tag(Type *t)
 {
     return t->kind == T_GROW ? ", !tbaa !5" : !t->owned ? ", !tbaa !4" : "";
@@ -777,6 +782,24 @@ static void instruction(Output *o, Instr *i)
                 i->a, i->label);
         break;
     case I_INDEX:
+        if (t->kind == T_BOUNDED && t->elem->owned) {
+            int groupaddr = bounded_field(o, t, i->a, 2), group = ++o->tmp, offset = ++o->tmp;
+            char *index = i->b < 0 ? fmt("%d", i->label) : fmt("%%t%d", load(o, i->b));
+            if (i->b >= 0 && numeric_bits(slot_type(o, i->b)->kind) != 64) {
+                Type *it = slot_type(o, i->b);
+                int wide = ++o->tmp;
+                fprintf(f, "  %%t%d = %s %s %s to i64\n", wide,
+                        numeric_bits(it->kind) > 64 ? "trunc"
+                        : kind_unsigned(it->kind)   ? "zext"
+                                                    : "sext",
+                        llvm_type(it), index);
+                index = fmt("%%t%d", wide);
+            }
+            fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", group, groupaddr);
+            fprintf(f, "  %%t%d = mul i64 %s, %d\n", offset, index, t->elem->regions);
+            fprintf(f, "  %%nested%d = getelementptr %%RhStack, ptr %%t%d, i64 %%t%d\n", i->dst,
+                    group, offset);
+        }
         if (i->b < 0) {
             fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i64 0, %si64 %d\n", i->dst,
                     llvm_type(t), i->a, t->kind == T_BOUNDED ? "i32 1, " : "", i->label);
@@ -952,47 +975,78 @@ static void instruction(Output *o, Instr *i)
         a = ++o->tmp;
         fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
         fprintf(f, "  %%s%d = getelementptr %%RhStack, ptr %%stacks, i64 %%t%d\n", i->dst, a);
-        fprintf(f, "  %%markp%d = getelementptr %%RhStack, ptr %%s%d, i32 0, i32 1\n", i->dst,
-                i->dst);
-        b = ++o->tmp;
-        fprintf(f, "  %%t%d = load ptr, ptr %%markp%d\n", b, i->dst);
-        fprintf(f, "  store ptr %%t%d, ptr %%mark%d\n", b, i->dst);
+        fprintf(f, "  call void @rh_stack_group_save(ptr %%s%d, ptr %%mark%d, i64 %d)\n", i->dst,
+                i->dst, t->regions);
         break;
     case I_REGION: {
         char *stack = stack_for(o, i->dst);
+        if (t->kind == T_BOUNDED) {
+            fprintf(f, "  store i64 0, ptr %%p%d\n", i->dst);
+            int group = bounded_field(o, t, i->dst, 2);
+            int marks = bounded_field(o, t, i->dst, 3);
+            fprintf(f, "  store ptr %s, ptr %%t%d\n", stack, group);
+            fprintf(f, "  call void @rh_stack_group_save(ptr %s, ptr %%t%d, i64 %d)\n", stack,
+                    marks, t->regions);
+            break;
+        }
         a = ++o->tmp;
         b = ++o->tmp;
         r = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %s, i32 0, i32 1\n", a, stack);
         fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n", b, a);
-        fprintf(f,
-                "  %%t%d = insertvalue { ptr, i64, ptr } { ptr null, i64 0, ptr "
-                "null }, ptr %%t%d, 0\n",
+        fprintf(f, "  %%t%d = insertvalue {ptr,i64,ptr} {ptr null,i64 0,ptr null}, ptr %%t%d, 0\n",
                 r, b);
         a = ++o->tmp;
-        fprintf(f, "  %%t%d = insertvalue { ptr, i64, ptr } %%t%d, ptr %s, 2\n", a, r, stack);
+        fprintf(f, "  %%t%d = insertvalue {ptr,i64,ptr} %%t%d, ptr %s, 2\n", a, r, stack);
         save(o, i->dst, t, fmt("%%t%d", a));
         break;
     }
     case I_RELEASE:
-        a = ++o->tmp;
-        fprintf(f, "  %%t%d = load ptr, ptr %%mark%d\n", a, i->a);
-        fprintf(f, "  store ptr %%t%d, ptr %%markp%d\n", a, i->a);
+        fprintf(f, "  call void @rh_stack_group_restore(ptr %%s%d, ptr %%mark%d, i64 %d)\n", i->a,
+                i->a, t->regions);
         break;
     case I_STACK_SAVE:
-    case I_STACK_REWIND: {
-        char *stack = stack_for(o, i->a);
-        a = ++o->tmp;
-        fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %s, i32 0, i32 1\n", a, stack);
+    case I_STACK_REWIND:
+        fprintf(f, "  call void @rh_stack_group_%s(ptr %s, ptr %%p%d, i64 %d)\n",
+                i->op == I_STACK_SAVE ? "save" : "restore", stack_for(o, i->a), i->dst, t->regions);
+        break;
+    case I_ROW_SLOT: {
+        int length = bounded_length(o, t, i->a);
+        int valid = ++o->tmp, at = ++o->tmp;
+        fprintf(f,
+                i->label ? "  %%t%d = icmp ult i64 %%t%d, %d\n"
+                         : "  %%t%d = icmp ne i64 %%t%d, %d\n",
+                valid, length, i->label ? t->count : 0);
+        check_or_fail(o, valid, i->label ? "capacity_fail" : "pop_fail", i->loc.line);
+        fprintf(f, "  %%t%d = %s i64 %%t%d, %d\n", at, i->label ? "add" : "sub", length,
+                i->label ? 0 : 1);
+        fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i32 0, i32 1, i64 %%t%d\n", i->dst,
+                llvm_type(t), i->a, at);
+        int groupaddr = bounded_field(o, t, i->a, 2), group = ++o->tmp, offset = ++o->tmp;
+        fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n  %%t%d = mul i64 %%t%d, %d\n", group, groupaddr,
+                offset, at, t->elem->regions);
+        fprintf(f, "  %%nested%d = getelementptr %%RhStack, ptr %%t%d, i64 %%t%d\n", i->dst, group,
+                offset);
+        break;
+    }
+    case I_ROW_COMMIT:
+        a = bounded_length(o, t, i->a);
         b = ++o->tmp;
-        if (i->op == I_STACK_SAVE) {
-            fprintf(f, "  %%t%d = load ptr, ptr %%t%d\n  store ptr %%t%d, ptr %%p%d\n", b, a, b,
-                    i->dst);
-        }
-        else {
-            fprintf(f, "  %%t%d = load ptr, ptr %%p%d\n  store ptr %%t%d, ptr %%t%d\n", b, i->dst,
-                    b, a);
-        }
+        fprintf(f, "  %%t%d = add i64 %%t%d, 1\n  store i64 %%t%d, ptr %%p%d\n", b, a, b, i->a);
+        break;
+    case I_ROW_DROP: {
+        int at = load(o, i->b), offset = ++o->tmp;
+        int groupaddr = bounded_field(o, t, i->a, 2), group = ++o->tmp,
+            marks = bounded_field(o, t, i->a, 3);
+        int stacks = ++o->tmp, checkpoint = ++o->tmp;
+        fprintf(f, "  %%t%d = mul i64 %%t%d, %d\n  %%t%d = load ptr, ptr %%t%d\n", offset, at,
+                t->elem->regions, group, groupaddr);
+        fprintf(f, "  %%t%d = getelementptr %%RhStack, ptr %%t%d, i64 %%t%d\n", stacks, group,
+                offset);
+        fprintf(f, "  %%t%d = getelementptr ptr, ptr %%t%d, i64 %%t%d\n", checkpoint, marks,
+                offset);
+        fprintf(f, "  call void @rh_stack_group_restore(ptr %%t%d, ptr %%t%d, i64 %d)\n", stacks,
+                checkpoint, t->elem->regions);
         break;
     }
     case I_PUSH: {
@@ -2078,7 +2132,7 @@ void emit_llvm(Program *p, const char *path)
         for (int k = 0; k < in->code.n; k++) {
             Instr *i = in->code.v[k];
             if (i->op == I_STACK_BEGIN) {
-                fprintf(f, "  %%mark%d = alloca ptr\n", i->dst);
+                fprintf(f, "  %%mark%d = alloca [%d x ptr]\n", i->dst, i->type->regions);
             }
         }
         if (result && !direct(in->result)) {
@@ -2168,6 +2222,9 @@ void dump_ir(Program *p, const char *path)
                            "branch.if",
                            "return",
                            "region.construct",
+                           "row.slot",
+                           "row.commit",
+                           "row.drop",
                            "stack.restore",
                            "array.push",
                            "length",

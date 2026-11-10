@@ -85,7 +85,7 @@ var^grow=dynamic^Shape[grow^]{a,ref^b}
 var^flex=dynamic^Shape[flex^]{a,ref^b}
 var^bound=dynamic^Shape[max^3]{a,ref^b}
 var^sized=dynamic^Shape[]{a,ref^b}
-var^copy=dynamic^Shape[](fixed[..])
+var^copy=dynamic^Shape[]{fixed[..]...}
 var^reserved=dynamic^Shape[max^](3)
 reserved.push(ref^a) grow.push(ref^a) flex.pop() bound.push(ref^b)
 print^(fixed[0].area(),grow.len,flex.len,bound.len,sized.len,copy[1].area(),reserved[0].area())
@@ -126,7 +126,7 @@ var^growing=Shape[ATTRIBUTEgrow^]{a,ref^b}
 var^flexing=Shape[ATTRIBUTEflex^]{a,ref^b}
 var^bounded=Shape[ATTRIBUTEmax^3]{a,ref^b}
 let^sized=Shape[ATTRIBUTE]{a,ref^b}
-let^copy=Shape[ATTRIBUTE](fixed[..])
+let^copy=Shape[ATTRIBUTE]{fixed[..]...}
 var^reserved=Shape[ATTRIBUTEmax^](3)
 growing.push(ref^a) flexing.pop() bounded.push(ref^a) reserved.push(ref^a)
 print^(total(fixed[..]),total(literal[..]),total(growing[..]),total(flexing[..]),total(bounded[..]),total(sized[..]),total(copy[..]),total(reserved[..]))

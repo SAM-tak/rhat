@@ -348,6 +348,12 @@ Value read_borrow(Context *c, Value v, Loc loc)
 
 void read_write_check(Context *c, Roots storage, Loc loc)
 {
+    for (int j = 0; j < c->pending_disposals.n; j++) {
+        Value *pending = c->pending_disposals.v[j];
+        if (pending->row_reservation && roots_meet(storage, pending->storage)) {
+            fail(loc, "cannot modify an array while constructing one of its owned rows");
+        }
+    }
     for (int j = 0; j < c->read_borrows.n; j++) {
         ReadBorrow *loan = c->read_borrows.v[j];
         if (c->p->state_fields.n && c->in->fn != c->p->entry &&

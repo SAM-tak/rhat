@@ -2130,15 +2130,15 @@ static Expr *primary(Parser *p)
             entries(p, n, ")", false);
             if (e->kind == E_ARRAY && e->test_spec) {
                 Spec *s = e->test_spec;
-                bool capped = s->kind == SPEC_GROW && s->count == ARRAY_CAPPED;
-                if (capped && (e->text || n->args.n != 1)) {
+                if (s->kind != SPEC_GROW || s->count != ARRAY_CAPPED) {
+                    fail(e->loc, "array construction parentheses are reserved for size/capacity; "
+                                 "use T[]{source...} to copy (currently only T[max^](capacity) "
+                                 "is supported)");
+                }
+                if (e->text || n->args.n != 1) {
                     fail(e->loc, "T[max^] construction expects a capacity");
                 }
-                if (!capped && (e->text || s->kind != SPEC_ARRAY || s->count || n->args.n != 1)) {
-                    fail(e->loc, "T[] construction expects a source; write T[]{value repeat^ n} "
-                                 "to repeat a value");
-                }
-                e->text = capped ? "reserve" : "copy";
+                e->text = "reserve";
                 e->args = n->args;
                 continue;
             }

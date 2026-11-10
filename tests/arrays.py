@@ -5,6 +5,176 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    def invalid_rows_at_declaration(name, text, line, error):
+        def check():
+            path = suite.source(name,text)
+            result = suite.run([suite.compiler,'check',path],False)
+            assert f':{line}:' in result.stderr, result.stderr
+            assert error in result.stderr, result.stderr
+        suite.case(name,check)
+    for name, declaration in (
+            ('inferred','var^d=i32^[grow^[grow^]]{}'),
+            ('annotated','var^d:i32^[grow^[grow^]]={}'),
+            ('unsupported_size_constructor','var^d=i32^[[grow^]](8)'),
+            ('capacity_constructor','var^d=i32^[max^[grow^]](8)')):
+        error = ('parentheses are reserved for size/capacity' if name == 'unsupported_size_constructor'
+                 else 'nonempty fixed-size')
+        for use, suffix in (('unused',''), ('push','\nd.push({})'),
+                            ('index','\nd.push({})\nd[0].push(1)')):
+            invalid_rows_at_declaration('invalid_rows_declaration_' + name + '_' + use,
+                                        declaration + suffix + '\n',1,error)
+        invalid_rows_at_declaration('invalid_rows_declaration_function_' + name,
+                                   'let^test=p^{\n' + declaration + '\nd.push({})\nd[0].push(1)\n}\ntest()\n',2,error)
+    row_runtime = suite.work/'jagged_runtime.c'
+    positive('jagged_initialize_eight_empty_rows', '''
+var^d=i32^[max^8[grow^]]{}
+repeat^8 {d.push({})}
+d[0].push(0)
+d[7].push(7)
+print^(d.len,d[0][0],d[7][0])
+''', '8 0 7\n')
+    row_runtime.write_text('''
+#define rh_print_integer rh_base_print_integer
+#define rh_runtime_shutdown rh_base_shutdown
+#include "''' + (suite.repo/'runtime/rhat_runtime.c').as_posix() + '''"
+#undef rh_print_integer
+#undef rh_runtime_shutdown
+void rh_print_integer(const void *value, int32_t bits, int32_t uns) {
+    uint64_t used = 0;
+    for (uint64_t j=0; j<rh_context->count; j++) {
+        used += (uint64_t)(rh_context->stacks[j].top-rh_context->stacks[j].base);
+    }
+    if (used != 4) rh_panic("owned row retry leaked storage",0);
+    rh_base_print_integer(value,bits,uns);
+}
+void rh_runtime_shutdown(void) {
+    for (uint64_t j=0; j<rh_context->count; j++) {
+        if (rh_context->stacks[j].top != rh_context->stacks[j].base) {
+            rh_panic("owned row scope leaked storage",0);
+        }
+    }
+    rh_base_shutdown();
+}
+''', encoding='utf-8')
+    positive('jagged_error_restores_row_stacks', '''
+errordef^E {Bad}
+let^fail=f^ -> i32^|E.Bad {E.Bad{}}
+var^d=i32^[max^2[grow^]]{}
+repeat^1000 {
+    do^{d.push({1,2,try^fail()}) catch^: assert^(d.len=0)}
+}
+d.push({7})
+print^(d[0][0])
+''', '7\n', extra=['--runtime',row_runtime])
+    positive('jagged_nested_owners_and_struct_rows', '''
+def^Row {self^{id:i32^, values:i32^[grow^]}}
+var^rows = Row[max^2]{{id=7,values={1,2}}}
+rows.push({id=8,values={3}})
+rows[1].values.push(4)
+var^deep = i32^[max^2 [max^2 [grow^]]]{}
+deep.push({{10},{20,21}})
+deep[0][1].push(22)
+deep.push({})
+deep[1].push({30})
+print^(rows[1].id,rows[1].values[1],deep[0][1][2],deep[1][0][0])
+deep.clear()
+''', '8 4 22 30\n')
+    positive('jagged_disposable_rows', '''
+import^std.sys
+def^D:std.sys.Disposable {
+    self^{n:i32^}
+    dispose=p^self^{print^(self^.n)}
+}
+do^{
+    var^d = D[max^2 [grow^]]{{D{n=1},D{n=2}},{D{n=3}}}
+    d.pop()
+    d.clear()
+    d.push({D{n=4}})
+}
+''', '3\n2\n1\n4\n')
+    positive('jagged_error_retry_and_return_checkpoint', '''
+errordef^E {Bad}
+let^fail = f^ -> i32^|E.Bad {E.Bad{}}
+let^make = p^ -> i32^[max^2 [grow^]] {
+    return^i32^[max^2 [grow^]]{{1},{2,try^fail()}}
+catch^:
+    return^i32^[max^2 [grow^]]{{7},{8,9}}
+}
+var^d = i32^[max^2 [grow^]]{}
+repeat^1000 {
+    do^{d.push({1,try^fail()}) catch^: assert^(d.len=0)}
+}
+d.push({5})
+var^result = make()
+print^(d.len,d[0][0],result[1][1])
+''', '1 5 9\n')
+    negative('jagged_reject_reentrant_construction', '''
+let^make=p^d:ref^i32^[max^2 [grow^]] -> i32^[grow^] {
+    d.push({1})
+    return^i32^[grow^]{2}
+}
+var^d=i32^[max^2 [grow^]]{}
+d.push(make(ref^d))
+''', 'while constructing one of its owned rows')
+    negative('jagged_reject_readonly_row', 'let^d=i32^[max^2[grow^]]{{1}}\nd[0].push(2)\n', 'cannot modify')
+    negative('jagged_reject_thread_transfer', 'let^c=import^std.channel\nvar^q=try^c.Channel<i32^[max^2[grow^]]>.new(1,1024)\n', 'thread transfer of owning row arrays')
+    negative('jagged_reject_stack_count_overflow', 'var^d:i32^[max^1000000 [max^1000000 [grow^]]]={}\n', 'data stack count overflows')
+    negative('jagged_reject_metadata_size_overflow', '''
+def^Huge {
+    self^{
+        a:u8^[65536,65536,65536,65535],
+        b:u8^[65536,65536,65535],
+        c:u8^[65536,65535],
+        d:u8^[65232],
+        rows:i32^[max^8 [grow^]]
+    }
+}
+var^d:Huge[max^1]={}
+''', 'array layout overflows')
+    positive('jagged_owned_rows', '''
+var^d = i32^[max^8 [grow^]]{}
+d.push({1})
+d.push({})
+d.push({7,8,9})
+d[0].push(2)
+d[1].push(5)
+let^row = d[0]
+row.push(3)
+d.push({10})
+var^n:i32^ = 1
+print^(d.len,row.len,d[n][0],d[2][2],d[3][0])
+''', '4 3 5 9 10\n')
+    positive('jagged_shrink_reuse_and_iteration', '''
+var^d = i32^[max^3 [grow^]]{{1,2},{3}}
+var^sum = 0
+for^row in^d { for^n in^row { sum += n } }
+d.pop()
+d.push({4,5,6})
+d.truncate(1)
+d.clear()
+for^i from^0 to^1000 { d.push({7,8}) d.clear() }
+d.push({9})
+print^(sum,d.len,d[0][0])
+''', '6 1 9\n')
+    positive('jagged_return_and_borrowed_mutation', '''
+let^make = f^ -> i32^[max^3 [grow^]] {
+    var^d = i32^[max^3 [grow^]]{{1},{2,3}}
+    return^d
+}
+let^add = p^d:ref^i32^[max^3 [grow^]] { d.push({4,5,6}) }
+var^d = make()
+add(ref^d)
+print^(d[0][0],d[1].len,d[2][2])
+''', '1 2 6\n')
+    for name, tail in (
+            ('row_borrow', 'let^r=d[0]\nd.clear()\nprint^(r.len)'),
+            ('element_borrow', 'let^r=d[0].push(1)\nd.clear()\nprint^(*r)'),
+            ('callee', 'let^clear=p^a:ref^i32^[max^2[grow^]]{a.clear()}\nlet^r=d[0]\nclear(ref^d)\nprint^(r.len)')):
+        negative('jagged_reject_' + name,
+                 'var^d=i32^[max^2[grow^]]{{1}}\n' + tail + '\n', 'cannot shrink')
+    negative('jagged_reject_copy', 'var^d=i32^[max^2[grow^]]{{1}}\nlet^copy=d\n', 'cannot be copied')
+    negative('jagged_reject_row_escape', 'let^bad=p^ -> ref^i32^[grow^]{var^d=i32^[max^2[grow^]]{{1}} return^d[0]}\nlet^r=bad()\n', 'cannot return')
+    suite.runtime_failure('jagged_capacity', 'var^d=i32^[max^1[grow^]]{}\nd.push({})\nd.push({})\n', 'bounded array is full')
     positive('rectangular_fixed_shapes', '''
 var^a:i32^[2,3] = {{10,11,12},{20,21,22}}
 let^b = i32^[2,3]{{30,31,32},{40,41,42}}
@@ -143,10 +313,10 @@ print^(a[0][1][2],b[1,0][2],c[indices[0]][2])
             ('after_sugar', 'var^a:i32^[3 [2]][4] = {}'),
             ('wrapped_chain', 'let^a = (i32^[2][3])[]{}')):
         negative('nested_reject_chain_' + name, source + '\n', 'consecutive array type brackets')
-    negative('nested_owning_rows_still_unsupported',
-             'var^rows:i32^[max^64 [grow^]] = {}\n', 'nonempty fixed-size')
+    negative('nested_unbounded_owning_rows_still_unsupported',
+             'var^rows:i32^[grow^ [grow^]] = {}\n', 'nonempty fixed-size')
     negative('parenthesized_owning_rows_still_unsupported',
-             'var^rows:(i32^[grow^])[max^64] = {}\n', 'nonempty fixed-size')
+             'var^rows:(i32^[grow^])[grow^] = {}\n', 'nonempty fixed-size')
     for name, source in (
             ('annotation', 'var^a:i32^[[3] 2] = {}'),
             ('constructor', 'let^a = i32^[[3] 2]{}'),
@@ -251,22 +421,32 @@ var^empty:i64^[]={}
 let^zero=i64^[]{9 repeat^ 0}
 print^(a.len,a[0],a[1],a[2],empty.len,zero.len,a.bytes.len)
 ''', '3 7 42 7 0 0 24\n')
+    for name, constructor in (
+            ('owned', 'i32^[](src)'),
+            ('references', 'i32^[ref^](src)'),
+            ('bounded', 'i32^[max^8](src)'),
+            ('grow', 'i32^[grow^](src)'),
+            ('flex', 'i32^[flex^](src)'),
+            ('parenthesized', '(i32^[2])[](src)')):
+        negative('reject_parenthesized_copy_' + name,
+                 'var^src:i32^[2]={1,2} let^copy=' + constructor,
+                 'parentheses are reserved for size/capacity')
     positive('sized_copy_sources', '''
 var^fixed:i32^[3]={1,2,3}
 var^grow:i32^[grow^]={4,5}
 var^bounded:i32^[max^8]={6,7}
-let^a=i32^[](fixed)
-let^b=i32^[](ref^grow)
-let^c=i32^[](bounded[..])
-let^d=i32^[]({8,9})
+let^a=i32^[]{fixed...}
+let^b=i32^[]{(ref^grow)...}
+let^c=i32^[]{bounded[..]...}
+let^d=i32^[]{({8,9})...}
 fixed[0]:=99 grow[0]:=99 bounded[0]:=99
-let^e=i32^[](a)
+let^e=i32^[]{a...}
 print^(a[0],b[0],c[0],d[0],e.len,e[2])
 ''', '1 4 6 8 3 3\n')
     positive('sized_copy_return_independent', '''
 let^make=f^n:i64^ {
  var^source:i64^[grow^]={n,n+1}
- return^i64^[](source[..])
+ return^i64^[]{source[..]...}
 }
 var^a=make(41)
 let^read=f^xs:ref^i64^[] {xs[0]+xs[1]}
@@ -277,7 +457,7 @@ def^Node {self^{value:i32^=1}}
 var^n=Node{}
 let^make=f^n:ref^Node {Node[ref^]{n repeat^ 2}}
 var^a=make(ref^n)
-let^b=Node[ref^](a)
+let^b=Node[ref^]{a...}
 n.value:=42
 print^(a[0].value,b[1].value,a.len)
 ''', '42 42 2\n')
@@ -309,7 +489,7 @@ print^(a[2],g.len,f.len,c[0],d.len,e.len,m[0],k[0])
         ('variable_length','var^n:i64^=2\nlet^a:i32^[n]={}', 'constant integer expression'),
         ('zero_length','let^N:i64^=1\nlet^a:i32^[N - 1]={}', 'out of range'),
         ('capacity_owner','let^a:i32^[]={max^ 3}', 'builds a T[max^]'),
-        ('pair','let^a=i32^[](3,0)', 'write T[]{value repeat^ n}'),
+        ('pair','let^a=i32^[](3,0)', 'parentheses are reserved for size/capacity'),
         ('mixed','let^a:i32^[]={1, 2 repeat^ 3}', "expected '}'"),
         ('copy_mismatch','let^a:i32^[]={(i64^[]{1})...}', 'array or slice'),
     ]:
@@ -338,7 +518,7 @@ print^(a.len,b.len,b[1])
 def^Pair {self^{a:i64^,b:i64^}}
 let^pairs=Pair[]{Pair{a=7,b=8} repeat^ 2}
 var^source:(i64^[2])[2]={{1,2},{3,4}}
-let^arrays=(i64^[2])[](source)
+let^arrays=(i64^[2])[]{source...}
 print^(pairs[1].a,pairs[1].b,arrays[1][0])
 ''', '7 8 3\n')
     positive('sized_self_elements', '''
@@ -360,15 +540,15 @@ print^(copies.len,copies[1].n)
              'reference')
     negative('sized_forbid_owned_elements','let^a=(i32^[grow^])[]{}',
              'nonempty fixed-size')
-    negative('sized_wrong_element','let^a=i32^[]({"x"})', 'array or slice')
-    negative('sized_wrong_source','let^a=i32^[](42)', 'array or slice')
+    negative('sized_wrong_element','let^a=i32^[]{({"x"})...}', 'array or slice')
+    negative('sized_wrong_source','let^a=i32^[]{42...}', 'array or slice')
     negative('sized_wrong_count','let^n:i32^=2 let^a=i32^[]{1 repeat^ n}', 'array length must be i64^')
     negative('sized_wrong_initial','let^a=i32^[]{"x" repeat^ 2}', "initial value must be 'i32^'")
-    negative('sized_constructor_arity','let^a=i32^[](1,2,3)', 'construction expects')
+    negative('sized_constructor_arity','let^a=i32^[](1,2,3)', 'parentheses are reserved for size/capacity')
     negative('sized_no_grow_conversion','let^a:i32^[grow^]=i32^[]{1 repeat^ 2}', 'cannot initialize')
     negative('sized_reference_escape','let^bad=f^ {var^x=1 return^i32^[ref^]{ref^x repeat^ 2}} let^a=bad()',
              'cannot return a reference')
-    negative('sized_copy_reference_escape','let^bad=f^ {var^x=1 let^a:i32^[ref^1]={ref^x} return^i32^[ref^](a)} let^b=bad()',
+    negative('sized_copy_reference_escape','let^bad=f^ {var^x=1 let^a:i32^[ref^1]={ref^x} return^i32^[ref^]{a...}} let^b=bad()',
              'cannot return a reference')
     suite.runtime_failure('sized_negative_count','let^a=i32^[]{0 repeat^ -1}', 'data stack')
     suite.runtime_failure('sized_overflow_count','let^a=i64^[]{0 repeat^ 9223372036854775807}', 'data stack')
@@ -393,7 +573,7 @@ let^build=f^c:i64^ -> i64^[max^] {var^r=i64^[max^](c) r.push(c) return^r}
 var^w=W{n=1, xs=i64^[max^](3)}
 fill(ref^w.xs) fill(ref^w.xs)
 let^q=build(3)
-let^copy=i64^[](q)
+let^copy=i64^[]{q...}
 var^total:i64^=0
 for^ k from^ 1 to^ 1000 {
     var^c=u8^[max^](10000000)

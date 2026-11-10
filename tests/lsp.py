@@ -1045,7 +1045,7 @@ print^(value.add(value.copy()).x)
     sized=('def^Node {self^{n:i32^=7}}\nvar^node=Node{}\n'
            'var^refs=Node[ref^]{ref^node repeat^ 2}\n'
            'var^values=i32^[]{7 repeat^ 3}\n'
-           'let^copy=i32^[](values[..])\n'
+           'let^copy=i32^[]{values[..]...}\n'
            'let^read=f^xs:ref^i32^[] {xs.len}\n'
            'print^(read(ref^values),refs[0].n,copy[0])\n')
     client.change(path,sized,149)
@@ -1170,6 +1170,40 @@ print^(cell.n)
     assert client.diagnostics(rectangular_path,3) == []
     client.send('textDocument/didClose',dict(textDocument=dict(uri=rectangular_path.as_uri())))
     print('PASS rectangular array type hover, navigation and index arity recovery',flush=True)
+
+    jagged_path = work/'jagged_arrays.rh'
+    jagged_text = '''var^rows=i32^[max^8[grow^]]{{1},{2,3}}
+let^row=rows[0]
+row.push(4)
+print^(row.len,rows[1][0])
+'''
+    client.open(jagged_path,jagged_text)
+    assert client.diagnostics(jagged_path,1) == []
+    hover = client.request('textDocument/hover',dict(textDocument=dict(uri=jagged_path.as_uri()),
+        position=at(jagged_text,'row=')))
+    assert 'ref^' in hover['contents']['value'] and 'i32^[grow^]' in hover['contents']['value'], hover
+    broken = jagged_text.replace('row.push(4)', 'rows.clear()')
+    client.change(jagged_path,broken,2)
+    assert any('cannot shrink' in d['message'] for d in client.diagnostics(jagged_path,2))
+    client.change(jagged_path,jagged_text,3)
+    assert client.diagnostics(jagged_path,3) == []
+    unsupported = jagged_text.replace('max^8','grow^')
+    client.change(jagged_path,unsupported,4)
+    diagnostics = client.diagnostics(jagged_path,4)
+    assert len(diagnostics) == 1, diagnostics
+    assert diagnostics[0]['range']['start']['line'] == 0, diagnostics
+    assert 'nonempty fixed-size' in diagnostics[0]['message'], diagnostics
+    client.change(jagged_path,jagged_text,5)
+    assert client.diagnostics(jagged_path,5) == []
+    unsupported_constructor = jagged_text.replace('i32^[max^8[grow^]]{{1},{2,3}}','i32^[[grow^]](8)')
+    client.change(jagged_path,unsupported_constructor,6)
+    diagnostics = client.diagnostics(jagged_path,6)
+    assert len(diagnostics) == 1 and diagnostics[0]['range']['start']['line'] == 0, diagnostics
+    assert 'parentheses are reserved for size/capacity' in diagnostics[0]['message'], diagnostics
+    client.change(jagged_path,jagged_text,7)
+    assert client.diagnostics(jagged_path,7) == []
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=jagged_path.as_uri())))
+    print('PASS owned jagged row hover, borrow diagnostics and edit recovery',flush=True)
 
     threads_path = work/'implicit_thread_calls.rh'
     threads_text = '''let^c = import^std.channel

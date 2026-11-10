@@ -38,8 +38,12 @@ static void local_plan(Instance *in)
         if (i->op == I_LABEL) {
             labels[i->label] = k;
         }
-        if (i->op == I_FIELD || i->op == I_CASE_AT) {
-            ((Slot *)in->slots.v[i->dst])->owner = ((Slot *)in->slots.v[i->a])->owner;
+        if (i->op == I_FIELD || i->op == I_CASE_AT || i->op == I_ROW_SLOT ||
+            (i->op == I_INDEX && i->type->kind == T_BOUNDED && i->type->elem->owned)) {
+            Slot *dst = in->slots.v[i->dst], *src = in->slots.v[i->a];
+            dst->owner = src->owner;
+            dst->nested_stack =
+                (i->op == I_ROW_SLOT || i->op == I_INDEX) ? i->dst + 1 : src->nested_stack;
         }
     }
     // A value built on another owner's data stack names that owner.
@@ -64,11 +68,22 @@ static void local_plan(Instance *in)
             memcpy(owners, state.owners, (size_t)state.n * sizeof(int));
         }
         state.owners = owners;
+        int offset = 0;
+        for (int j = 0; j < state.n; j++) {
+            int width = ((Slot *)in->slots.v[owners[j]])->type->regions;
+            if (width > INT_MAX - offset) {
+                fail(i->loc, "data stack count overflows");
+            }
+            offset += width;
+        }
         if (i->op == I_STACK_BEGIN) {
-            i->stack_index = state.n;
+            i->stack_index = offset;
             owners[state.n++] = i->dst;
-            if (state.n > in->stack_own) {
-                in->stack_own = state.n;
+            if (i->type->regions > INT_MAX - offset) {
+                fail(i->loc, "data stack count overflows");
+            }
+            if (offset + i->type->regions > in->stack_own) {
+                in->stack_own = offset + i->type->regions;
             }
         }
         else if (i->op == I_RELEASE) {
@@ -78,7 +93,7 @@ static void local_plan(Instance *in)
             state.n--;
         }
         else if (i->op == I_CALL || i->op == I_DYNCALL) {
-            i->stack_index = state.n;
+            i->stack_index = offset;
             if (state.n) {
                 for (int j = 0; j < n; j++) {
                     Instr *begin = in->code.v[j];
@@ -91,7 +106,8 @@ static void local_plan(Instance *in)
         }
         if (i->op == I_REGION || (i->op == I_CALL && i->type->owned)) {
             int owner = ((Slot *)in->slots.v[i->dst])->owner;
-            bool found = owner == in->result_slot && in->result->owned;
+            bool found = ((Slot *)in->slots.v[i->dst])->nested_stack ||
+                         (owner == in->result_slot && in->result->owned);
             for (int j = 0; j < state.n; j++) {
                 found |= owners[j] == owner;
             }

@@ -26,7 +26,7 @@ var^w = W{ n = 1, xs = i64^[max^](3) }
 fill(ref^w.xs)
 fill(ref^w.xs)
 let^q = build(3)
-let^copy = i64^[](q)
+let^copy = i64^[]{q...}
 var^total:i64^= 0
 for^k from^1 to^1000 {
     var^c = u8^[max^](10000000)

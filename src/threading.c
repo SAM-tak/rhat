@@ -88,6 +88,9 @@ static bool channel_type(Type *t)
 static void transferable(Program *p, Type *t, bool arguments, Loc loc)
 {
     layout(t, loc);
+    if (t->kind == T_BOUNDED && t->owned) {
+        fail(loc, "thread transfer of owning row arrays is not supported");
+    }
     if (channel_type(t)) {
         if (!arguments) {
             fail(loc, "Channel cannot be sent through a Channel, including in aggregates");

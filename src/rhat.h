@@ -158,7 +158,7 @@ struct Expr {
     bool top_binding;    // ref^ of a top-level let^ for its hidden parameter: read only.
     int repeat_count;    // {v repeat^ n}: n when a constant expression of 1..1000000, else 0.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
-    Spec *test_spec;     // The type operand of fits^, or the type of a T[](...)
+    Spec *test_spec;     // The type operand of fits^, or the type of a T[max^](capacity)
                          // construction; never evaluated as a value.
     Spec *constant_spec;
     Spec *array_literal;  // The written type of a T[...]{...} literal.
@@ -371,7 +371,8 @@ struct Type {
     bool invalid; // Storage layout failed during editor analysis.
     char *symbol;
     int kind, id, count;
-    int rank; // Fixed rectangular array dimensions; zero for ordinary arrays.
+    int rank;    // Fixed rectangular array dimensions; zero for ordinary arrays.
+    int regions; // Statically reserved data stacks owned by this value.
     // T_REF and T_DYN use count 1 for read^; the representation is unchanged.
     Type *elem;
     List wrappers; // Canonical ref/array/etc. types whose element is this type.
@@ -471,6 +472,9 @@ enum {
     I_CBR,
     I_RETURN,
     I_REGION,
+    I_ROW_SLOT, // Reserve a stable owned row destination; label 1 appends, 0 selects the last row.
+    I_ROW_COMMIT, // Publish a successfully constructed row.
+    I_ROW_DROP,   // Restore one row's reserved data stacks to the owner's checkpoints.
     I_RELEASE,
     I_PUSH,
     I_LENGTH,
@@ -547,6 +551,7 @@ typedef struct {
     Type *type;
     bool alias;
     int owner;
+    int nested_stack; // One plus the row destination supplying this slot's stack group.
 } Slot;
 
 struct Instance {

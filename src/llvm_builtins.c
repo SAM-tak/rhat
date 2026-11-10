@@ -293,11 +293,32 @@ static void fill_helper(FILE *f)
           f);
 }
 
+// Stack groups retain one checkpoint per independently growing row.
+static void stack_group_helper(FILE *f, bool restore)
+{
+    fprintf(
+        f,
+        "define internal void @rh_stack_group_%s(ptr %%stacks, ptr %%marks, i64 %%n) alwaysinline {\nentry:\n  br label %%loop\nloop:\n"
+        "  %%i = phi i64 [0, %%entry], [%%next, %%loop]\n"
+        "  %%stack = getelementptr %%RhStack, ptr %%stacks, i64 %%i\n"
+        "  %%top = getelementptr %%RhStack, ptr %%stack, i32 0, i32 1\n"
+        "  %%mark = getelementptr ptr, ptr %%marks, i64 %%i\n",
+        restore ? "restore" : "save");
+    fputs(restore ? "  %value = load ptr, ptr %mark\n  store ptr %value, ptr %top\n"
+                  : "  %value = load ptr, ptr %top\n  store ptr %value, ptr %mark\n",
+          f);
+    fputs("  %next = add i64 %i, 1\n  %more = icmp ult i64 %next, %n\n"
+          "  br i1 %more, label %loop, label %done\ndone:\n  ret void\n}\n",
+          f);
+}
+
 void emit_llvm_builtins(FILE *f)
 {
     fputs("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n"
           "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1 immarg)\n",
           f);
+    stack_group_helper(f, false);
+    stack_group_helper(f, true);
     flex_release(f);
     append_helper(f, true);
     append_helper(f, false);
