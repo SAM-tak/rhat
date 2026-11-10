@@ -3012,6 +3012,15 @@ void empty_array_braces(Expr *e, Type *t)
     }
 }
 
+static bool zero_default(Type *t)
+{
+    if (t->kind == T_ARRAY) {
+        return zero_default(t->elem);
+    }
+    return kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL || t->kind == T_CHAR ||
+           t->kind == T_NIL || t->kind == T_ENUM;
+}
+
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
     if (e->kind == E_DEFAULT) {
@@ -3473,6 +3482,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         Value out = {0};
         out.type = t;
         out.id = dst >= 0 ? dst : slot(c, t, false);
+        if (defaults && zero_default(t)) {
+            Instr *zero = emit(c, I_ZERO, e->loc);
+            zero->dst = out.id;
+            zero->type = t;
+            return out;
+        }
         if (t->kind == T_GROW) {
             layout(t->elem, e->loc);
             if (t->elem->owned || !t->elem->size) {

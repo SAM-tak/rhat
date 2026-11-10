@@ -1028,7 +1028,8 @@ print^(b[0].marker,b[1].marker,b[2].bytes[9999],b.len)
 positive("numeric_example", (repo / "examples/numeric.rh").read_text(),
          "true 42\n-128 340282366920938463463374607431768211455 "
          "-170141183460469231731687303715884105728\n"
-         "1.125 1.0009765625 1.0000001192092896\n")
+         "1.125 1.0009765625 1.0000001192092896\n"
+         "53007 14981412 2022196292 2290631748\n")
 
 # Exercise the generated arithmetic, full-width formatting and compiler-rt's
 # i128 division ABI, including values that cannot travel through i64/double.

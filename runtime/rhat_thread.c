@@ -1,4 +1,8 @@
 // OS threads, bounded channels and copies between independent stack shards.
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+// The hardware-thread-count sysconf selector is a Darwin extension.
+#define _DARWIN_C_SOURCE
+#endif
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -42,7 +46,7 @@ static bool cond_init(Condition *c)
     return true;
 }
 
-static void wait(Condition *c, Mutex *m)
+static void cond_wait(Condition *c, Mutex *m)
 {
     if (!SleepConditionVariableSRW(c, m, INFINITE, 0)) {
         abort();
@@ -94,7 +98,7 @@ static bool cond_init(Condition *c)
     return pthread_cond_init(c, NULL) == 0;
 }
 
-static void wait(Condition *c, Mutex *m)
+static void cond_wait(Condition *c, Mutex *m)
 {
     if (pthread_cond_wait(c, m)) {
         abort();
@@ -380,7 +384,7 @@ int64_t rh_channel_send(int64_t handle, void *value, int64_t blocking)
             unlock(&c->mutex);
             return 2;
         }
-        wait(&c->writable, &c->mutex);
+        cond_wait(&c->writable, &c->mutex);
     }
     if (c->closed) {
         unlock(&c->mutex);
@@ -428,7 +432,7 @@ void rh_channel_receive(int64_t handle, void *out, RhStack *stack, uint64_t offs
             unlock(&c->mutex);
             return;
         }
-        wait(&c->readable, &c->mutex);
+        cond_wait(&c->readable, &c->mutex);
     }
     if (!c->first) {
         memcpy(out, &closed_tag, sizeof(closed_tag));
