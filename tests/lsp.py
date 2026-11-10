@@ -1808,15 +1808,15 @@ g(1)
     print('PASS mutable static members, hover, navigation and recovery',flush=True)
 
     typed_static_path = work/'typed_static_members.rh'
-    typed_static_text = ('def^ A {let^step:f32^=0.2 var^count:i64^=0}\n'
-                         'let^value=A.step\nA.count+=1\nprint^(value,A.count)\n')
+    typed_static_text = ('def^ A {let^step:f32^=0.2 let^RADIUS=f32^(16.0) var^count:i64^=0}\n'
+                         'let^value=A.step\nlet^radius=A.RADIUS\nA.count+=1\nprint^(value,A.count,radius)\n')
     client.open(typed_static_path,typed_static_text)
     diagnostics = client.diagnostics(typed_static_path,1)
     assert diagnostics == [], diagnostics
     hover = client.request('textDocument/hover',dict(textDocument=dict(uri=typed_static_path.as_uri()),
         position=at(typed_static_text,'value=A')))
     assert 'f32^' in hover['contents']['value'], hover
-    for needle,shift in [('step:f32^',0),('A.step',2)]:
+    for needle,shift in [('step:f32^',0),('A.step',2),('RADIUS=f32^',0),('radius=A',0),('A.RADIUS',2)]:
         hover = client.request('textDocument/hover',dict(textDocument=dict(uri=typed_static_path.as_uri()),
             position=at(typed_static_text,needle,shift=shift)))
         assert hover and 'f32^' in hover['contents']['value'], hover

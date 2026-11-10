@@ -18,6 +18,24 @@ def^ Vec2<T> {
 def main():
     suite = Suite('generics')
     positive, negative = suite.positive, suite.negative
+    positive('numeric_conversion_type_constants', '''
+def^ Player {
+ let^RADIUS=f32^(16.0)
+ let^ANNOTATED:f32^=16.0
+ let^SUFFIX=16.0f32
+ let^NESTED=i64^(f32^(15.0)+1.0f32)
+ self^{height:f32^=f32^(56.0)}
+ let^DEFAULT=Self^{}
+}
+print^(Player.RADIUS=Player.ANNOTATED,Player.RADIUS=Player.SUFFIX,
+ typeof^(Player.RADIUS).signature^,Player.NESTED,Player.DEFAULT.height)
+''', 'true true f32^ 16 56.0\n')
+    positive('generic_numeric_conversion_type_constants', '''
+let^Float=f32^
+def^ Values<T> {let^ONE=T(1) let^TWO=Float(2)}
+print^(typeof^(Values<i64^>.ONE).signature^,Values<i64^>.ONE,
+ typeof^(Values<i64^>.TWO).signature^,Values<i64^>.TWO)
+''', 'i64^ 1 f32^ 2.0\n')
     positive('vector_aliases_and_constants', VECTOR + '''
 let^Float2=Vec2<f32^>
 let^Int2=Vec2<i32^>
@@ -210,6 +228,11 @@ print^(a.dot(Vec2<f32^>.make(3.0,4.0)),Pos.make(1,2).y,M.fact(5),M.peek(),M.pick
         ('missing_scalar_constant', 'def^S{}\ndef^Box<T>{ZERO=T.ZERO}\nlet^B=Box<S>', 'has no constant'),
         ('constant_cycle', 'def^V{A=Self^.B B=Self^.A}', 'cyclic type constant'),
         ('constant_function', 'let^f=f^ {7}\ndef^V{A=f()}', 'type constant requires'),
+        ('constant_conversion_function', 'let^f=f^ {7}\ndef^V{A=f32^(f())}', 'type constant requires'),
+        ('constant_conversion_state', 'def^V{var^n=7 A=f32^(def^.n)}', 'type constant requires'),
+        ('constant_conversion_arity', 'def^V{A=f32^()}', 'numeric conversion expects one argument'),
+        ('constant_conversion_operand', 'def^V{A=f32^("16")}', 'read a string^'),
+        ('constant_conversion_default_function', 'let^f=f^ {7}\ndef^V{self^{x=f32^(f())} A=Self^{}}', 'type constant cannot call'),
         ('constant_default_function', 'let^f=f^ {7}\ndef^V{self^{x:i32^=f()} A=Self^{}}', 'type constant cannot call'),
         ('constant_private', 'def^V{private^A=7}\nprint^(V.A)', 'private type constant'),
         ('constant_duplicate', 'def^V{A=0 A=1}', 'duplicate type constant'),

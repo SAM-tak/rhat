@@ -873,6 +873,14 @@ static bool constant_expr(Expr *e, bool values)
     if (e->kind == E_BIN) {
         return constant_expr(e->a, values) && constant_expr(e->b, values);
     }
+    if (e->kind == E_CALL && e->a->kind == E_NAME && numeric_kind(e->a->text) >= 0) {
+        for (int j = 0; j < e->args.n; j++) {
+            if (!constant_expr(e->args.v[j], values)) {
+                return false;
+            }
+        }
+        return true;
+    }
     if (values && (e->kind == E_RECORD || e->kind == E_ARRAY)) {
         if (e->array_refs || (e->kind == E_ARRAY && e->test_spec)) {
             return false;

@@ -2222,11 +2222,12 @@ static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
 
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
-    if (c->type_constant || c->in->fn->constant_value) {
+    Expr *target = e->a;
+    bool numeric = target->kind == E_NAME && numeric_kind(target->text) >= 0;
+    if ((c->type_constant || c->in->fn->constant_value) && !numeric) {
         fail(e->loc, "type constant cannot call a function, including in field defaults");
     }
     Program *p = c->p;
-    Expr *target = e->a;
     int thread = thread_operation(target);
     if (thread) {
         return thread_call(c, e, thread, destination);

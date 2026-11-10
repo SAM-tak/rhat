@@ -42,6 +42,10 @@ def main():
             assert diagnostic in p.stderr and re.search(r':\d+:\d+: error:', p.stderr), (name, p.stderr)
         suite.case(name, body)
 
+    positive('numeric_conversion_module_constants', {
+        'lib/literals.rh': 'module^lib.literals\npublic^let^R=f32^(16.0)\npublic^let^N=i64^(f32^(7))\n',
+        'main.rh': 'let^v=import^lib.literals\nprint^(typeof^(v.R).signature^,v.R,typeof^(v.N).signature^,v.N)\n',
+    }, 'f32^ 16.0 i64^ 7\n')
     positive('numeric_suffix_module_constants', {
         'lib/literals.rh': '''module^lib.literals
 public^let^N=0x88884444u64
@@ -207,7 +211,8 @@ print^(box.run(42))
                              'lib/b.rh': 'module^ lib.b\nimport^ lib.a', 'main.rh': 'import^ lib.a'}, 'cyclic import')
     negative('module_execution', {'lib/a.rh': 'module^ lib.a\nprint^(1)', 'main.rh': 'import^ lib.a'}, 'only declarations')
     negative('module_mutable_global', {'lib/a.rh': 'module^ lib.a\nvar^ a=1', 'main.rh': 'import^ lib.a'}, 'only declarations')
-    negative('module_constant_call', {'lib/a.rh': 'module^ lib.a\nlet^ x=i64^(1)', 'main.rh': 'import^ lib.a'}, 'literal operations')
+    negative('module_constant_call', {'lib/a.rh': 'module^ lib.a\nlet^f=f^ {1}\nlet^x=f()', 'main.rh': 'import^ lib.a'}, 'literal operations')
+    negative('module_constant_conversion_call', {'lib/a.rh': 'module^ lib.a\nlet^f=f^ {1}\nlet^x=i64^(f())', 'main.rh': 'import^ lib.a'}, 'literal operations')
     negative('module_constant_invalid_unused', {'lib/a.rh': 'module^ lib.a\nlet^ x:i32^="bad"', 'main.rh': 'import^ lib.a'}, "expected 'i32^'")
     negative('module_nontransitive_import', {'lib/a.rh': 'module^ lib.a\nimport^ lib.b',
         'lib/b.rh': 'module^ lib.b\npublic^ let^ value=f^ { 1 }',
