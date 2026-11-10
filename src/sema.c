@@ -3015,14 +3015,22 @@ void empty_array_braces(Expr *e, Type *t)
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
     if (e->kind == E_DEFAULT) {
-        if (t->kind == T_STRUCT || t->kind == T_GROW || t->kind == T_BOUNDED) {
+        if (t->kind == T_STRUCT || t->kind == T_ARRAY || t->kind == T_GROW ||
+            t->kind == T_BOUNDED) {
             Expr empty = {.kind = t->kind == T_STRUCT ? E_RECORD : E_ARRAY,
                           .loc = e->loc,
                           .text = t->kind == T_STRUCT ? t->def->name : NULL};
             return construct(c, &empty, t, dst);
         }
         if (t->refs) {
-            fail(e->loc, "static variable '%s' needs an initializer", e->state_field->name);
+            if (e->state_field) {
+                fail(e->loc, "static variable '%s' needs an initializer", e->state_field->name);
+            }
+            fail(e->loc, "array element type '%s' needs an initializer", type_name(t));
+        }
+        if (!e->state_field && !kind_integer(t->kind) && !kind_float(t->kind) &&
+            t->kind != T_BOOL && t->kind != T_CHAR && t->kind != T_NIL && t->kind != T_ENUM) {
+            fail(e->loc, "array element type '%s' needs an initializer", type_name(t));
         }
         Value out = {.id = dst >= 0 ? dst : slot(c, t, false), .type = t};
         Instr *i = emit(c, I_ZERO, e->loc);
@@ -3385,15 +3393,15 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 v = construct(c, init, f->type, dest.id);
             }
             else if (f->type->kind == T_REF || f->type->kind == T_STRING ||
-                     f->type->kind == T_SLICE || f->type->kind == T_UNION ||
-                     (f->type->kind == T_ARRAY && f->type->refs)) {
+                     f->type->kind == T_SLICE || f->type->kind == T_UNION) {
                 fail(e->loc, "field '%s' needs an initializer", f->name);
             }
             else if (f->type->kind == T_STRUCT) {
                 Expr empty = {.kind = E_RECORD, .loc = e->loc, .text = f->type->def->name};
                 v = construct(c, &empty, f->type, dest.id);
             }
-            else if (f->type->kind == T_GROW || f->type->kind == T_BOUNDED) {
+            else if (f->type->kind == T_ARRAY || f->type->kind == T_GROW ||
+                     f->type->kind == T_BOUNDED) {
                 Expr empty = {.kind = E_ARRAY, .loc = e->loc};
                 v = construct(c, &empty, f->type, dest.id);
             }
@@ -3455,7 +3463,8 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (t->kind != T_ARRAY && t->kind != T_GROW && t->kind != T_BOUNDED) {
             fail(e->loc, "array literal requires array type");
         }
-        if (t->kind == T_ARRAY && e->args.n != t->count) {
+        bool defaults = t->kind == T_ARRAY && !e->args.n;
+        if (t->kind == T_ARRAY && !defaults && e->args.n != t->count) {
             fail(e->loc, "fixed array requires exactly %d elements", t->count);
         }
         if (t->kind == T_BOUNDED && e->args.n > t->count) {
@@ -3491,9 +3500,12 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             // Its length covers what has been constructed so far.
             dispose_pending(c, out);
         }
-        for (int j = 0; j < e->args.n; j++) {
+        int count = defaults ? t->count : e->args.n;
+        for (int j = 0; j < count; j++) {
+            Expr initial = {.kind = E_DEFAULT, .loc = e->loc};
+            Expr *element = defaults ? &initial : e->args.v[j];
             if (owning_rows(t)) {
-                Value row = push_owned_row(c, out, e->args.v[j], e->loc);
+                Value row = push_owned_row(c, out, element, e->loc);
                 if (c->terminated) {
                     c->inflight.n = inflight;
                     c->pending_disposals.n = pending;
@@ -3527,14 +3539,14 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 ix->b = -1;
                 ix->label = j;
                 Value v;
-                if ((!j && first.type) || e->array_refs) {
+                if ((!j && first.type) || (e->array_refs && !defaults)) {
                     Value source =
                         !j && first.type ? first : array_element(c, e, e->args.v[j], t->elem);
                     Value target = {.id = d, .type = t->elem};
                     v = copy_to(c, target, source, e->loc, true);
                 }
                 else {
-                    v = construct(c, e->args.v[j], t->elem, d);
+                    v = construct(c, element, t->elem, d);
                 }
                 if (c->terminated) {
                     c->inflight.n = inflight;

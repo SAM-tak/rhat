@@ -79,11 +79,67 @@ do^{var^view=d[1 ..] view[0].push(6)}
 print^(d.len,d[0][1],d[1].len,row[2],sum)
 ''', '3 2 2 9 32\n')
     positive('fixed_jagged_empty_rows_and_parenthesized', '''
-var^d=(i32^[grow^])[2]{{},{}}
+var^d=(i32^[grow^])[2]{}
 d[0].push(4)
 d[1].push(5)
 print^(d.len,d[0][0],d[1][0])
 ''', '2 4 5\n')
+    positive('fixed_default_scalar_and_nested_arrays', '''
+var^a=i32^[3]{}
+var^b=bool^[2]{}
+var^c=f32^[2,3]{}
+var^d=i32^[2 [3]]{}
+a[1]:=7
+d[1][2]:=9
+print^(a[0],a[1],a[2],b[0],b[1],c[1,2],d[0][2],d[1][2])
+''', '0 7 0 false false 0.0 0 9\n')
+    positive('fixed_default_independent_owned_rows', '''
+var^d=i32^[8 [grow^]]{}
+d[0].push(7)
+d[7].push(9)
+var^deep=i32^[2 [2 [grow^]]]{}
+deep[1][0].push(5)
+var^bounded=i32^[max^8 [grow^]]{}
+print^(d.len,d[0][0],d[1].len,d[7][0],deep[0][0].len,deep[1][0][0],bounded.len)
+''', '8 7 0 9 0 5 0\n')
+    positive('fixed_default_struct_fields_and_disposal', '''
+import^std.sys
+def^Row:std.sys.Disposable {
+ self^{n=7, text="ok", values:i32^[grow^]}
+ dispose=p^self^{print^(self^.n,self^.values.len)}
+}
+struct^Table {rows:Row[2]}
+do^{
+ var^table=Table{}
+ table.rows[0].values.push(3)
+ print^(table.rows[1].text,table.rows[1].values.len)
+}
+''', 'ok 0\n7 0\n7 1\n')
+    positive('fixed_default_partial_construction_unwinds', '''
+import^std.sys
+errordef^E {Bad}
+def^Counter {
+ var^calls:i32^=0
+ next=p^ -> i32^|E.Bad {
+  calls+=1
+  if^calls=2 {return^E.Bad{}}
+  return^calls
+ }
+}
+def^D:std.sys.Disposable {
+ self^{n=try^Counter.next(), values:i32^[grow^]}
+ dispose=p^self^{print^(self^.n)}
+}
+let^make=p^ -> D[3]|E.Bad {return^D[3]{}}
+do^{var^d=try^make() catch^: print^(99)}
+print^(Counter.calls)
+''', '1\n99\n2\n')
+    for name, text, error in (
+            ('string', 'let^a=string^[2]{}', 'needs an initializer'),
+            ('reference', 'let^a:i32^[ref^2]={}', 'needs an initializer'),
+            ('union', 'let^a:(i32^|nil^)[2]={}', 'needs an initializer'),
+            ('required_field', 'def^D {self^{s:string^}} let^a=D[2]{}', "field 's' needs an initializer")):
+        negative('fixed_default_reject_' + name,text,error)
     positive('fixed_jagged_returns_and_nested_owners', '''
 let^make=f^ -> i32^[2 [grow^]] {return^i32^[2 [grow^]]{{10},{20}}}
 let^add=p^a:ref^i32^[2 [grow^]] {a[1].push(21)}
@@ -134,7 +190,6 @@ var^d=make()
 print^(d[0][0])
 ''', '7\n', extra=['--runtime',row_runtime])
     for name, text, error in (
-            ('empty', 'var^d=i32^[2[grow^]]{}', 'exactly 2 elements'),
             ('missing', 'var^d=i32^[2[grow^]]{{1}}', 'exactly 2 elements'),
             ('extra', 'var^d=i32^[2[grow^]]{{},{},{}}', 'exactly 2 elements'),
             ('copy', 'var^d=i32^[2[grow^]]{{},{}} let^copy=d', 'cannot be copied'),
