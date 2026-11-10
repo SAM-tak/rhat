@@ -157,10 +157,26 @@ typedef struct {
 
 static void format_span(Parser *p, int first, int kind, bool block, bool row)
 {
-    if (!p->p->format || p->at <= first) {
+    if ((!p->p->format && !p->p->tooling) || p->at <= first) {
         return;
     }
     Token *a = p->tokens.v[first], *b = p->tokens.v[p->at - 1];
+    if (p->p->tooling && (kind == 3000 || kind == 3001 || kind == 2000 + S_BIND ||
+                          kind == 2000 + S_BIND_MANY || kind == 2000 + S_TYPE)) {
+        ToolSpan *span = mem(sizeof(*span));
+        *span = (ToolSpan){a->loc, b->loc, b->loc};
+        for (int j = first; j < p->at; j++) {
+            Token *token = p->tokens.v[j];
+            if (token->kind == '{') {
+                span->header_end = token->loc;
+                break;
+            }
+        }
+        add(&p->p->tool_spans, span);
+    }
+    if (!p->p->format) {
+        return;
+    }
     FormatSpan *s = mem(sizeof(*s));
     *s = (FormatSpan){first, p->at, kind, a->offset, b->offset + (uint32_t)b->loc.length,
                       block, row};
@@ -3581,6 +3597,7 @@ static Stmt *stmt(Parser *p)
         return bad;
     }
     Stmt *out = stmt_unchecked(p);
+    format_span(p, start, 2000 + out->kind, false, false);
     tool_leave(&recovery);
     return out;
 }
@@ -3942,6 +3959,7 @@ static void def_member_checked(Parser *p, Def *d)
     }
     else {
         def_member(p, d);
+        format_span(p, start, 3001, false, false);
     }
     tool_leave(&recovery);
 }
@@ -4378,6 +4396,7 @@ static void declaration_checked(Parser *q)
     }
     else {
         declaration(q);
+        format_span(q, start, 3000, false, false);
     }
     tool_leave(&recovery);
 }

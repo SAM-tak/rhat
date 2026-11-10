@@ -536,12 +536,26 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
             for (int k = 0; k < prefixes.n; k++) {
                 const char *prefix = prefixes.v[k];
                 size_t n = prefix ? strlen(prefix) : 0;
-                if (n && !strncmp(start, prefix, n) && start[n] == '.' && start + n + 1 > last) {
-                    last = start + n + 1;
+                if (n && !strncmp(start, prefix, n)) {
+                    const char *after = start + n;
+                    while (isspace((unsigned char)*after)) {
+                        after++;
+                    }
+                    if (*after == '.') {
+                        after++;
+                        while (isspace((unsigned char)*after)) {
+                            after++;
+                        }
+                        if (after > last) {
+                            last = after;
+                        }
+                    }
                 }
             }
         }
-        if (last != start) {
+        // Aliases can be shorter than the resolved name (F2 -> Vector2).
+        // Measure the written token even when there was no namespace prefix.
+        if (name_byte((unsigned char)*last) && *last != '^') {
             size_t n = 0;
             while (name_byte((unsigned char)last[n]) && last[n] != '^') {
                 n++;
@@ -635,6 +649,30 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     cJSON_AddBoolToObject(out, "public", public);
     cJSON_AddItemToObject(out, "use", use);
     cJSON_AddItemToObject(out, "target", decl);
+    if (r->definition && source) {
+        size_t at = (size_t)cJSON_GetObjectItem(use, "offset")->valuedouble;
+        size_t from = at, to = at + strlen(short_name(use_name)), width = SIZE_MAX;
+        for (int j = 0; j < p->tool_spans.n; j++) {
+            ToolSpan *span = p->tool_spans.v[j];
+            if (!source_same_path(span->start.file, r->use.file)) {
+                continue;
+            }
+            size_t start = loc_offset(source, span->start);
+            size_t end = loc_offset(source, span->end) + span->end.length;
+            size_t header = loc_offset(source, span->header_end);
+            if (start <= at && at <= header && at < end && end - start < width) {
+                from = start;
+                to = end;
+                width = end - start;
+            }
+        }
+        cJSON *extent = cJSON_AddObjectToObject(out, "extent");
+        cJSON_AddNumberToObject(extent, "start", (double)from);
+        cJSON_AddNumberToObject(extent, "end", (double)to);
+        cJSON_AddItemToObject(
+            extent, "range",
+            lsp_range_json(source_position(source, from), source_position(source, to)));
+    }
     const char *detail = r->detail                     ? r->detail
                          : r->function                 ? signature(r->function, r->function->name)
                          : capturing_callable(r->type) ? signature(r->type->function, use_name)

@@ -274,6 +274,72 @@ static cJSON *symbols(cJSON *index, const char *uri, const char *query)
     return out;
 }
 
+// Outline ranges come from the parser; selection ranges retain the exact name token.
+static cJSON *document_symbols(cJSON *index, const char *uri)
+{
+    typedef struct {
+        cJSON *item;
+        int start, end, selection;
+    } Outline;
+
+    cJSON *entries = cJSON_GetObjectItem(index, "symbols"), *s;
+    Outline *nodes = calloc((size_t)cJSON_GetArraySize(entries) + 1, sizeof(*nodes));
+    int count = 0;
+    cJSON_ArrayForEach(s, entries) {
+        cJSON *use = cJSON_GetObjectItem(s, "use");
+        if (!cJSON_IsTrue(cJSON_GetObjectItem(s, "declaration")) || !number(s, "length") ||
+            number(s, "kind") == TOOL_PARAMETER || strcmp(text(use, "uri"), uri)) {
+            continue;
+        }
+        int selection = number(use, "offset");
+        bool duplicate = false;
+        for (int j = 0; j < count; j++) {
+            duplicate |= nodes[j].selection == selection;
+        }
+        if (duplicate) {
+            continue;
+        }
+        cJSON *extent = cJSON_GetObjectItem(s, "extent");
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "name", text(s, "name"));
+        cJSON_AddStringToObject(item, "detail", text(s, "type"));
+        cJSON_AddNumberToObject(item, "kind", number(s, "kind"));
+        cJSON_AddItemToObject(item, "selectionRange", copy(cJSON_GetObjectItem(use, "range")));
+        cJSON_AddItemToObject(item, "range",
+                              copy(cJSON_GetObjectItem(extent ? extent : use, "range")));
+        cJSON_AddArrayToObject(item, "children");
+        nodes[count++] =
+            (Outline){item, extent ? number(extent, "start") : selection,
+                      extent ? number(extent, "end") : selection + number(s, "length"), selection};
+    }
+    // Stable source order keeps members and overloaded declarations predictable.
+    for (int j = 1; j < count; j++) {
+        Outline node = nodes[j];
+        int k = j;
+        while (k && nodes[k - 1].selection > node.selection) {
+            nodes[k] = nodes[k - 1];
+            k--;
+        }
+        nodes[k] = node;
+    }
+    cJSON *out = cJSON_CreateArray();
+    for (int j = 0; j < count; j++) {
+        int parent = -1;
+        for (int k = 0; k < count; k++) {
+            if (nodes[k].start <= nodes[j].start && nodes[k].end >= nodes[j].end &&
+                (nodes[k].start < nodes[j].start || nodes[k].end > nodes[j].end) &&
+                (parent < 0 ||
+                 nodes[k].end - nodes[k].start < nodes[parent].end - nodes[parent].start)) {
+                parent = k;
+            }
+        }
+        cJSON_AddItemToArray(parent < 0 ? out : cJSON_GetObjectItem(nodes[parent].item, "children"),
+                             nodes[j].item);
+    }
+    free(nodes);
+    return out;
+}
+
 static void completion_item(cJSON *out, const char *label, const char *detail, int kind)
 {
     cJSON *old;
@@ -1124,7 +1190,7 @@ static int worker(void *raw)
                     result = references(index, symbol, uri, true, true);
                 }
                 else if (!strcmp(method, "textDocument/documentSymbol")) {
-                    result = symbols(index, uri, "");
+                    result = document_symbols(index, uri);
                 }
                 else if (!strcmp(method, "textDocument/completion")) {
                     size_t start = offset;

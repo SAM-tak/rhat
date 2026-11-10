@@ -78,6 +78,11 @@ typedef struct {
 // Parameters have an internal kind; other kinds follow LSP SymbolKind.
 enum { TOOL_PARAMETER = 100, TOOL_TRY = 101 };
 
+// Parser extents for outline declarations; the header ends before the first body brace.
+typedef struct {
+    Loc start, end, header_end;
+} ToolSpan;
+
 // One compiler-recorded identifier resolution.
 typedef struct {
     Loc use, declaration;

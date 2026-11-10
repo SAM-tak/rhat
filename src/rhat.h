@@ -393,6 +393,7 @@ struct Program {
     bool library_root;           // Check a standalone module using library rules.
     bool tooling;                // Retain source and checked resolutions for editor clients.
     List sources, overlays, resolutions; // ToolSource and ToolRef records.
+    List tool_spans; // ToolSpan declaration extents retained for editor outlines.
     List modules, module_paths;
     Module *emitting;
     const char *stdlib_dir;

@@ -93,6 +93,10 @@ def at(content, needle, occurrence=0, shift=0):
     return dict(line=prefix.count('\n'), character=len(prefix.rsplit('\n',1)[-1].encode('utf-16-le'))//2)
 
 
+def flatten_outline(items):
+    return [symbol for item in items for symbol in [item, *flatten_outline(item.get('children', []))]]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -130,7 +134,12 @@ print^(twice(point.x))
     refs = client.request('textDocument/references', dict(textDocument=dict(uri=path.as_uri()), position=at(content,'point.x'), context=dict(includeDeclaration=True)))
     assert len(refs) == 2, refs
     outline = client.request('textDocument/documentSymbol', dict(textDocument=dict(uri=path.as_uri())))
-    assert {'Point','x','twice','point'} <= {x['name'] for x in outline}, outline
+    assert {'Point','twice','point'} <= {x['name'] for x in outline}, outline
+    point_symbol = next(x for x in outline if x['name'] == 'Point')
+    assert {'x','hidden'} == {x['name'] for x in point_symbol['children']}, outline
+    twice_symbol = next(x for x in outline if x['name'] == 'twice')
+    assert 'value' in {x['name'] for x in twice_symbol['children']}, outline
+    assert twice_symbol['selectionRange']['start'] == at(content,'twice=f^'), twice_symbol
     tokens = client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=path.as_uri())))['data']
     assert len(tokens) % 5 == 0 and len(tokens) > 40
     line = column = 0
@@ -1117,8 +1126,8 @@ print^(a.x)
     constant_definition=request('definition','Float2.ONE',shift=7,text=generic)
     assert constant_definition['range']['start'] == at(generic,'ONE=Self^'), constant_definition
     outline=client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=path.as_uri())))
-    assert {'Vec2','Float2','ZERO','ONE'} <= {x['name'] for x in outline}, outline
-    assert not any(x['name'].endswith('>') for x in outline), outline
+    assert {'Vec2','Float2','ZERO','ONE'} <= {x['name'] for x in flatten_outline(outline)}, outline
+    assert not any(x['name'].endswith('>') for x in flatten_outline(outline)), outline
     broken_generic=generic.replace('Vec2<f32^>','Vec2<string^>')
     client.change(path,broken_generic,156)
     assert any('has no constant' in d['message'] for d in client.diagnostics(path,156))
@@ -1489,9 +1498,9 @@ print^(a.message())
             position=position))
         assert hover['contents']['value'] == f'{name}: E.{name}', hover
     outline = client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=short_errors_path.as_uri())))
-    methods = [item for item in outline if item['name'] == 'message']
+    methods = [item for item in flatten_outline(outline) if item['name'] == 'message']
     assert len(methods) == 1, methods
-    assert methods[0]['location']['range']['start'] == at(short_errors_text,'message=f^'), methods
+    assert methods[0]['selectionRange']['start'] == at(short_errors_text,'message=f^'), methods
     completion = client.request('textDocument/completion',dict(textDocument=dict(uri=short_errors_path.as_uri()),
         position=at(short_errors_text,'a.message()',shift=2)))
     items = completion['items'] if isinstance(completion,dict) else completion
@@ -1549,11 +1558,11 @@ def^F2 { self^{ x:f32^ } }
     client.change(path,qualified,159)
     duplicate=client.diagnostics(path,159)
     assert [d['range']['start'] for d in duplicate if 'duplicate declaration' in d['message']] == [at(qualified,'F2 {')], duplicate
-    tokens=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
+    token_data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
     line=column=0
     spelled={}
-    for offset in range(0,len(tokens),5):
-        delta_line,delta_column,length,kind,_=tokens[offset:offset+5]
+    for offset in range(0,len(token_data),5):
+        delta_line,delta_column,length,kind,_=token_data[offset:offset+5]
         line+=delta_line
         column=delta_column if delta_line else column+delta_column
         if line == 1:
@@ -1680,6 +1689,33 @@ g(1)
     assert alias_definition('kind=i32^') == at(alias_text,'kind=typeof^x')
     client.send('textDocument/didClose',dict(textDocument=dict(uri=alias_path.as_uri())))
     print('PASS a local type goes to its binding',flush=True)
+
+    short_alias_path = work/'short_type_alias.rh'
+    short_alias_text = '''import^std.math.vector2
+let^F2=std.math.vector2.Vector2
+let^LongVectorAlias=std.math.vector2.Vector2
+var^vertices=F2[grow^]{}
+let^read=f^p:F2 {
+ var^child=1
+ return^p.x+f32^(child)
+}
+var^point=LongVectorAlias{}
+print^(read(point))
+'''
+    client.open(short_alias_path,short_alias_text)
+    assert client.diagnostics(short_alias_path,1) == []
+    colored=tokens(short_alias_text,short_alias_path)
+    for needle in ('grow^','var^child'):
+        pos=at(short_alias_text,needle)
+        assert (pos['line'],pos['character']) not in colored, (needle,colored)
+    for needle, length in (('F2[grow^]',2),('F2 {',2),('LongVectorAlias{}',15)):
+        pos=at(short_alias_text,needle)
+        assert colored[(pos['line'],pos['character'])] == (length,1), (needle,colored)
+        hover=client.request('textDocument/hover',dict(textDocument=dict(uri=short_alias_path.as_uri()),position=pos))
+        assert hover['range']['start'] == pos, hover
+        assert hover['range']['end'] == dict(line=pos['line'],character=pos['character']+length), hover
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=short_alias_path.as_uri())))
+    print('PASS type aliases color only their written tokens and keep exact hover ranges',flush=True)
 
     inline_path = work/'inline.rh'
     inline_text = ('let^show=template^p^... {\n'
@@ -1912,6 +1948,53 @@ print^(patch("ok".bytes),zero())
         assert expected.replace(' ','') in hover['contents']['value'].replace(' ',''), hover
     client.send('textDocument/didClose',dict(textDocument=dict(uri=borrow_path.as_uri())))
     print('PASS reference iteration hover and diagnostics',flush=True)
+
+    outline_path = work/'outline 日本語.rh'
+    outline_text = '''def^Left {
+ self^{x:i32^=0}
+ let^LIMIT=3
+ update=p^self^ {
+  let^text="fake { braces }"
+  #[ { nested comment } ]#
+  let^inner=f^n:i32^ {let^step=1 return^n+step}
+  self^.x+=inner(1)
+ }
+}
+def^Right {self^{x:i32^=0} update=p^self^ {self^.x+=1}}
+def^Alias=Left
+var^left=Left{}
+var^right=Right{}
+left.update() right.update()
+let^日本語=1
+'''
+    client.open(outline_path,outline_text)
+    assert client.diagnostics(outline_path,1) == []
+    tree = client.request('textDocument/documentSymbol',dict(textDocument=dict(uri=outline_path.as_uri())))
+    roots = {item['name']:item for item in tree}
+    assert set(roots) == {'Left','Right','Alias','left','right','日本語'}, tree
+    left_members = {item['name']:item for item in roots['Left']['children']}
+    assert set(left_members) == {'x','LIMIT','update'}, tree
+    right_members = {item['name']:item for item in roots['Right']['children']}
+    assert set(right_members) == {'x','update'}, tree
+    locals = {item['name']:item for item in left_members['update']['children']}
+    assert set(locals) == {'text','inner'}, tree
+    assert [item['name'] for item in locals['inner']['children']] == ['step'], tree
+    assert roots['日本語']['selectionRange']['start'] == at(outline_text,'日本語=1'), tree
+    def position_key(position):
+        return position['line'], position['character']
+    def check_outline_ranges(items, parent=None):
+        for item in items:
+            start, end = map(position_key,(item['range']['start'],item['range']['end']))
+            selection = item['selectionRange']
+            assert start <= position_key(selection['start']) <= position_key(selection['end']) <= end, item
+            if parent:
+                assert position_key(parent['range']['start']) <= start <= end <= position_key(parent['range']['end']), item
+            check_outline_ranges(item['children'],item)
+    check_outline_ranges(tree)
+    workspace = client.request('workspace/symbol',dict(query='update'))
+    assert any(item['name']=='update' and 'location' in item for item in workspace), workspace
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=outline_path.as_uri())))
+    print('PASS hierarchical outlines, declaration ranges, duplicate member names and workspace symbols',flush=True)
 
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
