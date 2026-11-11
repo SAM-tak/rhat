@@ -1038,8 +1038,10 @@ static void state_reference(Program *p, Field *f, Expr *e)
         fail(e->loc, "private static variable '%s.%s'", f->owner->name, f->name);
     }
     Loc at = e->name_loc.file ? e->name_loc : e->loc;
-    tool_record(p, at, f->loc, f->name, f->type, NULL, f->owner,
-                f->binding && !f->binding->mut ? 14 : 13, false);
+    if (!e->untracked) {
+        tool_record(p, at, f->loc, f->name, f->type, NULL, f->owner,
+                    f->binding && !f->binding->mut ? 14 : 13, false);
+    }
     *e = (Expr){.kind = E_STATE, .loc = at, .text = f->name, .state_field = f};
 }
 
@@ -1864,6 +1866,7 @@ static void pass_top_bindings(Program *p, Module *m)
             Loc at = call->call->loc;
             if (member_function(call->caller) || (call->caller && call->caller->enclosing)) {
                 Expr *place = name_expr(binding->name, at);
+                place->untracked = true;
                 state_reference(p, binding_state(p, binding), place);
                 Expr *borrow = unary_expr("ref^", place);
                 borrow->top_binding = !binding->mut;
@@ -1890,7 +1893,9 @@ static void pass_top_bindings(Program *p, Module *m)
                                    callee->name, binding->name););
                 call->call->invalid = true;
             }
-            Expr *borrow = unary_expr("ref^", name_expr(binding->name, at));
+            Expr *place = name_expr(binding->name, at);
+            place->untracked = true;
+            Expr *borrow = unary_expr("ref^", place);
             borrow->top_binding = !binding->mut;
             add(&args, borrow);
         }

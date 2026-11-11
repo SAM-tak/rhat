@@ -4375,12 +4375,14 @@ Value expression(Context *c, Expr *e, Type *expected)
         if (v->unavailable) {
             fail(e->loc, "first^ binding '%s' is not definitely initialized here", v->name);
         }
-        tool_record(p, e->loc, v->declaration, v->name,
-                    v->narrowed && !c->raw_name ? v->narrowed : v->type, NULL, NULL,
-                    v->parameter ? TOOL_PARAMETER
-                    : v->mut     ? 13
-                                 : 14,
-                    false);
+        if (!e->untracked) {
+            tool_record(p, e->loc, v->declaration, v->name,
+                        v->narrowed && !c->raw_name ? v->narrowed : v->type, NULL, NULL,
+                        v->parameter ? TOOL_PARAMETER
+                        : v->mut     ? 13
+                                     : 14,
+                        false);
+        }
         Value result = variable(v);
         if (v->narrowed && !c->raw_name) {
             return convert_value(c, result, v->narrowed, -1, e->loc);

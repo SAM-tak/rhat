@@ -964,7 +964,7 @@ static void generic_expr(Program *p, Module *module, cJSON *refs, List *names, E
     if (!e || e->invalid) {
         return;
     }
-    char *path = generic_path(e);
+    char *path = e->untracked ? NULL : generic_path(e);
     const LspBuiltin *builtin = generic_builtin(e);
     if (builtin) {
         ToolRef ref = {e->loc, e->loc, builtin->name,     NULL, NULL, NULL,

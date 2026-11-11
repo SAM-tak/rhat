@@ -158,6 +158,7 @@ struct Expr {
     Def *constant_owner; // A type constant retains its declaration's access rights.
     bool invalid;        // A recovered syntax/name-resolution error, never executable.
     bool top_binding;    // ref^ of a top-level let^ for its hidden parameter: read only.
+    bool untracked;      // A compiler-generated name: editors see no reference to it.
     int repeat_count;    // repeat^: -1 for contextual max^, 1..1000000 for constants, else 0.
     Loc name_loc;        // Exact member spelling, distinct from receiver diagnostics.
     Spec *test_spec;     // The type operand of fits^, or the type of a T[max^](capacity)

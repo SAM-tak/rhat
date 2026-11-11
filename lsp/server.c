@@ -810,24 +810,26 @@ static LspPosition token_position(const char *buffer, size_t length, size_t targ
     return next;
 }
 
+// A qualified name never reaches back past limit, the end of the last comment or
+// string: the full stop that ends a comment line is not a member access.
 static bool namespace_name(cJSON *index, cJSON **lookup, const char *uri, const char *buffer,
-                           size_t start, size_t end)
+                           size_t limit, size_t start, size_t end)
 {
     size_t root = start;
-    while (root) {
+    while (root > limit) {
         size_t at = root;
-        while (at && isspace((unsigned char)buffer[at - 1])) {
+        while (at > limit && isspace((unsigned char)buffer[at - 1])) {
             at--;
         }
-        if (!at || buffer[at - 1] != '.') {
+        if (at <= limit || buffer[at - 1] != '.') {
             break;
         }
         at--;
-        while (at && isspace((unsigned char)buffer[at - 1])) {
+        while (at > limit && isspace((unsigned char)buffer[at - 1])) {
             at--;
         }
         size_t tail = at;
-        while (at && identifier((unsigned char)buffer[at - 1]) && buffer[at - 1] != '^') {
+        while (at > limit && identifier((unsigned char)buffer[at - 1]) && buffer[at - 1] != '^') {
             at--;
         }
         if (at == tail) {
@@ -886,7 +888,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
     int last_line = 0, last_col = 0;
     size_t length = strlen(buffer);
     cJSON **lookup = symbol_lookup(index, uri, length);
-    size_t position_offset = 0;
+    size_t position_offset = 0, opaque = 0;
     LspPosition position = {0};
     Interpolation scan = {0};
     for (size_t at = 0; at < length;) {
@@ -896,7 +898,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
         size_t operator_length;
         size_t past = interpolation_step(&scan, buffer, at);
         if (past != at) {
-            at = past;
+            at = opaque = past;
             continue;
         }
         if (unicode_operator(buffer + at, &operator_length)) {
@@ -908,10 +910,10 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
             continue;
         }
         if (c == '#') {
-            at = skip_comment(buffer, at);
+            at = opaque = skip_comment(buffer, at);
         }
         else if (c == '"' || c == '\'' || c == '`') {
-            at = skip_quoted(buffer, at);
+            at = opaque = skip_quoted(buffer, at);
         }
         else if (isdigit(c)) {
             at++;
@@ -946,7 +948,7 @@ static cJSON *semantic_tokens(cJSON *index, const char *uri, const char *buffer)
                 }
             }
             else if (buffer[at - 1] != '^' &&
-                     namespace_name(index, lookup, uri, buffer, start, at)) {
+                     namespace_name(index, lookup, uri, buffer, opaque, start, at)) {
                 kind = 11;
             }
             else if (buffer[at - 1] == '^') {

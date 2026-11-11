@@ -267,9 +267,17 @@ print^(lib . math . twice(1),math.twice(2))
 let^shadow=p^math:i64^ {print^(math)}
 shadow(3)
 print^("lib.math") # lib.math
+var^a_long_counter:i64^=0
+let^count=p^n:i64^{a_long_counter+=n}
+count(
+    # A comment line ends with a full stop.
+    math.twice(4))
+count(1)
+shadow(5)
 '''
     client.open(namespace_path,namespace_source)
-    assert client.diagnostics(namespace_path,1) == []
+    namespace_diagnostics = client.diagnostics(namespace_path,1)
+    assert namespace_diagnostics == [], namespace_diagnostics
     data = client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=namespace_path.as_uri())))['data']
     line = column = 0
     names = []
@@ -280,10 +288,13 @@ print^("lib.math") # lib.math
         names.append((line,namespace_source.splitlines()[line][column:column+length],kind))
     assert [(line,name) for line,name,kind in names if kind == 11] == [
         (0,'lib'),(0,'math'),(1,'math'),(1,'lib'),(1,'math'),
-        (2,'lib'),(2,'math'),(2,'math'),
+        (2,'lib'),(2,'math'),(2,'math'),(10,'math'),
     ], names
     assert (2,'twice',2) in names, names
     assert (3,'math',4) in names, names
+    # The hidden argument that passes a top-level binding to a call is not a
+    # reference spelled at the call, so it must not color the following line.
+    assert (11,'count',2) in names and (12,'shadow',2) in names, names
     client.send('textDocument/didClose',dict(textDocument=dict(uri=namespace_path.as_uri())))
     print('PASS import namespace paths, aliases and lexical shadowing colors',flush=True)
 
