@@ -31,7 +31,7 @@ let^worker = p^arg:ref^Args {
     assert^(id = t.current_id())
     try^arg.out.send(ref^id)
 }
-let^read_id = f^value:ref^read^t.Thread -> i64^ { value.id() }
+let^read_id = f^value:ref^t.Thread -> i64^ { value.id() }
 let^main_id = t.current_id()
 var^out = try^c.Channel<i64^>.new(2, 16)
 var^arg = Args{out = out.clone()}
@@ -536,7 +536,7 @@ channel_close^(ref^h)
 ''', 'true\ntrue\n')
     positive('typed_handle_refcounts', '''
 import^std.sys
-externC^test_channel_holds:f^args:ref^read^std.sys.ThreadArgs -> i64^;
+externC^test_channel_holds:f^args:ref^std.sys.ThreadArgs -> i64^;
 var^h = channel_new^(i32^, i64^(1), i64^(8))
 print^(test_channel_holds(thread_args^(ref^h)))
 do^{

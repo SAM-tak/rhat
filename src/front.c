@@ -151,8 +151,9 @@ typedef struct {
     int array_length_end; // One past a trailing nested type bracket, or zero outside lengths.
     List type_names, error_names; // Declaration names indexed once after lexing.
     bool header;
-    bool text_cast; // A char^(...) or string^(...) cast needs std.text for its error.
-    bool enum_cast; // An enum^ declaration's Mode(n) cast needs std.sys for its error.
+    bool text_cast;   // A char^(...) or string^(...) cast needs std.text for its error.
+    bool enum_cast;   // An enum^ declaration's Mode(n) cast needs std.sys for its error.
+    int result_depth; // Conditional read origins are only legal in result annotations.
 } Parser;
 
 static void format_span(Parser *p, int first, int kind, bool block, bool row)
@@ -1206,16 +1207,54 @@ static int self_type_depth(const char *text)
 
 static Expr *expr(Parser *p, int min);
 
-// A slice that f^ takes is read^ as written: it can change nothing through it anyway.
-static void read_view(Spec *s)
+// Explicit capabilities on f^ inputs obscure their capability-polymorphic contract.
+static void pure_parameter_spec(Spec *s)
 {
-    if (s->kind == SPEC_SLICE) {
-        s->count = 1;
+    if ((s->kind == SPEC_REF || s->kind == SPEC_SLICE) && (s->count || s->read_from.n)) {
+        fail(s->loc, "read^ is redundant on an f^ parameter; omit it");
     }
-    else if (s->kind == SPEC_UNION) {
-        read_view(s->elem);
-        read_view(s->other);
+    if (s->kind == SPEC_UNION) {
+        pure_parameter_spec(s->elem);
+        pure_parameter_spec(s->other);
     }
+}
+
+static List read_sources(Parser *p)
+{
+    List sources = {0};
+    // read^(T)[..] already groups a slice element type; an origin list is followed by its type.
+    if (is(p, "(")) {
+        int end = p->at + 1, depth = 1;
+        while (end < p->tokens.n && depth) {
+            Token *t = p->tokens.v[end++];
+            if (!strcmp(t->text, "(")) {
+                depth++;
+            }
+            if (!strcmp(t->text, ")")) {
+                depth--;
+            }
+        }
+        Token *after = !depth && end < p->tokens.n ? p->tokens.v[end] : NULL;
+        if (!after || (after->kind != TOK_WORD && strcmp(after->text, "("))) {
+            return sources;
+        }
+    }
+    if (take(p, "(")) {
+        if (!p->result_depth) {
+            fail(tok(p)->loc, "read^(...) is only allowed in a function result");
+        }
+        do {
+            char *name = take(p, "self^") ? "self^" : decl_word(p);
+            for (int j = 0; j < sources.n; j++) {
+                if (!strcmp(name, sources.v[j])) {
+                    fail(tok(p)->loc, "duplicate read^ origin '%s'", name);
+                }
+            }
+            add(&sources, name);
+        } while (take(p, ","));
+        need(p, ")");
+    }
+    return sources;
 }
 
 static Spec *array_brackets(Parser *p, Spec *elem, int *references);
@@ -1507,12 +1546,14 @@ static Spec *spec_part(Parser *p)
         return array_spec(p, typeof_spec(p, s->loc), &none);
     }
     if (take(p, "read^")) {
+        List sources = read_sources(p);
         s = spec_part(p);
         if (s->kind != SPEC_SLICE) {
             fail(s->loc,
                  "read^ here needs a slice, as in read^ T[..]; a reference is ref^ read^ T");
         }
-        s->count = 1;
+        s->count = sources.n ? 0 : 1;
+        s->read_from = sources;
         return s;
     }
     int refs = reference_depth(tok(p)->text);
@@ -1526,7 +1567,14 @@ static Spec *spec_part(Parser *p)
     if (refs) {
         next(p);
         bool read = take(p, "read^");
-        return reference_spec(spec_part(p), s->loc, refs, read, false);
+        List sources = read ? read_sources(p) : (List){0};
+        Spec *out = reference_spec(spec_part(p), s->loc, refs, read && !sources.n, false);
+        Spec *inner = out;
+        while (inner->elem && inner->elem->kind == SPEC_REF) {
+            inner = inner->elem;
+        }
+        inner->read_from = sources;
+        return out;
     }
     if (take(p, "f^") || take(p, "p^")) {
         s->kind = SPEC_FUNCTION;
@@ -1535,7 +1583,7 @@ static Spec *spec_part(Parser *p)
             do {
                 Spec *param = spec(p);
                 if (!s->procedure) {
-                    read_view(param);
+                    pure_parameter_spec(param);
                 }
                 add(&s->params, param);
             } while (take(p, ","));
@@ -1661,7 +1709,7 @@ static Spec *spec(Parser *p)
 // The result after ->, where (A, B) with a comma at its top is multiple
 // results, which | E joins as a whole, and any other parenthesis groups a
 // type.
-static Spec *result_spec(Parser *p)
+static Spec *result_spec_body(Parser *p)
 {
     int at = p->at;
     Loc loc = tok(p)->loc;
@@ -1681,6 +1729,14 @@ static Spec *result_spec(Parser *p)
         p->at = at;
     }
     return spec(p);
+}
+
+static Spec *result_spec(Parser *p)
+{
+    p->result_depth++;
+    Spec *s = result_spec_body(p);
+    p->result_depth--;
+    return s;
 }
 
 static Expr *operation(Parser *p, int min);
@@ -3668,7 +3724,7 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
             if (take(p, ":")) {
                 a->spec = spec(p);
                 if (!f->procedure) {
-                    read_view(a->spec);
+                    pure_parameter_spec(a->spec);
                 }
             }
             if (!strcmp(a->name, "...")) {

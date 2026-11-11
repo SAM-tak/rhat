@@ -1511,6 +1511,11 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     }
     infer_results(p);
     if (!in->result) {
+        if (f->result && type_spec(p, f->result)->refs && !f->procedure) {
+            fail(
+                f->loc,
+                "cannot infer reference result capability; add read^(parameter) or read^ to the result");
+        }
         fail(f->loc,
              "cannot infer return type of '%s'; add a grounded return or an "
              "explicit result type",
@@ -1633,6 +1638,24 @@ Instance *instantiate(Program *p, Function *f, Def *self, List *actual, Loc at)
         tool_abort();
     }
     Instance *result = instantiate_unchecked(p, in);
+    if (!in->read_checked && !f->external && !f->abstract && read_contract(f->result)) {
+        in->read_checked = true;
+        for (int j = 0; j < f->params.n; j++) {
+            Param *param = f->params.v[j];
+            Type *t = in->params.v[j];
+            if ((t->kind != T_REF && t->kind != T_SLICE && t->kind != T_DYN) ||
+                (f->mutable_self && param->self)) {
+                continue;
+            }
+            List probe = {0};
+            for (int k = 0; k < f->params.n; k++) {
+                add(&probe, in->params.v[k]);
+            }
+            probe.v[j] = type_wrap(p, t->kind, t->elem, 1);
+            instance_for(p, f, self, &probe, at)->read_checked = true;
+            instantiate(p, f, self, &probe, at);
+        }
+    }
     tool_leave(&recovery);
     return result;
 }

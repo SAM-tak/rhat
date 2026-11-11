@@ -1999,6 +1999,27 @@ let^日本語=1
     client.send('unsupported/request',{},9999)
     assert client.wait(lambda x: x.get('id') == 9999)['error']['code'] == -32601
 
+    # Pure calls retain the capability of the actual source, and display explicit origins.
+    pure_reads = work/'pure_reads.rh'
+    pure_text = ('def^Cell {self^{n:i32^=1}}\n'
+                 'let^identity=f^x:ref^Cell ->ref^Cell {x}\n'
+                 'let^explicit=f^x:ref^Cell ->ref^read^(x)Cell {x}\n'
+                 'let^tail=f^x:i32^[..] ->read^(x)i32^[..] {x}\n'
+                 'var^a=Cell{}\n'
+                 'let^r:ref^read^Cell=ref^a\n'
+                 'let^readonly_result=identity(r)\n'
+                 'let^writable_result=identity(ref^a)\n')
+    client.open(pure_reads, pure_text)
+    assert client.diagnostics(pure_reads, 1) == []
+    for needle, expected in (('readonly_result=', 'ref^read^ Cell'),
+                             ('writable_result=', 'ref^ Cell'),
+                             ('explicit=f^', 'read^(x)'), ('tail=f^', 'read^(x)')):
+        hover = client.request('textDocument/hover', dict(textDocument=dict(uri=pure_reads.as_uri()),
+                                                        position=at(pure_text, needle)))
+        assert hover and expected in hover['contents']['value'], (needle, hover)
+    client.send('textDocument/didClose',dict(textDocument=dict(uri=pure_reads.as_uri())))
+    print('PASS pure reference capability inference and explicit origin hovers',flush=True)
+
     # A name right after a hat is the declaration even if it recurs later.
     hats = work/'hats.rh'
     hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^zero = f^ -> i64^ { 0 }\n'

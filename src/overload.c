@@ -523,7 +523,7 @@ Function *overload_select(Program *p, List *candidates, List *actual, Expr *call
         bool match = true;
         for (int k = 0; k < actual->n && match; k++) {
             Param *a = f->params.v[k];
-            Type *t = actual->v[k], *want = parameter_type(p, a);
+            Type *t = actual->v[k], *want = function_parameter(p, f, a, t);
             if (!a->self && !literal_argument(p, want, call_argument(call, f, offset, k), &t)) {
                 match = false;
             }

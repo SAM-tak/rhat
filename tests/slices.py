@@ -247,7 +247,7 @@ for^k, v in^refs { print^(k, v.n) }
     negative('write_read_method', 'def^P {\n self^{ n:i32^ = 0 }\n add = p^self^ { self^.n += 1 }\n}\nlet^g = p^xs:read^P[..] { xs[0].add() }\nvar^a = P[grow^]{ P{} }\ng(a[..])\n', written)
     negative('write_read_field', 'def^P { self^{ n:i32^ = 0 } }\nlet^g = p^xs:read^P[..] { xs[0].n := 1 }\nvar^a = P[grow^]{ P{} }\ng(a[..])\n', written)
     negative('write_map_items', 'let^c = import^std.collections\nvar^m:c.HashMap<string^, i32^> = {}\nm.set("a", 1)\nlet^items = m.items()\nitems[0].value := 2\n', written)
-    negative('write_in_f', 'let^g = f^xs:i32^[..] -> i32^ {\n xs[0] := 1\n return^0\n}\nvar^a = i32^[grow^]{1}\nprint^(g(a[..]))\n', written)
+    negative('write_in_f', 'let^g = f^xs:i32^[..] -> i32^ {\n xs[0] := 1\n return^0\n}\nvar^a = i32^[grow^]{1}\nprint^(g(a[..]))\n', 'f^ cannot mutate borrowed storage')
     negative('write_variadic', 'let^g = p^...:i32^ { ...[0] := 1 }\ng(1)\n', 'read')
     negative('write_read_top_level', 'let^fixed = i32^[grow^]{1}\nlet^g = p^ {\n let^view = fixed[..]\n view[0] := 1\n}\ng()\n', written)
     negative('writable_ref_through_read', 'def^T { self^{ n:i32^ = 0 } }\nlet^g = p^xs:read^(ref^T)[..] -> ref^T { return^xs[0] }\n', 'cannot copy writable references')
@@ -258,7 +258,7 @@ for^k, v in^refs { print^(k, v.n) }
     negative('read_to_writable', 'let^g = p^xs:i32^[..] {}\nlet^h = p^ys:read^i32^[..] { g(ys) }\nvar^a = i32^[grow^]{1}\nh(a[..])\n', needs_read)
     negative('read_result_to_writable', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\nvar^w:i32^[..] = r\n', 'read^')
     negative('let_array_to_writable_local', 'let^a = i32^[grow^]{1}\nvar^w:i32^[..] = a[..]\n', 'its source is read-only')
-    negative('drop_read_in_result', 'let^g = f^xs:i32^[..] -> i32^[..] { xs }\n', 'read^')
+    positive('preserve_read_in_result', 'let^g = f^xs:i32^[..] -> i32^[..] { xs }\nvar^a={1,2}\nlet^r:read^i32^[..]=a[..]\nprint^(g(r)[0])\n', '1\n')
 
     positive('push_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na.push(2)\nprint^(r[0])\n', '1\n')
     positive('element_while_read', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\na[0] := 2\nprint^(r[0])\n', '2\n')

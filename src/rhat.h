@@ -85,8 +85,9 @@ struct Spec {
     // SPEC_REF uses count 1 for read^ and 0 for an ordinary reference.
     Expr *length;  // A constant expression for count, evaluated during name resolution.
     Expr *operand; // SPEC_TYPEOF: the unevaluated expression whose static type this names.
-    List *pins;  // SPEC_TYPEOF of a local type binding: Instance, Type pairs fixed at the binding.
-    List params; // Parameter specifications of a callable signature.
+    List *pins; // SPEC_TYPEOF of a local type binding: Instance, Type pairs fixed at the binding.
+    List read_from; // Parameter names whose read capability this result reference inherits.
+    List params;    // Parameter specifications of a callable signature.
     bool procedure; // A p^ signature carries the procedure effect.
     bool foreign;   // externC^ before a signature: a C function pointer.
 };
@@ -434,6 +435,8 @@ bool owning_rows(Type *t);
 Type *array_literal_type(Program *p, Expr *e, Type *expected, Type *first);
 // Format outer-to-inner array policies, returning the remaining element spec in base.
 char *array_spec_shape(Spec *spec, Spec **base);
+// Source spelling of a reference or slice read capability, including conditional origins.
+char *spec_read(Spec *spec);
 char *type_name(Type *t);
 const char *builtin_name(int kind);
 bool kind_integer(int kind);
@@ -559,6 +562,7 @@ typedef struct {
 } Slot;
 
 struct Instance {
+    bool read_checked;  // This call shape has checked its explicit result-origin contract.
     bool thread_entry;  // Invoked on an independent shard, never with the parent's state.
     bool state_shrinks; // This call may shrink a task-owned static flex array.
     bool uses_state;    // This instance or a reachable callee accesses the task context.

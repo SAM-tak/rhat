@@ -684,6 +684,15 @@ static bool infer_let_place(Infer *c, Expr *e)
 }
 
 // The slice of source, whose type without its reference is base; slice_view decides the same.
+static Type *pure_argument_type(Infer *c, Function *f, Expr *arg, Type *type)
+{
+    if (type && type->kind == T_REF && !f->procedure && arg && arg->kind == E_UNARY &&
+        !strcmp(arg->text, "ref^") && infer_let_place(c, arg->a)) {
+        return type_wrap(c->p, T_REF, type->elem, 1);
+    }
+    return type;
+}
+
 static Type *infer_view(Infer *c, Expr *source, Type *base)
 {
     if (base && base->kind == T_STRING) {
@@ -984,9 +993,12 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         if (base && base->kind == T_DYN) {
             // Lowering checks the call; inference needs only the declared result.
             Function *m = method(base->elem->def, target->text);
+            Instance call = {.fn = m};
+            add(&call.params, base);
             for (int j = 0; j < e->args.n; j++) {
                 Param *param = m && j + 1 < m->params.n ? m->params.v[j + 1] : NULL;
-                infer_expr(c, e->args.v[j], param ? parameter_type(c->p, param) : NULL);
+                add(&call.params,
+                    infer_expr(c, e->args.v[j], param ? parameter_type(c->p, param) : NULL));
             }
             if (c->terminated) {
                 return type_builtin(c->p, T_NEVER);
@@ -994,7 +1006,9 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
             if (m && (m->procedure || m->mutable_self)) {
                 forget_paths(&c->vars);
             }
-            return !m ? NULL : m->result ? type_spec(c->p, m->result) : type_builtin(c->p, T_VOID);
+            return !m          ? NULL
+                   : m->result ? function_result(c->p, &call, m->result)
+                               : type_builtin(c->p, T_VOID);
         }
         if (base && base->kind == T_STRUCT) {
             self = base->def;
@@ -1059,7 +1073,11 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
     inferred_call(c->in->fn, f, e->loc);
     for (int j = offset; j < actual.n && j < f->params.n; j++) {
         Param *param = f->params.v[j];
-        Type *want = parameter_type(c->p, param), *t = actual.v[j];
+        int index = j - (offset && !right_self ? offset : 0);
+        Expr *arg = index >= 0 && index < e->args.n ? e->args.v[index] : NULL;
+        Type *t = pure_argument_type(c, f, arg, actual.v[j]);
+        actual.v[j] = t;
+        Type *want = function_parameter(c->p, f, param, t);
         if (param->spec && t && want && !parameter_accepts(want, t)) {
             // Wait for provisional argument types instead of specializing a
             // typed callee with a numeric guess for a pending operator result.
@@ -1651,11 +1669,17 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return infer_call(c, e, expected);
     case E_RECORD: {
         Type *type = expected;
-        if (e->tuple && !(type && type->kind == T_STRUCT && type->def->tuple)) {
+        if (e->tuple && (!(type && type->kind == T_STRUCT && type->def->tuple) ||
+                         (c->in && !c->in->fn->procedure))) {
             // An unannotated result takes the types of the values returned.
             List elems = {0};
             for (int j = 0; j < e->args.n; j++) {
-                Type *elem = infer_expr(c, e->args.v[j], NULL);
+                Type *hint =
+                    type && type->kind == T_STRUCT && type->def->tuple && j < type->def->fields.n
+                        ? ((Field *)type->def->fields.v[j])->type
+                        : NULL;
+                Type *elem = infer_expr(c, e->args.v[j], hint);
+                elem = hint && elem ? result_capabilities(c->p, hint, elem, e->loc) : elem;
                 if (!elem || c->terminated) {
                     return c->terminated ? type_builtin(c->p, T_NEVER) : NULL;
                 }
@@ -1822,6 +1846,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
                     return type;
                 }
             }
+        }
+        if (f && (f->type->kind == T_REF || f->type->kind == T_SLICE || f->type->kind == T_DYN) &&
+            infer_read_place(c, e)) {
+            return type_wrap(c->p, f->type->kind, f->type->elem, 1);
         }
         return f ? f->type : NULL;
     }
@@ -2283,8 +2311,8 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             }
         }
         else if (s->kind == S_RETURN) {
-            Type *hint =
-                c->in->fn->result ? type_spec(c->p, c->in->fn->result) : c->in->fn->required_result;
+            Type *hint = c->in->fn->result ? function_result(c->p, c->in, c->in->fn->result)
+                                           : c->in->fn->required_result;
             Type *t = infer_expr(c, s->a, hint);
             if (!s->a && hint && nullable(hint) && has_error(hint)) {
                 t = hint;
@@ -2588,6 +2616,13 @@ List first_types(Context *c, Stmt *s)
 
 static bool infer_instance_result(Program *p, Instance *in)
 {
+    if (in->fn->external) {
+        if (!in->result) {
+            in->result = type_builtin(p, T_VOID);
+            return true;
+        }
+        return false;
+    }
     bool changed = false;
     Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
     for (int k = 0; k < in->params.n; k++) {
@@ -2616,7 +2651,13 @@ static bool infer_instance_result(Program *p, Instance *in)
     if (!result && !c.value_return) {
         result = type_builtin(p, T_VOID);
     }
-    Type *contract = in->fn->result ? type_spec(p, in->fn->result) : in->fn->required_result;
+    Type *contract =
+        in->fn->result ? function_result(p, in, in->fn->result) : in->fn->required_result;
+    if (contract && result && !callable_type(contract) && !in->fn->procedure && !in->fn->external &&
+        !read_contract(in->fn->result)) {
+        result = result_capabilities(p, contract, result, in->fn->loc);
+        contract = NULL;
+    }
     if (callable_type(contract) && result && !callable_accepts(contract, result)) {
         fail(in->fn->loc, "callable result does not satisfy '%s'", type_name(contract));
     }
@@ -2757,6 +2798,11 @@ static Spec *fixed_spec(Context *c, Spec *s)
     }
     if (s->kind == SPEC_TYPEOF) {
         r->type = expression_type(c, s->operand, NULL);
+        // A typeof-only call may discover a capability specialization during lowering.
+        if (!r->type && c->in && c->in->state > 0) {
+            infer_results(c->p);
+            r->type = expression_type(c, s->operand, NULL);
+        }
         record_operand(c, s->operand);
         if (!r->type || r->type->kind == T_NEVER) {
             fail(s->loc, "typeof^ cannot determine the type of its operand");
@@ -2829,6 +2875,13 @@ Type *expression_type(Context *c, Expr *e, Type *expected)
     return infer_expr(&inference, e, expected);
 }
 
+Type *function_argument_type(Context *c, Function *f, Param *param, Expr *arg)
+{
+    Infer inference = infer_context(c);
+    Type *type = infer_expr(&inference, arg, parameter_hint(c->p, param, arg));
+    return pure_argument_type(&inference, f, arg, type);
+}
+
 Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
 {
     if (f->invalid || (self && self->invalid)) {
@@ -2872,7 +2925,11 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
     in->fn = f;
     in->self = self;
     in->params = *actual;
-    in->result = f->result ? type_spec(p, f->result) : f->required_result;
+    in->result = f->result ? function_result(p, in, f->result) : f->required_result;
+    if (!f->procedure && !f->external && !f->abstract && in->result && type_writes(in->result) &&
+        !read_contract(f->result)) {
+        in->result = NULL;
+    }
     in->id = p->instances.n;
     in->symbol = fmt("rh_fn_%d", in->id);
     if (f->external) {
@@ -2896,6 +2953,148 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
 Type *parameter_type(Program *p, Param *param)
 {
     return !param ? NULL : param->spec ? type_spec(p, param->spec) : param->inferred;
+}
+
+Type *function_parameter(Program *p, Function *f, Param *param, Type *actual)
+{
+    Type *want = parameter_type(p, param);
+    if (want && actual && !f->procedure && !(f->mutable_self && param->self)) {
+        return result_capabilities(p, want, actual, param->loc);
+    }
+    return want;
+}
+
+bool read_contract(Spec *s)
+{
+    if (!s) {
+        return false;
+    }
+    if (s->read_from.n || read_contract(s->elem) || read_contract(s->other)) {
+        return true;
+    }
+    for (int j = 0; j < s->params.n; j++) {
+        if (read_contract(s->params.v[j])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int read_source(Function *f, const char *name, Loc loc)
+{
+    for (int j = 0; j < f->params.n; j++) {
+        if (!strcmp(((Param *)f->params.v[j])->name, name)) {
+            return j;
+        }
+    }
+    fail(loc, "read^(%s) names no parameter of '%s'", name, f->name);
+}
+
+Type *function_result(Program *p, Instance *in, Spec *s)
+{
+    Type *t = type_spec(p, s);
+    if (!s) {
+        return t;
+    }
+    if (read_contract(s)) {
+        for (int j = 0; j < in->params.n; j++) {
+            if (!in->params.v[j]) {
+                return NULL;
+            }
+        }
+    }
+    if ((s->kind == SPEC_REF || s->kind == SPEC_SLICE) && read_contract(s->elem)) {
+        Type *elem = function_result(p, in, s->elem);
+        if (!elem) {
+            return NULL;
+        }
+        t = type_wrap(p, t->kind, elem, t->count);
+    }
+    if (s->read_from.n) {
+        bool read = false;
+        for (int j = 0; j < s->read_from.n; j++) {
+            int k = read_source(in->fn, s->read_from.v[j], s->loc);
+            if (k >= in->params.n || !in->params.v[k]) {
+                return NULL;
+            }
+            Type *param = in->params.v[k];
+            if (param->kind != T_REF && param->kind != T_SLICE && param->kind != T_DYN) {
+                fail(s->loc, "read^(%s) requires a reference or slice parameter",
+                     (char *)s->read_from.v[j]);
+            }
+            read |= read_reference(param);
+        }
+        return type_wrap(p, t->kind, t->elem, read);
+    }
+    if (s->kind == SPEC_UNION) {
+        Type *a = function_result(p, in, s->elem), *b = function_result(p, in, s->other);
+        return a && b ? type_union(p, a, b, s->loc) : NULL;
+    }
+    if (s->kind == SPEC_TUPLE) {
+        List parts = {0};
+        for (int j = 0; j < s->params.n; j++) {
+            Type *part = function_result(p, in, s->params.v[j]);
+            if (!part) {
+                return NULL;
+            }
+            add(&parts, part);
+        }
+        return type_tuple(p, &parts, s->loc);
+    }
+    if (in->fn->external && !in->fn->procedure &&
+        (t->kind == T_REF || t->kind == T_SLICE || t->kind == T_DYN) && !read_reference(t)) {
+        fail(
+            s->loc,
+            "cannot infer reference result capability without a body; add read^(parameter) or read^ to the result");
+    }
+    return t;
+}
+
+Type *result_capabilities(Program *p, Type *contract, Type *observed, Loc loc)
+{
+    if (!contract || !observed) {
+        return contract;
+    }
+    if ((contract->kind == T_REF || contract->kind == T_SLICE || contract->kind == T_DYN) &&
+        read_reference(observed)) {
+        Type *read = type_wrap(p, contract->kind, contract->elem, 1);
+        if (parameter_accepts(read, observed)) {
+            return read;
+        }
+    }
+    if ((contract->kind == T_REF || contract->kind == T_SLICE || contract->kind == T_DYN) &&
+        contract->kind == observed->kind && contract->elem == observed->elem) {
+        return type_wrap(p, contract->kind, contract->elem,
+                         read_reference(contract) || read_reference(observed));
+    }
+    if (contract->kind == T_STRUCT && contract->def->tuple && observed->kind == T_STRUCT &&
+        observed->def->tuple && contract->def->fields.n == observed->def->fields.n) {
+        List parts = {0};
+        for (int j = 0; j < contract->def->fields.n; j++) {
+            add(&parts, result_capabilities(p, ((Field *)contract->def->fields.v[j])->type,
+                                            ((Field *)observed->def->fields.v[j])->type, loc));
+        }
+        return type_tuple(p, &parts, loc);
+    }
+    if (contract->kind == T_UNION) {
+        Type *out = NULL;
+        bool changed = false;
+        for (int j = 0; j < contract->def->alternatives.n; j++) {
+            Type *arm = contract->def->alternatives.v[j];
+            if (observed->kind == T_UNION) {
+                for (int k = 0; k < observed->def->alternatives.n; k++) {
+                    arm = result_capabilities(p, arm, observed->def->alternatives.v[k], loc);
+                }
+            }
+            else {
+                arm = result_capabilities(p, arm, observed, loc);
+            }
+            changed |= arm != contract->def->alternatives.v[j];
+            out = out ? type_union(p, out, arm, loc) : arm;
+        }
+        return changed ? out : contract;
+    }
+    return contract;
 }
 
 bool parameter_accepts(Type *want, Type *actual)

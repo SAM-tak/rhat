@@ -2021,6 +2021,9 @@ static Value call_argument_value(Context *c, Expr *arg, Type *want, Type *hint)
                    ? type_wrap(c->p, T_REF, want->elem, want->count)
                    : NULL;
     }
+    if (want && type_reads(want)) {
+        hint = want;
+    }
     Value v = expression(c, arg, hint);
     if (dead(v)) {
         return v;
@@ -2095,7 +2098,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         add(&writable, &receiver);
     }
     for (int j = 0; j < e->args.n; j++) {
-        Type *want = parameter_type(p, f->params.v[j + 1]);
+        Param *param = f->params.v[j + 1];
+        Type *want =
+            function_parameter(p, f, param, function_argument_type(c, f, param, e->args.v[j]));
         Value v = call_argument_value(c, e->args.v[j], want, want);
         if (c->terminated) {
             return abrupt(c);
@@ -2119,7 +2124,11 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         deps = roots_union(deps, v.deps);
         add(&i->args, (void *)(intptr_t)(v.id + 1));
     }
-    Type *t = dyn_result(p, f);
+    Instance contract = {.fn = f};
+    for (int j = 0; j < arguments.n; j++) {
+        add(&contract.params, ((Value *)arguments.v[j])->type);
+    }
+    Type *t = f->result ? function_result(p, &contract, f->result) : dyn_result(p, f);
     if (p->state_fields.n) {
         Roots state = state_roots(p);
         if (f->procedure) {
@@ -2143,8 +2152,14 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         deps = roots_union(deps, state);
     }
     deps = result_holds_arguments(t) ? deps : (Roots){0};
-    if (read_reference(receiver.type) && type_writes(t)) {
-        fail(e->loc, "a read^ dyn^ receiver cannot expose writable references");
+    if (!f->procedure && type_writes(t) && !read_contract(f->result)) {
+        for (int j = 0; j < arguments.n; j++) {
+            if (type_reads(((Value *)arguments.v[j])->type)) {
+                fail(
+                    e->loc,
+                    "cannot infer reference result capability through dyn^ with read^ arguments; add read^(parameter) or read^ to the method result");
+            }
+        }
     }
     for (int j = 0; j < writable.n; j++) {
         mutation_check(c, ((Value *)writable.v[j])->deps, e->loc);
@@ -2736,7 +2751,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     for (int j = 0; j < e->args.n; j++) {
         Param *param = f->params.v[right_self ? j : j + offset];
-        Type *want = parameter_type(p, param);
+        Type *natural = function_argument_type(c, f, param, e->args.v[j]);
+        Type *want = function_parameter(p, f, param, natural);
         Value v =
             call_argument_value(c, e->args.v[j], want, parameter_hint(p, param, e->args.v[j]));
         if (c->terminated) {

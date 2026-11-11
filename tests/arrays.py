@@ -406,7 +406,7 @@ print^(a.len,a[0,2],a[1,2],b[1,2],cube[1,0,1],copy[1,2])
 let^WIDTH = 3
 def^Grid<T> {self^{cells:T[2,WIDTH]}}
 def^Box<T> {self^{value:T}}
-let^get = f^a:ref^read^i32^[2,3] -> i32^ {a[1,2]}
+let^get = f^a:ref^i32^[2,3] -> i32^ {a[1,2]}
 var^grid = Grid<i32^>{cells={{1,2,3},{4,5,6}}}
 let^r = ref^grid.cells[1,2];
 *r := 9

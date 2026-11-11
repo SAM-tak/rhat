@@ -57,8 +57,29 @@ bool flow_store(Context *c, Root *owner, Root *src)
     return true;
 }
 
+void read_return_check(Context *c, Spec *spec, Roots deps, Loc loc)
+{
+    if (!spec || !spec->read_from.n) {
+        return;
+    }
+    for (int j = 0; j < deps.n; j++) {
+        int from, part;
+        bool matched = false;
+        if (flow_site(c, deps.v[j], &from, &part) && from >= 0 && from < c->in->fn->params.n) {
+            char *name = ((Param *)c->in->fn->params.v[from])->name;
+            for (int k = 0; k < spec->read_from.n; k++) {
+                matched |= !strcmp(name, spec->read_from.v[k]);
+            }
+        }
+        if (!matched) {
+            fail(loc, "returned reference has an origin not listed in read^(...)");
+        }
+    }
+}
+
 void flow_return(Context *c, Roots deps)
 {
+    read_return_check(c, c->in->fn->result, deps, c->in->fn->loc);
     for (int j = 0; j < deps.n; j++) {
         Flow flow = {.to = -1};
         if (flow_site(c, deps.v[j], &flow.from, &flow.from_part)) {

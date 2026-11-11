@@ -34,7 +34,7 @@ print^(a.x,b.x)
     positive('unrelated_storage', pre+'''var^b=Cell{}
 do^{let^r=view(ref^a) b.change() print^(r.x,b.x)}
 ''', '1 2\n')
-    positive('forward_return', pre+'''let^forward=f^x:ref^read^Cell ->ref^read^Cell {x}
+    positive('forward_return', pre+'''let^forward=f^x:ref^Cell ->ref^read^Cell {x}
 do^{let^r=forward(view(ref^a)) print^(r.x)}
 a.change()
 ''', '1\n')
@@ -67,11 +67,11 @@ print^(a[0])
 }
 a.change()
 ''', '1\n')
-    positive('nested_calls', pre+'''let^peek=f^x:ref^read^Cell ->i32^ {x.x}
+    positive('nested_calls', pre+'''let^peek=f^x:ref^Cell ->i32^ {x.x}
 do^{let^r=view(ref^a) print^(peek(r))}
 a.change()
 ''', '1\n')
-    positive('pure_read_argument', pre+'''let^peek=f^x:ref^read^Cell {x.x}
+    positive('pure_read_argument', pre+'''let^peek=f^x:ref^Cell {x.x}
 print^(peek(ref^a))
 a.change()
 ''', '1\n')
@@ -126,7 +126,7 @@ a.change()
         ('optional_alias', 'let^r:ref^read^Cell|nil^=ref^a a.change()', ''),
         ('nested_field_alias', 'def^H{self^{r:ref^Cell}} var^h=H{r=ref^a} let^r:ref^read^H=ref^h a.change()', ''),
         ('local_read_return', 'let^bad=f^x:ref^Cell ->ref^read^Cell {let^r=view(x) return^r} bad(ref^a)', ''),
-        ('inherited_inner_escape', 'var^out:ref^read^Cell|nil^=nil^ do^{let^r=view(ref^a) let^id=f^x:ref^read^Cell {x} out:=id(r)}', ''),
+        ('inherited_inner_escape', 'var^out:ref^read^Cell|nil^=nil^ do^{let^r=view(ref^a) let^id=f^x:ref^Cell {x} out:=id(r)}', ''),
         ('aggregate_argument_alias', 'def^H{self^{r:ref^Cell}} let^bad=p^h:H {h.r.change()} let^r=view(ref^a) bad(H{r=ref^a})', ''),
     ]:
         positive(name, pre+body, output)
@@ -201,7 +201,7 @@ if^r fits^C {r.x:=0}
 let^w:ref^dyn^I=r
 ''', 'read^')
     positive('readonly_ffi_argument', '''externC^abs:f^n:i32^ ->i32^;
-externC^memcmp:f^a:ref^read^i32^,b:ref^read^i32^,n:u64^ ->i32^;
+externC^memcmp:f^a:ref^i32^,b:ref^i32^,n:u64^ ->i32^;
 var^a:i32^=7
 var^b:i32^=7
 print^(memcmp(ref^a,ref^b,4))
@@ -225,7 +225,7 @@ let^s:ref^i32^=r.at()
 print^(*s)
 ''', 'read^')
     positive('merged_read_roots', pre+'''var^b=Cell{x=2}
-let^choose=f^x:ref^read^Cell,y:ref^read^Cell,first:bool^ ->ref^read^Cell {
+let^choose=f^x:ref^Cell,y:ref^Cell,first:bool^ ->ref^read^Cell {
  if^first {return^x}
  return^y
 }
@@ -234,7 +234,7 @@ a.change()
 b.change()
 ''', '2\n')
     positive('merged_root_alias_change', pre+'''var^b=Cell{}
-let^choose=f^x:ref^read^Cell,y:ref^read^Cell,first:bool^ ->ref^read^Cell {
+let^choose=f^x:ref^Cell,y:ref^Cell,first:bool^ ->ref^read^Cell {
  if^first {return^x}
  return^y
 }
@@ -270,7 +270,7 @@ a.change()
     negative('optional_reference_downgrade', pre+'''let^r:ref^read^Cell|nil^=ref^a
 let^w:ref^Cell|nil^=r
 ''', 'not an alternative')
-    positive('recursive_read_forward', pre+'''let^walk=f^x:ref^read^Cell,n:i32^ ->ref^read^Cell {
+    positive('recursive_read_forward', pre+'''let^walk=f^x:ref^Cell,n:i32^ ->ref^read^Cell {
  if^n=0 {return^x}
  return^this^(x,n-1)
 }
@@ -575,6 +575,233 @@ w.change()
     positive('many_read_parameters', 'let^peek=p^' + ','.join(
         f'x{i}:ref^read^i32^' for i in range(65)) +
         ' {print^(*x64)}\nvar^a:i32^=7\npeek(' + ','.join(['ref^a']*65) + ')\n', '7\n')
+    # Pure parameters preserve incoming capabilities instead of demanding write access.
+    poly = pre + """let^id=f^x:ref^Cell ->ref^Cell {x}
+let^r:ref^read^Cell=ref^a
+"""
+    positive('pure_polymorphic_identity', poly+"""let^ro=id(r)
+let^rw=id(ref^a)
+rw.x:=7
+print^(ro.x,rw.x)
+""", '7 7\n')
+    negative('pure_polymorphic_no_upgrade', poly+'id(r).x:=2', 'read^')
+    positive('pure_polymorphic_forward', poly+"""let^forward=f^x:ref^Cell ->ref^Cell {id(x)}
+print^(forward(r).x)
+forward(ref^a).x:=3
+print^(a.x)
+""", '1\n3\n')
+    positive('pure_polymorphic_unrelated_input', poly+"""let^second=f^x:ref^Cell,y:ref^Cell ->ref^Cell {y}
+var^b=Cell{}
+second(r,ref^b).x:=8
+print^(b.x)
+""", '8\n')
+    negative('pure_polymorphic_branch', poly+"""let^choose=f^x:ref^Cell,y:ref^Cell,b:bool^ ->ref^Cell {
+ if^b {return^x} return^y
+}
+var^b=Cell{}
+choose(r,ref^b,false^).x:=9
+""", 'read^')
+    positive('pure_polymorphic_self', pre+"""def^Box {self^{n:i32^=4} at=f^self^->ref^i32^ {ref^self^.n}}
+var^b=Box{}
+let^ro:ref^read^Box=ref^b
+print^(*ro.at());
+*b.at():=6
+print^(b.n)
+""", '4\n6\n')
+    negative('pure_polymorphic_self_no_upgrade', pre+"""def^Box {self^{n:i32^=4} at=f^self^->ref^i32^ {ref^self^.n}}
+var^b=Box{}
+let^ro:ref^read^Box=ref^b;
+*ro.at():=6
+""", 'read^')
+    positive('pure_polymorphic_slice', """let^tail=f^xs:i32^[..] -> i32^[..] {xs[1..]}
+var^a={1,2,3}
+let^r:read^i32^[..]=a[..]
+print^(tail(r)[0])
+tail(a[..])[0]:=8
+print^(a[1])
+""", '2\n8\n')
+    negative('pure_polymorphic_slice_no_upgrade', """let^id=f^xs:i32^[..] ->i32^[..] {xs}
+var^a={1,2}
+let^r:read^i32^[..]=a[..]
+id(r)[0]:=3
+""", 'read^')
+    positive('pure_polymorphic_optional', poly+"""let^maybe=f^x:ref^Cell|nil^ ->ref^Cell|nil^ {x}
+let^q=maybe(r)
+if^q fits^ref^read^Cell {print^(q.x)}
+""", '1\n')
+    positive('pure_polymorphic_tuple', poly+"""let^pair=f^x:ref^Cell,y:ref^Cell ->(ref^Cell,ref^Cell) {return^x,y}
+var^b=Cell{}
+let^first,second=pair(r,ref^b)
+second.x:=9
+print^(first.x,second.x)
+""", '1 9\n')
+    negative('pure_polymorphic_tuple_no_upgrade', poly+"""let^pair=f^x:ref^Cell,y:ref^Cell ->(ref^Cell,ref^Cell) {return^x,y}
+var^b=Cell{}
+let^first,second=pair(r,ref^b)
+first.x:=9
+""", 'read^')
+    positive('pure_polymorphic_operator', """def^C {self^{n:i32^=2}
+ op^+ =f^self^,other:ref^C ->C {C{n=self^.n+other.n}}
+ op^= =f^self^,other:ref^C ->bool^ {self^.n=other.n}
+}
+var^a=C{}
+let^r:ref^read^C=ref^a
+print^((a+r).n,a=r)
+""", '4 true\n')
+    positive('explicit_read_origin', poly+"""let^forward=f^x:ref^Cell ->ref^read^(x)Cell {x}
+print^(forward(r).x)
+forward(ref^a).x:=5
+print^(a.x)
+""", '1\n5\n')
+    negative('explicit_read_origin_no_upgrade', poly+"""let^forward=f^x:ref^Cell ->ref^read^(x)Cell {x}
+forward(r).x:=5
+""", 'read^')
+    positive('explicit_read_self_origin', """def^C{self^{n:i32^=3}
+ at=f^self^->ref^read^(self^)i32^ {ref^self^.n}}
+var^a=C{}
+let^r:ref^read^C=ref^a
+print^(*r.at());
+*a.at():=7
+print^(a.n)
+""", '3\n7\n')
+    positive('explicit_read_multiple_origins', poly+"""let^choose=f^x:ref^Cell,y:ref^Cell,b:bool^ ->ref^read^(x,y)Cell {
+ if^b {return^x} return^y
+}
+var^b=Cell{}
+print^(choose(r,ref^b,true^).x)
+""", '1\n')
+    negative('explicit_read_wrong_origin', pre+"""let^bad=f^x:ref^Cell,y:ref^Cell ->ref^read^(x)Cell {y}
+bad(ref^a,ref^a)
+""", 'not listed')
+    negative('explicit_read_unknown_name', pre+"""let^bad=f^x:ref^Cell ->ref^read^(missing)Cell {x}
+bad(ref^a)
+""", 'names no parameter')
+    negative('explicit_read_scalar_origin', pre+"""let^bad=f^x:i32^,y:ref^Cell ->ref^read^(x)Cell {y}
+bad(1,ref^a)
+""", 'reference or slice')
+    negative('explicit_read_non_result', pre+'var^r:ref^read^(a)Cell=ref^a', 'only allowed in a function result')
+    negative('redundant_pure_read_ref', 'let^bad=f^x:ref^read^i32^ {*x}', 'read^ is redundant')
+    negative('redundant_pure_read_slice', 'let^bad=f^x:read^i32^[..] {x.len}', 'read^ is redundant')
+    negative('redundant_pure_read_signature', 'let^bad:f^ref^read^i32^ ->i32^; = f^x:ref^i32^ {*x}', 'read^ is redundant')
+    negative('foreign_read_origin_required', """externC^foreign:f^x:ref^i32^ ->ref^i32^;
+var^n:i32^=1
+let^r=foreign(ref^n)
+""", 'cannot infer reference result capability')
+    positive('explicit_read_slice_origin', """let^tail=f^x:i32^[..] ->read^(x)i32^[..] {x[1..]}
+var^a={1,2}
+let^r:read^i32^[..]=a[..]
+print^(tail(r)[0])
+tail(a[..])[0]:=4
+print^(a[1])
+""", '2\n4\n')
+    positive('explicit_read_tuple_origins', poly+"""let^pair=f^x:ref^Cell,y:ref^Cell ->(ref^read^(x)Cell,ref^read^(y)Cell) {return^x,y}
+var^b=Cell{}
+let^first,second=pair(r,ref^b)
+second.x:=8
+print^(first.x,second.x)
+""", '1 8\n')
+    negative('explicit_read_tuple_wrong_origin', pre+"""let^bad=f^x:ref^Cell,y:ref^Cell ->(ref^read^(x)Cell,ref^read^(y)Cell) {return^y,x}
+bad(ref^a,ref^a)
+""", 'read^')
+    positive('pure_polymorphic_reference_field', pre+"""def^H{self^{r:ref^Cell}}
+let^get=f^h:ref^H ->ref^Cell {h.r}
+var^h=H{r=ref^a}
+let^r:ref^read^H=ref^h
+print^(get(r).x)
+get(ref^h).x:=4
+print^(a.x)
+""", '1\n4\n')
+    positive('pure_polymorphic_callback', poly+"""let^apply=f^cb:f^ref^Cell ->ref^Cell;,x:ref^Cell ->ref^Cell {cb(x)}
+print^(apply(id,r).x)
+apply(id,ref^a).x:=4
+print^(a.x)
+""", '1\n4\n')
+    positive('explicit_read_dyn_origin', """def^I{abstract^at:f^self^ ->ref^read^(self^)i32^;}
+def^C:I{self^{n:i32^=5} at=f^self^ ->ref^read^(self^)i32^ {ref^self^.n}}
+var^a=C{}
+let^r:ref^read^dyn^I=ref^a
+print^(*r.at())
+""", '5\n')
+    negative('explicit_read_dyn_contract_mismatch', """def^I{abstract^at:f^self^,x:ref^i32^ ->ref^read^(x)i32^;}
+def^C:I{self^{n:i32^=5} at=f^self^,x:ref^i32^ ->ref^read^(self^)i32^ {ref^self^.n}}
+var^a=C{}
+""", 'changes its contract')
+    positive('explicit_read_foreign_origin', """externC^strchr:f^text:ref^u8^, c:i32^ ->ref^read^(text)u8^|nil^;
+var^text:u8^[4]={65,66,67,0}
+let^r:ref^read^u8^=ref^text[0]
+let^found=strchr(r,66)
+if^found fits^ref^read^u8^ {print^(*found)}
+""", '66\n')
+    negative('dyn_read_argument_needs_origin', """def^I{abstract^at:f^self^,x:ref^i32^ ->ref^i32^;}
+def^C:I{at=f^self^,x:ref^i32^ ->ref^i32^ {x}}
+var^a=C{}
+var^n:i32^=1
+let^d:ref^dyn^I=ref^a
+let^r:ref^read^i32^=ref^n;
+*d.at(r):=8
+""", 'cannot infer reference result capability')
+    positive('dyn_explicit_unrelated_read_input', """def^I{abstract^at:f^self^,x:ref^i32^ ->ref^read^(x)i32^;}
+def^C:I{at=f^self^,x:ref^i32^ ->ref^read^(x)i32^ {x}}
+var^a=C{}
+var^n:i32^=1
+let^d:ref^read^dyn^I=ref^a;
+*d.at(ref^n):=8
+print^(n)
+""", '8\n')
+    negative('duplicate_read_origin', pre+"""let^bad=f^x:ref^Cell ->ref^read^(x,x)Cell {x}
+bad(ref^a)
+""", 'duplicate read^ origin')
+    positive('pure_implicit_let_read', pre+"""let^fixed=Cell{x=9}
+let^get=f^x:ref^Cell ->ref^Cell {x}
+let^r=get(ref^fixed)
+print^(r.x)
+""", '9\n')
+    negative('pure_implicit_let_read_no_upgrade', pre+"""let^fixed=Cell{x=9}
+let^get=f^x:ref^Cell ->ref^Cell {x}
+get(ref^fixed).x:=7
+""", 'read^')
+    positive('read_grouped_pointee', pre+"""let^show=p^x:ref^read^(Cell) {print^(x.x)}
+show(ref^a)
+""", '1\n')
+    positive('pure_nested_read_type', pre+"""let^get=f^x:ref^ref^read^Cell ->ref^read^Cell {*x}
+var^r:ref^read^Cell=ref^a
+print^(get(ref^r).x)
+""", '1\n')
+    positive('pure_read_derived_argument', """def^Base{self^{n:i32^=3}}
+def^D:Base{}
+let^get=f^x:ref^Base ->i32^ {x.n}
+var^a=D{}
+let^r:ref^read^D=ref^a
+print^(get(r))
+""", '3\n')
+    positive('pure_read_concrete_dyn_argument', """def^I{abstract^get:f^self^->i32^;}
+def^D:I{get=f^self^->i32^ {3}}
+let^get=f^x:ref^dyn^I ->i32^ {x.get()}
+var^a=D{}
+let^r:ref^read^D=ref^a
+print^(get(r))
+""", '3\n')
+    positive('pure_origin_through_closure', poly+"""let^signature=f^x:ref^Cell ->string^ {
+ let^inner=f^ ->ref^Cell {x}
+ return^typeof^(inner()).signature^
+}
+print^(signature(r),signature(ref^a))
+""", 'ref^read^ Cell ref^ Cell\n')
+    # Capability inference does not relax the existing conservative capture lifetime check.
+    negative('pure_capture_return_lifetime', poly+"""let^forward=f^x:ref^Cell ->ref^Cell {
+ let^inner=f^ ->ref^Cell {x}
+ return^inner()
+}
+forward(r)
+""", 'rooted in a local owner')
+    positive('pure_origin_through_recursion', poly+"""let^forward=f^x:ref^Cell,n:i32^ ->ref^Cell {
+ if^n=0 {return^x}
+ return^this^(x,n-1)
+}
+print^(forward(r,3).x)
+forward(ref^a,3).x:=7
+print^(a.x)
+""", '1\n7\n')
     suite.finish()
 
 

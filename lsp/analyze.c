@@ -317,13 +317,13 @@ static char *spec_text(Spec *s)
         return fmt((s->elem->kind == SPEC_UNION || s->elem->kind == SPEC_INTERSECTION)
                        ? "ref^%s (%s)"
                        : "ref^%s %s",
-                   s->count ? "read^" : "", spec_text(s->elem));
+                   spec_read(s), spec_text(s->elem));
     }
     Spec *elem;
     char *shape = array_spec_shape(s, &elem);
     bool wrap = elem->kind == SPEC_UNION || elem->kind == SPEC_INTERSECTION ||
                 elem->kind == SPEC_REF || elem->kind == SPEC_DYN;
-    return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", s->kind == SPEC_SLICE && s->count ? "read^" : "",
+    return fmt(wrap ? "%s(%s)[%s]" : "%s%s[%s]", s->kind == SPEC_SLICE ? spec_read(s) : "",
                spec_text(elem), shape);
 }
 

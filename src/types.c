@@ -459,11 +459,24 @@ Type *state_field_type(Program *p, Field *f)
     return f->type;
 }
 
+char *spec_read(Spec *s)
+{
+    if (!s->read_from.n) {
+        return s->count ? "read^" : "";
+    }
+    char *text = str("read^(");
+    for (int j = 0; j < s->read_from.n; j++) {
+        text = fmt("%s%s%s", text, j ? ", " : "", (char *)s->read_from.v[j]);
+    }
+    return fmt("%s)", text);
+}
+
 char *array_spec_shape(Spec *s, Spec **base)
 {
     Spec *elem = s->elem;
     char *refs = "";
-    while (elem->kind == SPEC_REF && !elem->count && elem->elem->kind != SPEC_DYN) {
+    while (elem->kind == SPEC_REF && !elem->count && !elem->read_from.n &&
+           elem->elem->kind != SPEC_DYN) {
         refs = fmt("%s^", *refs ? refs : "ref");
         elem = elem->elem;
     }
@@ -484,7 +497,7 @@ char *array_spec_shape(Spec *s, Spec **base)
                      ((s->kind == SPEC_ARRAY && s->count) || (s->kind == SPEC_GROW && !s->count));
         return comma ? fmt("%s, %s", policy, inner)
                      : fmt("%s%s%s[%s]", policy, *policy ? " " : "",
-                           elem->kind == SPEC_SLICE && elem->count ? "read^" : "", inner);
+                           elem->kind == SPEC_SLICE ? spec_read(elem) : "", inner);
     }
     *base = elem;
     return policy;
@@ -892,6 +905,50 @@ Function *method(Def *d, const char *n)
     return NULL;
 }
 
+static int origin_parameter(Function *f, const char *name)
+{
+    for (int j = 0; j < f->params.n; j++) {
+        if (!strcmp(((Param *)f->params.v[j])->name, name)) {
+            return j;
+        }
+    }
+    return -1;
+}
+
+static bool same_origins(Function *a, Spec *x, Function *b, Spec *y)
+{
+    if (!x || !y) {
+        return x == y || (!read_contract(x) && !read_contract(y));
+    }
+    if (x->read_from.n != y->read_from.n) {
+        return false;
+    }
+    for (int j = 0; j < x->read_from.n; j++) {
+        bool found = false;
+        for (int k = 0; k < y->read_from.n; k++) {
+            found |=
+                origin_parameter(a, x->read_from.v[j]) == origin_parameter(b, y->read_from.v[k]);
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    if (!same_origins(a, x->elem, b, y->elem) || !same_origins(a, x->other, b, y->other)) {
+        return false;
+    }
+    if (read_contract(x) || read_contract(y)) {
+        if (x->params.n != y->params.n) {
+            return false;
+        }
+        for (int j = 0; j < x->params.n; j++) {
+            if (!same_origins(a, x->params.v[j], b, y->params.v[j])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static void compatible(Program *p, Function *a, Function *b)
 {
     Type *ar = a->result ? type_spec(p, a->result) : a->required_result;
@@ -903,7 +960,8 @@ static void compatible(Program *p, Function *a, Function *b)
         br = type_builtin(p, T_VOID);
     }
     if (a->params.n != b->params.n || a->procedure != b->procedure ||
-        a->mutable_self != b->mutable_self || a->templ != b->templ || (ar && br && ar != br)) {
+        a->mutable_self != b->mutable_self || a->templ != b->templ || (ar && br && ar != br) ||
+        !same_origins(a, a->result, b, b->result)) {
         fail(b->loc, "override of '%s' changes its contract", a->name);
     }
     if (ar && !br) {

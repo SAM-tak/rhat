@@ -193,6 +193,8 @@ bool may_reference(Type *t, Type *elem);
 bool flow_store(Context *c, Root *owner, Root *src);
 // Records which parameters the references in a returned value come from.
 void flow_return(Context *c, Roots deps);
+// Check explicit result-origin contracts against the returned reference roots.
+void read_return_check(Context *c, Spec *spec, Roots deps, Loc loc);
 // Applies a callee's stores to its arguments and answers the roots of its result.
 Roots flow_call(Context *c, Instance *in, List *values, Loc loc);
 // Records that a specialization lowered this catch^ arm.
@@ -497,6 +499,16 @@ Type *parameter_type(Program *p, Param *param);
 Type *parameter_hint(Program *p, Param *param, Expr *arg);
 // Test a parameter constraint, including nominal composition.
 bool parameter_accepts(Type *want, Type *actual);
+// The declared input shape with a pure call's incoming read capability preserved.
+Type *function_parameter(Program *p, Function *f, Param *param, Type *actual);
+// Infer an argument, borrowing let^ storage read-only only in a pure call context.
+Type *function_argument_type(Context *c, Function *f, Param *param, Expr *arg);
+// Instantiate result capability annotations using this call's parameter types.
+Type *function_result(Program *p, Instance *in, Spec *spec);
+// Whether a result includes a conditional read-origin contract.
+bool read_contract(Spec *spec);
+// Widen only reference capabilities, preserving an explicit result's nominal shape.
+Type *result_capabilities(Program *p, Type *contract, Type *observed, Loc loc);
 // Avoid redundant declaration instances for locally specialized bodies.
 bool declaration_instance_needed(Program *p, Function *f);
 
