@@ -1503,6 +1503,13 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         return type_builtin(c->p, T_BOOL);
     }
     switch (e->kind) {
+    case E_LAYOUT:
+        infer_type(c, e->type_expr);
+        return type_builtin(c->p, T_I64);
+    case E_BYTESOF: {
+        Type *source = infer_expr(c, e->a, NULL);
+        return source ? byte_view_type(c->p, source, e->loc) : NULL;
+    }
     case E_TYPE:
         fail(e->loc, "'%s' names a type, not a value",
              e->type_expr->name ? e->type_expr->name : "typeof^");
@@ -1819,10 +1826,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         if ((base->kind == T_ARRAY || base->kind == T_GROW || base->kind == T_BOUNDED ||
              base->kind == T_SLICE) &&
             !strcmp(e->text, "bytes")) {
-            if (!plain_data(base->elem)) {
-                fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
-            }
-            return type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
+            fail(e->loc, "arrays have no .bytes; use bytesof^array");
         }
         if (kind_float(base->kind) && !strcmp(e->text, "bits")) {
             return type_builtin(c->p, bits_kind(base->kind));
@@ -3319,6 +3323,15 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     case E_FLOAT:
         // Unbound numeric literals are contextual, not evidence of a width.
         n->type = e->constant_spec ? type_spec(c->p, e->constant_spec) : want;
+        break;
+    case E_LAYOUT:
+        n->type = type_builtin(c->p, T_I64);
+        break;
+    case E_BYTESOF:
+        n->a = body_expr(c, e->a, NULL);
+        n->type = n->a->type ? byte_view_type(c->p, n->a->type, e->loc)
+                             : type_wrap(c->p, T_SLICE, type_builtin(c->p, T_U8), 1);
+        n->kind = -1;
         break;
     case E_UNARY: {
         if (e->constant_spec) {

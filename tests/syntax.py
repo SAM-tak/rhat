@@ -388,7 +388,7 @@ print^(one,eight[1])
 let^ fs=import^ std.fs
 let^ path="fs_owned.tmp"
 let^ data:u8^[3]={97,98,99}
-fs.write(path,data.bytes)
+fs.write(path,(bytesof^data))
 do^{
     var^ got=try^ fs.read(path)
     got.push(100)
@@ -498,7 +498,7 @@ add(ref^ w, 4.0)
 w.ids.push(3)
 let^ last = w.ids.pop()
 w.ids.append(w.ids[0 .. 2])
-print^(w.count, w.points.len, w.points[1].x, w.ids.len, last, w.ids[3], w.points.bytes.len, w.log.len)
+print^(w.count, w.points.len, w.points[1].x, w.ids.len, last, w.ids[3], (bytesof^w.points).len, w.log.len)
 var^ copy = w.points
 copy.clear()
 w.ids.truncate(1)
@@ -515,7 +515,7 @@ var^ vs:V[grow^]={}
 vs.push(V{x=1.0,y=2.0})
 vs.push(V{x=3.0,y=4.0})
 let^ part=ints[1 .. 3]
-print^(ints.bytes.len,ints.bytes[4],ints.bytes[5],ints.bytes[11],vs.bytes.len,part.bytes.len,part.bytes[0])
+print^((bytesof^ints).len,(bytesof^ints)[4],(bytesof^ints)[5],(bytesof^ints)[11],(bytesof^vs).len,(bytesof^part).len,(bytesof^part)[0])
 ''', '12 2 1 255 16 8 2\n')
 
     positive('range_values', '''
@@ -1196,9 +1196,9 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('tostring_owned', 'let^ f=f^ { (1).tostring().text() }', 'bind it'),
         ('string_no_len', 'let^ s="x"\nprint^(s.len)', 'string^ has no len'),
         ('string_no_index', 'let^ s="x"\nprint^(s[0])', 'string^ has no []'),
-        ('bytes_of_bool', 'let^ a:bool^[2]={true^,false^}\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
-        ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:i32^[ref^ 1]={ref^ n}\nprint^(a.bytes.len)', 'bytes needs elements of numbers'),
-        ('bytes_of_temporary', 'print^({1,2}.bytes.len)', 'cannot borrow a temporary'),
+        ('bytes_of_bool', 'let^ a:bool^[2]={true^,false^}\nprint^((bytesof^a).len)', 'bytesof^ requires numbers'),
+        ('bytes_of_refs', 'var^ n:i32^=1\nlet^ a:i32^[ref^ 1]={ref^ n}\nprint^((bytesof^a).len)', 'bytesof^ requires numbers'),
+        ('bytes_of_temporary', 'print^((bytesof^{1,2}).len)', 'cannot borrow a temporary'),
         ('bounded_literal_too_long', 'let^ a:i32^[max^2]={1,2,3}', 'holds at most 2 elements'),
         ('unbounded_owned_elements', 'var^ a:(i32^[grow^])[grow^]={}', 'nonempty fixed-size'),
         ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),

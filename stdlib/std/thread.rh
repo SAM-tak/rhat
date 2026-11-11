@@ -37,6 +37,7 @@ public^def^Thread : std.sys.Disposable {
 public^let^spawn = template^p^entry, args -> Thread | Error.StartFailed {
     return^Thread.spawn(entry, args)
 }
+
 # The available hardware thread count may change between calls. With no arguments to
 # determine its result, this must be p^ rather than f^; the C declaration above is p^ too.
 public^let^hardware_threads = p^-> i64^{

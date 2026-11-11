@@ -796,7 +796,7 @@ static void generic_binding(Program *p, cJSON *refs, List *names, const char *na
 
 static const LspBuiltin *generic_builtin(Expr *e)
 {
-    if (e && e->kind == E_NAME) {
+    if (e && (e->kind == E_NAME || e->kind == E_LAYOUT || e->kind == E_BYTESOF)) {
         for (size_t j = 0; j < sizeof(lsp_builtins) / sizeof(*lsp_builtins); j++) {
             if (!strcmp(e->text, lsp_builtins[j].name)) {
                 return &lsp_builtins[j];
@@ -936,6 +936,9 @@ static const char *generic_result(Module *module, List *names, Expr *e)
 {
     if (!e) {
         return NULL;
+    }
+    if (e->kind == E_LAYOUT || e->kind == E_BYTESOF) {
+        return generic_builtin(e)->result;
     }
     if (e->kind == E_CALL) {
         const LspBuiltin *builtin = generic_builtin(e->a);

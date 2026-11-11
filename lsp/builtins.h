@@ -9,6 +9,12 @@ typedef struct {
 
 // Symbolic T denotes the transferred value or channel element type.
 static const LspBuiltin lsp_builtins[] = {
+    {"sizeof^", "sizeof^ T -> i64^ (size in bytes)", "i64^", {"T"}},
+    {"alignof^", "alignof^ T -> i64^ (alignment in bytes)", "i64^", {"T"}},
+    {"bytesof^",
+     "bytesof^ value -> read^u8^[..] (borrows storage without copying)",
+     "read^u8^[..]",
+     {"value"}},
     {"thread_entry^",
      "thread_entry^: p^ entry:p^ ref^ T;, args:ref^ T -> std.sys.ThreadEntry",
      "std.sys.ThreadEntry",

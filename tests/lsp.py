@@ -2055,6 +2055,26 @@ let^日本語=1
     client.send('textDocument/didClose',dict(textDocument=dict(uri=pure_reads.as_uri())))
     print('PASS pure reference capability inference and explicit origin hovers',flush=True)
 
+    layout_path = work/'layout_operators.rh'
+    layout_text = ('struct^Payload {n:i32^}\nlet^payload=Payload{n=1}\n'
+                   'let^raw=bytesof^payload\nlet^size=sizeof^Payload\nlet^alignment=alignof^Payload\n'
+                   'let^unused=template^f^x {let^b=bytesof^x return^b}\n')
+    client.open(layout_path, layout_text)
+    assert client.diagnostics(layout_path, 1) == []
+    for name in ('bytesof^', 'sizeof^', 'alignof^'):
+        hover = client.request('textDocument/hover', dict(textDocument=dict(uri=layout_path.as_uri()),
+                                                         position=at(layout_text, name)))
+        assert hover and name in hover['contents']['value'], (name, hover)
+    for name, kind in (('raw=', 'read^u8^[..]'), ('size=', 'i64^'), ('alignment=', 'i64^')):
+        hover = client.request('textDocument/hover', dict(textDocument=dict(uri=layout_path.as_uri()),
+                                                         position=at(layout_text, name)))
+        assert hover and kind.replace(' ', '') in hover['contents']['value'].replace(' ', ''), (name, hover)
+    location = client.request('textDocument/definition', dict(textDocument=dict(uri=layout_path.as_uri()),
+                                                             position=at(layout_text, 'bytesof^payload', shift=8)))
+    assert location['range']['start'] == at(layout_text, 'payload=Payload'), location
+    client.send('textDocument/didClose', dict(textDocument=dict(uri=layout_path.as_uri())))
+    print('PASS layout operator hovers, byte-view inference and operand navigation', flush=True)
+
     # A name right after a hat is the declaration even if it recurs later.
     hats = work/'hats.rh'
     hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^zero = f^ -> i64^ { 0 }\n'

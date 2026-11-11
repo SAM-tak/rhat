@@ -1303,7 +1303,14 @@ static void instruction(Output *o, Instr *i)
         break;
     case I_SLICE: {
         char *data, *length;
-        if (t->kind == T_ARRAY) {
+        bool scalar = t->kind != T_ARRAY && t->kind != T_GROW && t->kind != T_BOUNDED &&
+                      t->kind != T_SLICE && t->kind != T_STRING;
+        Type *element = scalar ? t : t->elem;
+        if (scalar) {
+            data = fmt("%%p%d", i->a);
+            length = "1";
+        }
+        else if (t->kind == T_ARRAY) {
             data = owning_rows(t) ? fmt("%%t%d", bounded_field(o, t, i->a, 1)) : fmt("%%p%d", i->a);
             length = fmt("%d", t->count);
         }
@@ -1356,12 +1363,12 @@ static void instruction(Output *o, Instr *i)
         }
         if (i->text && !strcmp(i->text, "bytes")) {
             // The whole sequence, counted in bytes.
-            fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", ++o->tmp, b, t->elem->size);
+            fprintf(f, "  %%t%d = mul i64 %%t%d, %zu\n", ++o->tmp, b, element->size);
             b = o->tmp;
         }
         int ptr = ++o->tmp, first = ++o->tmp, view = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr %s, ptr %s, i64 %s\n", ptr,
-                t->kind == T_STRING ? "i8" : llvm_type(t->elem), data, lo);
+                t->kind == T_STRING ? "i8" : llvm_type(element), data, lo);
         fprintf(f, "  %%t%d = insertvalue {ptr,i64} undef, ptr %%t%d, 0\n", first, ptr);
         fprintf(f, "  %%t%d = insertvalue {ptr,i64} %%t%d, i64 %%t%d, 1\n", view, first, b);
         save(o, i->dst, slot_type(o, i->dst), fmt("%%t%d", view));

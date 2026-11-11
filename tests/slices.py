@@ -88,7 +88,7 @@ let^length = p^s:read^u8^[..] -> i64^ { return^s.len }
 let^fixed = i32^[grow^]{1, 2}
 var^own = i32^[grow^]{3, 4}
 print^(total(fixed[..]), total(own[..]), shown(fixed[..]), shown(own[..]))
-print^(length("abc".bytes), length(fixed.bytes), length(own.bytes))
+print^(length("abc".bytes), length((bytesof^fixed)), length((bytesof^own)))
 own.push(5)
 print^(total(own[..]))
 let^kept = fixed[..]
@@ -243,7 +243,7 @@ for^k, v in^refs { print^(k, v.n) }
     negative('write_read_local', 'var^a = i32^[grow^]{1}\nlet^r:read^i32^[..] = a[..]\nr[0] := 1\n', written)
     negative('write_let_array_view', 'let^a = i32^[grow^]{1}\nlet^s = a[..]\ns[0] := 1\n', written)
     negative('write_bytes', 'let^s = "abc".bytes\ns[0] := 1\n', written)
-    negative('write_array_bytes', 'var^a = i32^[grow^]{1}\nlet^s = a.bytes\ns[0] := 1\n', written)
+    negative('write_array_bytes', 'var^a = i32^[grow^]{1}\nlet^s = (bytesof^a)\ns[0] := 1\n', written)
     negative('write_read_method', 'def^P {\n self^{ n:i32^ = 0 }\n add = p^self^ { self^.n += 1 }\n}\nlet^g = p^xs:read^P[..] { xs[0].add() }\nvar^a = P[grow^]{ P{} }\ng(a[..])\n', written)
     negative('write_read_field', 'def^P { self^{ n:i32^ = 0 } }\nlet^g = p^xs:read^P[..] { xs[0].n := 1 }\nvar^a = P[grow^]{ P{} }\ng(a[..])\n', written)
     negative('write_map_items', 'let^c = import^std.collections\nvar^m:c.HashMap<string^, i32^> = {}\nm.set("a", 1)\nlet^items = m.items()\nitems[0].value := 2\n', written)

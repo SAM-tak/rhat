@@ -2,6 +2,22 @@
 #include "tooling.h"
 #include <limits.h>
 
+Type *byte_view_type(Program *p, Type *source, Loc loc)
+{
+    Type *data = source;
+    while (data->kind == T_REF) {
+        data = data->elem;
+    }
+    if (data->kind == T_GROW || data->kind == T_BOUNDED || data->kind == T_SLICE) {
+        data = data->elem;
+    }
+    layout(data, loc);
+    if (!plain_data(data)) {
+        fail(loc, "bytesof^ requires numbers, or arrays and structs containing only numbers");
+    }
+    return type_wrap(p, T_SLICE, type_builtin(p, T_U8), 1);
+}
+
 Def *lookup_def(Program *p, const char *n)
 {
     for (int i = 0; i < p->defs.n; i++) {

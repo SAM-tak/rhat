@@ -104,6 +104,8 @@ def main():
            '# comment\nlet^x = 1 # tail\n', 'end_of_line=lf\n')
     expect('literal_bytes', 'print^( $"a {  x  } b", 0x1_F, `a b`, \'it\'\'s\', "a\\n" )\n',
            'print^($"a {  x  } b", 0x1_F, `a b`, \'it\'\'s\', "a\\n")\n')
+    expect('layout_operators', 'let^n=sizeof^i32^\nlet^a=alignof^(i32^[3])\nlet^b=bytesof^x\n',
+           'let^n = sizeof^i32^\nlet^a = alignof^(i32^[3])\nlet^b = bytesof^x\n')
     expect('interpolation_with_nested_function', 'print^(\n$"a {(f^{1})()} b"\n)\n',
            'print^(\n    $"a {(f^{1})()} b"\n)\n')
     expect('unicode_and_crlf_literals', 'let^f=p^{\r\nprint^("🙂日本語\r\ntext")\r\n}\r\n',

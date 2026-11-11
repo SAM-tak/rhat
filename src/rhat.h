@@ -144,6 +144,8 @@ enum {
     E_STATIC,    // Type.text naming a static member: a is the E_TYPE; only called.
     E_LOOP_PART, // Compiler-only: a piece of for^ in^ (text) whose form follows the type of a.
     E_STATE,     // A mutable type member in the current execution context.
+    E_LAYOUT,    // sizeof^ / alignof^ query the layout of type_expr.
+    E_BYTESOF,   // bytesof^ a borrows the raw representation as read-only bytes.
     E_DEFAULT    // Default construction of a static member with an explicit type.
 };
 
@@ -450,6 +452,9 @@ bool kind_float(int kind);
 int bits_kind(int kind);
 // Whether every bit pattern of t is a value: numbers, and arrays and structs of them.
 bool plain_data(Type *t);
+
+// Validate bytesof^ storage and return its read-only byte view type.
+Type *byte_view_type(Program *p, Type *source, Loc loc);
 int numeric_bits(int kind);
 bool integer_fits(const char *text, int kind);
 // The largest value of an integer type, in decimal.

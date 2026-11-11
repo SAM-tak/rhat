@@ -864,6 +864,9 @@ static bool constant_expr(Expr *e, bool values)
     if (e->kind == E_NAME && !strcmp(e->text, "nil^")) {
         return true;
     }
+    if (e->kind == E_LAYOUT) {
+        return true;
+    }
     if (e->kind == E_UNARY) {
         return constant_expr(e->a, values);
     }
@@ -1184,7 +1187,7 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         e->repeat_count = (int)count;
     }
     read_local_type(p, names, e);
-    if (e->kind == E_TYPE) {
+    if (e->kind == E_TYPE || e->kind == E_LAYOUT) {
         resolve_local_spec(p, m, names, e->type_expr);
         return;
     }

@@ -92,7 +92,7 @@ void flow_return(Context *c, Roots deps)
 }
 
 // Whether t, or anything its references lead to, can keep a reference into storage of type elem.
-// Text and byte views count as able to: x.bytes views any plain data.
+// Text and byte views count as able to: bytesof^ views any plain data.
 static bool flow_reaches(Type *t, Type *elem, List *seen)
 {
     if (!t || !t->refs) {

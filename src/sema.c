@@ -1724,7 +1724,9 @@ bool may_reference(Type *t, Type *elem)
         return false;
     }
     if (t->kind == T_REF || t->kind == T_SLICE) {
-        return contains(elem, t->elem);
+        // bytesof^ can borrow any plain representation, not only u8 elements.
+        return (t->kind == T_SLICE && t->elem->kind == T_U8 && plain_data(elem)) ||
+               contains(elem, t->elem);
     }
     if (t->kind == T_STRING) {
         return false; // Strings view literals or other strings, never arrays.
@@ -4132,6 +4134,37 @@ Value expression(Context *c, Expr *e, Type *expected)
         i->text = compare_types(c, &c->flow, e) ? "1" : "0";
         return out;
     }
+    if (e->kind == E_LAYOUT) {
+        Type *type = context_type(c, e->type_expr);
+        layout(type, e->loc);
+        return constant(c, T_I64,
+                        fmt("%zu", !strcmp(e->text, "sizeof^") ? type->size : type->align), e->loc);
+    }
+    if (e->kind == E_BYTESOF) {
+        Value base = place_expression(c, e->a);
+        while (!dead(base) && base.type->kind == T_REF) {
+            base = deref(c, base, e->loc);
+        }
+        if (dead(base)) {
+            return base;
+        }
+        Type *view = byte_view_type(c->p, base.type, e->loc);
+        if (base.type->kind != T_SLICE && !base.addressable) {
+            fail(e->loc, "bytesof^ source needs a binding; cannot borrow a temporary");
+        }
+        Value out = {.id = slot(c, view, false),
+                     .type = view,
+                     .deps = base.type->kind != T_SLICE ? roots_union(base.deps, base.storage)
+                                                        : base.deps};
+        Instr *i = emit(c, I_SLICE, e->loc);
+        i->dst = out.id;
+        i->a = base.id;
+        i->b = -1;
+        i->other = -1;
+        i->text = "bytes";
+        i->type = base.type;
+        return out;
+    }
     if (e->kind == E_TYPE) {
         fail(e->loc, "'%s' names a type, not a value",
              e->type_expr->name ? e->type_expr->name : "typeof^");
@@ -4397,30 +4430,6 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         if (kind_float(base.type->kind) && !strcmp(e->text, "bits")) {
             return bit_cast(c, base, bits_kind(base.type->kind), e->loc, -1);
-        }
-        if ((base.type->kind == T_ARRAY || base.type->kind == T_GROW ||
-             base.type->kind == T_BOUNDED || base.type->kind == T_SLICE) &&
-            !strcmp(e->text, "bytes")) {
-            // a.bytes views the elements as bytes, like a whole-array slice.
-            if (!plain_data(base.type->elem)) {
-                fail(e->loc, "bytes needs elements of numbers, or arrays and def^ values of them");
-            }
-            if (base.type->kind != T_SLICE && !base.addressable) {
-                fail(e->loc, "slice source needs a binding; cannot borrow a temporary array");
-            }
-            Type *view = type_wrap(p, T_SLICE, type_builtin(p, T_U8), 1);
-            out = (Value){.id = slot(c, view, false),
-                          .type = view,
-                          .deps = base.type->kind != T_SLICE ? roots_union(base.deps, base.storage)
-                                                             : base.deps};
-            Instr *i = emit(c, I_SLICE, e->loc);
-            i->dst = out.id;
-            i->a = base.id;
-            i->b = -1;
-            i->other = -1;
-            i->text = "bytes";
-            i->type = base.type;
-            return out;
         }
         if (base.type->kind == T_STRING) {
             // s.bytes views the same bytes; string^ itself has no len.

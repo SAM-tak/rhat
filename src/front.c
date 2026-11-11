@@ -2198,6 +2198,18 @@ static Expr *primary(Parser *p)
             }
         }
     }
+    else if (!strcmp(t->text, "sizeof^") || !strcmp(t->text, "alignof^")) {
+        format_operator(p, first, FORMAT_OPERATOR_PREFIX);
+        e = node(E_LAYOUT, t->loc);
+        e->text = t->text;
+        e->type_expr = spec_part(p);
+    }
+    else if (!strcmp(t->text, "bytesof^")) {
+        format_operator(p, first, FORMAT_OPERATOR_PREFIX);
+        e = node(E_BYTESOF, t->loc);
+        e->text = t->text;
+        e->a = expr(p, 9);
+    }
     else if (!strcmp(t->text, "typeof^")) {
         e = node(E_TYPE, t->loc);
         e->type_expr = typeof_spec(p, t->loc);

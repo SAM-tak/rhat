@@ -1956,7 +1956,7 @@ let^ deep = p^h:ref^ H, x:ref^ i32^[1], n:i32^ {
         var^ local:i32^[1] = {1}
         this^(h, ref^ local, n - 1)
     }
-    h.add(x.bytes)
+    h.add(bytesof^x)
 }
 """, "reference would outlive its owner")
 negative("flow_recursion_through_nested_holder", """

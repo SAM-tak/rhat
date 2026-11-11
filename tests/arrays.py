@@ -5,6 +5,49 @@ from harness import Suite
 def main():
     suite = Suite('arrays')
     positive, negative = suite.positive, suite.negative
+    positive('bytesof_values_and_layout', '''
+struct^Pair {x:i32^, y:i32^}
+let^p=Pair{x=258,y=-1}
+let^raw=bytesof^p
+let^n=258i32
+let^r:ref^read^Pair=ref^p
+let^from_ref=bytesof^r
+var^g=i32^[grow^]{1,2}
+let^view=g[1 ..]
+let^bounded=i32^[max^8]{1,2,3}
+print^(sizeof^Pair,alignof^Pair,raw.len,raw[0],raw[1],raw[7])
+print^((bytesof^n).len,(bytesof^n)[1],from_ref.len,(bytesof^g).len,(bytesof^view).len,(bytesof^bounded).len)
+let^storage=u8^[8]{}
+print^(storage.len,sizeof^(i32^[3]),alignof^(i64^),sizeof^typeof^(p))
+def^Constants {let^SIZE=sizeof^Pair}
+print^(Constants.SIZE)
+let^borrow=f^x:ref^Pair {bytesof^x}
+print^(borrow(r).len)
+''', '8 4 8 2 1 255\n4 1 8 8 4 12\n8 12 8 8\n8\n8\n')
+    positive('bytesof_live_storage', '''
+struct^P {x:i32^}
+var^p=P{x=1}
+let^raw=bytesof^p
+p.x:=258
+print^(raw[0],raw[1])
+var^r=ref^p
+let^rr=ref^r
+print^((bytesof^rr).len,(bytesof^rr)[1])
+var^a=i32^[grow^]{1}
+let^v=bytesof^a
+a.push(2)
+print^(v.len,(bytesof^a).len)
+''', '2 1\n4 1\n4 8\n')
+    negative('bytesof_shrink','var^a=i32^[flex^]{1,2} let^v=bytesof^a a.clear() print^(v.len)','refer into')
+    negative('bytesof_write','var^n=1 let^v=bytesof^n v[0]:=0','read')
+    negative('bytesof_temporary_struct','struct^P{x:i32^} print^((bytesof^P{x=1}).len)','cannot borrow a temporary')
+    negative('bytesof_temporary_number','let^b=bytesof^1','cannot borrow a temporary')
+    negative('bytesof_escape','let^f=p^ {let^n=1 return^bytesof^n} let^b=f()','local owner')
+    negative('bytesof_bool','let^b=true^ let^v=bytesof^b','bytesof^ requires numbers')
+    negative('bytesof_string','let^s="text" let^v=bytesof^s','bytesof^ requires numbers')
+    negative('bytesof_reference_field','struct^P{x:ref^i32^} var^n=1 let^p=P{x=ref^n} let^v=bytesof^p','bytesof^ requires numbers')
+    negative('bytesof_owning_rows','var^a=i32^[2[grow^]]{} let^v=bytesof^a','bytesof^ requires numbers')
+    negative('array_bytes_removed','let^a={1,2} print^(a.bytes.len)','use bytesof^')
     positive('borrow_iteration_mutate', '''
 var^a={1,2,3}
 for^ref^v in^a {*v+=10}
@@ -442,7 +485,7 @@ let^rows = a[..]
 let^range = 0..1
 let^first = a[range]
 rows[1][2] := 60
-print^(sum,also,first[0][2],a[1,2],a.bytes.len)
+print^(sum,also,first[0][2],a[1,2],(bytesof^a).len)
 ''', '21 21 3 60 24\n')
     positive('rectangular_optional_indices_skip_when_nil', '''
 let^index = p^calls:ref^i32^ -> i64^ { *calls += 1 return^0 }
@@ -518,7 +561,7 @@ a.push({4,5,6})
 a[1,2]+=1
 let^extra=i32^[2,3]{{7,8,9},{10,11,12}}
 a.append(extra[..])
-print^(a.len,a[0,1],a[1,2],a[3,2],a.bytes.len)
+print^(a.len,a[0,1],a[1,2],a[3,2],(bytesof^a).len)
 let^last=a.pop()
 print^(last[2])
 a.truncate(1)
@@ -728,7 +771,7 @@ var^a=make(3)
 a[1]:=42
 var^empty:i64^[]={}
 let^zero=i64^[]{9 repeat^ 0}
-print^(a.len,a[0],a[1],a[2],empty.len,zero.len,a.bytes.len)
+print^(a.len,a[0],a[1],a[2],empty.len,zero.len,(bytesof^a).len)
 ''', '3 7 42 7 0 0 24\n')
     for name, constructor in (
             ('owned', 'i32^[](src)'),
