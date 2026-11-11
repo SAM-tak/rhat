@@ -451,6 +451,21 @@ print^(v.length())
     data=client.request('textDocument/semanticTokens/full',dict(textDocument=dict(uri=path.as_uri())))['data']
     assert len(data) >= 400*3*5, len(data)
     print('PASS large reference index and stale semantic requests during rapid edits',flush=True)
+    # Saves and changes in other tabs invalidate the global analysis revision,
+    # but VS Code does not retry documentSymbol on ContentModified responses.
+    changing_tab = work/'outline_invalidation.rh'
+    client.open(changing_tab, 'let^ other=0\n')
+    for version in range(97, 107):
+        client.change(changing_tab, f'let^ other={version}\n', version)
+        client.send('textDocument/documentSymbol', dict(textDocument=dict(uri=path.as_uri())), 11000+version)
+        client.send('textDocument/didSave', dict(textDocument=dict(uri=path.as_uri())))
+        client.send('workspace/didChangeWatchedFiles', dict(changes=[dict(uri=path.as_uri(), type=2)]))
+    for version in range(97, 107):
+        response = client.wait(lambda item: item.get('id') == 11000+version)
+        assert 'error' not in response, response
+        assert 'anchor' in {item['name'] for item in response['result']}, response
+    client.send('textDocument/didClose', dict(textDocument=dict(uri=changing_tab.as_uri())))
+    print('PASS outline requests survive saves and workspace invalidation', flush=True)
     # Independent diagnostics must survive the first error, while uses of a
     # failed binding must not manufacture more errors. Unused signatures are
     # resolved even when a method has an unavailable parameter type.

@@ -1094,6 +1094,26 @@ static cJSON *check_document(Server *s, Job *job, cJSON *doc)
     return rhat_lsp_analyze(text(doc, "path"), job->documents, job->paths, s->stdlib);
 }
 
+// Outline clients may keep an empty result after ContentModified. Retry the
+// same request against a fresh snapshot, preserving its cancellation state.
+static bool refresh_outline(Server *s, Job *job)
+{
+    if (strcmp(text(job->message, "method"), "textDocument/documentSymbol")) {
+        return false;
+    }
+    lhat_mutex_lock(&s->mutex);
+    bool retry = !s->shutdown && !s->stop;
+    if (retry) {
+        cJSON_Delete(job->documents);
+        cJSON_Delete(job->paths);
+        job->documents = copy(s->documents);
+        job->paths = copy(s->paths);
+        job->revision = s->revision;
+    }
+    lhat_mutex_unlock(&s->mutex);
+    return retry;
+}
+
 static int worker(void *raw)
 {
     Server *s = raw;
@@ -1118,6 +1138,7 @@ static int worker(void *raw)
         cJSON *message = job->message, *id = cJSON_GetObjectItem(message, "id"),
               *params = cJSON_GetObjectItem(message, "params");
         const char *method = text(message, "method");
+    retry:
         if (cached_revision != job->revision) {
             cJSON_Delete(cache);
             cache = cJSON_CreateObject();
@@ -1148,6 +1169,9 @@ static int worker(void *raw)
             lsp_rpc_send_error(&s->out, id, -32800, "Request cancelled");
         }
         else if (!current(s, job)) {
+            if (refresh_outline(s, job)) {
+                goto retry;
+            }
             lsp_rpc_send_error(&s->out, id, -32801, "Document changed");
         }
         else {
@@ -1231,6 +1255,9 @@ static int worker(void *raw)
             }
             else if (!current(s, job)) {
                 cJSON_Delete(result);
+                if (refresh_outline(s, job)) {
+                    goto retry;
+                }
                 lsp_rpc_send_error(&s->out, id, -32801, "Document changed");
             }
             else {
