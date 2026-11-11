@@ -964,7 +964,9 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 break;
             }
             Var *source = c->vars.v[c->vars.n - 1];
-            Type *t = source->type;
+            // Recovery may leave an invalid hidden result binding. Propagate
+            // that failure before interpreting its placeholder as a tuple.
+            Type *t = variable(source).type;
             for (int j = 0; j < s->body.n; j++) {
                 Stmt *binding = s->body.v[j];
                 Field *f = t->def->fields.v[j];

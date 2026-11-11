@@ -2075,6 +2075,34 @@ let^日本語=1
     client.send('textDocument/didClose', dict(textDocument=dict(uri=layout_path.as_uri())))
     print('PASS layout operator hovers, byte-view inference and operand navigation', flush=True)
 
+    # Broken numeric suffixes in a callee must not turn a recovered hidden
+    # multiple-result binding into a tuple dereference of the void placeholder.
+    numeric_path = work/'numeric_edit_recovery.rh'
+    numeric_text = ('let^pair=p^ {\n    var^top:f32^=32768.0\n    return^top,1\n}\n'
+                    'let^a,b=pair()\nlet^after=99\nprint^(after)\n')
+    client.open(numeric_path, numeric_text)
+    assert client.diagnostics(numeric_path, 1) == []
+    edits = ('32768.0f', '32768.0f3', '32768.0fp32', '32768.0f32^', '32768.0i32',
+             '0x', '0o78', '1e', '32768.0f32')
+    for version, literal in enumerate(edits, 2):
+        edited = numeric_text.replace('32768.0', literal)
+        client.change(numeric_path, edited, version)
+        diagnostics = client.diagnostics(numeric_path, version)
+        assert bool(diagnostics) == (literal != '32768.0f32'), (literal, diagnostics)
+        hover = client.request('textDocument/hover', dict(textDocument=dict(uri=numeric_path.as_uri()),
+                                                         position=at(edited, 'after=99')))
+        assert hover and 'i32^' in hover['contents']['value'], (literal, hover)
+        client.request('textDocument/documentSymbol', dict(textDocument=dict(uri=numeric_path.as_uri())))
+        client.request('textDocument/semanticTokens/full', dict(textDocument=dict(uri=numeric_path.as_uri())))
+    for version, expression in enumerate(('missing()', '1', 'pair(1)'), 20):
+        edited = numeric_text.replace('let^a,b=pair()', 'let^a,b='+expression)
+        client.change(numeric_path, edited, version)
+        assert client.diagnostics(numeric_path, version), expression
+    client.change(numeric_path, numeric_text, 30)
+    assert client.diagnostics(numeric_path, 30) == []
+    client.send('textDocument/didClose', dict(textDocument=dict(uri=numeric_path.as_uri())))
+    print('PASS numeric suffix edits and failed multiple-result recovery keep the server alive', flush=True)
+
     # A name right after a hat is the declaration even if it recurs later.
     hats = work/'hats.rh'
     hat_text = 'let^count = f^count:i64^ -> i64^ { count }\nlet^zero = f^ -> i64^ { 0 }\n'
