@@ -18,11 +18,17 @@ union Allocation {
     } link;
 };
 
+// Parser spans converted once to byte offsets for outline range lookup.
+typedef struct {
+    size_t start, header, end;
+} Extent;
+
 // Per-analysis source coordinates and URI, shared by every exported reference.
 typedef struct {
     const char *path, *text, *uri;
     size_t length, *lines;
     int *rows, line_count;
+    List extents;
 } Source;
 
 typedef struct {
@@ -652,18 +658,13 @@ static void emit_ref(Program *p, cJSON *array, ToolRef *r)
     if (r->definition && source) {
         size_t at = (size_t)cJSON_GetObjectItem(use, "offset")->valuedouble;
         size_t from = at, to = at + strlen(short_name(use_name)), width = SIZE_MAX;
-        for (int j = 0; j < p->tool_spans.n; j++) {
-            ToolSpan *span = p->tool_spans.v[j];
-            if (!source_same_path(span->start.file, r->use.file)) {
-                continue;
-            }
-            size_t start = loc_offset(source, span->start);
-            size_t end = loc_offset(source, span->end) + span->end.length;
-            size_t header = loc_offset(source, span->header_end);
-            if (start <= at && at <= header && at < end && end - start < width) {
-                from = start;
-                to = end;
-                width = end - start;
+        for (int j = 0; j < source->extents.n; j++) {
+            Extent *span = source->extents.v[j];
+            if (span->start <= at && at <= span->header && at < span->end &&
+                span->end - span->start < width) {
+                from = span->start;
+                to = span->end;
+                width = to - from;
             }
         }
         cJSON *extent = cJSON_AddObjectToObject(out, "extent");
@@ -1098,6 +1099,17 @@ static void generic_function(Program *p, Module *module, cJSON *refs, List *name
 static cJSON *export_index(Session *s)
 {
     Program *p = &s->program;
+    for (int j = 0; j < p->tool_spans.n; j++) {
+        ToolSpan *span = p->tool_spans.v[j];
+        Source *source = source_for(p, span->start.file);
+        if (source) {
+            Extent *extent = mem(sizeof(*extent));
+            *extent =
+                (Extent){loc_offset(source, span->start), loc_offset(source, span->header_end),
+                         loc_offset(source, span->end) + span->end.length};
+            add(&source->extents, extent);
+        }
+    }
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(
         out, "rootModule",

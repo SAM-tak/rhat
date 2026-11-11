@@ -182,12 +182,42 @@ static bool path_equal(const char *a, const char *b)
     return *a == *b;
 }
 
+#ifdef _WIN32
+// Full paths without dot or empty components cannot become equal by resolving the cwd.
+static bool normalized_absolute_path(const char *path)
+{
+    if (!path || !isalpha((unsigned char)path[0]) || path[1] != ':' ||
+        (path[2] != '/' && path[2] != '\\')) {
+        return false;
+    }
+    const char *part = path + 3;
+    for (const char *at = part;; at++) {
+        if (*at && *at != '/' && *at != '\\') {
+            continue;
+        }
+        size_t length = (size_t)(at - part);
+        if ((!length && *at) || (length == 1 && part[0] == '.') ||
+            (length == 2 && part[0] == '.' && part[1] == '.') ||
+            (length && (at[-1] == '.' || at[-1] == ' '))) {
+            return false;
+        }
+        if (!*at) {
+            return true;
+        }
+        part = at + 1;
+    }
+}
+#endif
+
 bool source_same_path(const char *a, const char *b)
 {
     if (a == b || path_equal(a, b)) {
         return true;
     }
 #ifdef _WIN32
+    if (normalized_absolute_path(a) && normalized_absolute_path(b)) {
+        return false;
+    }
     char *x = _fullpath(NULL, a, 0), *y = _fullpath(NULL, b, 0);
     bool result = path_equal(x ? x : a, y ? y : b);
     free(x);

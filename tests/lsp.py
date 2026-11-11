@@ -236,6 +236,26 @@ print^(1)
     assert 'twice' in {x['name'] for x in client.request('workspace/symbol', dict(query='twic'))}
     print('PASS imports, cross-module navigation and unsaved dependency invalidation',flush=True)
 
+    # A dot-containing search path still resolves to the canonical unsaved dependency.
+    alias_root = work/'path aliases'
+    (alias_root/'nested').mkdir(parents=True,exist_ok=True)
+    alias_module = alias_root/'dep.rh'
+    alias_source = 'module^dep\npublic^let^value=f^n:i32^ ->i32^ {n}\n'
+    alias_module.write_text(alias_source,encoding='utf-8')
+    alias_main = alias_root/'main.rh'
+    alias_client = Client(server)
+    alias_client.request('initialize',dict(rootUri=alias_root.as_uri(),capabilities={},
+                         initializationOptions=dict(modulePaths=[str(alias_root/'nested'/'..')])))
+    alias_client.send('initialized',{})
+    alias_client.open(alias_main,'import^dep\nprint^(dep.value(1))\n')
+    assert alias_client.diagnostics(alias_main,1) == []
+    alias_client.open(alias_module,'module^dep\npublic^let^value=f^n:bool^ ->i32^ {if^n:1 el^:0;}\n')
+    assert alias_client.diagnostics(alias_main,1), 'path aliases must share unsaved dependency contents'
+    alias_client.change(alias_module,alias_source,2)
+    assert alias_client.diagnostics(alias_main,1) == []
+    alias_client.close()
+    print('PASS normalized and dot-containing dependency paths share unsaved overlays',flush=True)
+
     # References from the defining module also include open importing roots.
     imported_refs = client.request('textDocument/references',dict(textDocument=dict(uri=module.as_uri()),position=dict(line=1,character=13),context=dict(includeDeclaration=True)))
     assert len(imported_refs) == 2, imported_refs
