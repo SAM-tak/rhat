@@ -17,7 +17,7 @@ write(true^)    # bool^ true
 - 段階1（実装済み）: `typeof^` の構文、`.signature^`、エディタでの被演算子の参照。
 - 段階2（実装済み）: 関数本体の注釈と `fits^` の右辺に書く `typeof^`、型の厳密一致 `typeof^(a) = typeof^(b)`。
 - 段階3（実装済み）: `let^ t = typeof^(x)` による関数内の型の別名と、`for^ typeof^(x):` の型での振り分け。
-- 未対応: 引数・返り値・フィールドの注釈。
+- 未対応: 引数・返り値・フィールドの注釈。これらの位置では、宣言から決まる `関数.ReturnType^`（未実装）を使います。
 - 第三段（見送り）: `typeof^(x).ZERO`、`typeof^(x){...}` による構築など、型のメンバの参照。
 
 ## 構文
@@ -149,6 +149,36 @@ R^ の `typeof^` は型そのものを返すので、`signature` は型の名前
 に入ります。ハットなしにすると、利用者が `signature` という名前の型定数や選択肢を作れなくなります。
 ハット付きの名前は利用者が宣言できないため、`signature^` は何も予約せずに衝突を避けられます。
 言語が定義する名前にハットを付ける、という R^ と L^ に共通する原則にも合います。
+
+## 関数の返り値型（ReturnType^）
+
+> 未実装の設計です。
+
+`関数.ReturnType^` は、その関数を呼んだときに返る型を表す型式です。
+関数の宣言を変えれば自動で追従するので、推論に任せた返り値型を、フィールドや公開する署名に手書きせずに書けます。
+
+```rhat
+let^parse = p^text:string^ { ... }              # return type inferred from the body
+
+def^Entry {
+    self^{ value:parse.ReturnType^ }             # field annotation
+}
+let^make = p^ -> parse.ReturnType^ { ... }      # return annotation
+var^tasks:overload^serve(ref^TcpConn).ReturnType^[grow^] = {}
+```
+
+- `typeof^` と違い、具体化の文脈なしに宣言から決まります。したがって引数・返り値・フィールド・トップレベルの注釈を含め、
+  型を書けるすべての位置に書けます。関数本体の中で式の型が欲しいときは、従来どおり `typeof^` を使います。
+- 左辺は一つの候補に決まる関数でなければなりません。候補が一つの名前、名前付きの候補（[overloads.md](overloads.md#名前付き関数を候補にする未実装)）、
+  `overload^` の結果のいずれかです。多重定義の名前に直接付けるとエラーです（TypeScript の `ReturnType<typeof f>` が最後の候補を黙って選ぶ問題を避けます）。
+- 型を書かない引数を持つ関数は、具体化ごとに返り値型が変わるので直接は使えません。`overload^f(i32^).ReturnType^` のように型を与えます。
+- 返り値のない関数に付けるとエラーです。
+- 返り値型の推論が本体の検査を必要とする場合、その関数を先に検査します。
+  「構造体のフィールドが `f.ReturnType^` で、`f` がその構造体を返す」のような循環はエラーです。
+- yieldable な関数（[coroutines.md](coroutines.md)）の `ReturnType^` は、その関数のフレーム型です。
+  コルーチン専用の名前は設けません。
+
+L^ の `ARG0.ReturnType`（呼び出しが答える型）に対応します。R^ では言語が定義する名前にハットを付けるので、`ReturnType^` と書きます。
 
 ## 実装
 
