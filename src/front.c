@@ -1528,6 +1528,21 @@ static bool return_type_name(Spec *s)
 
 // One nominal or parenthesized type, before any array suffix. dynamic^ binds
 // here, whereas ref^ continues to consume the complete following type.
+// After overload^, name(types): the arm of name those argument types select.
+static Spec *overload_spec(Parser *p, Loc loc)
+{
+    Spec *s = mem(sizeof(*s));
+    *s = (Spec){.kind = SPEC_RETURN, .count = 1, .loc = loc, .name = qualified_word(p)};
+    need(p, "(");
+    if (!is(p, ")")) {
+        do {
+            add(&s->params, spec(p));
+        } while (take(p, ","));
+    }
+    need(p, ")");
+    return s;
+}
+
 static Spec *spec_atom(Parser *p)
 {
     Spec *s = mem(sizeof(*s));
@@ -1536,17 +1551,7 @@ static Spec *spec_atom(Parser *p)
         return typeof_spec(p, s->loc);
     }
     if (take(p, "overload^")) {
-        // overload^name(types).ReturnType^: the arm those argument types select.
-        s->kind = SPEC_RETURN;
-        s->count = 1;
-        s->name = qualified_word(p);
-        need(p, "(");
-        if (!is(p, ")")) {
-            do {
-                add(&s->params, spec(p));
-            } while (take(p, ","));
-        }
-        need(p, ")");
+        s = overload_spec(p, s->loc);
         need(p, ".");
         need(p, "ReturnType^");
         return s;
@@ -2295,6 +2300,10 @@ static Expr *primary(Parser *p)
         p->at--;
         e = node(E_FUNCTION, t->loc);
         e->function = function(p, fmt("<anonymous@%d:%d>", t->loc.line, t->loc.col), NULL, false);
+    }
+    else if (!strcmp(t->text, "overload^")) {
+        e = node(E_OVERLOAD, t->loc);
+        e->type_expr = overload_spec(p, t->loc);
     }
     else if (!strcmp(t->text, "error^")) {
         fail(t->loc, "error^ construction has been removed; write Type{...}");

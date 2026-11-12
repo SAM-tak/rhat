@@ -411,6 +411,26 @@ let^ a = f^ x:i32^ -> i32^ { x }
 overload^ a = f^ x:string^ -> i32^ { 0 }
 let^ g = a & f^ x:f64^ -> f64^ { x }
 ''', "'a' is overloaded; an arm names a function with one declaration")
+    positive('overload_expression', '''
+let^lo=f^ a:i32^, b:i32^ ->i32^ { if^ a < b { return^ a } return^ b }
+overload^lo=f^ a:f64^, b:f64^ ->f64^ { if^ a < b { return^ a } return^ b }
+let^apply=p^ g:f^ i32^, i32^ -> i32^; { print^(g(3, 2)) }
+apply(overload^lo(i32^, i32^))
+let^h=overload^lo(f64^, f64^)
+print^(h(1.5, 2.5), overload^lo(i32^, i32^)(7, 9))
+def^ Box {self^{n:i32^=4} scale=f^ self^, k:i32^ ->i32^ {self^.n * k}
+    overload^scale=f^ self^, k:f64^ ->f64^ {k * 2.0}}
+let^g=overload^Box.scale(i32^)
+var^b=Box{}
+let^id=f^ x {x}
+let^k=overload^id(string^)
+print^(g(ref^ b, 3), k("s"), id(1))
+''', '2\n1.5 7\n12 s 1\n')
+    negative('overload_expression_no_arm', '''
+let^lo=f^ a:i32^ ->i32^ { a }
+overload^lo=f^ a:f64^ ->f64^ { a }
+let^bad=overload^lo(string^)
+''', "no matching overload for 'lo'")
     suite.finish()
 
 

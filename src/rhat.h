@@ -126,6 +126,7 @@ enum {
     E_RECORD,
     E_ARRAY,
     E_FUNCTION,
+    E_OVERLOAD, // overload^name(types): until typed, the arm becomes an E_FUNCTION.
     E_CAPTURE,
     E_IF,
     E_SAVED,     // A compiler-owned value snapshot, never parsed from source.

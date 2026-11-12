@@ -416,7 +416,9 @@ Type *callable_contract(Type *type, List *actual)
     return type;
 }
 
-Type *return_type_of(Program *p, Spec *s)
+// The function a SPEC_RETURN names, its def^ for a method, and the argument types it
+// is instantiated with.
+static Function *named_function(Program *p, Spec *s, Def **found, List *actual)
 {
     // name.ReturnType^ names a function of a module, or Type.method a method of a def^.
     Def *owner = NULL;
@@ -448,16 +450,16 @@ Type *return_type_of(Program *p, Spec *s)
         fail(s->loc, "'%s' names no function for ReturnType^", s->name);
     }
     // The receiver of a method is a reference to the def^, written or not.
-    List actual = {0};
     Function *f = NULL;
+    *found = owner;
     if (s->count) {
         if (owner) {
-            add(&actual, type_wrap(p, T_REF, owner->type, 0));
+            add(actual, type_wrap(p, T_REF, owner->type, 0));
         }
         for (int j = 0; j < s->params.n; j++) {
-            add(&actual, type_spec(p, s->params.v[j]));
+            add(actual, type_spec(p, s->params.v[j]));
         }
-        f = overload_select(p, &candidates, &actual, NULL, 0, NULL, s->loc, true);
+        f = overload_select(p, &candidates, actual, NULL, 0, NULL, s->loc, true);
     }
     else {
         if (candidates.n != 1) {
@@ -468,7 +470,7 @@ Type *return_type_of(Program *p, Spec *s)
         for (int j = 0; j < f->params.n; j++) {
             Param *param = f->params.v[j];
             if (param->self) {
-                add(&actual, type_wrap(p, T_REF, owner ? owner->type : NULL, 0));
+                add(actual, type_wrap(p, T_REF, owner ? owner->type : NULL, 0));
                 continue;
             }
             if (!param->spec) {
@@ -476,9 +478,27 @@ Type *return_type_of(Program *p, Spec *s)
                      "'%s' has a parameter without a type; write overload^%s(types).ReturnType^",
                      s->name, s->name);
             }
-            add(&actual, type_spec(p, param->spec));
+            add(actual, type_spec(p, param->spec));
         }
     }
+    return f;
+}
+
+void settle_overload(Program *p, Expr *e)
+{
+    if (e && e->kind == E_OVERLOAD) {
+        Def *owner;
+        List actual = {0};
+        e->function = named_function(p, e->type_expr, &owner, &actual);
+        e->kind = E_FUNCTION;
+    }
+}
+
+Type *return_type_of(Program *p, Spec *s)
+{
+    Def *owner;
+    List actual = {0};
+    Function *f = named_function(p, s, &owner, &actual);
     // Its result may wait on the type being resolved here: a cycle, refused.
     for (int j = 0; j < p->under_way.n; j++) {
         if (p->under_way.v[j] == s) {

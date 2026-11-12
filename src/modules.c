@@ -1430,6 +1430,10 @@ static void resolve_expr_unchecked(Program *p, Module *m, List *names, Expr *e)
         resolve_spec(m, &s);
         e->text = s.self_type ? canonical(s.self_type->module, s.self_type->name) : s.name;
     }
+    if (e->kind == E_OVERLOAD) {
+        resolve_spec(m, e->type_expr);
+        return;
+    }
     if (e->kind == E_RECORD && e->type_expr) {
         if (e->type_expr->kind == SPEC_TYPEOF) {
             fail(e->loc, "a typeof^ type cannot construct values; name the type");

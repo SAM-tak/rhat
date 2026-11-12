@@ -2462,6 +2462,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         fail(e->loc, "type constant cannot call a function, including in field defaults");
     }
     Program *p = c->p;
+    settle_overload(p, target);
     int thread = thread_operation(target);
     if (thread) {
         return thread_call(c, e, thread, destination);
@@ -4486,6 +4487,7 @@ static Value await_point(Context *c, Expr *e)
 
 Value expression(Context *c, Expr *e, Type *expected)
 {
+    settle_overload(c->p, e);
     if (e->kind == E_STATE) {
         Field *f = e->state_field;
         c->in->uses_state = true;

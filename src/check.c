@@ -878,6 +878,7 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
     Function *f = NULL;
     Def *self = NULL;
     List actual = {0}, candidates = {0};
+    settle_overload(c->p, target);
     if (target->kind == E_FUNCTION) {
         Context scope = {.p = c->p, .in = c->in, .vars = c->vars, .lexical = c->lexical};
         Type *type = closure_type(&scope, target->function);
@@ -1520,6 +1521,7 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
 
 static Type *infer_expr(Infer *c, Expr *e, Type *expected)
 {
+    settle_overload(c->p, e);
     if (c->terminated) {
         return type_builtin(c->p, T_NEVER);
     }
