@@ -319,15 +319,16 @@ struct Def {
     bool abstract;
     bool disposable; // Composes std.sys.Disposable: scopes call its dispose.
     Type *type;
-    char *c_name;    // externC^ def^: the C type of this name it lays out as.
-    bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.
-    bool lhat_value; // exportL^ def^: an L^ host value type, its methods members.
-    bool lhat_data;  // exportL^ ref^ def^: an L^ host data type over ref^ to it.
-    bool lhat_error; // exportL^ errordef^: an L^ error kind; L^ sees no fields.
-    bool tuple;      // The anonymous struct of multiple results, fields 0, 1, ...
-    bool pack;       // Compiler-only heterogeneous arguments, with numbered fields.
-    Spec *backing;   // enum^: the integer type its values lay out as; NULL for other defs.
-    List members;    // enum^: EnumMember, in declaration order.
+    char *c_name;            // externC^ def^: the C type of this name it lays out as.
+    bool opaque;             // externC^ def^ Name; with no body, usable only as ref^.
+    bool lhat_value;         // exportL^ def^: an L^ host value type, its methods members.
+    bool lhat_data;          // exportL^ ref^ def^: an L^ host data type over ref^ to it.
+    bool lhat_error;         // exportL^ errordef^: an L^ error kind; L^ sees no fields.
+    Type *coroutine_args[3]; // std.sys.Coroutine<R, Y, T>: R, Y and T; NULL for other defs.
+    bool tuple;              // The anonymous struct of multiple results, fields 0, 1, ...
+    bool pack;               // Compiler-only heterogeneous arguments, with numbered fields.
+    Spec *backing;           // enum^: the integer type its values lay out as; NULL for other defs.
+    List members;            // enum^: EnumMember, in declaration order.
 };
 
 enum {
@@ -439,6 +440,9 @@ Type *frame_type(Program *p, Instance *in);
 // Whether a call of f is a p^ call. A yielding function's call only makes its frame, so it is
 // an f^ whatever its body is; the body's kind goes to the frame's start and resume instead.
 bool procedure_call(const Function *f);
+// Whether a coroutine frame offers d: d is std.sys.Coroutine<R, Y, T> with the frame's R
+// (nil^ when it receives nothing), Y and T.
+bool frame_conforms(Type *frame, Def *d);
 // Whether an inline array owns independently stored rows; its element layout must be known.
 bool owning_rows(Type *t);
 
@@ -610,6 +614,7 @@ struct Instance {
     Type *frame, *yielded, *final, *turn;
     Type *received;       // What a resume hands in, which yield^ answers; NULL when nothing is.
     int received_slot;    // Where the frame keeps it.
+    Def *frame_def;       // The def its frames stand in for in dyn^ tables, once needed.
     int yield_points;     // Resume points so far, numbered from 1.
     size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
     size_t frame_size, frame_align;

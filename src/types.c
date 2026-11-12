@@ -105,6 +105,14 @@ bool procedure_call(const Function *f)
     return f->procedure && !f->yields;
 }
 
+bool frame_conforms(Type *frame, Def *d)
+{
+    Instance *in = frame->coroutine;
+    Type **a = d->coroutine_args;
+    return a[0] && (in->received ? a[0] == in->received : a[0]->kind == T_NIL) &&
+           a[1] == in->yielded && a[2] == in->final;
+}
+
 Type *frame_type(Program *p, Instance *in)
 {
     Type *t = mem(sizeof(*t));
@@ -1075,6 +1083,11 @@ static void compose_unchecked(Program *p, Def *d)
         fail(d->loc, "cyclic def^ composition at '%s'", d->name);
     }
     d->state = 1;
+    if (d->generic && !strcmp(d->generic->name, "std.sys.Coroutine")) {
+        for (int k = 0; k < 3; k++) {
+            d->coroutine_args[k] = type_spec(p, d->type_args.v[k]);
+        }
+    }
     if (d->backing) {
         d->state = 2;
         return;

@@ -211,6 +211,81 @@ var^ c = acc()
 let^ a = c.start(1)
 ''', "'start' takes no arguments")
 
+    base = '''import^std.sys
+let^ count = p^ n:i32^ -> std.sys.Coroutine<nil^, i32^, nil^> {
+    var^ i:i32^ = 0
+    repeat^ while^ i < n {
+        yield^ i
+        i += 1
+    }
+}
+let^ twice = f^ n:i32^ {
+    yield^ n
+    yield^ n * 2
+}
+'''
+
+    def frame_tables(rir, ll):
+        assert ll.count('linkonce_odr constant [5 x ptr]') == 2, ll
+
+    positive('base_reference_specializes', base + '''
+let^ drive = p^ co:ref^std.sys.Coroutine<nil^, i32^, nil^> -> i32^ {
+    var^ s:i32^ = 0
+    var^ v = co.start()
+    repeat^ while^ !co.done() {
+        if^ v fits^ i32^ { s += v }
+        v := co.resume()
+    }
+    return^ s
+}
+var^ a = count(4)
+var^ b = twice(5)
+print^(drive(ref^a), drive(ref^b))
+''', '6 15\n')
+
+    positive('base_dynamic_mixes_kinds', base + '''
+var^ c = count(3)
+var^ d = twice(7)
+var^ all:std.sys.Coroutine<nil^, i32^, nil^>[dynamic^2] = {ref^c, ref^d}
+for^ co in^ all {
+    let^ first = co.start()
+    if^ first fits^ i32^ { print^(first) }
+}
+let^ again = all[1].resume()
+if^ again fits^ i32^ { print^(again, all[1].done()) }
+''', '0\n7\n14 false\n', inspect=frame_tables)
+
+    positive('base_dynamic_hands_values_in', '''import^std.sys
+let^ acc = p^ -> std.sys.Coroutine<i32^, i32^, i32^> {
+    var^ total:i32^ = 0
+    repeat^ while^ total < 10 {
+        var^ step = yield^ total
+        total += step
+    }
+    return^ total
+}
+var^ c = acc()
+let^ d:dynamic^std.sys.Coroutine<i32^, i32^, i32^> = ref^c
+print^(d.start(), d.resume(4), d.resume(8), d.done(), d.result())
+''', '0 4 12 true 12\n')
+
+    negative('base_arguments_must_match', base + '''
+let^ drive = p^ co:ref^std.sys.Coroutine<nil^, i64^, nil^> { let^ v = co.start() }
+var^ a = count(4)
+drive(ref^a)
+''', "count.ReturnType^")
+    negative('written_coroutine_must_match', '''import^std.sys
+let^ g = p^ -> std.sys.Coroutine<nil^, i32^, nil^> { yield^ "a" }
+var^ c = g()
+''', "the coroutine this body makes is not the written 'std.sys.Coroutine<nil^,i32^,nil^>'")
+    negative('base_resume_needs_value', '''import^std.sys
+let^ acc = p^ -> std.sys.Coroutine<i32^, i32^, nil^> { var^ step = yield^ 0 }
+var^ c = acc()
+let^ d:dynamic^std.sys.Coroutine<i32^, i32^, nil^> = ref^c
+let^ a = d.start()
+let^ b = d.resume()
+''', "this coroutine receives 'i32^'; resume it with one value")
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

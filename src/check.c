@@ -525,6 +525,7 @@ typedef struct {
     Type *yielded; // What the body's yield^ sites agree on, for a yielding instance.
     Expr *yield_expr;
     Type *received; // What the yield^ sites that bind a value agree to receive.
+    Type **written; // A yielding instance's written std.sys.Coroutine<R, Y, T>, else NULL.
     bool value_return;
     int lexical;
     NilFlow flow;
@@ -540,9 +541,25 @@ typedef struct {
     bool next, stop;
 } InlineFlow;
 
+// R, Y and T of the std.sys.Coroutine a yielding instance's function writes as its result, or
+// NULL when it writes none.
+static Type **written_coroutine(Program *p, Instance *in)
+{
+    if (!in->fn->yields || !in->fn->result) {
+        return NULL;
+    }
+    Type *w = type_spec(p, in->fn->result);
+    if (w->kind != T_STRUCT || !w->def->coroutine_args[0]) {
+        fail(in->fn->loc, "a yielding function's result is the coroutine it makes; write it as "
+                          "std.sys.Coroutine<R, Y, T> or leave it unwritten");
+    }
+    return w->def->coroutine_args;
+}
+
 static Infer infer_context(Context *c)
 {
     Infer out = {.p = c->p, .in = c->in, .lexical = c->lexical};
+    out.written = written_coroutine(c->p, c->in);
     for (int j = 0; j < c->loops.n; j++) {
         add(&out.loops, (void *)(intptr_t)(((Loop *)c->loops.v[j])->outside + 1));
     }
@@ -1883,14 +1900,19 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         c->terminated = true;
         return type_builtin(c->p, T_NEVER);
     case E_YIELD: {
-        Type *t = e->a ? infer_expr(c, e->a, NULL) : type_builtin(c->p, T_NIL);
+        Type *t = e->a ? infer_expr(c, e->a, c->written ? c->written[1] : NULL)
+                       : type_builtin(c->p, T_NIL);
         if (t && t->kind != T_NEVER) {
             c->yielded = join_types(c->p, c->yielded, c->yield_expr, t, e->a, e->loc);
             if (!c->yield_expr || !integer_literal(e->a)) {
                 c->yield_expr = e->a;
             }
         }
-        // What a resume hands in is what the binding receiving it is written to hold.
+        // What a resume hands in is what the binding receiving it is written to hold, or the
+        // R the function's written Coroutine says.
+        if ((!expected || expected->kind == T_VOID) && c->written && c->written[0]->kind != T_NIL) {
+            expected = c->written[0];
+        }
         if (!expected || expected->kind == T_VOID) {
             return type_builtin(c->p, T_VOID);
         }
@@ -2355,8 +2377,10 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             }
         }
         else if (s->kind == S_RETURN) {
-            Type *hint = c->in->fn->result ? function_result(c->p, c->in, c->in->fn->result)
-                                           : c->in->fn->required_result;
+            Type *hint = c->written          ? c->written[2]
+                         : c->in->fn->yields ? NULL
+                         : c->in->fn->result ? function_result(c->p, c->in, c->in->fn->result)
+                                             : c->in->fn->required_result;
             Type *t = infer_expr(c, s->a, hint);
             if (!s->a && hint && nullable(hint) && has_error(hint)) {
                 t = hint;
@@ -2662,10 +2686,6 @@ List first_types(Context *c, Stmt *s)
 // union are what a turn of that frame answers. Each may still change while inference runs.
 static bool coroutine_result(Program *p, Instance *in, Type *final, Type *yielded, Type *received)
 {
-    if (in->fn->result) {
-        fail(in->fn->loc, "a yielding function's result is the coroutine it makes; leave it "
-                          "unwritten (Coroutine<R, Y, T> annotations are not supported yet)");
-    }
     if (!final || final->kind == T_VOID) {
         final = type_builtin(p, T_NIL);
     }
@@ -2699,6 +2719,7 @@ static bool infer_instance_result(Program *p, Instance *in)
     }
     bool changed = false;
     Infer c = {.p = p, .in = in, .lexical = in->fn->lexical ? in->fn->lexical : 1};
+    c.written = written_coroutine(p, in);
     for (int k = 0; k < in->params.n; k++) {
         Param *param =
             k < in->fn->params.n ? in->fn->params.v[k] : in->fn->captures.v[k - in->fn->params.n];
@@ -3184,8 +3205,9 @@ bool parameter_accepts(Type *want, Type *actual)
     }
     if (want->kind == T_DYN) {
         return (!read_reference(actual) || read_reference(want)) && actual->kind == T_REF &&
-               actual->elem->kind == T_STRUCT && !actual->elem->def->abstract &&
-               derives(actual->elem->def, want->elem->def);
+               ((actual->elem->kind == T_STRUCT && !actual->elem->def->abstract &&
+                 derives(actual->elem->def, want->elem->def)) ||
+                (actual->elem->kind == T_FRAME && frame_conforms(actual->elem, want->elem->def)));
     }
     if (want->kind == T_REF && actual->kind == T_REF) {
         if (read_reference(actual) && !read_reference(want)) {
@@ -3193,6 +3215,11 @@ bool parameter_accepts(Type *want, Type *actual)
         }
         want = want->elem;
         actual = actual->elem;
+        // A frame stands for the std.sys.Coroutine it offers only behind a reference: the
+        // abstract type has no value of its own.
+        if (want->kind == T_STRUCT && actual->kind == T_FRAME) {
+            return frame_conforms(actual, want->def);
+        }
     }
     return want->kind == T_STRUCT && actual->kind == T_STRUCT && derives(actual->def, want->def);
 }

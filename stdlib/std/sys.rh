@@ -12,3 +12,14 @@ public^def^ThreadEntry = externC^p^ref^ThreadArgs;
 public^def^Disposable {
     abstract^dispose:p^self^;
 }
+
+# What a coroutine frame offers: start runs it to its first yield^, resume to the next one
+# (handing in an R when it receives one), and each answers what was yielded (Y) or, at the end,
+# returned (T). A coroutine that receives nothing has R nil^ and resumes with no argument.
+public^def^Coroutine<R, Y, T> {
+    abstract^start:p^self^ -> Y | T;
+    abstract^resume:p^self^ -> Y | T;
+    abstract^overload^resume:p^self^, value:R -> Y | T;
+    abstract^done:f^self^ -> bool^;
+    abstract^result:f^self^ -> T;
+}

@@ -1699,6 +1699,11 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     Type *frame = NULL;
     if (f->yields) {
         frame = in->result;
+        Type *written = f->result ? type_spec(p, f->result) : NULL;
+        if (written && !frame_conforms(frame, written->def)) {
+            fail(f->loc, "the coroutine this body makes is not the written '%s'",
+                 type_name(written));
+        }
         in->result = in->turn;
         if (in->turn->owned) {
             fail(f->loc, "a coroutine cannot yield or return owned values");
