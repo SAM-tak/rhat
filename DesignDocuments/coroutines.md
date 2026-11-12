@@ -3,7 +3,7 @@
 R^ のコルーチンと `await^` の設計案です。手順 1a まで実装済みです（[実装状況](#実装状況)）。それ以外の構文は仮置きです。
 
 表層は L^ のコルーチン（`yield^` による推論、`await^` による明示の委譲、双方向の `yield^`）をそのまま引き継ぎます。
-L^ の `c^{R -> Y -> T}` 型は、R^ では基底型 `Coroutine<R, Y, T>` に置き換えます。
+L^ の `c^{R -> Y -> T}` 型は、R^ では `std.sys` のコルーチン型（`CoroutineNR<Y, T>`・`CoroutineR<R, Y, T>` など）に置き換えます。
 中身は Goose の設計ノート
 `../goose/docs/design/coroutines.md`（2026-10、未実装）と同じく、**stackless で、フレームを固定長の値として扱う**方式にします。
 スケジューラ・イベントループ・タイマー・Channel 待ちは言語に入れず、ライブラリで作ります。
@@ -12,7 +12,7 @@ L^ のコルーチンより制限は多くなります。自由なコルーチ�
 
 ## 実装状況
 
-手順 1a（v1 の核）を実装しました。
+手順 1a（v1 の核）と 1b を実装しました。
 
 - `yield^ e` / `yield^`（文として）。`yield^` を含む `p^` / `f^` は yieldable と推論され、呼ぶとフレームが返ります。
 - フレームは組み込みの型で、表示は関数の返り値型として書く形（`py.ReturnType^`、多重定義などでは `overload^py(i32^).ReturnType^`）です。`start()`・`resume()`（`Y | T` を返す）、`done()`・`result()` を持ちます。
@@ -23,11 +23,13 @@ L^ のコルーチンより制限は多くなります。自由なコルーチ�
   関数の型は `f^` です（`p^ x:i32^ { yield^ … }` は `f^ i32^ -> py.ReturnType^;`）。本体の種別は `start`・`resume` に載り、
   `p^` のフレームを進めるには `p^` が要ります。
   フレームは値としてコピーでき（フォーク）、`let^` のフレームは進められません。
+- 再開時の値 R: `var^ x:T = yield^ v` で受け取り、`c.resume(v)` で渡します。受け取らないコルーチンは `c.resume()` です。
+- `std.sys` のコルーチン型（[フレーム型とコルーチン型](#フレーム型とコルーチン型)）: `ref^` で受ければフレーム型ごとに特殊化、
+  `dynamic^` で受ければ種類の違うフレームを混ぜられます。yieldable の返り値に書けば、R・Y・T を推論の手がかりにし、
+  本体と照合します。
 
-まだ拒否しているもの（1b 以降で解除）:
+まだ拒否しているもの（手順 2 以降で解除）:
 
-- yieldable に書いた返り値の注釈（`-> Coroutine<…>` は 1b）、`yield^` の値を受け取ること（R、1b）、
-  `Coroutine<R, Y, T>` 基底型と `dynamic^` での混在（1b）。
 - 中断点を跨ぐ Disposable・参照の場所（別名スロット）、yieldable な `f^mutable^self^` メソッドの扱い（手順 2）。
 - 最終結果の型が合併型のときの `result()`（`try^` でエラーを返すコルーチンなど）、フレームのスレッド転送。
 - `await^`・`for^ in^` でフレームを回すこと（手順 2）、大きなフレームの警告。
@@ -37,8 +39,8 @@ L^ のコルーチンより制限は多くなります。自由なコルーチ�
 
 - `yield^` を含む関数は yieldable と推論されます。キーワードは付けません（L^ と同じ）。
 - yieldable な関数を呼ぶと**フレーム**が返り、本体は一行も走りません。フレームは固定長の値です。
-- フレーム型は関数ごとの無名の公称型で、基底型 `Coroutine<R, Y, T>` を合成します。
-  `ref^Coroutine<...>` で受ければ特殊化、`dynamic^Coroutine<...>` で受ければ動的ディスパッチです（[dyn.md](dyn.md) と同じ）。
+- フレーム型は関数ごとの無名の公称型で、`std.sys` のコルーチン型（`CoroutineNR<Y, T>` など）を満たします。
+  `ref^` で受ければ特殊化、`dynamic^` で受ければ動的ディスパッチです（[dyn.md](dyn.md) と同じ）。
 - `await^ c` は内側のフレームを外側のフレームの中に展開して委譲します。値は内側の返り値 `T` です。
 - 中断点では、所有値・自分のローカルを指す借用・未着の所有返り値を生かしておけません。
   再帰呼び出しに課している制約（[design.md](design.md) の再帰の規則）を中断点に広げたものです。
@@ -95,37 +97,38 @@ let^serve = p^conn:ref^Conn {
 ### 返り値の注釈は呼び出しが返すもの
 
 `->` は、本体の宣言でも関数型の注釈でも、**呼び出したときに返るもの**を表します。
-yieldable な関数の呼び出しはフレームを返すので、返り値を明示するなら `Coroutine<R, Y, T>` を書きます。
+yieldable な関数の呼び出しはフレームを返すので、返り値を明示するなら `std.sys` のコルーチン型を書きます。
 最終結果の型 `T` だけを書く `-> bool^` はエラーです。
 
 ```rhat
-let^serve = p^conn:ref^Conn -> std.sys.Coroutine<Event, Wait, bool^> {
+let^serve = p^conn:ref^Conn -> std.sys.CoroutineR<Event, Wait, bool^> {
     var^ev = yield^ Wait{fd = conn.fd}           # R is declared above, so no annotation here
     ...
     return^true^
 }
 ```
 
-- 書いた `Coroutine<R, Y, T>` は、本体の `yield^`・`await^`・`return^` から求めた形と照合し、食い違えばエラーです。
-- `R` を書いた場合は、`yield^` の値を受ける束縛の注釈を省略できます。
-- 実際の返り値型は無名のフレーム型で、`Coroutine<R, Y, T>` はそれが合成する基底型です。
+- 書いたコルーチン型は、本体の `yield^`・`await^`・`return^` から求めた形と照合し、食い違えばエラーです。
+  書いた R・Y・T は推論の手がかりにもなります（`yield^ 1` を `CoroutineNR<i64^, …>` なら i64^ と読みます）。
+- `CoroutineR<R, …>` で R を書いた場合は、`yield^` の値を受ける束縛の注釈を省略できます。
+- 実際の返り値型は無名のフレーム型で、コルーチン型はそれが満たす型です。
   Rust の `-> impl Future<Output = T>` と同じく「この基底型を満たす何か」を言うだけで、型を消去しません。
   具体的なフレーム型は `serve.ReturnType^` で得ます。
-- フレームを返す普通の関数（`return^ serve(c)` だけを書く包み関数など）も、同じく `-> Coroutine<…>` と書きます。
-  関数型の注釈 `p^ref^Conn -> std.sys.Coroutine<Event, Wait, bool^>;` も同じ読みです。
+- フレームを返す普通の関数（`return^ serve(c)` だけを書く包み関数など）も、同じくコルーチン型を書きます。
+  関数型の注釈 `p^ref^Conn -> std.sys.CoroutineR<Event, Wait, bool^>;` も同じ読みです。
 
 Rust・Python・Kotlin は本体側に最終結果の型だけを書きますが、それで困らないのは `async`・`suspend` の印で色を明示しているからです。
-R^ は yieldable を推論するので印がありません。`-> Coroutine<R, Y, T>` が、コルーチンであることを書き手が明示し、コンパイラに守らせる唯一の場所になります。
+R^ は yieldable を推論するので印がありません。返り値に書くコルーチン型が、コルーチンであることを書き手が明示し、コンパイラに守らせる唯一の場所になります。
 
-- `-> Coroutine<…>` と書いた関数から `yield^` を消すと、宣言の時点でエラーになります。
+- コルーチン型を書いた関数から `yield^` を消すと、宣言の時点でエラーになります。
 - `-> bool^` と書いた関数に `yield^` を足すと、宣言の時点でエラーになります。呼び出し元を見て回る前に色の変化に気づけます。
 - `->` の意味が一つなので、注釈と `ReturnType^` が常に一致します（C# の `async Task<T>` と同じ側です）。
 
 明示する必要がなければ、注釈を省略して推論に任せます。
 
-L^ も同じ規則です（[syntax.type.coroutine-result]）。L^ では `-> c^{ … }`、R^ では `-> Coroutine<R, Y, T>` と書きます。
+L^ も同じ規則です（[syntax.type.coroutine-result]）。L^ では `-> c^{ … }`、R^ では `-> std.sys.CoroutineNR<Y, T>` などと書きます。
 
-### フレーム型と基底型 `Coroutine<R, Y, T>`
+### フレーム型とコルーチン型
 
 フレームの大きさは、`R`・`Y`・`T` よりも本体で決まります。
 引数、中断点を跨ぐローカル、`await^` で埋め込む内側のフレーム、状態タグ、返り値の置き場を持つからです。
@@ -135,24 +138,53 @@ L^ も同じ規則です（[syntax.type.coroutine-result]）。L^ では `-> c^{
 そこで型を2層に分けます。
 
 - **フレーム型**: yieldable な関数ごとにコンパイラが作る無名の公称型です。値として格納できます。
-- **基底型 `std.sys.Coroutine<R, Y, T>`**: `start`・`resume`・`done`・`started`・`result`・`dispose` を
-  `abstract^` なメンバとして持つ定義型です。すべてのフレーム型はこれを合成します。
-  `R` や `Y` や `T` が無いときは `nil^` を指定します（`Coroutine<nil^, i64^, nil^>` は値を出すだけの生成器です）。
+- **コルーチン型**: `std.sys` の5つの抽象型です。フレーム型は、R の有無と本体の種別に合うものを自動で満たします。
 
-使い方は [dyn.md](dyn.md) の `Shape` と同じで、新しい規則は要りません。
+```rhat
+public^def^Coroutine<T> {                               # every frame
+    abstract^done:f^self^ -> bool^;
+    abstract^result:f^self^ -> T;
+}
+public^def^CoroutineNR<Y, T> : Coroutine<T> {           # receives nothing
+    abstract^start:p^self^ -> Y | T;
+    abstract^resume:p^self^ -> Y | T;
+}
+public^def^PureCoroutineNR<Y, T> : CoroutineNR<Y, T> {  # ... of an f^ body
+    abstract^start:f^mutable^self^ -> Y | T;
+    abstract^resume:f^mutable^self^ -> Y | T;
+}
+public^def^CoroutineR<R, Y, T> : Coroutine<T> {         # receives an R at each yield^
+    abstract^start:p^self^ -> Y | T;
+    abstract^resume:p^self^, value:R -> Y | T;
+}
+public^def^PureCoroutineR<R, Y, T> : CoroutineR<R, Y, T> {
+    abstract^start:f^mutable^self^ -> Y | T;
+    abstract^resume:f^mutable^self^, value:R -> Y | T;
+}
+```
+
+- R を受け取らないフレームは `CoroutineNR<Y, T>`、受け取るフレームは `CoroutineR<R, Y, T>` を満たし、どちらも `Coroutine<T>` を満たします。
+  `resume` は型ごとに1つなので、dyn^ の表に多重定義を載せる規則は要りません。
+- f^ 本体のフレームは `Pure` 版も満たします。`Pure` 版は一般版を合成するので、`ref^CoroutineNR<Y, T>` を受ける手続きには
+  p^ 本体と f^ 本体のどちらのフレームも渡せます。`Pure` 版は進める操作を `f^mutable^self^` で宣言し直します
+  （派生型は基底の抽象メソッドを、より少ない効果で宣言し直せます。[design.md](design.md)）。
+- 適合は型引数の照合で決まります。フレームはこれらの型を合成するのではなく、R・Y・T と本体の種別で満たします。
+
+使い方は [dyn.md](dyn.md) の `Shape` と同じです。
 
 ```rhat
 import^std.sys
 
 # Specialized per concrete frame type: no indirect calls.
-let^drive = p^co:ref^std.sys.Coroutine<Event, Wait, bool^> { ... }
+let^drive = p^co:ref^std.sys.CoroutineR<Event, Wait, bool^> { ... }
 
 # Mixing frame types: a {data, method table} pair per element; frames live elsewhere.
-var^tasks:std.sys.Coroutine<Event, Wait, bool^>[dynamic^grow^] = {}
+var^tasks:std.sys.CoroutineR<Event, Wait, bool^>[dynamic^grow^] = {}
 ```
 
-- `ref^Coroutine<...>` を受ける関数は、渡されたフレーム型ごとに特殊化します。
-- `dynamic^Coroutine<...>` は種類の違うフレームを混ぜて扱えます。フレームの実体は別の場所（具体型の配列など）に置きます。
+- `ref^` で受ける関数は、渡されたフレーム型ごとに特殊化します。
+- `dynamic^` は種類の違うフレームを混ぜて扱えます。フレームの実体は別の場所（具体型の配列など）に置きます。
+  dyn^ の表のために、フレーム型ごとに、フレームの組み込みメンバへそのまま渡すメソッドを持つ def^ をコンパイラが作ります。
 - 値として格納する場所（ローカル・配列の要素・構造体のフィールド）には具体的なフレーム型が要ります。
   フレーム型は関数の返り値型なので、`serve.ReturnType^` で名指せます（[typeof.md](typeof.md#関数の返り値型returntype)）。
   多重定義された関数なら `overload^serve(ref^TcpConn).ReturnType^` で候補を選びます（[overloads.md](overloads.md)）。
@@ -161,20 +193,20 @@ var^tasks:std.sys.Coroutine<Event, Wait, bool^>[dynamic^grow^] = {}
 
 L^ の `c^{R -> Y -> T}` は構造的な型で、どの本体のコルーチンでも同じ型の値として扱えます。
 これは L^ のコルーチンが GC 下のオブジェクトだからできることです。
-R^ では「具体型は公称、共通の扱いは基底型」という既存の形に寄せ、型の種類を増やしません。
+R^ では「具体型は公称、共通の扱いは抽象型」という既存の形に寄せます。
 
 ### 複数のフレームをまとめて回す
 
 種類の違うフレームを合併型の配列に入れると、要素は一番大きなフレームの大きさになります。
 32 バイトのフレームと 1000 バイトのフレームを混ぜた 16 要素の配列は、約 16KB を取ります。
 
-フレームの実体は種類ごとの配列に置き、まとめて回す一覧は `dynamic^Coroutine<R, Y, T>` の参照で持ちます。
+フレームの実体は種類ごとの配列に置き、まとめて回す一覧はコルーチン型の `dynamic^` 参照で持ちます。
 回す側が関心を持つのは `R`・`Y`・`T` だけなので、合併型を定義する必要もありません。
 
 ```rhat
 var^as:coA.ReturnType^[max^16] = {}
 var^cs:coC.ReturnType^[max^2] = {}    # the large kind gets a pool of its own size
-var^active:std.sys.Coroutine<Event, Wait, nil^>[dynamic^max^18] = {}
+var^active:std.sys.CoroutineR<Event, Wait, nil^>[dynamic^max^18] = {}
 
 as.push(coA())
 active.push(ref^as[as.len - 1])
@@ -210,7 +242,7 @@ let^ rest = c.resume()             # c itself advanced; the loop did not copy it
 ### 生成と操作
 
 呼び出しはフレームを返し、本体は走りません（L^ の [syntax.sub.no-contagion]）。
-メンバは L^ と同じ名前にし、`Coroutine<R, Y, T>` の抽象メンバとして宣言します。
+メンバは L^ と同じ名前にし、コルーチン型の抽象メンバとして宣言します。
 
 - `c.start()`: 先頭から走らせ、最初の `yield^` か終わりまで進めます。
 - `c.resume(v)` / `c.resume()`: 中断位置から続けます。`R` がないときは引数を取りません。
@@ -233,10 +265,10 @@ let^ rest = c.resume()             # c itself advanced; the loop did not copy it
 - **進める操作の種別は本体に従います。** `f^` 本体のフレームの `start`・`resume`・`dispose` は `f^mutable^self^`、
   `p^` 本体のフレームのそれは `p^` です。`p^` のフレームは、本体が副作用を持つので `f^` から進められません。
   `await^` と `for^ v in^ c` も、書かれた呼び出しはなくても同じ判定を受けます。
-- 基底型 `Coroutine<R, Y, T>` は一つだけで、進める操作を `p^` の抽象メソッドとして宣言します。
-  `f^` 本体のフレームは、それを `f^mutable^self^` で実装します（効果の少ない実装は契約を満たします。[design.md](design.md)）。
-  基底型越しに進めるのは `p^` だけです。`f^` は `ref^`・`dynamic^` で借りたフレームを書き換えられないので、
-  基底型に f^ 版を用意しても使う場面がありません。`f^` が進めるのは、自分のローカルや値で受け取った、具体的なフレーム型の値です。
+- 一般のコルーチン型（`CoroutineNR`・`CoroutineR`）は進める操作を `p^` で宣言し、`Pure` 版は `f^mutable^self^` で宣言し直します。
+  f^ 本体のフレームは両方を満たします（効果の少ない実装は契約を満たします。[design.md](design.md)）。
+  `f^` は `ref^`・`dynamic^` で借りたフレームを書き換えられないので、`f^` が進めるのは自分のローカルや値で受け取った
+  具体的なフレーム型の値です。`Pure` 版は「この生成器は純粋」と型で約束したいとき（返り値の注釈など）に使います。
 
 L^ はこれに加えて「`f^` のコルーチンを進められるのは、その本体が作った場合だけ」「`f^` のコルーチンは、その本体から出てはならない」
 という2つの規則を置きます（[syntax.sub.yieldable-f]）。L^ のコルーチンは GC 下の参照オブジェクトで、複数の持ち主が共有できるので、
@@ -433,7 +465,7 @@ llvm.coro で縮む分のうち効きの大きいもの（実際には使われ�
 
 - 所有値・自分のローカルへの借用・未着の所有返り値は中断を跨げません（L^ には制限がありません）。
 - `await^` の閉路（再帰的な委譲）は書けません。
-- `c^{R -> Y -> T}` の代わりに、フレーム型ごとの公称型と基底型 `Coroutine<R, Y, T>` を使います。
+- `c^{R -> Y -> T}` の代わりに、フレーム型ごとの公称型と `std.sys` のコルーチン型を使います。
 - 予算による実行の分割（L^ の [syntax.sub.split-run]）はありません。ネイティブコードなので、中断は `yield^` だけです。
 - `save()` / `load()` はフレームのコピーで代わります。
 - `f^` のコルーチンに「作った本体だけが進められる」「本体から出さない」の規則を置きません。値の意味論と `f^` の効果制限から従います。
@@ -442,17 +474,9 @@ llvm.coro で縮む分のうち効きの大きいもの（実際には使われ�
 
 ソケット・タイマー・`run_blocking` の細かい API は実装時に L^ に合わせて決めます。
 
-後の検討材料:
-
-- **`PureCoroutine<R, Y, T>`**: 進める操作を `f^mutable^self^` で宣言した基底型を、`Coroutine<R, Y, T>`（`p^`、一般）とは別に用意するか。
-  `PureCoroutine` は `Coroutine` を合成し、`f^` 本体のフレームはこちらを合成します。今は `Coroutine` 一つで足ります。
-  基底型越しにフレームを進めるには借りたフレームを書き換える必要があり、`f^` からはどちらにせよ進められないからです。
-  必要になるのは、`-> PureCoroutine<…>` で「この生成器は純粋」と約束したい場合と、`f^mutable^self^` のメソッドが
-  self のフィールドに持った `dynamic^` のフレームを進めたい場合です。後から足しても既存のコードは壊れません。
-
 ## 手順
 
-1. 検査器: yieldable の推論、フレーム型の生成と `Coroutine<R, Y, T>` の合成、`await^` の型付け、中断点の規則 1〜5、
+1. 検査器: yieldable の推論、フレーム型の生成とコルーチン型への適合、`await^` の型付け、中断点の規則 1〜5、
    `await^` の閉路検出（再帰成分の解析を流用します）。
 2. 生成: フレーム構造体、再開関数、跨ぐローカルのフレーム上の配置、フレームの `dispose`、大きなフレームの警告。
 3. テスト: 規則ごとのエラーメッセージ、生成器と `for^ in^`、`await^` の入れ子、`Disposable` を持つフレームの途中破棄、Channel 越しの再開。
