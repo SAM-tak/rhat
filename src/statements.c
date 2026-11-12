@@ -1654,7 +1654,15 @@ static void frame_layout(Instance *in, Loc l)
     if (in->received) {
         kept[in->received_slot] = true;
     }
-    size_t offset = 8, align = 8;
+    // A local whose address is taken may be lent to an awaited frame across suspensions.
+    for (int k = 0; in->relends && k < code; k++) {
+        Instr *i = in->code.v[k];
+        if ((i->op == I_ADDR || i->op == I_SLICE) && i->a >= 0 &&
+            !((Slot *)in->slots.v[i->a])->alias) {
+            kept[i->a] = true;
+        }
+    }
+    size_t offset = in->relends ? 16 : 8, align = 8;
     in->frame_offset = mem((size_t)n * sizeof(size_t));
     for (int k = 0; k < n; k++) {
         Slot *s = in->slots.v[k];

@@ -1894,8 +1894,46 @@ static void instruction(Output *o, Instr *i)
         fprintf(f, "  br i1 %%t%d, label %%block%d, label %%block%d\n", a, i->label, i->other);
         break;
     case I_YIELD:
+        if (o->in->relends) {
+            int at = ++o->tmp;
+            fprintf(
+                f,
+                "  %%t%d = getelementptr i8, ptr %%frame, i64 8\n  store ptr %%frame, ptr %%t%d\n",
+                at, at);
+        }
         fprintf(f, "  store i32 %d, ptr %%frame\n  ret void\n", i->label);
         break;
+    case I_REBASE: {
+        // Parameters pointing into where this frame last suspended move with it.
+        Instance *co = i->callee;
+        a = load(o, i->a);
+        int at = ++o->tmp, base = ++o->tmp, lo = ++o->tmp, hi = ++o->tmp, now = ++o->tmp,
+            delta = ++o->tmp;
+        fprintf(f,
+                "  %%t%d = getelementptr i8, ptr %%frame, i64 8\n  %%t%d = load ptr, ptr %%t%d\n"
+                "  %%t%d = ptrtoint ptr %%t%d to i64\n  %%t%d = add i64 %%t%d, %zu\n"
+                "  %%t%d = ptrtoint ptr %%frame to i64\n  %%t%d = sub i64 %%t%d, %%t%d\n",
+                at, base, at, lo, base, hi, lo, o->in->frame_size, now, delta, now, lo);
+        for (int j = 0; j < co->params.n; j++) {
+            Type *param = co->params.v[j];
+            if (param->kind != T_REF && param->kind != T_SLICE) {
+                continue;
+            }
+            int slot = ++o->tmp, old = ++o->tmp, x = ++o->tmp, above = ++o->tmp, below = ++o->tmp,
+                inside = ++o->tmp, moved = ++o->tmp, chosen = ++o->tmp, fresh = ++o->tmp;
+            fprintf(
+                f,
+                "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n  %%t%d = load ptr, ptr %%t%d\n"
+                "  %%t%d = ptrtoint ptr %%t%d to i64\n  %%t%d = icmp uge i64 %%t%d, %%t%d\n"
+                "  %%t%d = icmp ult i64 %%t%d, %%t%d\n  %%t%d = and i1 %%t%d, %%t%d\n"
+                "  %%t%d = add i64 %%t%d, %%t%d\n  %%t%d = select i1 %%t%d, i64 %%t%d, i64 %%t%d\n"
+                "  %%t%d = inttoptr i64 %%t%d to ptr\n  store ptr %%t%d, ptr %%t%d\n",
+                slot, a, co->frame_offset[j + 1], old, slot, x, old, above, x, lo, below, x, hi,
+                inside, above, below, moved, x, delta, chosen, inside, moved, x, fresh, chosen,
+                fresh, slot);
+        }
+        break;
+    }
     case I_DISPOSE_POINT:
         fprintf(f, "rh.dispose%d:\n", i->label);
         break;

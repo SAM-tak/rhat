@@ -559,7 +559,9 @@ enum {
     I_DISPOSE_POINT, // Entry, for a frame dropped while suspended at label, that disposes what
                      // is live there and finishes it.
     I_RESUME_POINT,  // Where a frame suspended at label continues.
-    I_FRAME_DISPOSE  // Dispose frame reference a: finish it where it is suspended, if it is.
+    I_FRAME_DISPOSE, // Dispose frame reference a: finish it where it is suspended, if it is.
+    I_REBASE         // Move the parameters of awaited frame a that point into this frame by as
+                     // far as this frame has moved since it last suspended.
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };
@@ -637,6 +639,11 @@ struct Instance {
     List dispose_points;  // Resume points with something to dispose, as intptr_t labels.
     size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
     size_t frame_size, frame_align;
+    // It keeps a reference derived from its parameters across a suspension, so its callers
+    // cannot lend it their own locals.
+    bool keeps_borrow;
+    // It awaits frames that borrow its own locals: its frame records where it last suspended.
+    bool relends;
 };
 
 // The methods of def iface specialized for concrete, by iface method index;

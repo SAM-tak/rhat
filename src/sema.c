@@ -4366,6 +4366,7 @@ static void suspension_check(Context *c, Loc l)
                      "yield^",
                      v->name);
             }
+            c->in->keeps_borrow |= !v->parameter;
         }
     }
 }
@@ -4432,13 +4433,22 @@ static Value await_point(Context *c, Expr *e)
     Value place = holder.type->kind == T_REF ? deref(c, holder, e->loc) : holder;
     store_check(c, place, (Value){0}, e->loc);
     frame_reach_check(c, co, place.deps, e->loc);
+    // A frame borrowing this coroutine's locals is lent them again at each resume, at wherever
+    // this frame has moved; it may keep only the parameters themselves across its suspensions.
+    bool lends = false;
     for (int k = 0; k < place.deps.n; k++) {
-        if (!place.deps.v[k]->external) {
+        lends |= !place.deps.v[k]->external;
+        c->in->keeps_borrow |= place.deps.v[k]->external;
+    }
+    for (int k = 0; lends && k < co->params.n; k++) {
+        Type *param = co->params.v[k];
+        if (co->keeps_borrow || (param->refs && param->kind != T_REF && param->kind != T_SLICE)) {
             fail(e->loc,
-                 "await^ of a coroutine that refers to a local of this coroutine would keep "
-                 "that reference across a suspension");
+                 "await^ of a coroutine that refers to a local of this coroutine needs it to "
+                 "keep only its ref^ and slice parameters across suspensions");
         }
     }
+    c->in->relends |= lends;
     int disposals = c->pending_disposals.n;
     if (holder.type->kind != T_REF && !holder.var) {
         dispose_pending(c, holder);
@@ -4468,6 +4478,11 @@ static Value await_point(Context *c, Expr *e)
                   e->loc);
     suspend(c, e->loc);
     ref = frame_reference(c, holder, e->loc);
+    if (lends) {
+        Instr *rebase = emit(c, I_REBASE, e->loc);
+        rebase->a = ref;
+        rebase->callee = co;
+    }
     Instr *again = emit(c, I_RESUME, e->loc);
     again->dst = turn.id;
     again->a = ref;

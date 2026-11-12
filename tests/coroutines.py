@@ -373,14 +373,64 @@ let^ plain = f^ -> i32^ { return^ 1 }
 let^ outer = p^ { let^ v = await^ plain() }
 var^ c = outer()
 ''', "await^ needs a coroutine frame, found 'i32^'")
-    negative('await_of_local_reference', '''
-let^ inner = p^ x:ref^i32^ { yield^ *x }
-let^ outer = p^ {
-    var^ n:i32^ = 1
-    await^ inner(ref^n)
+    positive('await_relends_locals', '''
+let^ fill = p^ into:i64^[..], start:i64^ {
+    var^ k:i64^ = 0
+    repeat^ while^ k < into.len {
+        yield^ k
+        into[k] := start + k
+        k += 1
+    }
+    return^ into.len
 }
-var^ c = outer()
-''', 'await^ of a coroutine that refers to a local of this coroutine')
+let^ peek = p^ x:ref^i32^ { yield^ i64^(*x)  return^ *x + 1 }
+let^ outer = p^ base:i64^ {
+    var^ buf = i64^[3]{0, 0, 0}
+    let^ n = await^ fill(buf[..], base)
+    var^ m:i32^ = 4
+    let^ q = await^ peek(ref^m)
+    return^ buf[0] + buf[1] + buf[2] + n + i64^(q)
+}
+let^ run = p^ {
+    var^ pool:outer.ReturnType^[max^4] = {}
+    var^ a = outer(10)
+    let^ s = a.start()
+    pool.push(a)
+    pool.push(outer(100))
+    let^ t = pool[1].start()
+    let^ u = pool[0].resume()
+    var^ b = pool[0]
+    repeat^ while^ !b.done() { let^ w = b.resume() }
+    repeat^ while^ !pool[0].done() { let^ w = pool[0].resume() }
+    repeat^ while^ !pool[1].done() { let^ w = pool[1].resume() }
+    print^(b.result(), pool[0].result(), pool[1].result())
+}
+run()
+''', '41 41 311\n')
+    for name, text in [
+        ('await_lend_derived', '''
+let^ keep = p^ into:i64^[..] {
+    let^ part = into[0 .. 1]
+    yield^ 0
+    return^ part.len
+}
+let^ outer = p^ { var^ buf = i64^[3]{0, 0, 0}  let^ n = await^ keep(buf[..])  return^ n }
+var^ o = outer()
+'''),
+        ('await_lend_struct', '''
+def^ Hold { self^{ r:ref^ i64^ } }
+let^ h = p^ x:Hold { yield^ 0  return^ 1 }
+let^ outer = p^ { var^ v:i64^ = 1  let^ n = await^ h(Hold{r = ref^ v})  return^ n }
+var^ o = outer()
+'''),
+        ('await_lend_passed_on', '''
+let^ inner = p^ into:i64^[..] { yield^ 0  into[0] := 5  return^ i64^(1) }
+let^ mid = p^ into:i64^[..] { let^ n = await^ inner(into)  return^ n }
+let^ outer = p^ { var^ buf = i64^[3]{0, 0, 0}  let^ n = await^ mid(buf[..])  return^ buf[0] + n }
+var^ o = outer()
+'''),
+    ]:
+        negative(name, text, 'needs it to keep only its ref^ and slice parameters across suspensions')
 
     walkers = '''let^ count = p^ n:i32^ {
     var^ i:i32^ = 0
