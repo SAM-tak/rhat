@@ -382,6 +382,50 @@ let^ outer = p^ {
 var^ c = outer()
 ''', 'await^ of a coroutine that refers to a local of this coroutine')
 
+    walkers = '''let^ count = p^ n:i32^ {
+    var^ i:i32^ = 0
+    repeat^ while^ i < n {
+        yield^ i
+        i += 1
+    }
+    return^ "end"
+}
+'''
+    positive('for_walks_a_temporary_frame', walkers + '''
+for^ x in^ count(3) { print^(x) }
+''', '0\n1\n2\n')
+    positive('for_advances_a_frame_variable', walkers + '''
+var^ c = count(5)
+for^ x in^ c { if^ x = 1 { break^ } }
+let^ rest = c.resume()
+if^ rest fits^ i32^ { print^("rest", rest) }
+''', 'rest 2\n')
+    positive('for_walks_a_yielding_iter', '''
+def^ Box {
+    self^{ n:i32^ = 3 }
+    iter = f^self^ {
+        var^ i:i32^ = 0
+        repeat^ while^ i < self^.n {
+            yield^ i * 10
+            i += 1
+        }
+    }
+}
+var^ box = Box{}
+for^ v in^ box { print^(v) }
+''', '0\n10\n20\n')
+    positive('for_does_not_stop_at_nil', '''
+let^ maybe = p^ { yield^ nil^
+    yield^ nil^ }
+var^ k:i32^ = 0
+for^ z in^ maybe() { k += 1 }
+print^(k)
+''', '2\n')
+    negative('for_cannot_hand_values_in', '''
+let^ acc = p^ { var^ step:i32^ = yield^ 0 }
+for^ x in^ acc() { print^(x) }
+''', "for^ cannot hand values in to a coroutine that receives 'i32^'")
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

@@ -990,6 +990,10 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
             if (!strcmp(target->text, "done")) {
                 return type_builtin(c->p, T_BOOL);
             }
+            if (!strcmp(target->text, "\001next")) {
+                forget_paths(&c->vars);
+                return co->yielded;
+            }
             if (!strcmp(target->text, "result")) {
                 return co->final;
             }
@@ -1449,7 +1453,7 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
     t = t && t->kind == T_REF ? t->elem : t;
     bool array = t && (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED ||
                        t->kind == T_SLICE);
-    int form = range_type(t) ? 0 : array ? 1 : 2;
+    int form = range_type(t) ? 0 : array ? 1 : t && t->kind == T_FRAME ? 3 : 2;
     bool borrow = !strcmp(e->text, "ref") || !strcmp(e->text, "read");
     if (borrow && form != 1) {
         fail(e->loc, "for^ref^ and for^read^ require an array or slice");
@@ -1460,6 +1464,11 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
     if (e->forms[form]) {
         return e->forms[form];
     }
+    // A frame is walked in place: started, resumed until done, binding what it yields.
+    if (form == 3 && t->coroutine->received) {
+        fail(e->loc, "for^ cannot hand values in to a coroutine that receives '%s'",
+             type_name(t->coroutine->received));
+    }
     if (form == 2 && (!t || t->kind != T_STRUCT)) {
         fail(e->loc, "for^ in^ needs a range^, an array or a type with iter(), found '%s'",
              type_name(t));
@@ -1467,10 +1476,16 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
     Loc l = e->loc;
     Expr *zero = part_node(E_INT, l, "0", NULL, NULL), *out;
     Expr *len = part_node(E_MEMBER, l, "len", e->a, NULL);
+    bool place = e->a->kind == E_NAME || e->a->kind == E_SELF || e->a->kind == E_MEMBER ||
+                 e->a->kind == E_INDEX;
     if (!strcmp(e->text, "iter")) {
         out = form == 0   ? e->a
               : form == 1 ? part_node(E_SLICE, l, "..", e->a, NULL)
+              : form == 3 ? (place ? part_node(E_UNARY, l, "ref^", e->a, NULL) : e->a)
                           : part_call(l, e->a, "iter");
+    }
+    else if (!strcmp(e->text, "none")) {
+        out = form == 2 ? e->b : part_node(E_BOOL, l, "false^", NULL, NULL);
     }
     else if (!strcmp(e->text, "start")) {
         out = form == 0   ? part_node(E_MEMBER, l, "\001start", e->a, NULL)
@@ -1478,13 +1493,16 @@ Expr *loop_part(Program *p, Expr *e, Type *t)
                           : zero;
     }
     else if (!strcmp(e->text, "next")) {
-        out = form == 2 ? part_call(l, e->a, "next") : e->b;
+        out = form == 2   ? part_call(l, e->a, "next")
+              : form == 3 ? part_call(l, e->a, "\001next")
+                          : e->b;
     }
     else if (!strcmp(e->text, "done")) {
         Expr *contains = part_call(l, e->a, "contains");
         add(&contains->args, e->b);
         out = form == 0   ? part_node(E_UNARY, l, "!", contains, NULL)
               : form == 1 ? part_node(E_BIN, l, ">=", e->b, len)
+              : form == 3 ? part_call(l, e->a, "done")
                           : part_node(E_BOOL, l, "false^", NULL, NULL);
     }
     else {
@@ -2507,7 +2525,13 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
             c->loops.n--;
         }
         else if (s->kind == S_IF) {
-            infer_expr(c, s->a, type_builtin(c->p, T_BOOL));
+            // for^ in^'s stop test is the form's own condition, so a fits^ in it still narrows.
+            Expr *test = s->a;
+            Type *source = test->kind == E_LOOP_PART ? infer_expr(c, test->a, NULL) : NULL;
+            if (source) {
+                test = loop_part(c->p, test, source);
+            }
+            infer_expr(c, test, type_builtin(c->p, T_BOOL));
             if (c->terminated) {
                 break;
             }
@@ -2515,9 +2539,9 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
                 c->lexical--;
             }
             List facts = save_facts(&c->vars);
-            int known = condition_truth(&c->flow, s->a);
+            int known = condition_truth(&c->flow, test);
             if (known) {
-                refine_condition(c->p, &c->vars, &c->flow, s->a, known > 0);
+                refine_condition(c->p, &c->vars, &c->flow, test, known > 0);
                 infer_statements(c, known > 0 ? &s->body : &s->other, true);
                 restore_facts(&c->vars, facts);
                 if (s->internal) {
@@ -2525,14 +2549,14 @@ static void infer_statements_unchecked(Infer *c, List *body, bool scoped)
                 }
                 continue;
             }
-            refine_condition(c->p, &c->vars, &c->flow, s->a, true);
+            refine_condition(c->p, &c->vars, &c->flow, test, true);
             infer_statements(c, &s->body, true);
             bool yes_ended = c->terminated;
             bool a = yes_ended || ends_in_jump(&s->body);
             c->terminated = false;
             List after_yes = save_facts(&c->vars);
             rewind_facts(&c->vars, facts);
-            refine_condition(c->p, &c->vars, &c->flow, s->a, false);
+            refine_condition(c->p, &c->vars, &c->flow, test, false);
             infer_statements(c, &s->other, true);
             bool b = c->terminated || ends_in_jump(&s->other);
             if (!a && b) {

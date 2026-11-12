@@ -173,7 +173,7 @@ struct Expr {
     bool spread;          // A trailing ... forwards this sequence to a variadic
                           // parameter.
     void *compiler_value; // Internal full Value, retaining borrow provenance.
-    Expr *forms[3];       // E_LOOP_PART: its form for a range^, an array and a cursor.
+    Expr *forms[4];       // E_LOOP_PART: its form for a range^, an array, a cursor and a frame.
     int kind;
     Loc loc;
     char *text;

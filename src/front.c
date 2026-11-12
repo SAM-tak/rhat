@@ -3136,7 +3136,10 @@ static void for_in_statement(Parser *p, Stmt *scope, Stmt *loop, List *names, Li
     none->a = named(item, loc);
     none->test_spec = mem(sizeof(Spec));
     *none->test_spec = (Spec){.kind = SPEC_NAME, .loc = loc, .name = "nil^"};
-    add(&loop->pre, for_in_stop(none, loc));
+    // Only a cursor ends with nil^; a coroutine frame may yield one.
+    Expr *ended = for_in_part("none", source, NULL, NULL, loc);
+    ended->b = none;
+    add(&loop->pre, for_in_stop(ended, loc));
     add(&loop->pre, for_in_stop(for_in_part("done", source, NULL, item, loc), loc));
     if (names->n == 1) {
         Stmt *part = binding(names->v[0],

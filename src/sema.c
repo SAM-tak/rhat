@@ -2308,7 +2308,10 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
 {
     Instance *co = base.type->coroutine;
     const char *name = target->text;
-    bool advance = !strcmp(name, "start") || !strcmp(name, "resume");
+    // for^ in^ walks a frame with next: started or resumed as its state calls for, answering
+    // what it yielded unless it finished.
+    bool next = !strcmp(name, "\001next");
+    bool advance = next || !strcmp(name, "start") || !strcmp(name, "resume");
     bool done = !strcmp(name, "done");
     if (!advance && !done && strcmp(name, "result")) {
         fail(target->loc, "a coroutine frame has start, resume, done and result, not '%s'", name);
@@ -2339,9 +2342,15 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
         fail(e->loc, "result of a coroutine whose final type '%s' is a union is not supported yet",
              type_name(co->final));
     }
+    bool yielded = next && co->yielded != co->turn;
+    if (yielded && co->yielded->kind == T_UNION) {
+        fail(e->loc,
+             "for^ over a coroutine whose yielded type '%s' is a union is not supported yet",
+             type_name(co->yielded));
+    }
     Type *t = done ? type_builtin(c->p, T_BOOL) : co->turn;
     Value out = {.type = t};
-    out.id = destination >= 0 && !project ? destination : slot(c, t, false);
+    out.id = destination >= 0 && !project && !yielded ? destination : slot(c, t, false);
     if (t->refs) {
         out.deps = base.deps;
     }
@@ -2361,9 +2370,31 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     if (hands) {
         add(&i->args, (void *)(intptr_t)(handed.id + 1));
     }
-    i->label = strcmp(name, "start") != 0;
+    i->label = next ? 2 : strcmp(name, "start") != 0;
     if (advance && co->fn->procedure) {
         forget_roots(&c->vars, base.deps, false);
+    }
+    if (yielded) {
+        // Only a frame that has not finished holds what it yielded.
+        Value finished = value(c, type_builtin(c->p, T_BOOL));
+        Instr *test = emit(c, I_FRAME_DONE, e->loc);
+        test->dst = finished.id;
+        test->a = ref.id;
+        test->type = finished.type;
+        test->callee = co;
+        Value y = {.type = co->yielded, .deps = out.deps};
+        y.id = destination >= 0 ? destination : slot(c, co->yielded, false);
+        int skip = ++c->in->labels, take = ++c->in->labels;
+        nil_branch(c, finished, skip, take, e->loc);
+        nil_label(c, take, e->loc);
+        Value part = case_value(c, out, co->yielded, e->loc);
+        Instr *copy = emit(c, I_COPY, e->loc);
+        copy->dst = y.id;
+        copy->a = part.id;
+        copy->type = co->yielded;
+        nil_jump(c, skip, e->loc);
+        nil_label(c, skip, e->loc);
+        return y;
     }
     if (!project) {
         return out;

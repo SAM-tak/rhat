@@ -1304,17 +1304,22 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             pin_local_type(c, s->spec);
         }
         else if (s->kind == S_IF) {
-            Value cond = expression(c, s->a, type_builtin(c->p, T_BOOL));
+            // for^ in^'s stop test is the form's own condition, so a fits^ in it still narrows.
+            Expr *test = s->a;
+            if (test->kind == E_LOOP_PART) {
+                test = loop_part(c->p, test, expression_type(c, test->a, NULL));
+            }
+            Value cond = expression(c, test, type_builtin(c->p, T_BOOL));
             if (dead(cond)) {
                 break;
             }
             if (cond.type->kind != T_BOOL) {
                 fail(s->loc, "condition requires bool");
             }
-            int known = condition_truth(&c->flow, s->a);
+            int known = condition_truth(&c->flow, test);
             if (known) {
                 List facts = save_facts(&c->vars);
-                refine_condition(c->p, &c->vars, &c->flow, s->a, known > 0);
+                refine_condition(c->p, &c->vars, &c->flow, test, known > 0);
                 if (s->internal) {
                     c->lexical--;
                 }
@@ -1339,7 +1344,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 c->lexical--;
             }
             List facts = save_facts(&c->vars);
-            refine_condition(c->p, &c->vars, &c->flow, s->a, true);
+            refine_condition(c->p, &c->vars, &c->flow, test, true);
             statements(c, &s->body, true);
             List after_yes = save_facts(&c->vars);
             rewind_facts(&c->vars, facts);
@@ -1357,7 +1362,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             if (s->internal) {
                 c->lexical--;
             }
-            refine_condition(c->p, &c->vars, &c->flow, s->a, false);
+            refine_condition(c->p, &c->vars, &c->flow, test, false);
             statements(c, &s->other, true);
             bool b = c->terminated;
             if (!a && b) {
