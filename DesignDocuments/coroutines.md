@@ -12,7 +12,7 @@ L^ のコルーチンより制限は多くなります。自由なコルーチ�
 
 ## 実装状況
 
-手順 1a（v1 の核）・1b・2 を実装しました。
+手順 1a（v1 の核）・1b・2・3（名指し）を実装しました。
 
 - `yield^ e` / `yield^`（文として）。`yield^` を含む `p^` / `f^` は yieldable と推論され、呼ぶとフレームが返ります。
 - フレームは組み込みの型で、表示は関数の返り値型として書く形（`py.ReturnType^`、多重定義などでは `overload^py(i32^).ReturnType^`）です。`start()`・`resume()`（`Y | T` を返す）、`done()`・`result()` を持ちます。
@@ -32,6 +32,8 @@ L^ のコルーチンより制限は多くなります。自由なコルーチ�
 - 中断点を跨ぐ Disposable（[Disposable](#disposable)）。フレームを捨てると、中断位置で生きているものを逆順に解放します。
 - yieldable な `f^mutable^self^` メソッドのフレームを `f^` から進めるときの検査（receiver が借りた先なら拒否）。
 - フレームが `--frame-warning`（既定 4096 バイト）を超えると警告します。
+- フレーム型の名指し: `count.ReturnType^`・`overload^count(i32^).ReturnType^`（[typeof.md](typeof.md#関数の返り値型returntype)）。
+  構造体のフィールドや配列の要素にフレームを置けます（`var^cs:count.ReturnType^[max^4] = {}`）。
 - 1回分の答え `Y | T` は1つの合併型に平らになっています。`result()`・`await^`・`for^ in^` が Y や T を取り出すとき、
   それ自体が合併型なら、腕ごとにタグを判定して詰め直します（Y と T に同じ型があっても、どちらとして読むかは `done()` で決まります）。
 
