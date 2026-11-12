@@ -16,7 +16,7 @@ def^Circle : Shape {
 }
 
 # dyn^ is deperecated.
-let^total = f^shapes: Shape[dynamic^..] -> f64^{
+let^total = f^shapes: dynamic^Shape[..] -> f64^{
     var^sum:f64^= 0.0
     for^var^i:i64^= 0 while^i < shapes.len next^i += 1 { sum += shapes[i].area() }
     return^sum
