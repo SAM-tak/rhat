@@ -100,6 +100,11 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
     return t;
 }
 
+bool procedure_call(const Function *f)
+{
+    return f->procedure && !f->yields;
+}
+
 Type *frame_type(Program *p, Instance *in)
 {
     Type *t = mem(sizeof(*t));
@@ -986,7 +991,7 @@ static bool same_origins(Function *a, Spec *x, Function *b, Spec *y)
 /// Orders what a method may do: f^ < f^mutable^self^ < p^.
 static int effect_rank(const Function *f)
 {
-    return f->procedure ? 2 : f->mutable_self ? 1 : 0;
+    return procedure_call(f) ? 2 : f->mutable_self ? 1 : 0;
 }
 
 static void compatible(Program *p, Function *a, Function *b)

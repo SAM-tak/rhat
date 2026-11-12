@@ -436,6 +436,9 @@ Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
 // The frame type of a yielding instance: what each call of it makes.
 Type *frame_type(Program *p, Instance *in);
+// Whether a call of f is a p^ call. A yielding function's call only makes its frame, so it is
+// an f^ whatever its body is; the body's kind goes to the frame's start and resume instead.
+bool procedure_call(const Function *f);
 // Whether an inline array owns independently stored rows; its element layout must be known.
 bool owning_rows(Type *t);
 

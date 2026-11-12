@@ -145,7 +145,7 @@ Type *callable_declaration(Program *p, Function *f)
             result = in->result;
         }
     }
-    return callable_signature(p, &params, result, f->procedure, f);
+    return callable_signature(p, &params, result, procedure_call(f), f);
 }
 
 static void intersection_arms(List *arms, Type *t)

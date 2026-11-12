@@ -146,6 +146,19 @@ let^ make = f^ -> i32^ {
 print^(make())
 ''', '0\n')
 
+    positive('maker_is_a_function', '''
+let^ py = p^ x:i32^ {
+    yield^
+    return^ "done"
+}
+let^ run = p^ {
+    var^ c = py(1)
+    print^(typeof^(py).signature^)
+    print^(typeof^(c.start()).signature^)
+}
+run()
+''', 'f^ i32^ -> frame^ py;\nstring^ | nil^\n')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

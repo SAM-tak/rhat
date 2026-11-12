@@ -2081,7 +2081,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     if (why) {
         fail(e->loc, "'%s' cannot be called through dyn^: %s", f->name, why);
     }
-    if (f->procedure && !c->in->fn->procedure) {
+    if (procedure_call(f) && !c->in->fn->procedure) {
         fail(e->loc, "f^ cannot call p^ '%s'", f->name);
     }
     if (f->params.n != e->args.n + 1) {
@@ -2810,8 +2810,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         fail(e->loc, "'%s' expects %s%d arguments", f->name, f->variadic ? "at least " : "",
              f->params.n - offset - f->variadic);
     }
-    // Making a coroutine's frame runs none of its body; advancing it is what needs p^.
-    if (f->procedure && !f->yields && !c->in->fn->procedure) {
+    if (procedure_call(f) && !c->in->fn->procedure) {
         fail(e->loc, "f^ cannot call p^ '%s'", f->name);
     }
     // Arguments evaluated so far stay in use while later ones may shrink.
