@@ -1045,10 +1045,14 @@ static void compatible(Program *p, Function *a, Function *b)
         br = type_builtin(p, T_VOID);
     }
     // An implementation may promise fewer effects than the contract it fills, never more.
-    // A derived type may restate an inherited abstract contract promising fewer effects; two
-    // contracts from different bases merge only when they promise the same.
+    // An override^ in a derived type may restate an inherited abstract contract promising fewer
+    // effects; contracts merged without one, as from different bases, must promise the same.
     int effects = effect_rank(b) - effect_rank(a);
-    bool narrows = b->owner && a->owner && b->owner != a->owner && derives(b->owner, a->owner);
+    bool narrows =
+        b->override && b->owner && a->owner && b->owner != a->owner && derives(b->owner, a->owner);
+    if (b->abstract && effects < 0 && !b->override) {
+        fail(b->loc, "restating '%s' with fewer effects requires override^", a->name);
+    }
     if (a->params.n != b->params.n || effects > 0 || (b->abstract && effects && !narrows) ||
         a->templ != b->templ || (ar && br && ar != br) ||
         !same_origins(a, a->result, b, b->result)) {

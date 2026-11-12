@@ -150,24 +150,24 @@ public^def^CoroutineNR<Y, T> : Coroutine<T> {           # receives nothing
     abstract^resume:p^self^ -> Y | T;
 }
 public^def^PureCoroutineNR<Y, T> : CoroutineNR<Y, T> {  # ... of an f^ body
-    abstract^start:f^mutable^self^ -> Y | T;
-    abstract^resume:f^mutable^self^ -> Y | T;
+    override^abstract^start:f^mutable^self^ -> Y | T;
+    override^abstract^resume:f^mutable^self^ -> Y | T;
 }
 public^def^CoroutineR<R, Y, T> : Coroutine<T> {         # receives an R at each yield^
     abstract^start:p^self^ -> Y | T;
     abstract^resume:p^self^, value:R -> Y | T;
 }
 public^def^PureCoroutineR<R, Y, T> : CoroutineR<R, Y, T> {
-    abstract^start:f^mutable^self^ -> Y | T;
-    abstract^resume:f^mutable^self^, value:R -> Y | T;
+    override^abstract^start:f^mutable^self^ -> Y | T;
+    override^abstract^resume:f^mutable^self^, value:R -> Y | T;
 }
 ```
 
 - R を受け取らないフレームは `CoroutineNR<Y, T>`、受け取るフレームは `CoroutineR<R, Y, T>` を満たし、どちらも `Coroutine<T>` を満たします。
   `resume` は型ごとに1つなので、dyn^ の表に多重定義を載せる規則は要りません。
 - f^ 本体のフレームは `Pure` 版も満たします。`Pure` 版は一般版を合成するので、`ref^CoroutineNR<Y, T>` を受ける手続きには
-  p^ 本体と f^ 本体のどちらのフレームも渡せます。`Pure` 版は進める操作を `f^mutable^self^` で宣言し直します
-  （派生型は基底の抽象メソッドを、より少ない効果で宣言し直せます。[design.md](design.md)）。
+  p^ 本体と f^ 本体のどちらのフレームも渡せます。`Pure` 版は進める操作を `override^abstract^` で
+  `f^mutable^self^` に宣言し直します（[design.md](design.md)）。
 - 適合は型引数の照合で決まります。フレームはこれらの型を合成するのではなく、R・Y・T と本体の種別で満たします。
 
 使い方は [dyn.md](dyn.md) の `Shape` と同じです。

@@ -28,8 +28,8 @@ public^def^CoroutineNR<Y, T> : Coroutine<T> {
 
 # The same, of an f^ body: advancing it writes only the frame.
 public^def^PureCoroutineNR<Y, T> : CoroutineNR<Y, T> {
-    abstract^start:f^mutable^self^ -> Y | T;
-    abstract^resume:f^mutable^self^ -> Y | T;
+    override^abstract^start:f^mutable^self^ -> Y | T;
+    override^abstract^resume:f^mutable^self^ -> Y | T;
 }
 
 # A coroutine that receives an R at each yield^: resume hands one in.
@@ -40,6 +40,6 @@ public^def^CoroutineR<R, Y, T> : Coroutine<T> {
 
 # The same, of an f^ body.
 public^def^PureCoroutineR<R, Y, T> : CoroutineR<R, Y, T> {
-    abstract^start:f^mutable^self^ -> Y | T;
-    abstract^resume:f^mutable^self^, value:R -> Y | T;
+    override^abstract^start:f^mutable^self^ -> Y | T;
+    override^abstract^resume:f^mutable^self^, value:R -> Y | T;
 }

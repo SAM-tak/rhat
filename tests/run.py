@@ -1893,6 +1893,17 @@ let^ total = f^ b:ref^Box -> i32^ {
 var^ box = Box{}
 print^(total(ref^box))
 """, "6\n")
+positive("override_abstract_narrows", """
+def^ A { abstract^ go:p^self^ -> i32^; }
+def^ B : A { override^ abstract^ go:f^mutable^self^ -> i32^; }
+def^ C : B { self^{ n:i32^ = 4 } go = f^mutable^self^ -> i32^ { self^.n } }
+var^ c = C{}
+print^(c.go())
+""", "4\n")
+negative("abstract_narrows_without_override", """
+def^ A { abstract^ go:p^self^ -> i32^; }
+def^ B : A { abstract^ go:f^mutable^self^ -> i32^; }
+""", "restating 'go' with fewer effects requires override^")
 negative("procedure_override_of_function", """
 def^ A { abstract^ get:f^self^ -> i32^; }
 def^ B:A { get=p^self^ -> i32^ { return^ 1 } }
