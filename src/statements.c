@@ -1605,6 +1605,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         }
         if (a->self) {
             c.self_roots = roots_union(v->deps, contents);
+            c.self_contents = contents;
         }
         add(&c.vars, v);
     }

@@ -568,11 +568,12 @@ typedef struct {
 } Slot;
 
 struct Instance {
-    bool read_checked;  // This call shape has checked its explicit result-origin contract.
-    bool thread_entry;  // Invoked on an independent shard, never with the parent's state.
-    bool state_shrinks; // This call may shrink a task-owned static flex array.
-    bool uses_state;    // This instance or a reachable callee accesses the task context.
-    bool invalid;       // Partial editor analysis; must never produce executable code.
+    bool read_checked;   // This call shape has checked its explicit result-origin contract.
+    bool thread_entry;   // Invoked on an independent shard, never with the parent's state.
+    bool state_shrinks;  // This call may shrink a task-owned static flex array.
+    bool uses_state;     // This instance or a reachable callee accesses the task context.
+    bool invalid;        // Partial editor analysis; must never produce executable code.
+    bool writes_reached; // A mutable^self^ body writes what its receiver refers to.
     Function *fn;
     Def *self;
     List params, slots, code;

@@ -1831,6 +1831,68 @@ var^ b=B{}
 let^ r:dynamic^A=ref^b
 print^(r.get(), r.bump(), b.get())
 """, "7 8 8\n")
+negative("pure_mutable_self_through_borrowed_field", """
+def^ S {
+    self^{ r:ref^i32^ }
+    bump = f^mutable^self^ { *self^.r += 1 }
+}
+let^ g = f^ x:ref^i32^ -> i32^ {
+    var^ s = S{r = x}
+    s.bump()
+    return^ 0
+}
+var^ n:i32^ = 0
+print^(g(ref^n), n)
+""", "f^ cannot call a mutable^self^ method on a value referring to borrowed storage")
+negative("pure_mutable_self_through_nested_field", """
+def^ S {
+    self^{ r:ref^i32^ }
+    bump = f^mutable^self^ { *self^.r += 1 }
+}
+def^ W {
+    self^{ s:S }
+    go = f^mutable^self^ -> i32^ { self^.s.bump()
+        return^ 0 }
+}
+let^ g = f^ x:ref^i32^ -> i32^ {
+    var^ w = W{s = S{r = x}}
+    let^ k = w.go()
+    return^ 0
+}
+""", "f^ cannot call a mutable^self^ method on a value referring to borrowed storage")
+positive("pure_mutable_self_through_local_field", """
+def^ S {
+    self^{ r:ref^i32^ }
+    bump = f^mutable^self^ { *self^.r += 1 }
+}
+let^ g = f^ -> i32^ {
+    var^ n:i32^ = 0
+    var^ s = S{r = ref^n}
+    s.bump()
+    return^ n
+}
+print^(g())
+""", "1\n")
+positive("pure_cursor_over_borrowed_read", """
+def^ Box { self^{ n:i32^ = 3 } }
+def^ Up {
+    self^{ src:ref^read^Box, left:i32^ = 0 }
+    iter = f^self^ -> Up { *self^ }
+    next = f^mutable^self^ -> i32^ | nil^ {
+        if^ self^.left = self^.src.n { return^ nil^ }
+        self^.left += 1
+        return^ self^.left
+    }
+}
+let^ total = f^ b:ref^Box -> i32^ {
+    var^ s:i32^ = 0
+    let^ u = Up{src = b}
+    for^ x in^ u { s += x }
+    return^ s
+}
+var^ box = Box{}
+print^(total(ref^box))
+""", "6\n")
 negative("procedure_override_of_function", """
 def^ A { abstract^ get:f^self^ -> i32^; }
 def^ B:A { get=p^self^ -> i32^ { return^ 1 } }

@@ -595,6 +595,9 @@ void store_check(Context *c, Value dst, Value src, Loc l)
             !(c->in->fn->mutable_self && roots_has(c->self_roots, owner))) {
             fail(l, "f^ cannot mutate borrowed storage; use p^ or mutable^self^");
         }
+        if (roots_has(c->self_contents, owner)) {
+            c->in->writes_reached = true;
+        }
         for (int j = 0; j < src.deps.n; j++) {
             if (src.deps.v[j]->depth > owner->depth) {
                 fail(l, "reference would outlive its owner (scope %d into scope %d)",
@@ -2847,6 +2850,28 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
     }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
+    // A mutable^self^ method that writes what its receiver refers to (or has no summary yet)
+    // reaches past the receiver: from an f^ those targets have to be its own as well.
+    bool reaches = f->mutable_self && (in->state != 2 || in->writes_reached);
+    for (int j = 0; reaches && j < values.n && j < f->params.n; j++) {
+        Value *v = values.v[j];
+        if (!((Param *)f->params.v[j])->self) {
+            continue;
+        }
+        bool told = v->target.n && roots_equal(roots_union(v->target, v->contents), v->deps);
+        Roots reached = told ? v->contents : roots_inner(v->deps);
+        for (int n = 0; n < reached.n; n++) {
+            Root *owner = reached.v[n];
+            if (roots_has(c->self_contents, owner)) {
+                c->in->writes_reached = true;
+            }
+            if (owner->external && !c->in->fn->procedure &&
+                !(c->in->fn->mutable_self && roots_has(c->self_roots, owner))) {
+                fail(e->loc, "f^ cannot call a mutable^self^ method on a value referring to "
+                             "borrowed storage; use p^");
+            }
+        }
+    }
     if (p->state_fields.n && !f->external) {
         Roots state = state_roots(p);
         if (f->procedure) {

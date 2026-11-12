@@ -127,6 +127,7 @@ typedef struct {
     int depth, lexical;
     bool terminated;
     Roots self_roots;
+    Roots self_contents; // What the receiver refers to, apart from its own storage.
     List default_stack, loops;
     List handlers, pending_owners;
     List pending_disposals; // Parts of literals being built, which nothing else disposes yet.
