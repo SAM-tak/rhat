@@ -608,6 +608,8 @@ struct Instance {
     // A yielding instance: the frame its calls make, what it yields, what it finally returns,
     // and their union, which each start or resume answers.
     Type *frame, *yielded, *final, *turn;
+    Type *received;       // What a resume hands in, which yield^ answers; NULL when nothing is.
+    int received_slot;    // Where the frame keeps it.
     int yield_points;     // Resume points so far, numbered from 1.
     size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
     size_t frame_size, frame_align;

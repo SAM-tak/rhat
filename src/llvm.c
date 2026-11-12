@@ -1934,6 +1934,13 @@ static void instruction(Output *o, Instr *i)
                 "  call void @rh_coroutine_fail(i32 %d, i32 %%t%d, i32 %d)\n  unreachable\n"
                 "frame_ok_%d:\n",
                 ok, id, id, id, kind, tag, i->loc.line, id);
+        if (i->op == I_RESUME && i->args.n) {
+            // Hand the value in where the suspended yield^ reads it.
+            int at = ++o->tmp, handed = load(o, (int)(intptr_t)i->args.v[0] - 1);
+            fprintf(
+                f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n  store %s %%t%d, ptr %%t%d\n",
+                at, a, co->frame_offset[co->received_slot], llvm_type(co->received), handed, at);
+        }
         if (i->op == I_RESUME) {
             int sp = ++o->tmp;
             fprintf(f, "  %%t%d = add i64 %%sp, %d\n  call void @%s(i64 %%t%d", sp, i->stack_index,

@@ -2251,8 +2251,13 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     if (!advance && !done && strcmp(name, "result")) {
         fail(target->loc, "a coroutine frame has start, resume, done and result, not '%s'", name);
     }
-    if (e->args.n) {
-        fail(e->loc, "'%s' takes no arguments", name);
+    // A resume hands in what yield^ receives, if anything does; start and the rest take nothing.
+    bool hands = !strcmp(name, "resume") && co->received;
+    if (e->args.n != (hands ? 1 : 0)) {
+        fail(e->loc,
+             hands ? "this coroutine receives '%s'; resume it with one value"
+                   : "'%s' takes no arguments",
+             hands ? type_name(co->received) : name);
     }
     if (advance) {
         if (co->fn->procedure && !c->in->fn->procedure) {
@@ -2278,11 +2283,22 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     if (t->refs) {
         out.deps = base.deps;
     }
+    Value handed = {.id = -1};
+    if (hands) {
+        handed = construct(c, e->args.v[0], co->received, slot(c, co->received, false));
+        if (c->terminated) {
+            return abrupt(c);
+        }
+        store_check(c, base, handed, e->loc);
+    }
     Instr *i = emit(c, advance ? I_RESUME : done ? I_FRAME_DONE : I_FRAME_RESULT, e->loc);
     i->dst = out.id;
     i->a = ref.id;
     i->type = t;
     i->callee = co;
+    if (hands) {
+        add(&i->args, (void *)(intptr_t)(handed.id + 1));
+    }
     i->label = strcmp(name, "start") != 0;
     if (advance && co->fn->procedure) {
         forget_roots(&c->vars, base.deps, false);
@@ -4199,8 +4215,9 @@ static void suspension_check(Context *c, Loc l)
     }
 }
 
-// yield^ a: put a into the turn this resume answers and suspend at a new resume point.
-static Value yield_point(Context *c, Expr *e)
+// yield^ a: put a into the turn this resume answers and suspend at a new resume point. Where
+// its value is used, it is what the next resume hands in.
+static Value yield_point(Context *c, Expr *e, Type *expected)
 {
     suspension_check(c, e->loc);
     Expr none = {.kind = E_NAME, .text = "nil^", .loc = e->loc};
@@ -4213,7 +4230,16 @@ static Value yield_point(Context *c, Expr *e)
     }
     Instr *i = emit(c, I_YIELD, e->loc);
     i->label = ++c->in->yield_points;
-    return (Value){.id = -1, .type = type_builtin(c->p, T_VOID)};
+    Type *r = c->in->received;
+    if (!r || !expected || expected->kind == T_VOID) {
+        return (Value){.id = -1, .type = type_builtin(c->p, T_VOID)};
+    }
+    Value out = value(c, r);
+    Instr *copy = emit(c, I_COPY, e->loc);
+    copy->dst = out.id;
+    copy->a = c->in->received_slot;
+    copy->type = r;
+    return out;
 }
 
 Value expression(Context *c, Expr *e, Type *expected)
@@ -4330,7 +4356,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         return pack_value(c, e, expected);
     }
     if (e->kind == E_YIELD) {
-        return yield_point(c, e);
+        return yield_point(c, e, expected);
     }
     if (e->kind == E_PANIC) {
         Value v = snapshot(c, expression(c, e->a, NULL), e->loc);

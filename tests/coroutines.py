@@ -170,6 +170,47 @@ let^ run = p^ {
 run()
 ''', 'overload^each(i32^).ReturnType^\n')
 
+    positive('received_values', '''
+let^ acc = p^ {
+    var^ total:i32^ = 0
+    repeat^ while^ total < 10 {
+        var^ step:i32^ = yield^ total
+        total += step
+    }
+    return^ total
+}
+var^ c = acc()
+print^(c.start())
+print^(c.resume(3))
+print^(c.resume(4))
+print^(c.resume(5))
+print^(c.done(), c.result())
+''', '0\n3\n7\n12\ntrue 12\n')
+    negative('resume_needs_the_received_value', '''
+let^ acc = p^ { var^ step:i32^ = yield^ 0 }
+var^ c = acc()
+let^ a = c.start()
+let^ b = c.resume()
+''', "this coroutine receives 'i32^'; resume it with one value")
+    negative('resume_hands_nothing_in', '''
+let^ g = p^ { yield^ 1 }
+var^ c = g()
+let^ a = c.start()
+let^ b = c.resume(2)
+''', "'resume' takes no arguments")
+    negative('received_types_disagree', '''
+let^ g = p^ {
+    var^ a:i32^ = yield^ 0
+    var^ b:i64^ = yield^ 1
+}
+var^ c = g()
+''', "yield^ receives 'i64^' here but 'i32^' at another yield^")
+    negative('start_hands_nothing_in', '''
+let^ acc = p^ { var^ step:i32^ = yield^ 0 }
+var^ c = acc()
+let^ a = c.start(1)
+''', "'start' takes no arguments")
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

@@ -1638,6 +1638,9 @@ static void frame_layout(Instance *in, Loc l)
     for (int k = 0; k < in->params.n; k++) {
         kept[in->result_slot + 1 + k] = true;
     }
+    if (in->received) {
+        kept[in->received_slot] = true;
+    }
     size_t offset = 8, align = 8;
     in->frame_offset = mem((size_t)n * sizeof(size_t));
     for (int k = 0; k < n; k++) {
@@ -1772,6 +1775,9 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
             c.self_contents = contents;
         }
         add(&c.vars, v);
+    }
+    if (frame && in->received) {
+        in->received_slot = slot(&c, in->received, false);
     }
     statements(&c, &f->body, false);
     if (!c.terminated) {

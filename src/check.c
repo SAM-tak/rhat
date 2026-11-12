@@ -524,6 +524,7 @@ typedef struct {
     Expr *return_expr;
     Type *yielded; // What the body's yield^ sites agree on, for a yielding instance.
     Expr *yield_expr;
+    Type *received; // What the yield^ sites that bind a value agree to receive.
     bool value_return;
     int lexical;
     NilFlow flow;
@@ -963,6 +964,9 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         if (base && base->kind == T_FRAME) {
             Instance *co = base->coroutine;
             if (!strcmp(target->text, "start") || !strcmp(target->text, "resume")) {
+                for (int j = 0; j < e->args.n; j++) {
+                    infer_expr(c, e->args.v[j], co->received);
+                }
                 forget_paths(&c->vars);
                 return co->turn;
             }
@@ -1886,7 +1890,16 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
                 c->yield_expr = e->a;
             }
         }
-        return type_builtin(c->p, T_VOID);
+        // What a resume hands in is what the binding receiving it is written to hold.
+        if (!expected || expected->kind == T_VOID) {
+            return type_builtin(c->p, T_VOID);
+        }
+        if (c->received && c->received != expected) {
+            fail(e->loc, "yield^ receives '%s' here but '%s' at another yield^",
+                 type_name(expected), type_name(c->received));
+        }
+        c->received = expected;
+        return expected;
     }
     case E_CHAR:
         return type_builtin(c->p, T_CHAR);
@@ -2647,7 +2660,7 @@ List first_types(Context *c, Stmt *s)
 
 // A yielding instance answers its frame; what it yields, what it finally returns and their
 // union are what a turn of that frame answers. Each may still change while inference runs.
-static bool coroutine_result(Program *p, Instance *in, Type *final, Type *yielded)
+static bool coroutine_result(Program *p, Instance *in, Type *final, Type *yielded, Type *received)
 {
     if (in->fn->result) {
         fail(in->fn->loc, "a yielding function's result is the coroutine it makes; leave it "
@@ -2662,13 +2675,15 @@ static bool coroutine_result(Program *p, Instance *in, Type *final, Type *yielde
     if (!in->frame) {
         in->frame = frame_type(p, in);
     }
-    bool changed = in->result != in->frame || in->final != final || in->yielded != yielded;
+    bool changed = in->result != in->frame || in->final != final || in->yielded != yielded ||
+                   in->received != received;
     if (changed && in->state) {
         fail(in->fn->loc, "return inference changed after code generation");
     }
     in->result = in->frame;
     in->final = final;
     in->yielded = yielded;
+    in->received = received;
     in->turn = final == yielded ? final : type_union(p, yielded, final, in->fn->loc);
     return changed;
 }
@@ -2711,7 +2726,7 @@ static bool infer_instance_result(Program *p, Instance *in)
         result = type_builtin(p, T_VOID);
     }
     if (in->fn->yields) {
-        return coroutine_result(p, in, result, c.yielded);
+        return coroutine_result(p, in, result, c.yielded, c.received);
     }
     Type *contract =
         in->fn->result ? function_result(p, in, in->fn->result) : in->fn->required_result;
