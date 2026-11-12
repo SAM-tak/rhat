@@ -157,7 +157,18 @@ let^ run = p^ {
     print^(typeof^(c.start()).signature^)
 }
 run()
-''', 'f^ i32^ -> frame^ py;\nstring^ | nil^\n')
+''', 'f^ i32^ -> py.ReturnType^;\nstring^ | nil^\n')
+
+    positive('frame_named_by_overload', '''
+let^ each = p^ x {
+    yield^ x
+}
+let^ run = p^ {
+    var^ c = each(3)
+    print^(typeof^(c).signature^)
+}
+run()
+''', 'overload^each(i32^).ReturnType^\n')
 
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1

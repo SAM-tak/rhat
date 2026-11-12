@@ -569,6 +569,31 @@ static char *array_shape_text(Type *t, Type **base)
     return policy;
 }
 
+// A frame is named as its function's result, the way it is written: name.ReturnType^ when the
+// name alone picks the instance, else overload^name(types).ReturnType^.
+static char *frame_name(Instance *in)
+{
+    Function *f = in->fn;
+    char *name = f->owner ? fmt("%s.%s", f->owner->name, f->name) : str(f->name);
+    List *siblings = f->owner ? &f->owner->methods : f->module ? &f->module->functions : NULL;
+    int candidates = 0;
+    for (int j = 0; siblings && j < siblings->n; j++) {
+        candidates += !strcmp(((Function *)siblings->v[j])->name, f->name);
+    }
+    bool written = true;
+    for (int j = 0; j < f->params.n; j++) {
+        written &= ((Param *)f->params.v[j])->spec != NULL;
+    }
+    if (candidates <= 1 && written) {
+        return fmt("%s.ReturnType^", name);
+    }
+    char *types = str("");
+    for (int j = 0; j < f->params.n; j++) {
+        types = fmt("%s%s%s", types, j ? ", " : "", type_name(in->params.v[j]));
+    }
+    return fmt("overload^%s(%s).ReturnType^", name, types);
+}
+
 char *type_name(Type *t)
 {
     if (!t) {
@@ -591,7 +616,7 @@ char *type_name(Type *t)
         return fmt("channel_handle^<%s>", type_name(t->elem));
     }
     if (t->kind == T_FRAME) {
-        return fmt("frame^ %s", t->coroutine->fn->name);
+        return frame_name(t->coroutine);
     }
     if (t->kind == T_FUNCTION) {
         char *name = str(t->procedure ? "p^" : "f^");
