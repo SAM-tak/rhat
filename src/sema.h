@@ -270,6 +270,9 @@ List first_types(Context *c, Stmt *s);
 
 // Find or register a concrete call instance without generating its IR.
 Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at);
+// What a call of the function a SPEC_RETURN names answers: its one declaration, or the arm
+// its argument types select.
+Type *return_type_of(Program *p, Spec *s);
 
 // Shared type, name and flow operations, implemented in sema.c.
 

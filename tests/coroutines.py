@@ -570,6 +570,24 @@ let^ run = p^ {
 run()
 ''', '3\nnil\n7\nx\nnil\n')
 
+    positive('frames_in_fields_and_arrays', '''
+let^ count = p^ n:i32^ {
+    var^ i:i32^ = 0
+    repeat^ while^ i < n { yield^ i i += 1 }
+    return^ "done"
+}
+def^ Pair {self^{a:count.ReturnType^, b:count.ReturnType^}}
+let^ run = p^ {
+    var^ pr = Pair{a=count(2), b=count(3)}
+    for^ v in^ pr.a { print^(v) }
+    print^(pr.a.result())
+    var^ arr = count.ReturnType^[max^4]{}
+    arr.push(count(1))
+    for^ v in^ arr[0] { print^(v) }
+}
+run()
+''', '0\n1\ndone\n0\n')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

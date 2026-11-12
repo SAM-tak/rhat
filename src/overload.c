@@ -416,6 +416,89 @@ Type *callable_contract(Type *type, List *actual)
     return type;
 }
 
+Type *return_type_of(Program *p, Spec *s)
+{
+    // name.ReturnType^ names a function of a module, or Type.method a method of a def^.
+    Def *owner = NULL;
+    const char *name = s->name;
+    List candidates = {0};
+    for (int j = 0; j < p->functions.n; j++) {
+        Function *f = p->functions.v[j];
+        if (!strcmp(f->name, name)) {
+            add(&candidates, f);
+        }
+    }
+    const char *dot = strrchr(name, '.');
+    if (!candidates.n && dot) {
+        char *prefix = str(name);
+        prefix[dot - name] = 0;
+        owner = lookup_def(p, prefix);
+        if (owner) {
+            compose(p, owner);
+            name = dot + 1;
+            for (int j = 0; j < owner->methods.n; j++) {
+                Function *f = owner->methods.v[j];
+                if (!strcmp(f->name, name)) {
+                    add(&candidates, f);
+                }
+            }
+        }
+    }
+    if (!candidates.n) {
+        fail(s->loc, "'%s' names no function for ReturnType^", s->name);
+    }
+    // The receiver of a method is a reference to the def^, written or not.
+    List actual = {0};
+    Function *f = NULL;
+    if (s->count) {
+        if (owner) {
+            add(&actual, type_wrap(p, T_REF, owner->type, 0));
+        }
+        for (int j = 0; j < s->params.n; j++) {
+            add(&actual, type_spec(p, s->params.v[j]));
+        }
+        f = overload_select(p, &candidates, &actual, NULL, 0, NULL, s->loc, true);
+    }
+    else {
+        if (candidates.n != 1) {
+            fail(s->loc, "'%s' is overloaded; write overload^%s(types).ReturnType^", s->name,
+                 s->name);
+        }
+        f = candidates.v[0];
+        for (int j = 0; j < f->params.n; j++) {
+            Param *param = f->params.v[j];
+            if (param->self) {
+                add(&actual, type_wrap(p, T_REF, owner ? owner->type : NULL, 0));
+                continue;
+            }
+            if (!param->spec) {
+                fail(s->loc,
+                     "'%s' has a parameter without a type; write overload^%s(types).ReturnType^",
+                     s->name, s->name);
+            }
+            add(&actual, type_spec(p, param->spec));
+        }
+    }
+    // Its result may wait on the type being resolved here: a cycle, refused.
+    for (int j = 0; j < p->under_way.n; j++) {
+        if (p->under_way.v[j] == s) {
+            fail(s->loc, "'%s.ReturnType^' depends on itself", s->name);
+        }
+    }
+    int depth = p->under_way.n;
+    add(&p->under_way, s);
+    Instance *in = instance_for(p, f, owner, &actual, s->loc);
+    infer_results(p);
+    p->under_way.n = depth;
+    if (!in->result) {
+        fail(s->loc, "the result of '%s' cannot be inferred here", s->name);
+    }
+    if (in->result->kind == T_VOID) {
+        fail(s->loc, "'%s' returns nothing; it has no ReturnType^", s->name);
+    }
+    return in->result;
+}
+
 List overload_candidates(Program *p, Def *owner, const char *name, int arity)
 {
     List found = {0};

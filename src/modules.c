@@ -571,6 +571,21 @@ static void resolve_spec_unchecked(Module *m, Spec *s)
     if (s->kind == SPEC_TYPEOF) {
         return; // The operand is resolved with the enclosing expression's locals.
     }
+    if (s->kind == SPEC_RETURN) {
+        for (int j = 0; j < s->params.n; j++) {
+            resolve_spec(m, s->params.v[j]);
+        }
+        char *resolved = resolve(m, s->name, s->loc, NULL);
+        char *dot = strrchr(s->name, '.');
+        if (resolved == s->name && dot) {
+            // Type.method: resolve the type, keep the method name.
+            char *owner = str(s->name);
+            owner[dot - s->name] = 0;
+            resolved = fmt("%s.%s", resolve(m, owner, s->loc, NULL), dot + 1);
+        }
+        s->name = resolved;
+        return;
+    }
     if (inferred_length(s)) {
         if (s->kind != SPEC_ARRAY) {
             fail(s->length->loc, "_^ is only allowed for fixed array lengths");

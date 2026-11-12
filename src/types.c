@@ -366,6 +366,9 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (s->kind == SPEC_TYPEOF) {
         fail(s->loc, "typeof^ types are allowed only in annotations inside a function body");
     }
+    if (s->kind == SPEC_RETURN) {
+        return return_type_of(p, s);
+    }
     if (s->kind == SPEC_NAME && !strncmp(s->name, "range^", 6)) {
         return type_range(p, s->type_args.n ? type_spec(p, s->type_args.v[0]) : NULL, s->loc);
     }
@@ -1371,6 +1374,10 @@ static void layout_unchecked(Type *t, Loc l)
         // The frame is laid out once its instance has been lowered; until then it has no size.
         if (t->coroutine->state == 1) {
             fail(l, "coroutine '%s' cannot hold a frame of itself", t->coroutine->fn->name);
+        }
+        if (t->coroutine->state == 0) {
+            Instance *in = t->coroutine;
+            instantiate(in->fn->module->program, in->fn, in->self, &in->params, l);
         }
         t->size = t->coroutine->frame_size;
         t->align = t->coroutine->frame_align;

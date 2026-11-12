@@ -206,6 +206,32 @@ print^(of("abc"),of(true^),of(1),of(i64^(1)),of(K{}))
 show("abc") show(1)
 ''', 'abc yes int int K\ntext 3\nother i32^\n')
 
+    positive('return_type_annotations', '''
+let^parse=f^ s:string^ {
+    if^ s = "" { return^ nil^ }
+    return^ 5
+}
+let^show=p^ v:parse.ReturnType^ { if^ v fits^ i32^ { print^(v) el^: print^("nil") } }
+def^ Holder {self^{v:parse.ReturnType^}}
+let^twice=f^ s:string^ ->parse.ReturnType^ { parse(s) }
+let^g:parse.ReturnType^=parse("x")
+def^ Node {self^{n:i32^=2} get=f^ self^ {self^.n * 2}}
+let^h=Holder{v=parse("")}
+print^(typeof^(h.v).signature^)
+show(twice("a")) show(g) show(h.v)
+let^m:Node.get.ReturnType^=Node{}.get()
+print^(m)
+''', 'i32^ | nil^\n5\n5\nnil\n4\n')
+
+    positive('return_type_selected', '''
+let^a=f^ x:i32^ ->i32^ {x}
+overload^a=f^ x:string^ ->string^ {x}
+let^id=f^ x {x}
+let^v:overload^a(string^).ReturnType^="s"
+let^w:overload^id(f64^).ReturnType^=1.5
+print^(v, w, id(2))
+''', 's 1.5 2\n')
+
     cases = [
         ('local_type_scope', 'let^g=f^ ->i32^ {\n    do^{ let^t=i32^ }\n    var^v:t=3\n    return^ v\n}\nprint^(g())', "unknown type 't'"),
         ('local_type_var', 'var^x=1\nvar^t=typeof^ x', "'typeof^' names a type"),
@@ -228,6 +254,19 @@ show("abc") show(1)
         ('typeof_field', 'def^ B {self^{n:typeof^(1)=0}}', 'inside a function body'),
         ('typeof_annotation_mismatch', 'let^x=1 var^y:typeof^(x)="s"', "expected 'i32^'"),
         ('typeof_compare_value', 'let^x=1 print^(typeof^(x)=x)', 'needs a type on both sides'),
+        ('return_type_overloaded',
+         'let^a=f^ x:i32^ ->i32^ {x} overload^a=f^ x:string^ ->string^ {x} let^v:a.ReturnType^=1',
+         "'a' is overloaded; write overload^a(types).ReturnType^"),
+        ('return_type_untyped', 'let^id=f^ x {x} let^v:id.ReturnType^=1 print^(id(1))',
+         "'id' has a parameter without a type; write overload^id(types).ReturnType^"),
+        ('return_type_no_arm', 'let^a=f^ x:i32^ ->i32^ {x} let^v:overload^a(string^).ReturnType^=1',
+         "no matching overload for 'a'"),
+        ('return_type_void', 'let^n=p^ {print^(1)} let^v:n.ReturnType^=1',
+         "'n' returns nothing; it has no ReturnType^"),
+        ('return_type_missing', 'let^v:missing.ReturnType^=1',
+         "'missing' names no function for ReturnType^"),
+        ('return_type_cycle', 'def^ Node {self^{v:make.ReturnType^}} let^make=f^ -> Node { Node{} }',
+         "cyclic def^ composition at 'Node'"),
     ]
     for name, text, diagnostic in cases:
         negative(name, text, diagnostic)

@@ -106,7 +106,9 @@ enum {
     SPEC_INTERSECTION, // A value satisfying every callable signature.
     SPEC_DYN,          // dyn^ D, valid only as ref^ dyn^ D.
     SPEC_TUPLE,        // -> (A, B): multiple results, params holding each.
-    SPEC_TYPEOF        // typeof^ e: the static type of operand in each specialization.
+    SPEC_TYPEOF,       // typeof^ e: the static type of operand in each specialization.
+    SPEC_RETURN        // name.ReturnType^, or with count 1 overload^name(params).ReturnType^:
+                       // what a call of that function answers.
 };
 
 enum {
@@ -422,6 +424,7 @@ struct Program {
     Function *entry;
     List transfer_types;    // Validated types needing internal thread transfer descriptors.
     int inferred_instances; // Instance count at the last return-inference fixed point.
+    List under_way; // Instances being inferred and ReturnType^ types being resolved: reentry.
     int stack_count;
     bool callbacks;       // Some exportC^ function may be entered from C.
     bool crt_dll;         // --crt-dll: build and link against the C runtime DLL.

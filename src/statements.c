@@ -1693,7 +1693,9 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
              "explicit result type",
              f->name);
     }
-    layout(in->result, f->loc);
+    if (!f->yields) {
+        layout(in->result, f->loc); // A frame is laid out once its body is lowered.
+    }
     if (argument_pack(in->result)) {
         fail(f->loc, "argument packs cannot be returned");
     }

@@ -1513,6 +1513,19 @@ static Spec *typeof_spec(Parser *p, Loc loc)
     return s;
 }
 
+// A name ending in .ReturnType^ names what a call of the function before it answers.
+static bool return_type_name(Spec *s)
+{
+    size_t n = strlen(s->name);
+    if (n <= 12 || strcmp(s->name + n - 12, ".ReturnType^")) {
+        return false;
+    }
+    s->kind = SPEC_RETURN;
+    s->name = str(s->name);
+    s->name[n - 12] = 0;
+    return true;
+}
+
 // One nominal or parenthesized type, before any array suffix. dynamic^ binds
 // here, whereas ref^ continues to consume the complete following type.
 static Spec *spec_atom(Parser *p)
@@ -1521,6 +1534,22 @@ static Spec *spec_atom(Parser *p)
     s->loc = tok(p)->loc;
     if (take(p, "typeof^")) {
         return typeof_spec(p, s->loc);
+    }
+    if (take(p, "overload^")) {
+        // overload^name(types).ReturnType^: the arm those argument types select.
+        s->kind = SPEC_RETURN;
+        s->count = 1;
+        s->name = qualified_word(p);
+        need(p, "(");
+        if (!is(p, ")")) {
+            do {
+                add(&s->params, spec(p));
+            } while (take(p, ","));
+        }
+        need(p, ")");
+        need(p, ".");
+        need(p, "ReturnType^");
+        return s;
     }
     if (take(p, "(")) {
         s = spec(p);
@@ -1541,6 +1570,9 @@ static Spec *spec_atom(Parser *p)
         }
         else {
             s->name = qualified_word(p);
+            if (return_type_name(s)) {
+                return s;
+            }
             if (type_parameter(p, s->name)) {
                 s->parameter_owner = p->type_owner;
             }
@@ -1689,6 +1721,9 @@ static Spec *array_element_spec(Parser *p, Expr *e)
     s->name = expression_path(e);
     if (!s->name) {
         fail(e->loc, "an array constructor needs an element type");
+    }
+    if (return_type_name(s)) {
+        return s;
     }
     int depth = self_type_depth(s->name);
     if (depth) {

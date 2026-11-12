@@ -2824,12 +2824,24 @@ void infer_results(Program *p)
     }
     // At a fixed point, all dependencies of these instances already exist.
     // New call shapes cannot change their immutable parameter/result graph.
+    // A ReturnType^ annotation infers again from inside an instance's inference; the
+    // instances already under way finish in the outer pass.
+    List *busy = &p->under_way;
     int first = p->inferred_instances;
     for (int round = 0; round < 1024; round++) {
         bool changed = false;
         int count = p->instances.n;
         for (int j = first; j < p->instances.n; j++) {
             Instance *in = p->instances.v[j];
+            bool under_way = false;
+            for (int k = 0; k < busy->n; k++) {
+                under_way |= busy->v[k] == in;
+            }
+            if (under_way) {
+                continue;
+            }
+            int depth = busy->n;
+            add(busy, in);
             ToolRecovery recovery;
             tool_enter(&recovery);
             recovery.instance = in;
@@ -2837,6 +2849,7 @@ void infer_results(Program *p)
                 changed |= infer_instance_result(p, in);
             }
             tool_leave(&recovery);
+            busy->n = depth;
         }
         if (count != p->instances.n) {
             changed = true;
