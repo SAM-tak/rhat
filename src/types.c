@@ -965,6 +965,12 @@ static bool same_origins(Function *a, Spec *x, Function *b, Spec *y)
     return true;
 }
 
+/// Orders what a method may do: f^ < f^mutable^self^ < p^.
+static int effect_rank(const Function *f)
+{
+    return f->procedure ? 2 : f->mutable_self ? 1 : 0;
+}
+
 static void compatible(Program *p, Function *a, Function *b)
 {
     Type *ar = a->result ? type_spec(p, a->result) : a->required_result;
@@ -975,8 +981,11 @@ static void compatible(Program *p, Function *a, Function *b)
     if (b->abstract && !br) {
         br = type_builtin(p, T_VOID);
     }
-    if (a->params.n != b->params.n || a->procedure != b->procedure ||
-        a->mutable_self != b->mutable_self || a->templ != b->templ || (ar && br && ar != br) ||
+    // An implementation may promise fewer effects than the contract it fills, never more.
+    // Two abstract contracts merge only when they promise the same.
+    int effects = effect_rank(b) - effect_rank(a);
+    if (a->params.n != b->params.n || effects > 0 || (b->abstract && effects != 0) ||
+        a->templ != b->templ || (ar && br && ar != br) ||
         !same_origins(a, a->result, b, b->result)) {
         fail(b->loc, "override of '%s' changes its contract", a->name);
     }

@@ -1817,6 +1817,28 @@ def^ A { abstract^ foo:f^self^ -> i32^; }
 def^ B:A { foo=f^self^ -> i64^ { return^ 1 } }
 
 """, "changes its contract")
+positive("pure_override_of_procedure", """
+def^ A {
+    abstract^ get:p^self^ -> i32^;
+    bump = p^self^ -> i32^ { return^ 0 }
+}
+def^ B:A {
+    self^{ n:i32^=7 }
+    get=f^self^ -> i32^ { return^ self^.n }
+    override^ bump=f^mutable^self^ -> i32^ { self^.n += 1  return^ self^.n }
+}
+var^ b=B{}
+let^ r:dynamic^A=ref^b
+print^(r.get(), r.bump(), b.get())
+""", "7 8 8\n")
+negative("procedure_override_of_function", """
+def^ A { abstract^ get:f^self^ -> i32^; }
+def^ B:A { get=p^self^ -> i32^ { return^ 1 } }
+""", "changes its contract")
+negative("mutable_override_of_function", """
+def^ A { abstract^ get:f^self^ -> i32^; }
+def^ B:A { self^{ n:i32^=0 } get=f^mutable^self^ -> i32^ { return^ self^.n } }
+""", "changes its contract")
 negative("composition_cycle", 'def^ A:B {} def^ B:A {}\n', "cyclic def^ composition")
 negative("layout_cycle", 'def^ A { self^{ a:A } }\n', "recursive by-value layout")
 negative("duplicate_field", 'def^ A { self^{ a:i32^=1,a:i32^=2 } }\n', "duplicate field")
