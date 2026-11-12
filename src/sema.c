@@ -1432,6 +1432,18 @@ void dispose_value(Context *c, Value v, Loc l)
     if (!c->in->fn->procedure) {
         fail(l, "'%s' needs p^: disposing it calls dispose()", type_name(t));
     }
+    if (t->kind == T_FRAME) {
+        Value ref = value(c, type_wrap(c->p, T_REF, t, 0));
+        Instr *address = emit(c, I_ADDR, l);
+        address->dst = ref.id;
+        address->a = v.id;
+        address->type = ref.type;
+        Instr *drop = emit(c, I_FRAME_DISPOSE, l);
+        drop->a = ref.id;
+        drop->callee = t->coroutine;
+        drop->dst = -1;
+        return;
+    }
     if (t->kind == T_CHANNEL) {
         Instr *drop = emit(c, I_THREAD, l);
         drop->dst = -1;
@@ -4273,6 +4285,26 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
     return out;
 }
 
+// Suspend at a new resume point. A frame dropped while suspended there enters at its dispose
+// point instead, which disposes what is live and finishes the frame.
+static void suspend(Context *c, Loc l)
+{
+    int point = ++c->in->yield_points;
+    Instr *i = emit(c, I_YIELD, l);
+    i->label = point;
+    bool live = c->pending_disposals.n > 0;
+    for (int j = 0; j < c->vars.n && !live; j++) {
+        live = ((Var *)c->vars.v[j])->dispose;
+    }
+    if (live) {
+        add(&c->in->dispose_points, (void *)(intptr_t)point);
+        emit(c, I_DISPOSE_POINT, l)->label = point;
+        dispose_all(c, 0, 0, l);
+        emit(c, I_RETURN, l)->type = c->in->result;
+    }
+    emit(c, I_RESUME_POINT, l)->label = point;
+}
+
 // yield^ ends one activation of a coroutine: nothing of the body's own data stacks, nothing
 // it is still building and no reference into its own locals may be left to the next resume.
 static void suspension_check(Context *c, Loc l)
@@ -4290,9 +4322,6 @@ static void suspension_check(Context *c, Loc l)
                  "'%s' owns data stack storage, which cannot live across yield^; end its "
                  "scope first or borrow storage owned by the caller",
                  v->name);
-        }
-        if (v->type->disposable) {
-            fail(l, "Disposable '%s' cannot live across yield^ yet", v->name);
         }
         if (((Slot *)c->in->slots.v[v->slot])->alias) {
             fail(l, "reference binding '%s' cannot live across yield^ yet", v->name);
@@ -4321,8 +4350,7 @@ static Value yield_point(Context *c, Expr *e)
     if (v.type->owned) {
         fail(e->loc, "yield^ cannot hand out an owned value");
     }
-    Instr *i = emit(c, I_YIELD, e->loc);
-    i->label = ++c->in->yield_points;
+    suspend(c, e->loc);
     Type *r = c->in->received;
     if (!r) {
         return (Value){.id = -1, .type = type_builtin(c->p, T_VOID)};
@@ -4392,6 +4420,10 @@ static Value await_point(Context *c, Expr *e)
                  "that reference across a suspension");
         }
     }
+    int disposals = c->pending_disposals.n;
+    if (holder.type->kind != T_REF && !holder.var) {
+        dispose_pending(c, holder);
+    }
     Value turn = value(c, co->turn);
     int ref = frame_reference(c, holder, e->loc);
     Instr *start = emit(c, I_RESUME, e->loc);
@@ -4415,8 +4447,7 @@ static Value await_point(Context *c, Expr *e)
     suspension_check(c, e->loc);
     convert_value(c, turn_part(c, turn, co->yielded, e->loc), c->in->result, c->in->result_slot,
                   e->loc);
-    Instr *suspend = emit(c, I_YIELD, e->loc);
-    suspend->label = ++c->in->yield_points;
+    suspend(c, e->loc);
     ref = frame_reference(c, holder, e->loc);
     Instr *again = emit(c, I_RESUME, e->loc);
     again->dst = turn.id;
@@ -4429,6 +4460,7 @@ static Value await_point(Context *c, Expr *e)
     }
     nil_jump(c, top, e->loc);
     nil_label(c, end, e->loc);
+    c->pending_disposals.n = disposals;
     Value result = turn_part(c, turn, co->final, e->loc);
     Value out = value(c, co->final);
     Instr *copy = emit(c, I_COPY, e->loc);

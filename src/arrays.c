@@ -45,7 +45,9 @@ static bool dyn_shrinks(Instr *i)
 static bool shrinks(Instr *i)
 {
     return ((i->op == I_POP || i->op == I_CLEAR || i->op == I_TRUNCATE) && !i->type->count) ||
-           ((i->op == I_CALL || i->op == I_RESUME) && i->callee->may_shrink) || dyn_shrinks(i);
+           ((i->op == I_CALL || i->op == I_RESUME || i->op == I_FRAME_DISPOSE) &&
+            i->callee->may_shrink) ||
+           dyn_shrinks(i);
 }
 
 void analyze_array_growth(Program *p)

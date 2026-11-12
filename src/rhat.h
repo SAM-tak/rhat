@@ -523,31 +523,35 @@ enum {
     I_STACK_SAVE,   // Save the caller-owned result stack frontier.
     I_STACK_REWIND, // Restore a result construction checkpoint after an error.
     I_RANGE_GUARD,
-    I_TERMINATE,   // Exit with the string in slot a; label 1 marks panic^.
-    I_DYN,         // Pair reference a with method table label.
-    I_DYNCALL,     // Call method table entry label through args[0].
-    I_DYNIS,       // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
-    I_DYNCAST,     // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
-    I_DYNDATA,     // The data reference of dyn^ a, proven to be type.
-    I_CASE_AT,     // Place dst at union a's payload for alternative label; b also sets the tag.
-    I_CHAR,        // dst (i64^) = the scalar a holds, or -1: a is the one character of a
-                   // string^, or else an i64^ to check.
-    I_HELPER,      // dst (i64^, or none when -1) = runtime function text applied to args: a
-                   // string^ or slice passes its data and length, an i64^ itself, and the
-                   // source line goes last.
-    I_SITE,        // dst = the static record of where an error is built: its source, line,
-                   // column and message; text is the source (length bytes), a NUL, the message.
-    I_STATE_REF,   // Alias dst to context member label.
-    I_STATE_BIND,  // Publish entry-owned slot a as context member label.
-    I_THREAD,      // Typed channel transfer or thread ABI bridge; label selects operation.
-    I_FILL,        // Fill owning array dst with a copies of element b during construction,
-                   // or with b < 0 reserve a elements of capacity for a T[max^].
-    I_YIELD,       // Suspend at resume point label, the turn already in the result slot.
-    I_FRAME,       // Make callee's frame in dst from args, not yet started.
-    I_RESUME,      // Run frame reference a to its next yield^ or end: label 0 starts, 1 resumes,
-                   // 2 does whichever its state calls for; dst receives the turn.
-    I_FRAME_DONE,  // dst = whether frame reference a has finished.
-    I_FRAME_RESULT // dst = the final result of finished frame reference a.
+    I_TERMINATE,     // Exit with the string in slot a; label 1 marks panic^.
+    I_DYN,           // Pair reference a with method table label.
+    I_DYNCALL,       // Call method table entry label through args[0].
+    I_DYNIS,         // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
+    I_DYNCAST,       // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
+    I_DYNDATA,       // The data reference of dyn^ a, proven to be type.
+    I_CASE_AT,       // Place dst at union a's payload for alternative label; b also sets the tag.
+    I_CHAR,          // dst (i64^) = the scalar a holds, or -1: a is the one character of a
+                     // string^, or else an i64^ to check.
+    I_HELPER,        // dst (i64^, or none when -1) = runtime function text applied to args: a
+                     // string^ or slice passes its data and length, an i64^ itself, and the
+                     // source line goes last.
+    I_SITE,          // dst = the static record of where an error is built: its source, line,
+                     // column and message; text is the source (length bytes), a NUL, the message.
+    I_STATE_REF,     // Alias dst to context member label.
+    I_STATE_BIND,    // Publish entry-owned slot a as context member label.
+    I_THREAD,        // Typed channel transfer or thread ABI bridge; label selects operation.
+    I_FILL,          // Fill owning array dst with a copies of element b during construction,
+                     // or with b < 0 reserve a elements of capacity for a T[max^].
+    I_YIELD,         // Suspend at resume point label, the turn already in the result slot.
+    I_FRAME,         // Make callee's frame in dst from args, not yet started.
+    I_RESUME,        // Run frame reference a to its next yield^ or end: label 0 starts, 1 resumes,
+                     // 2 does whichever its state calls for; dst receives the turn.
+    I_FRAME_DONE,    // dst = whether frame reference a has finished.
+    I_FRAME_RESULT,  // dst = the final result of finished frame reference a.
+    I_DISPOSE_POINT, // Entry, for a frame dropped while suspended at label, that disposes what
+                     // is live there and finishes it.
+    I_RESUME_POINT,  // Where a frame suspended at label continues.
+    I_FRAME_DISPOSE  // Dispose frame reference a: finish it where it is suspended, if it is.
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };
@@ -622,6 +626,7 @@ struct Instance {
     int received_slot;    // Where the frame keeps it.
     Def *frame_def;       // The def its frames stand in for in dyn^ tables, once needed.
     int yield_points;     // Resume points so far, numbered from 1.
+    List dispose_points;  // Resume points with something to dispose, as intptr_t labels.
     size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
     size_t frame_size, frame_align;
 };

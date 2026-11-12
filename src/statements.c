@@ -1550,7 +1550,8 @@ static bool overwrites(Instr *i)
 static bool reads_slot(Instance *in, Instr *i, int s)
 {
     // Control operations hold block labels and resume points there, never slots.
-    bool control = i->op == I_BR || i->op == I_CBR || i->op == I_LABEL || i->op == I_YIELD;
+    bool control = i->op == I_BR || i->op == I_CBR || i->op == I_LABEL || i->op == I_YIELD ||
+                   i->op == I_DISPOSE_POINT || i->op == I_RESUME_POINT;
     if ((!overwrites(i) && names_slot(in, i->dst, s)) || names_slot(in, i->a, s) ||
         names_slot(in, i->b, s) ||
         (!control && (names_slot(in, i->other, s) || names_slot(in, i->label, s)))) {
@@ -1597,6 +1598,13 @@ static bool live_at(Instance *in, int *labels, int k, int s, bool *seen)
         if (i->op == I_CBR) {
             add(&queue, (void *)(intptr_t)labels[i->other]);
         }
+        for (int j = at + 1; i->op == I_YIELD && j < in->code.n; j++) {
+            Instr *point = in->code.v[j];
+            if (point->op == I_RESUME_POINT && point->label == i->label) {
+                add(&queue, (void *)(intptr_t)j);
+                break;
+            }
+        }
         if (falls(i)) {
             add(&queue, (void *)(intptr_t)(at + 1));
         }
@@ -1631,7 +1639,7 @@ static void frame_layout(Instance *in, Loc l)
             continue;
         }
         for (int s = 0; s < n; s++) {
-            if (!kept[s] && live_at(in, labels, k + 1, s, seen)) {
+            if (!kept[s] && live_at(in, labels, k, s, seen)) {
                 if (((Slot *)in->slots.v[s])->alias) {
                     fail(yield->loc, "a reference place cannot live across yield^ yet");
                 }
@@ -1810,6 +1818,7 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         frame_layout(in, f->loc);
         in->result = frame;
         layout(frame, f->loc);
+        frame->disposable = in->dispose_points.n > 0;
     }
     return in;
 }

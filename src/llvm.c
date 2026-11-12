@@ -1894,8 +1894,34 @@ static void instruction(Output *o, Instr *i)
         fprintf(f, "  br i1 %%t%d, label %%block%d, label %%block%d\n", a, i->label, i->other);
         break;
     case I_YIELD:
-        fprintf(f, "  store i32 %d, ptr %%frame\n  ret void\nrh.resume%d:\n", i->label, i->label);
+        fprintf(f, "  store i32 %d, ptr %%frame\n  ret void\n", i->label);
         break;
+    case I_DISPOSE_POINT:
+        fprintf(f, "rh.dispose%d:\n", i->label);
+        break;
+    case I_RESUME_POINT:
+        fprintf(f, "rh.resume%d:\n", i->label);
+        break;
+    case I_FRAME_DISPOSE: {
+        // A suspended frame enters its resume function asking to be disposed; one not started
+        // or already finished holds nothing to dispose.
+        Instance *co = i->callee;
+        a = load(o, i->a);
+        int tag = ++o->tmp, suspended = ++o->tmp, id = ++o->tmp, asked = ++o->tmp, sp = ++o->tmp;
+        fprintf(
+            f,
+            "  %%t%d = load i32, ptr %%t%d\n  %%t%d = icmp sgt i32 %%t%d, 0\n"
+            "  br i1 %%t%d, label %%dispose_frame_%d, label %%dispose_done_%d\n"
+            "dispose_frame_%d:\n  %%t%d = or i32 %%t%d, 1073741824\n"
+            "  store i32 %%t%d, ptr %%t%d\n  %%t%d = add i64 %%sp, %d\n  call void @%s(i64 %%t%d",
+            tag, a, suspended, tag, suspended, id, id, id, asked, tag, asked, a, sp, i->stack_index,
+            co->symbol, sp);
+        if (o->p->state_fields.n) {
+            fputs(", ptr %context", f);
+        }
+        fprintf(f, ", ptr %%t%d)\n  br label %%dispose_done_%d\ndispose_done_%d:\n", a, id, id);
+        break;
+    }
     case I_FRAME: {
         // A frame not yet started: the tag 0 and the arguments in their parameter slots.
         Instance *co = i->callee;
@@ -1991,7 +2017,8 @@ void emit_llvm(Program *p, const char *path)
             }
             for (int k = 0; k < in->code.n; k++) {
                 Instr *i = in->code.v[k];
-                if ((i->op == I_CALL || i->op == I_RESUME || (i->op == I_THREAD && i->callee)) &&
+                if ((i->op == I_CALL || i->op == I_RESUME || i->op == I_FRAME_DISPOSE ||
+                     (i->op == I_THREAD && i->callee)) &&
                     !i->callee->emitted) {
                     i->callee->emitted = true;
                     changed = true;
@@ -2259,6 +2286,10 @@ void emit_llvm(Program *p, const char *path)
             for (int k = 1; k <= in->yield_points; k++) {
                 fprintf(f, " i32 %d, label %%rh.resume%d", k, k);
             }
+            for (int k = 0; k < in->dispose_points.n; k++) {
+                int point = (int)(intptr_t)in->dispose_points.v[k];
+                fprintf(f, " i32 %d, label %%rh.dispose%d", point | 0x40000000, point);
+            }
             fputs("]\nrh.finished:\n  unreachable\nrh.start:\n", f);
         }
         for (int k = 0; k < in->code.n; k++) {
@@ -2370,7 +2401,10 @@ void dump_ir(Program *p, const char *path)
                            "frame.make",
                            "frame.resume",
                            "frame.done",
-                           "frame.result"};
+                           "frame.result",
+                           "frame.dispose_point",
+                           "frame.resume_point",
+                           "frame.dispose"};
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size, d->type->align,

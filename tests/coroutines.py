@@ -426,6 +426,67 @@ let^ acc = p^ { var^ step:i32^ = yield^ 0 }
 for^ x in^ acc() { print^(x) }
 ''', "for^ cannot hand values in to a coroutine that receives 'i32^'")
 
+    res = '''import^std.sys
+def^ Res : std.sys.Disposable {
+    self^{ name:i32^ = 0 }
+    dispose = p^self^ { print^("dispose", self^.name) }
+}
+'''
+    positive('dispose_what_is_live_where_dropped', res + '''
+let^ g = p^ {
+    var^ a = Res{name = 1}
+    yield^ 10
+    do^{
+        var^ b = Res{name = 2}
+        yield^ 20
+    }
+    yield^ 30
+}
+let^ run = p^ n:i32^ {
+    var^ c = g()
+    var^ v = c.start()
+    var^ k:i32^ = 1
+    repeat^ while^ k < n {
+        v := c.resume()
+        k += 1
+    }
+    if^ v fits^ i32^ { print^("drop at", v) el^: print^("drop at end") }
+}
+run(1)
+run(2)
+run(3)
+run(4)
+''', 'drop at 10\ndispose 1\ndrop at 20\ndispose 2\ndispose 1\ndispose 2\ndrop at 30\ndispose 1\n'
+       'dispose 2\ndispose 1\ndrop at end\n')
+    negative('disposable_frame_cannot_be_copied', res + '''
+let^ g = p^ {
+    var^ a = Res{name = 1}
+    yield^ 10
+}
+let^ run = p^ {
+    var^ c = g()
+    let^ v = c.start()
+    var^ copy = c
+}
+run()
+''', 'Disposable')
+    positive('dispose_frame_awaited_when_dropped', res + '''
+let^ inner = p^ {
+    var^ a = Res{name = 7}
+    yield^ 1
+    yield^ 2
+}
+let^ outer = p^ {
+    await^ inner()
+}
+let^ run = p^ {
+    var^ c = outer()
+    let^ v = c.start()
+    print^("drop")
+}
+run()
+''', 'drop\ndispose 7\n')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

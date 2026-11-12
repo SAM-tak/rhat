@@ -92,7 +92,8 @@ static void local_plan(Instance *in)
             }
             state.n--;
         }
-        else if (i->op == I_CALL || i->op == I_DYNCALL || i->op == I_RESUME) {
+        else if (i->op == I_CALL || i->op == I_DYNCALL || i->op == I_RESUME ||
+                 i->op == I_FRAME_DISPOSE) {
             i->stack_index = offset;
             if (state.n) {
                 for (int j = 0; j < n; j++) {
@@ -140,7 +141,7 @@ static void local_plan(Instance *in)
 static List callees(Instr *i)
 {
     List out = {0};
-    if (i->op == I_CALL || i->op == I_RESUME) {
+    if (i->op == I_CALL || i->op == I_RESUME || i->op == I_FRAME_DISPOSE) {
         add(&out, i->callee);
     }
     else if (i->op == I_DYNCALL) {
