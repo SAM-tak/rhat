@@ -534,6 +534,42 @@ let^ v = c.start()
         assert 'warning:' not in quiet.stderr, quiet.stderr
     suite.case('large_frame_warns', large_frame_warns)
 
+    positive('union_parts_of_the_turn', '''
+let^ show = p^ v:i32^ | nil^ { if^ v fits^ i32^ { print^(v) el^: print^("nil") } }
+let^ g = p^ n:i32^ {
+    yield^ "a"
+    if^ n > 0 { return^ n }
+    return^ nil^
+}
+let^ outer = p^ n:i32^ {
+    let^ r = await^ g(n)
+    show(r)
+    return^ 0
+}
+let^ h = p^ {
+    yield^ "x"
+    yield^ nil^
+    return^ 5
+}
+let^ run = p^ {
+    var^ c = g(3)
+    let^ a = c.start()
+    let^ b = c.resume()
+    show(c.result())
+    var^ d = g(0)
+    let^ x = d.start()
+    let^ y = d.resume()
+    show(d.result())
+    var^ o = outer(7)
+    let^ s = o.start()
+    let^ t = o.resume()
+    for^ v in^ h() {
+        if^ v fits^ string^ { print^(v) el^: print^("nil") }
+    }
+}
+run()
+''', '3\nnil\n7\nx\nnil\n')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

@@ -2314,6 +2314,45 @@ static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
     return result;
 }
 
+// The frame's turn seen as the part a caller wants, what it yielded or what it returned, in
+// dst (a new slot when dst < 0). The turn is Y | T flattened into one union, so a part that is
+// itself a union is taken alternative by alternative and retagged as that part.
+static Value turn_part(Context *c, Value turn, Type *part, int dst, Loc l)
+{
+    if (turn.type == part && dst < 0) {
+        return turn;
+    }
+    Value out = {.type = part, .deps = part->refs ? turn.deps : (Roots){0}};
+    out.id = dst >= 0 ? dst : slot(c, part, false);
+    if (turn.type == part || part->kind != T_UNION) {
+        Value v = turn.type == part ? turn : case_value(c, turn, part, l);
+        Instr *copy = emit(c, I_COPY, l);
+        copy->dst = out.id;
+        copy->a = v.id;
+        copy->type = part;
+        return out;
+    }
+    int end = ++c->in->labels;
+    for (int j = 0; j < part->def->alternatives.n; j++) {
+        Type *arm = part->def->alternatives.v[j];
+        Value test = value(c, type_builtin(c->p, T_BOOL));
+        Instr *is = emit(c, I_CASE_IS, l);
+        is->dst = test.id;
+        is->a = turn.id;
+        is->type = turn.type;
+        is->label = union_alternative(turn.type, arm);
+        int here = ++c->in->labels, next = ++c->in->labels;
+        nil_branch(c, test, here, next, l);
+        nil_label(c, here, l);
+        convert_value(c, case_value(c, turn, arm, l), part, out.id, l);
+        nil_jump(c, end, l);
+        nil_label(c, next, l);
+    }
+    nil_jump(c, end, l);
+    nil_label(c, end, l);
+    return out;
+}
+
 // Advancing the frame of a mutable^self^ method writes what its receiver reference points at,
 // so from an f^ that has to be the f^'s own, as for a mutable^self^ call (or derived from its
 // own self when it is mutable^self^ itself).
@@ -2368,16 +2407,7 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     // result reads the last turn, which a finished frame's return^ wrote; the final type is
     // one alternative of it unless the two are the same.
     bool project = !advance && !done && co->final != co->turn;
-    if (project && co->final->kind == T_UNION) {
-        fail(e->loc, "result of a coroutine whose final type '%s' is a union is not supported yet",
-             type_name(co->final));
-    }
     bool yielded = next && co->yielded != co->turn;
-    if (yielded && co->yielded->kind == T_UNION) {
-        fail(e->loc,
-             "for^ over a coroutine whose yielded type '%s' is a union is not supported yet",
-             type_name(co->yielded));
-    }
     Type *t = done ? type_builtin(c->p, T_BOOL) : co->turn;
     Value out = {.type = t};
     out.id = destination >= 0 && !project && !yielded ? destination : slot(c, t, false);
@@ -2412,32 +2442,16 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
         test->a = ref.id;
         test->type = finished.type;
         test->callee = co;
-        Value y = {.type = co->yielded, .deps = out.deps};
-        y.id = destination >= 0 ? destination : slot(c, co->yielded, false);
+        int y = destination >= 0 ? destination : slot(c, co->yielded, false);
         int skip = ++c->in->labels, take = ++c->in->labels;
         nil_branch(c, finished, skip, take, e->loc);
         nil_label(c, take, e->loc);
-        Value part = case_value(c, out, co->yielded, e->loc);
-        Instr *copy = emit(c, I_COPY, e->loc);
-        copy->dst = y.id;
-        copy->a = part.id;
-        copy->type = co->yielded;
+        Value part = turn_part(c, out, co->yielded, y, e->loc);
         nil_jump(c, skip, e->loc);
         nil_label(c, skip, e->loc);
-        return y;
+        return part;
     }
-    if (!project) {
-        return out;
-    }
-    Value v = case_value(c, out, co->final, e->loc);
-    if (destination >= 0) {
-        Instr *copy = emit(c, I_COPY, e->loc);
-        copy->dst = destination;
-        copy->a = v.id;
-        copy->type = v.type;
-        v.id = destination;
-    }
-    return v;
+    return project ? turn_part(c, out, co->final, destination, e->loc) : out;
 }
 
 static Value call(Context *c, Expr *e, Type *expected, int destination)
@@ -4381,21 +4395,6 @@ static Value yield_point(Context *c, Expr *e)
     return out;
 }
 
-// The frame's turn seen as the part a caller wants: what it yielded, or what it returned.
-static Value turn_part(Context *c, Value turn, Type *part, Loc l)
-{
-    if (turn.type == part) {
-        return turn;
-    }
-    if (part->kind == T_UNION) {
-        fail(l,
-             "a coroutine whose yielded or final type '%s' is a union cannot be awaited or "
-             "walked yet",
-             type_name(part));
-    }
-    return case_value(c, turn, part, l);
-}
-
 // A fresh reference to the frame held at holder: its address if holder is the frame, else the
 // reference holder already is. Taken anew after each suspension, so no pointer into this
 // coroutine's own frame is kept across one.
@@ -4464,7 +4463,7 @@ static Value await_point(Context *c, Expr *e)
     nil_branch(c, done, end, more, e->loc);
     nil_label(c, more, e->loc);
     suspension_check(c, e->loc);
-    convert_value(c, turn_part(c, turn, co->yielded, e->loc), c->in->result, c->in->result_slot,
+    convert_value(c, turn_part(c, turn, co->yielded, -1, e->loc), c->in->result, c->in->result_slot,
                   e->loc);
     suspend(c, e->loc);
     ref = frame_reference(c, holder, e->loc);
@@ -4480,12 +4479,7 @@ static Value await_point(Context *c, Expr *e)
     nil_jump(c, top, e->loc);
     nil_label(c, end, e->loc);
     c->pending_disposals.n = disposals;
-    Value result = turn_part(c, turn, co->final, e->loc);
-    Value out = value(c, co->final);
-    Instr *copy = emit(c, I_COPY, e->loc);
-    copy->dst = out.id;
-    copy->a = result.id;
-    copy->type = co->final;
+    Value out = turn_part(c, turn, co->final, slot(c, co->final, false), e->loc);
     out.deps = co->final->refs ? place.deps : (Roots){0};
     return out;
 }
