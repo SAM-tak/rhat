@@ -147,7 +147,8 @@ enum {
     E_LAYOUT,    // sizeof^ / alignof^ query the layout of type_expr.
     E_BYTESOF,   // bytesof^ a borrows the raw representation as read-only bytes.
     E_DEFAULT,   // Default construction of a static member with an explicit type.
-    E_YIELD      // yield^ a: suspend the enclosing coroutine, handing it a (or nothing).
+    E_YIELD,     // yield^ a: suspend the enclosing coroutine, handing it a (or nothing).
+    E_AWAIT      // await^ a: run coroutine frame a to its end through this one; its result.
 };
 
 struct Expr {
@@ -543,8 +544,8 @@ enum {
                    // or with b < 0 reserve a elements of capacity for a T[max^].
     I_YIELD,       // Suspend at resume point label, the turn already in the result slot.
     I_FRAME,       // Make callee's frame in dst from args, not yet started.
-    I_RESUME,      // Run frame reference a to its next yield^ or end: label 0 starts, 1 resumes;
-                   // dst receives the turn.
+    I_RESUME,      // Run frame reference a to its next yield^ or end: label 0 starts, 1 resumes,
+                   // 2 does whichever its state calls for; dst receives the turn.
     I_FRAME_DONE,  // dst = whether frame reference a has finished.
     I_FRAME_RESULT // dst = the final result of finished frame reference a.
 };

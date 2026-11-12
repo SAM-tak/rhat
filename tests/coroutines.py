@@ -310,6 +310,78 @@ let^ y = a.resume()
 print^(all[0].done(), all[1].done())
 ''', 'true false\n')
 
+    positive('await_delegates', '''
+let^ inner = p^ n:i32^ {
+    yield^ n
+    yield^ n + 1
+    return^ n * 100
+}
+let^ outer = p^ {
+    let^ a = await^ inner(1)
+    yield^ a
+    let^ b = await^ inner(5)
+    return^ a + b
+}
+var^ c = outer()
+var^ v = c.start()
+repeat^ while^ !c.done() {
+    print^(v)
+    v := c.resume()
+}
+print^(c.result())
+''', '1\n2\n100\n5\n6\n600\n')
+    positive('await_passes_values_in', '''
+let^ add = p^ {
+    var^ total:i32^ = 0
+    repeat^ while^ total < 10 {
+        var^ step:i32^ = yield^ total
+        total += step
+    }
+    return^ total
+}
+let^ outer = p^ {
+    let^ t = await^ add()
+    return^ t + 1
+}
+var^ c = outer()
+print^(c.start(), c.resume(4), c.resume(7), c.done(), c.result())
+''', '0 4 12 true 12\n')
+    positive('await_two_levels', '''
+let^ leaf = f^ n:i32^ { yield^ n
+    return^ n }
+let^ mid = f^ n:i32^ { return^ await^ leaf(n) + await^ leaf(n + 1) }
+let^ top = f^ { return^ await^ mid(3) }
+let^ sum = f^ -> i32^ {
+    var^ c = top()
+    var^ s:i32^ = 0
+    var^ v = c.start()
+    repeat^ while^ !c.done() {
+        s += v
+        v := c.resume()
+    }
+    return^ s + c.result()
+}
+print^(sum())
+''', '14\n')
+    negative('await_procedure_from_function', '''
+let^ inner = p^ { yield^ 1 }
+let^ outer = f^ { await^ inner() }
+var^ c = outer()
+''', "f^ cannot advance a p^ coroutine; await^ runs its body")
+    negative('await_needs_coroutine', '''
+let^ plain = f^ -> i32^ { return^ 1 }
+let^ outer = p^ { let^ v = await^ plain() }
+var^ c = outer()
+''', "await^ needs a coroutine frame, found 'i32^'")
+    negative('await_of_local_reference', '''
+let^ inner = p^ x:ref^i32^ { yield^ *x }
+let^ outer = p^ {
+    var^ n:i32^ = 1
+    await^ inner(ref^n)
+}
+var^ c = outer()
+''', 'await^ of a coroutine that refers to a local of this coroutine')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

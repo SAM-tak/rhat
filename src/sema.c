@@ -4304,6 +4304,110 @@ static Value yield_point(Context *c, Expr *e)
     return out;
 }
 
+// The frame's turn seen as the part a caller wants: what it yielded, or what it returned.
+static Value turn_part(Context *c, Value turn, Type *part, Loc l)
+{
+    if (turn.type == part) {
+        return turn;
+    }
+    if (part->kind == T_UNION) {
+        fail(l,
+             "a coroutine whose yielded or final type '%s' is a union cannot be awaited or "
+             "walked yet",
+             type_name(part));
+    }
+    return case_value(c, turn, part, l);
+}
+
+// A fresh reference to the frame held at holder: its address if holder is the frame, else the
+// reference holder already is. Taken anew after each suspension, so no pointer into this
+// coroutine's own frame is kept across one.
+static int frame_reference(Context *c, Value holder, Loc l)
+{
+    if (holder.type->kind == T_REF) {
+        return holder.id;
+    }
+    Value ref = value(c, type_wrap(c->p, T_REF, holder.type, 0));
+    Instr *address = emit(c, I_ADDR, l);
+    address->dst = ref.id;
+    address->a = holder.id;
+    address->type = ref.type;
+    return ref.id;
+}
+
+// await^ a: run frame a to its end through this coroutine. Each of its suspensions suspends
+// this one with what it yielded, and each resume of this one resumes it with what was handed
+// in; its result is the value.
+static Value await_point(Context *c, Expr *e)
+{
+    Value holder = expression(c, e->a, NULL);
+    if (dead(holder) || c->terminated) {
+        return c->terminated ? abrupt(c) : holder;
+    }
+    Type *frame = holder.type->kind == T_REF ? holder.type->elem : holder.type;
+    if (frame->kind != T_FRAME) {
+        fail(e->loc, "await^ needs a coroutine frame, found '%s'", type_name(holder.type));
+    }
+    Instance *co = frame->coroutine;
+    if (co->fn->procedure && !c->in->fn->procedure) {
+        fail(e->loc, "f^ cannot advance a p^ coroutine; await^ runs its body");
+    }
+    Value place = holder.type->kind == T_REF ? deref(c, holder, e->loc) : holder;
+    store_check(c, place, (Value){0}, e->loc);
+    for (int k = 0; k < place.deps.n; k++) {
+        if (!place.deps.v[k]->external) {
+            fail(e->loc,
+                 "await^ of a coroutine that refers to a local of this coroutine would keep "
+                 "that reference across a suspension");
+        }
+    }
+    Value turn = value(c, co->turn);
+    int ref = frame_reference(c, holder, e->loc);
+    Instr *start = emit(c, I_RESUME, e->loc);
+    start->dst = turn.id;
+    start->a = ref;
+    start->type = co->turn;
+    start->callee = co;
+    start->label = 2;
+    int top = ++c->in->labels, end = ++c->in->labels, more = ++c->in->labels;
+    nil_jump(c, top, e->loc);
+    nil_label(c, top, e->loc);
+    Value done = value(c, type_builtin(c->p, T_BOOL));
+    ref = frame_reference(c, holder, e->loc);
+    Instr *test = emit(c, I_FRAME_DONE, e->loc);
+    test->dst = done.id;
+    test->a = ref;
+    test->type = done.type;
+    test->callee = co;
+    nil_branch(c, done, end, more, e->loc);
+    nil_label(c, more, e->loc);
+    suspension_check(c, e->loc);
+    convert_value(c, turn_part(c, turn, co->yielded, e->loc), c->in->result, c->in->result_slot,
+                  e->loc);
+    Instr *suspend = emit(c, I_YIELD, e->loc);
+    suspend->label = ++c->in->yield_points;
+    ref = frame_reference(c, holder, e->loc);
+    Instr *again = emit(c, I_RESUME, e->loc);
+    again->dst = turn.id;
+    again->a = ref;
+    again->type = co->turn;
+    again->callee = co;
+    again->label = 1;
+    if (co->received) {
+        add(&again->args, (void *)(intptr_t)(c->in->received_slot + 1));
+    }
+    nil_jump(c, top, e->loc);
+    nil_label(c, end, e->loc);
+    Value result = turn_part(c, turn, co->final, e->loc);
+    Value out = value(c, co->final);
+    Instr *copy = emit(c, I_COPY, e->loc);
+    copy->dst = out.id;
+    copy->a = result.id;
+    copy->type = co->final;
+    out.deps = co->final->refs ? place.deps : (Roots){0};
+    return out;
+}
+
 Value expression(Context *c, Expr *e, Type *expected)
 {
     if (e->kind == E_STATE) {
@@ -4419,6 +4523,9 @@ Value expression(Context *c, Expr *e, Type *expected)
     }
     if (e->kind == E_YIELD) {
         return yield_point(c, e);
+    }
+    if (e->kind == E_AWAIT) {
+        return await_point(c, e);
     }
     if (e->kind == E_PANIC) {
         Value v = snapshot(c, expression(c, e->a, NULL), e->loc);

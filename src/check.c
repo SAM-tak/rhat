@@ -1899,6 +1899,30 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         infer_expr(c, e->a, NULL);
         c->terminated = true;
         return type_builtin(c->p, T_NEVER);
+    case E_AWAIT: {
+        Type *t = infer_expr(c, e->a, NULL);
+        Type *frame = t && t->kind == T_REF ? t->elem : t;
+        if (!frame || frame->kind == T_NEVER) {
+            return frame;
+        }
+        if (frame->kind != T_FRAME) {
+            fail(e->loc, "await^ needs a coroutine frame, found '%s'", type_name(t));
+        }
+        // What the inner coroutine yields and receives passes through this one.
+        Instance *co = frame->coroutine;
+        if (!co->turn) {
+            return NULL;
+        }
+        c->yielded = join_types(c->p, c->yielded, c->yield_expr, co->yielded, NULL, e->loc);
+        if (co->received) {
+            if (c->received && c->received != co->received) {
+                fail(e->loc, "await^ passes in '%s' but another yield^ receives '%s'",
+                     type_name(co->received), type_name(c->received));
+            }
+            c->received = co->received;
+        }
+        return co->final;
+    }
     case E_YIELD: {
         Type *t = e->a ? infer_expr(c, e->a, c->written ? c->written[1] : NULL)
                        : type_builtin(c->p, T_NIL);
@@ -3707,6 +3731,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
     }
     case E_PANIC:
     case E_YIELD:
+    case E_AWAIT:
         body_expr(c, e->a, NULL);
         break;
     case E_LOOP_PART:

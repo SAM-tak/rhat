@@ -1181,7 +1181,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                 fail(s->loc, "owned temporary requires a binding");
             }
             if (s->a->kind != E_CALL && s->a->kind != E_TRY && s->a->kind != E_CATCH &&
-                s->a->kind != E_YIELD) {
+                s->a->kind != E_YIELD && s->a->kind != E_AWAIT) {
                 fail(s->loc, "only calls can be expression statements");
             }
             layout(v.type, s->loc);

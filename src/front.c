@@ -2248,6 +2248,14 @@ static Expr *primary(Parser *p)
     else if (!strcmp(t->text, "return^")) {
         fail(t->loc, "expected an expression; return^ belongs in a catch^ clause body");
     }
+    else if (!strcmp(t->text, "await^")) {
+        if (!p->enclosing) {
+            fail(t->loc, "await^ belongs inside a function body");
+        }
+        p->enclosing->yields = true;
+        e = node(E_AWAIT, t->loc);
+        e->a = expr(p, 9);
+    }
     else if (!strcmp(t->text, "yield^")) {
         if (!p->enclosing) {
             fail(t->loc, "yield^ belongs inside a function body");

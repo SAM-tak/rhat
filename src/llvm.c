@@ -1924,6 +1924,7 @@ static void instruction(Output *o, Instr *i)
         }
         // start needs a fresh frame, resume a suspended one, result a finished one.
         const char *test = i->op == I_FRAME_RESULT ? "eq i32 %%t%d, -1"
+                           : i->label == 2         ? "sge i32 %%t%d, 0"
                            : i->label              ? "sgt i32 %%t%d, 0"
                                                    : "eq i32 %%t%d, 0";
         fprintf(f, "  %%t%d = icmp ", ok);
