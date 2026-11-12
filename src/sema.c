@@ -1921,12 +1921,13 @@ static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
         !((Param *)f->params.v[0])->self) {
         return "it is not an ordinary self^ method";
     }
-    int named = 0;
+    // A call picks its entry by name and argument count, so only overloads that differ in
+    // how many arguments they take can share a name.
     for (int k = 0; k < iface->methods.n; k++) {
-        named += !strcmp(((Function *)iface->methods.v[k])->name, f->name);
-    }
-    if (named > 1) {
-        return "it is overloaded";
+        Function *other = iface->methods.v[k];
+        if (other != f && !strcmp(other->name, f->name) && other->params.n == f->params.n) {
+            return "it is overloaded";
+        }
     }
     for (int j = 1; j < f->params.n; j++) {
         Type *t = parameter_type(p, f->params.v[j]);
@@ -1971,7 +1972,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
         Function *f = iface->methods.v[k];
         Instance *in = NULL;
         if (!dyn_unsafe(p, iface, f)) {
-            Function *impl = method(concrete, f->name);
+            Function *impl = method_taking(concrete, f->name, f->params.n);
             List actual = {0};
             add(&actual, type_wrap(p, T_REF, concrete->type, 0));
             for (int j = 1; j < impl->params.n; j++) {
@@ -2066,9 +2067,12 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     Program *p = c->p;
     Def *iface = receiver.type->elem->def;
     int index = -1;
-    for (int k = 0; k < iface->methods.n && index < 0; k++) {
-        if (!strcmp(((Function *)iface->methods.v[k])->name, e->a->text)) {
-            index = k;
+    for (int pass = 0; pass < 2 && index < 0; pass++) {
+        for (int k = 0; k < iface->methods.n && index < 0; k++) {
+            Function *m = iface->methods.v[k];
+            if (!strcmp(m->name, e->a->text) && (pass || m->params.n == e->args.n + 1)) {
+                index = k;
+            }
         }
     }
     if (index < 0) {

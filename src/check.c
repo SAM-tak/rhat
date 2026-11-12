@@ -1013,7 +1013,7 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         }
         if (base && base->kind == T_DYN) {
             // Lowering checks the call; inference needs only the declared result.
-            Function *m = method(base->elem->def, target->text);
+            Function *m = method_taking(base->elem->def, target->text, e->args.n + 1);
             Instance call = {.fn = m};
             add(&call.params, base);
             for (int j = 0; j < e->args.n; j++) {

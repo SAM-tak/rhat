@@ -225,6 +225,19 @@ print^(g(ref^ k), g(ref^ k))
              'not an ordinary self^ method')
     negative('dyn_overloaded', 'def^ V { put = f^ self^, x:i32^ -> i32^ { x } overload^ put = f^ self^, x:string^ -> i32^ { 0 } }\ndef^ X : V { }\nvar^ x = X{}\nlet^ s:ref^ dyn^ V = ref^ x\nprint^(s.put(1))',
              'it is overloaded')
+    positive('dyn_overloaded_by_argument_count', '''def^ Counter {
+    abstract^ get:f^self^ -> i32^;
+    abstract^ overload^ get:f^self^, k:i32^ -> i32^;
+}
+def^ Ten : Counter {
+    self^{ n:i32^ = 10 }
+    get = f^self^ -> i32^ { self^.n }
+    get = f^self^, k:i32^ -> i32^ { self^.n * k }
+}
+var^ t = Ten{}
+let^ d:dynamic^Counter = ref^t
+print^(d.get(), d.get(3))
+''', '10 30\n')
     negative('dyn_recursion_holding_owned', '''def^ W { abstract^ go:p^ self^, n:i64^; }
 def^ A : W {
   self^{ z:i32^ = 0 }

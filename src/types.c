@@ -969,6 +969,17 @@ Function *method(Def *d, const char *n)
     return NULL;
 }
 
+Function *method_taking(Def *d, const char *n, int params)
+{
+    for (int i = 0; i < d->methods.n; i++) {
+        Function *f = d->methods.v[i];
+        if (!strcmp(f->name, n) && f->params.n == params) {
+            return f;
+        }
+    }
+    return method(d, n);
+}
+
 static int origin_parameter(Function *f, const char *name)
 {
     for (int j = 0; j < f->params.n; j++) {
