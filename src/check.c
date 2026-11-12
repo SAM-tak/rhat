@@ -549,9 +549,9 @@ static Type **written_coroutine(Program *p, Instance *in)
         return NULL;
     }
     Type *w = type_spec(p, in->fn->result);
-    if (w->kind != T_STRUCT || !w->def->coroutine_args[0]) {
+    if (w->kind != T_STRUCT || !w->def->coroutine_params) {
         fail(in->fn->loc, "a yielding function's result is the coroutine it makes; write it as "
-                          "std.sys.Coroutine<R, Y, T> or leave it unwritten");
+                          "one of std.sys's coroutine types or leave it unwritten");
     }
     return w->def->coroutine_args;
 }
@@ -1030,7 +1030,7 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         }
         if (base && base->kind == T_DYN) {
             // Lowering checks the call; inference needs only the declared result.
-            Function *m = method_taking(base->elem->def, target->text, e->args.n + 1);
+            Function *m = method(base->elem->def, target->text);
             Instance call = {.fn = m};
             add(&call.params, base);
             for (int j = 0; j < e->args.n; j++) {
@@ -1910,7 +1910,7 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         // What a resume hands in is what the binding receiving it is written to hold, or the
         // R the function's written Coroutine says.
-        if ((!expected || expected->kind == T_VOID) && c->written && c->written[0]->kind != T_NIL) {
+        if ((!expected || expected->kind == T_VOID) && c->written && c->written[0]) {
             expected = c->written[0];
         }
         if (!expected || expected->kind == T_VOID) {

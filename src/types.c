@@ -109,8 +109,15 @@ bool frame_conforms(Type *frame, Def *d)
 {
     Instance *in = frame->coroutine;
     Type **a = d->coroutine_args;
-    return a[0] && (in->received ? a[0] == in->received : a[0]->kind == T_NIL) &&
-           a[1] == in->yielded && a[2] == in->final;
+    int n = d->coroutine_params;
+    if (!n || a[2] != in->final) {
+        return false;
+    }
+    if (n == 1) {
+        return true;
+    }
+    return !(d->coroutine_pure && in->fn->procedure) && a[1] == in->yielded &&
+           (n == 2 ? !in->received : a[0] == in->received);
 }
 
 Type *frame_type(Program *p, Instance *in)
@@ -977,17 +984,6 @@ Function *method(Def *d, const char *n)
     return NULL;
 }
 
-Function *method_taking(Def *d, const char *n, int params)
-{
-    for (int i = 0; i < d->methods.n; i++) {
-        Function *f = d->methods.v[i];
-        if (!strcmp(f->name, n) && f->params.n == params) {
-            return f;
-        }
-    }
-    return method(d, n);
-}
-
 static int origin_parameter(Function *f, const char *name)
 {
     for (int j = 0; j < f->params.n; j++) {
@@ -1049,9 +1045,11 @@ static void compatible(Program *p, Function *a, Function *b)
         br = type_builtin(p, T_VOID);
     }
     // An implementation may promise fewer effects than the contract it fills, never more.
-    // Two abstract contracts merge only when they promise the same.
+    // A derived type may restate an inherited abstract contract promising fewer effects; two
+    // contracts from different bases merge only when they promise the same.
     int effects = effect_rank(b) - effect_rank(a);
-    if (a->params.n != b->params.n || effects > 0 || (b->abstract && effects != 0) ||
+    bool narrows = b->owner && a->owner && b->owner != a->owner && derives(b->owner, a->owner);
+    if (a->params.n != b->params.n || effects > 0 || (b->abstract && effects && !narrows) ||
         a->templ != b->templ || (ar && br && ar != br) ||
         !same_origins(a, a->result, b, b->result)) {
         fail(b->loc, "override of '%s' changes its contract", a->name);
@@ -1083,9 +1081,18 @@ static void compose_unchecked(Program *p, Def *d)
         fail(d->loc, "cyclic def^ composition at '%s'", d->name);
     }
     d->state = 1;
-    if (d->generic && !strcmp(d->generic->name, "std.sys.Coroutine")) {
-        for (int k = 0; k < 3; k++) {
-            d->coroutine_args[k] = type_spec(p, d->type_args.v[k]);
+    // std.sys's coroutine types, which frames offer without composing them.
+    const char *coroutines[] = {"std.sys.Coroutine", "std.sys.CoroutineNR",
+                                "std.sys.PureCoroutineNR", "std.sys.CoroutineR",
+                                "std.sys.PureCoroutineR"};
+    for (int k = 0; d->generic && k < 5; k++) {
+        if (!strcmp(d->generic->name, coroutines[k])) {
+            int n = d->type_args.n;
+            for (int j = 0; j < n; j++) {
+                d->coroutine_args[3 - n + j] = type_spec(p, d->type_args.v[j]);
+            }
+            d->coroutine_params = n;
+            d->coroutine_pure = k == 2 || k == 4;
         }
     }
     if (d->backing) {

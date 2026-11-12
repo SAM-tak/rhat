@@ -319,16 +319,20 @@ struct Def {
     bool abstract;
     bool disposable; // Composes std.sys.Disposable: scopes call its dispose.
     Type *type;
-    char *c_name;            // externC^ def^: the C type of this name it lays out as.
-    bool opaque;             // externC^ def^ Name; with no body, usable only as ref^.
-    bool lhat_value;         // exportL^ def^: an L^ host value type, its methods members.
-    bool lhat_data;          // exportL^ ref^ def^: an L^ host data type over ref^ to it.
-    bool lhat_error;         // exportL^ errordef^: an L^ error kind; L^ sees no fields.
-    Type *coroutine_args[3]; // std.sys.Coroutine<R, Y, T>: R, Y and T; NULL for other defs.
-    bool tuple;              // The anonymous struct of multiple results, fields 0, 1, ...
-    bool pack;               // Compiler-only heterogeneous arguments, with numbered fields.
-    Spec *backing;           // enum^: the integer type its values lay out as; NULL for other defs.
-    List members;            // enum^: EnumMember, in declaration order.
+    char *c_name;    // externC^ def^: the C type of this name it lays out as.
+    bool opaque;     // externC^ def^ Name; with no body, usable only as ref^.
+    bool lhat_value; // exportL^ def^: an L^ host value type, its methods members.
+    bool lhat_data;  // exportL^ ref^ def^: an L^ host data type over ref^ to it.
+    bool lhat_error; // exportL^ errordef^: an L^ error kind; L^ sees no fields.
+    // One of std.sys's coroutine types: R, Y and T, NULL where it has none, how many it takes
+    // (1 for Coroutine<T>, 2 without R, 3 with it; 0 for other defs) and whether it is a Pure one.
+    Type *coroutine_args[3];
+    int coroutine_params;
+    bool coroutine_pure;
+    bool tuple;    // The anonymous struct of multiple results, fields 0, 1, ...
+    bool pack;     // Compiler-only heterogeneous arguments, with numbered fields.
+    Spec *backing; // enum^: the integer type its values lay out as; NULL for other defs.
+    List members;  // enum^: EnumMember, in declaration order.
 };
 
 enum {
@@ -440,8 +444,9 @@ Type *frame_type(Program *p, Instance *in);
 // Whether a call of f is a p^ call. A yielding function's call only makes its frame, so it is
 // an f^ whatever its body is; the body's kind goes to the frame's start and resume instead.
 bool procedure_call(const Function *f);
-// Whether a coroutine frame offers d: d is std.sys.Coroutine<R, Y, T> with the frame's R
-// (nil^ when it receives nothing), Y and T.
+// Whether a coroutine frame offers d, one of std.sys's coroutine types: the same T, and for the
+// ones that advance, the same Y, an R exactly when the frame receives one, and an f^ body for
+// a Pure one.
 bool frame_conforms(Type *frame, Def *d);
 // Whether an inline array owns independently stored rows; its element layout must be known.
 bool owning_rows(Type *t);

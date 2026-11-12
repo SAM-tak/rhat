@@ -13,13 +13,33 @@ public^def^Disposable {
     abstract^dispose:p^self^;
 }
 
-# What a coroutine frame offers: start runs it to its first yield^, resume to the next one
-# (handing in an R when it receives one), and each answers what was yielded (Y) or, at the end,
-# returned (T). A coroutine that receives nothing has R nil^ and resumes with no argument.
-public^def^Coroutine<R, Y, T> {
-    abstract^start:p^self^ -> Y | T;
-    abstract^resume:p^self^ -> Y | T;
-    abstract^overload^resume:p^self^, value:R -> Y | T;
+# What every coroutine frame offers: whether it has finished, and what it finally returned (T).
+public^def^Coroutine<T> {
     abstract^done:f^self^ -> bool^;
     abstract^result:f^self^ -> T;
+}
+
+# A coroutine that receives nothing: start runs it to its first yield^, resume to the next one,
+# and each answers what was yielded (Y) or, at the end, returned (T).
+public^def^CoroutineNR<Y, T> : Coroutine<T> {
+    abstract^start:p^self^ -> Y | T;
+    abstract^resume:p^self^ -> Y | T;
+}
+
+# The same, of an f^ body: advancing it writes only the frame.
+public^def^PureCoroutineNR<Y, T> : CoroutineNR<Y, T> {
+    abstract^start:f^mutable^self^ -> Y | T;
+    abstract^resume:f^mutable^self^ -> Y | T;
+}
+
+# A coroutine that receives an R at each yield^: resume hands one in.
+public^def^CoroutineR<R, Y, T> : Coroutine<T> {
+    abstract^start:p^self^ -> Y | T;
+    abstract^resume:p^self^, value:R -> Y | T;
+}
+
+# The same, of an f^ body.
+public^def^PureCoroutineR<R, Y, T> : CoroutineR<R, Y, T> {
+    abstract^start:f^mutable^self^ -> Y | T;
+    abstract^resume:f^mutable^self^, value:R -> Y | T;
 }

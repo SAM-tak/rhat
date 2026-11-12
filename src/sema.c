@@ -1921,13 +1921,12 @@ static const char *dyn_unsafe(Program *p, Def *iface, Function *f)
         !((Param *)f->params.v[0])->self) {
         return "it is not an ordinary self^ method";
     }
-    // A call picks its entry by name and argument count, so only overloads that differ in
-    // how many arguments they take can share a name.
+    int named = 0;
     for (int k = 0; k < iface->methods.n; k++) {
-        Function *other = iface->methods.v[k];
-        if (other != f && !strcmp(other->name, f->name) && other->params.n == f->params.n) {
-            return "it is overloaded";
-        }
+        named += !strcmp(((Function *)iface->methods.v[k])->name, f->name);
+    }
+    if (named > 1) {
+        return "it is overloaded";
     }
     for (int j = 1; j < f->params.n; j++) {
         Type *t = parameter_type(p, f->params.v[j]);
@@ -1972,12 +1971,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
         Function *f = iface->methods.v[k];
         Instance *in = NULL;
         if (!dyn_unsafe(p, iface, f)) {
-            Function *impl = method_taking(concrete, f->name, f->params.n);
-            if (impl->params.n != f->params.n) {
-                // Only a frame lacks one: the resume its coroutine does not take.
-                add(&table->entries, NULL);
-                continue;
-            }
+            Function *impl = method(concrete, f->name);
             List actual = {0};
             add(&actual, type_wrap(p, T_REF, concrete->type, 0));
             for (int j = 1; j < impl->params.n; j++) {
@@ -2022,11 +2016,9 @@ static void frame_method(Def *d, Instance *co, const char *name, bool advance, T
         Param *handed = mem(sizeof(*handed));
         *handed = (Param){.loc = f->loc, .name = "value", .inferred = value};
         add(&f->params, handed);
-        if (co->received) {
-            Expr *arg = mem(sizeof(*arg));
-            *arg = (Expr){.kind = E_NAME, .loc = f->loc, .text = "value"};
-            add(&call->args, arg);
-        }
+        Expr *arg = mem(sizeof(*arg));
+        *arg = (Expr){.kind = E_NAME, .loc = f->loc, .text = "value"};
+        add(&call->args, arg);
     }
     Stmt *ret = mem(sizeof(*ret));
     *ret = (Stmt){.kind = S_RETURN, .loc = f->loc, .a = call};
@@ -2034,9 +2026,8 @@ static void frame_method(Def *d, Instance *co, const char *name, bool advance, T
     add(&d->methods, f);
 }
 
-// The def a coroutine frame stands in for when it goes into a dyn^ std.sys.Coroutine: one
-// resume taking no value when the coroutine receives nothing (and one taking a nil^ that
-// it ignores), else one taking what it receives.
+// The def a coroutine frame stands in for when it goes into a dyn^ of one of std.sys's
+// coroutine types: its resume takes what the coroutine receives, if anything.
 static Def *frame_def(Program *p, Type *frame)
 {
     Instance *co = frame->coroutine;
@@ -2052,10 +2043,7 @@ static Def *frame_def(Program *p, Type *frame)
     d->resolved = true;
     d->id = p->defs.n;
     frame_method(d, co, "start", true, NULL);
-    if (!co->received) {
-        frame_method(d, co, "resume", true, NULL);
-    }
-    frame_method(d, co, "resume", true, co->received ? co->received : type_builtin(p, T_NIL));
+    frame_method(d, co, "resume", true, co->received);
     frame_method(d, co, "done", false, NULL);
     frame_method(d, co, "result", false, NULL);
     co->frame_def = d;
@@ -2140,12 +2128,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     Program *p = c->p;
     Def *iface = receiver.type->elem->def;
     int index = -1;
-    for (int pass = 0; pass < 2 && index < 0; pass++) {
-        for (int k = 0; k < iface->methods.n && index < 0; k++) {
-            Function *m = iface->methods.v[k];
-            if (!strcmp(m->name, e->a->text) && (pass || m->params.n == e->args.n + 1)) {
-                index = k;
-            }
+    for (int k = 0; k < iface->methods.n && index < 0; k++) {
+        if (!strcmp(((Function *)iface->methods.v[k])->name, e->a->text)) {
+            index = k;
         }
     }
     if (index < 0) {
@@ -2154,11 +2139,6 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     }
     Function *f = iface->methods.v[index];
     access_check(c, f->priv, f->owner, e->loc, f->name);
-    if (iface->coroutine_args[0] && iface->coroutine_args[0]->kind != T_NIL &&
-        !strcmp(f->name, "resume") && f->params.n == 1) {
-        fail(e->loc, "this coroutine receives '%s'; resume it with one value",
-             type_name(iface->coroutine_args[0]));
-    }
     const char *why = dyn_unsafe(p, iface, f);
     if (why) {
         fail(e->loc, "'%s' cannot be called through dyn^: %s", f->name, why);

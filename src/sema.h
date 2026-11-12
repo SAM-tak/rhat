@@ -359,8 +359,6 @@ void merge_facts(List *vars, List before, List yes);
 
 // Look up a composed nominal method.
 Function *method(Def *d, const char *n);
-// The method named n with params parameters, self^ included, else the first named n.
-Function *method_taking(Def *d, const char *n, int params);
 
 // Recognize the literal nil value in a comparison.
 bool nil_name(Expr *e);
