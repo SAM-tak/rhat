@@ -1503,15 +1503,146 @@ static void return_names(List *body, char **name, bool *valid, bool others)
     }
 }
 
-// Where each slot of a yielding instance lives in its frame: a tag first, then every slot
-// that is not a place alias, in order, each at its own alignment.
+// Whether operand k names slot s, directly or as the stack owner it constructs into.
+static bool names_slot(Instance *in, int k, int s)
+{
+    for (int steps = 0; k >= 0 && k < in->slots.n && steps < in->slots.n; steps++) {
+        if (k == s) {
+            return true;
+        }
+        int owner = ((Slot *)in->slots.v[k])->owner;
+        if (owner == k) {
+            return false;
+        }
+        k = owner;
+    }
+    return false;
+}
+
+// Whether i overwrites all of its destination without reading it first.
+static bool overwrites(Instr *i)
+{
+    switch (i->op) {
+    case I_CONST:
+    case I_COPY:
+    case I_ZERO:
+    case I_BIN:
+    case I_UNARY:
+    case I_ADDR:
+    case I_DEREF:
+    case I_FIELD:
+    case I_INDEX:
+    case I_LENGTH:
+    case I_CONVERT:
+        return i->dst >= 0;
+    default:
+        return false;
+    }
+}
+
+// Whether i may read slot s, or write only part of it. Fields that hold labels or constants
+// in some operations are counted too: a slot kept in the frame without need costs only space.
+static bool reads_slot(Instance *in, Instr *i, int s)
+{
+    // Control operations hold block labels and resume points there, never slots.
+    bool control = i->op == I_BR || i->op == I_CBR || i->op == I_LABEL || i->op == I_YIELD;
+    if ((!overwrites(i) && names_slot(in, i->dst, s)) || names_slot(in, i->a, s) ||
+        names_slot(in, i->b, s) ||
+        (!control && (names_slot(in, i->other, s) || names_slot(in, i->label, s)))) {
+        return true;
+    }
+    for (int j = 0; j < i->args.n; j++) {
+        if (names_slot(in, (int)(intptr_t)i->args.v[j] - 1, s)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether control falls from instruction i to the next one. A yield^ does: its resume point
+// follows it.
+static bool falls(Instr *i)
+{
+    return i->op != I_BR && i->op != I_RETURN && i->op != I_TERMINATE;
+}
+
+// Whether slot s may be read from instruction k on before something overwrites it: then its
+// value has to survive whatever happens just before k.
+static bool live_at(Instance *in, int *labels, int k, int s, bool *seen)
+{
+    memset(seen, 0, (size_t)in->code.n * sizeof(bool));
+    List queue = {0};
+    add(&queue, (void *)(intptr_t)k);
+    while (queue.n) {
+        int at = (int)(intptr_t)queue.v[--queue.n];
+        if (at < 0 || at >= in->code.n || seen[at]) {
+            continue;
+        }
+        seen[at] = true;
+        Instr *i = in->code.v[at];
+        if (reads_slot(in, i, s)) {
+            return true;
+        }
+        if (overwrites(i) && i->dst == s) {
+            continue;
+        }
+        if (i->op == I_BR || i->op == I_CBR) {
+            add(&queue, (void *)(intptr_t)labels[i->label]);
+        }
+        if (i->op == I_CBR) {
+            add(&queue, (void *)(intptr_t)labels[i->other]);
+        }
+        if (falls(i)) {
+            add(&queue, (void *)(intptr_t)(at + 1));
+        }
+    }
+    return false;
+}
+
+// Where each slot of a yielding instance lives: a slot whose value may be read after some
+// yield^ is kept in the frame, as are the parameters a frame is made with and the turn the
+// resumer reads; the rest stay local to one activation. A place alias is an SSA pointer and
+// cannot be kept at all.
 static void frame_layout(Instance *in, Loc l)
 {
+    int n = in->slots.n, code = in->code.n, labels_n = 1;
+    for (int k = 0; k < code; k++) {
+        Instr *i = in->code.v[k];
+        if (i->op == I_LABEL && i->label >= labels_n) {
+            labels_n = i->label + 1;
+        }
+    }
+    int *labels = mem((size_t)labels_n * sizeof(int));
+    for (int k = 0; k < code; k++) {
+        Instr *i = in->code.v[k];
+        if (i->op == I_LABEL) {
+            labels[i->label] = k;
+        }
+    }
+    bool *kept = mem((size_t)n * sizeof(bool)), *seen = mem((size_t)code * sizeof(bool));
+    for (int k = 0; k < code; k++) {
+        Instr *yield = in->code.v[k];
+        if (yield->op != I_YIELD) {
+            continue;
+        }
+        for (int s = 0; s < n; s++) {
+            if (!kept[s] && live_at(in, labels, k + 1, s, seen)) {
+                if (((Slot *)in->slots.v[s])->alias) {
+                    fail(yield->loc, "a reference place cannot live across yield^ yet");
+                }
+                kept[s] = true;
+            }
+        }
+    }
+    kept[in->result_slot] = true;
+    for (int k = 0; k < in->params.n; k++) {
+        kept[in->result_slot + 1 + k] = true;
+    }
     size_t offset = 8, align = 8;
-    in->frame_offset = mem((size_t)in->slots.n * sizeof(size_t));
-    for (int k = 0; k < in->slots.n; k++) {
+    in->frame_offset = mem((size_t)n * sizeof(size_t));
+    for (int k = 0; k < n; k++) {
         Slot *s = in->slots.v[k];
-        if (s->alias) {
+        if (s->alias || !kept[k]) {
             continue;
         }
         layout(s->type, l);

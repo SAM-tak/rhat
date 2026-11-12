@@ -379,6 +379,11 @@ void version_range_loops(Program *p)
 {
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
+        // A coroutine's slots are laid out in its frame and its resume points are labels:
+        // copying a loop would add slots outside the frame and duplicate those labels.
+        if (in->fn->yields) {
+            continue;
+        }
         // Work backwards, so inner canonical loops are considered first. A
         // versioned region is no longer straight-line and cannot be reversioned.
         for (int last = in->code.n - 1; last >= 0; last--) {

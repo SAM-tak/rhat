@@ -2214,7 +2214,7 @@ void emit_llvm(Program *p, const char *path)
         Output o = {f, in, 0, p};
         for (int k = 0; k < in->slots.n; k++) {
             Slot *s = in->slots.v[k];
-            if (coroutine && !s->alias) {
+            if (coroutine && in->frame_offset[k]) {
                 fprintf(f, "  %%p%d = getelementptr i8, ptr %%frame, i64 %zu\n", k,
                         in->frame_offset[k]);
             }

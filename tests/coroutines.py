@@ -34,6 +34,32 @@ print^(c.resume())
 print^(c.done(), c.result())
 ''', '0\n1\n2\nfalse\n30\ntrue 30\n', inspect=resume_function)
 
+    def locals_stay_local(rir, ll):
+        body = ll[ll.index('; fib'):]
+        body = body[:body.index('\n}\n')]
+        assert 'alloca' in body and 'getelementptr i8, ptr %frame' in body, body
+
+    positive('values_live_across_yields', '''
+let^ fib = p^ n:i32^ {
+    var^ a:i64^ = 0
+    var^ b:i64^ = 1
+    var^ k:i32^ = 0
+    repeat^ while^ k < n {
+        if^ k % 2 = 0 { yield^ a el^: yield^ a + 0 }
+        let^ t = a + b
+        a := b
+        b := t
+        k += 1
+    }
+}
+var^ c = fib(7)
+var^ v = c.start()
+repeat^ while^ !c.done() {
+    if^ v fits^ i64^ { print^(v) }
+    v := c.resume()
+}
+''', '0\n1\n1\n2\n3\n5\n8\n', inspect=locals_stay_local)
+
     positive('generator_without_result', SHOW + '''
 let^ two = p^ { yield^ 1
     yield^ 2 }
