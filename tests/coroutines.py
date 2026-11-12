@@ -487,6 +487,53 @@ let^ run = p^ {
 run()
 ''', 'drop\ndispose 7\n')
 
+    counter = '''def^ Counter {
+    self^{ n:i32^ = 3 }
+    drain = f^mutable^self^ {
+        repeat^ while^ self^.n > 0 {
+            self^.n -= 1
+            yield^ self^.n
+        }
+    }
+}
+'''
+    negative('mutable_self_frame_on_borrowed_storage', counter + '''
+let^ first = f^ fr -> i32^ {
+    var^ g = fr
+    let^ v = g.start()
+    if^ v fits^ i32^ { return^ v }
+    return^ 0
+}
+var^ c = Counter{}
+print^(first(c.drain()), c.n)
+''', 'f^ cannot advance the coroutine of a mutable^self^ method on borrowed storage')
+    positive('mutable_self_frame_on_local_storage', counter + '''
+let^ local = f^ -> i32^ {
+    var^ c = Counter{}
+    var^ s:i32^ = 0
+    for^ v in^ c.drain() { s += v }
+    return^ s + c.n
+}
+print^(local())
+''', '3\n')
+
+    big = '''let^ big = p^ {
+    var^ buf:u8^[8192] = {}
+    yield^ 1
+    print^(buf[0])
+}
+var^ c = big()
+let^ v = c.start()
+'''
+
+    def large_frame_warns():
+        path = suite.source('large_frame_warns', big)
+        warned = suite.run([suite.compiler, 'check', path])
+        assert "coroutine 'big' keeps a 8208-byte frame" in warned.stderr, warned.stderr
+        quiet = suite.run([suite.compiler, 'check', path, '--frame-warning', '100000'])
+        assert 'warning:' not in quiet.stderr, quiet.stderr
+    suite.case('large_frame_warns', large_frame_warns)
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

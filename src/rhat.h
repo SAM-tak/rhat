@@ -25,6 +25,8 @@ typedef struct {
 } Loc;
 
 _Noreturn void fail(Loc l, const char *s, ...);
+// Report something worth changing that does not stop compilation; editors are not told.
+void warn(Loc l, const char *s, ...);
 typedef struct Expr Expr;
 typedef struct Stmt Stmt;
 typedef struct Def Def;
@@ -420,8 +422,9 @@ struct Program {
     List transfer_types;    // Validated types needing internal thread transfer descriptors.
     int inferred_instances; // Instance count at the last return-inference fixed point.
     int stack_count;
-    bool callbacks; // Some exportC^ function may be entered from C.
-    bool crt_dll;   // --crt-dll: build and link against the C runtime DLL.
+    bool callbacks;       // Some exportC^ function may be entered from C.
+    bool crt_dll;         // --crt-dll: build and link against the C runtime DLL.
+    size_t frame_warning; // Warn of coroutine frames larger than this many bytes; 0 never.
     char *source;
     const char *path;
 };

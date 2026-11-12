@@ -2314,6 +2314,23 @@ static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
     return result;
 }
 
+// Advancing the frame of a mutable^self^ method writes what its receiver reference points at,
+// so from an f^ that has to be the f^'s own, as for a mutable^self^ call (or derived from its
+// own self when it is mutable^self^ itself).
+static void frame_reach_check(Context *c, Instance *co, Roots reached, Loc l)
+{
+    if (!co->fn->mutable_self || c->in->fn->procedure) {
+        return;
+    }
+    for (int n = 0; n < reached.n; n++) {
+        Root *owner = reached.v[n];
+        if (owner->external && !(c->in->fn->mutable_self && roots_has(c->self_roots, owner))) {
+            fail(l, "f^ cannot advance the coroutine of a mutable^self^ method on borrowed "
+                    "storage; use p^");
+        }
+    }
+}
+
 // start, resume, done and result of a coroutine frame. Advancing a frame runs its body, so it
 // carries the body's effect and writes the frame, which must be the caller's to write.
 static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int destination)
@@ -2341,6 +2358,7 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
             fail(e->loc, "f^ cannot advance a p^ coroutine; '%s' runs its body", name);
         }
         store_check(c, base, (Value){0}, e->loc);
+        frame_reach_check(c, co, base.deps, e->loc);
     }
     Value ref = value(c, type_wrap(c->p, T_REF, base.type, base.readonly));
     Instr *address = emit(c, I_ADDR, e->loc);
@@ -4413,6 +4431,7 @@ static Value await_point(Context *c, Expr *e)
     }
     Value place = holder.type->kind == T_REF ? deref(c, holder, e->loc) : holder;
     store_check(c, place, (Value){0}, e->loc);
+    frame_reach_check(c, co, place.deps, e->loc);
     for (int k = 0; k < place.deps.n; k++) {
         if (!place.deps.v[k]->external) {
             fail(e->loc,

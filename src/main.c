@@ -112,7 +112,7 @@ static void usage(void)
         "[--clang PATH] [--runtime PATH] [-- ARGS...]\nOptions: --stacks, --emit-llvm PATH, "
         "--dump-ir "
         "PATH, --module-path DIR, --link-lib NAME, --c-include DIR, --crt-dll, --cache-dir DIR, --no-cache, "
-        "--verbose\n"
+        "--verbose, --frame-warning BYTES\n"
         "Target: host x86-64, C runtime ABI");
 }
 
@@ -166,6 +166,7 @@ int main(int argc, char **argv)
         runtime = tool_resource(argv[0], RH_RUNTIME_PATH, "rhat_runtime.c");
     }
     bool stacks = false, reuse = true, verbose = false, crt_dll = false;
+    size_t frame_warning = 4096;
     const char *cache = NULL;
     List module_paths = {0}, libraries = {0}, c_includes = {0};
     int program_args = argc;
@@ -215,6 +216,15 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(s, "--cache-dir")) {
             cache = v;
+        }
+        else if (!strcmp(s, "--frame-warning")) {
+            char *end = NULL;
+            unsigned long long bytes = strtoull(v, &end, 10);
+            if (!*v || *end) {
+                fprintf(stderr, "invalid frame size '%s'\n", v);
+                return 2;
+            }
+            frame_warning = (size_t)bytes;
         }
         else if (!strcmp(s, "-o")) {
             out = v;
@@ -268,6 +278,7 @@ int main(int argc, char **argv)
     Program p = {0};
     p.module_paths = module_paths;
     p.crt_dll = crt_dll;
+    p.frame_warning = frame_warning;
     p.stdlib_dir = tool_resource(argv[0], RH_STDLIB_PATH, "stdlib");
     parse(&p, source);
     for (int j = 0; j < p.modules.n; j++) {

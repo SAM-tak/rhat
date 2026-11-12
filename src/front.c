@@ -96,6 +96,19 @@ _Noreturn void fail(Loc l, const char *s, ...)
     exit(1);
 }
 
+void warn(Loc l, const char *s, ...)
+{
+    if (compiler_hooks) {
+        return;
+    }
+    fprintf(stderr, "%s:%d:%d: warning: ", l.file ? l.file : "rhat", l.line, l.col);
+    va_list a;
+    va_start(a, s);
+    vfprintf(stderr, s, a);
+    va_end(a);
+    fputc('\n', stderr);
+}
+
 typedef struct {
     char *text;
     Loc loc;

@@ -1819,6 +1819,12 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         in->result = frame;
         layout(frame, f->loc);
         frame->disposable = in->dispose_points.n > 0;
+        if (p->frame_warning && in->frame_size > p->frame_warning) {
+            warn(f->loc,
+                 "coroutine '%s' keeps a %zu-byte frame; borrow large storage from the caller "
+                 "instead of keeping it across a suspension (--frame-warning sets the limit)",
+                 f->name, in->frame_size);
+        }
     }
     return in;
 }
