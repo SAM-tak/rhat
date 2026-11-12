@@ -374,6 +374,17 @@ _Noreturn void rh_index_fail(int32_t line)
     rh_panic("array index out of bounds", line);
 }
 
+/// A coroutine frame advanced or read in the wrong state: kind 0 is start, 1 resume and
+/// 3 result; tag is the frame's state (0 not started, -1 finished).
+_Noreturn void rh_coroutine_fail(int32_t kind, int32_t tag, int32_t line)
+{
+    rh_panic(kind == 0   ? "start of a coroutine that has already started"
+             : kind == 3 ? "result of a coroutine that has not finished"
+             : tag == 0  ? "resume of a coroutine that has not started"
+                         : "resume of a finished coroutine",
+             line);
+}
+
 _Noreturn void rh_state_fail(int32_t line)
 {
     rh_panic("static variable used before initialization", line);

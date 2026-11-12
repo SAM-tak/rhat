@@ -522,6 +522,8 @@ typedef struct {
     Type *propagated;
     Type *returned;
     Expr *return_expr;
+    Type *yielded; // What the body's yield^ sites agree on, for a yielding instance.
+    Expr *yield_expr;
     bool value_return;
     int lexical;
     NilFlow flow;
@@ -957,6 +959,21 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         }
         if (base && base->kind == T_STRUCT) {
             compose(c->p, base->def);
+        }
+        if (base && base->kind == T_FRAME) {
+            Instance *co = base->coroutine;
+            if (!strcmp(target->text, "start") || !strcmp(target->text, "resume")) {
+                forget_paths(&c->vars);
+                return co->turn;
+            }
+            if (!strcmp(target->text, "done")) {
+                return type_builtin(c->p, T_BOOL);
+            }
+            if (!strcmp(target->text, "result")) {
+                return co->final;
+            }
+            fail(target->loc, "a coroutine frame has start, resume, done and result, not '%s'",
+                 target->text);
         }
         if (base && (base->kind == T_GROW || base->kind == T_BOUNDED) &&
             !strcmp(target->text, "pop")) {
@@ -1861,6 +1878,16 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         infer_expr(c, e->a, NULL);
         c->terminated = true;
         return type_builtin(c->p, T_NEVER);
+    case E_YIELD: {
+        Type *t = e->a ? infer_expr(c, e->a, NULL) : type_builtin(c->p, T_NIL);
+        if (t && t->kind != T_NEVER) {
+            c->yielded = join_types(c->p, c->yielded, c->yield_expr, t, e->a, e->loc);
+            if (!c->yield_expr || !integer_literal(e->a)) {
+                c->yield_expr = e->a;
+            }
+        }
+        return type_builtin(c->p, T_VOID);
+    }
     case E_CHAR:
         return type_builtin(c->p, T_CHAR);
     case E_INTERP: {
@@ -2618,6 +2645,34 @@ List first_types(Context *c, Stmt *s)
     return out;
 }
 
+// A yielding instance answers its frame; what it yields, what it finally returns and their
+// union are what a turn of that frame answers. Each may still change while inference runs.
+static bool coroutine_result(Program *p, Instance *in, Type *final, Type *yielded)
+{
+    if (in->fn->result) {
+        fail(in->fn->loc, "a yielding function's result is the coroutine it makes; leave it "
+                          "unwritten (Coroutine<R, Y, T> annotations are not supported yet)");
+    }
+    if (!final || final->kind == T_VOID) {
+        final = type_builtin(p, T_NIL);
+    }
+    if (!yielded) {
+        yielded = type_builtin(p, T_NIL);
+    }
+    if (!in->frame) {
+        in->frame = frame_type(p, in);
+    }
+    bool changed = in->result != in->frame || in->final != final || in->yielded != yielded;
+    if (changed && in->state) {
+        fail(in->fn->loc, "return inference changed after code generation");
+    }
+    in->result = in->frame;
+    in->final = final;
+    in->yielded = yielded;
+    in->turn = final == yielded ? final : type_union(p, yielded, final, in->fn->loc);
+    return changed;
+}
+
 static bool infer_instance_result(Program *p, Instance *in)
 {
     if (in->fn->external) {
@@ -2654,6 +2709,9 @@ static bool infer_instance_result(Program *p, Instance *in)
     }
     if (!result && !c.value_return) {
         result = type_builtin(p, T_VOID);
+    }
+    if (in->fn->yields) {
+        return coroutine_result(p, in, result, c.yielded);
     }
     Type *contract =
         in->fn->result ? function_result(p, in, in->fn->result) : in->fn->required_result;
@@ -3606,6 +3664,7 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
         break;
     }
     case E_PANIC:
+    case E_YIELD:
         body_expr(c, e->a, NULL);
         break;
     case E_LOOP_PART:

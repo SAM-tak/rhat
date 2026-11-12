@@ -57,6 +57,8 @@ char *llvm_type(Type *t)
         return t->owned ? fmt("{ i64, [%d x %s], ptr, [%d x ptr] }", t->count, llvm_type(t->elem),
                               t->regions)
                         : fmt("{ i64, [%d x %s] }", t->count, llvm_type(t->elem));
+    case T_FRAME:
+        return t->align > 8 ? fmt("[%zu x i128]", t->size / 16) : fmt("[%zu x i64]", t->size / 8);
     default:
         return t->symbol ? t->symbol : fmt("%%rh_type_%d", t->id);
     }
@@ -1891,7 +1893,67 @@ static void instruction(Output *o, Instr *i)
         a = load(o, i->a);
         fprintf(f, "  br i1 %%t%d, label %%block%d, label %%block%d\n", a, i->label, i->other);
         break;
+    case I_YIELD:
+        fprintf(f, "  store i32 %d, ptr %%frame\n  ret void\nrh.resume%d:\n", i->label, i->label);
+        break;
+    case I_FRAME: {
+        // A frame not yet started: the tag 0 and the arguments in their parameter slots.
+        Instance *co = i->callee;
+        fprintf(f, "  store %s zeroinitializer, ptr %%p%d\n", llvm_type(t), i->dst);
+        for (int j = 0; j < i->args.n; j++) {
+            Type *param = co->params.v[j];
+            a = load(o, (int)(intptr_t)i->args.v[j] - 1);
+            b = ++o->tmp;
+            fprintf(f,
+                    "  %%t%d = getelementptr i8, ptr %%p%d, i64 %zu\n  store %s %%t%d, ptr %%t%d\n",
+                    b, i->dst, co->frame_offset[j + 1], llvm_type(param), a, b);
+        }
+        break;
+    }
+    case I_RESUME:
+    case I_FRAME_DONE:
+    case I_FRAME_RESULT: {
+        Instance *co = i->callee;
+        a = load(o, i->a);
+        int tag = ++o->tmp, ok = ++o->tmp, id = ++o->tmp;
+        fprintf(f, "  %%t%d = load i32, ptr %%t%d\n", tag, a);
+        if (i->op == I_FRAME_DONE) {
+            fprintf(f, "  %%t%d = icmp eq i32 %%t%d, -1\n", ok, tag);
+            save(o, i->dst, t, fmt("%%t%d", ok));
+            break;
+        }
+        // start needs a fresh frame, resume a suspended one, result a finished one.
+        const char *test = i->op == I_FRAME_RESULT ? "eq i32 %%t%d, -1"
+                           : i->label              ? "sgt i32 %%t%d, 0"
+                                                   : "eq i32 %%t%d, 0";
+        fprintf(f, "  %%t%d = icmp ", ok);
+        fprintf(f, test, tag);
+        int kind = i->op == I_FRAME_RESULT ? 3 : i->label ? 1 : 0;
+        fprintf(f,
+                "\n  br i1 %%t%d, label %%frame_ok_%d, label %%frame_fail_%d\nframe_fail_%d:\n"
+                "  call void @rh_coroutine_fail(i32 %d, i32 %%t%d, i32 %d)\n  unreachable\n"
+                "frame_ok_%d:\n",
+                ok, id, id, id, kind, tag, i->loc.line, id);
+        if (i->op == I_RESUME) {
+            int sp = ++o->tmp;
+            fprintf(f, "  %%t%d = add i64 %%sp, %d\n  call void @%s(i64 %%t%d", sp, i->stack_index,
+                    co->symbol, sp);
+            if (o->p->state_fields.n) {
+                fputs(", ptr %context", f);
+            }
+            fprintf(f, ", ptr %%t%d)\n", a);
+        }
+        int at = ++o->tmp, turn = ++o->tmp;
+        fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n  %%t%d = load %s, ptr %%t%d\n",
+                at, a, co->frame_offset[co->result_slot], turn, llvm_type(t), at);
+        save(o, i->dst, t, fmt("%%t%d", turn));
+        break;
+    }
     case I_RETURN:
+        if (o->in->fn->yields) {
+            fputs("  store i32 -1, ptr %frame\n  ret void\n", f);
+            break;
+        }
         if (direct(o->in->result)) {
             r = load(o, o->in->result_slot);
             fprintf(f, "  ret %s %%t%d\n", llvm_type(o->in->result), r);
@@ -1921,7 +1983,8 @@ void emit_llvm(Program *p, const char *path)
             }
             for (int k = 0; k < in->code.n; k++) {
                 Instr *i = in->code.v[k];
-                if ((i->op == I_CALL || (i->op == I_THREAD && i->callee)) && !i->callee->emitted) {
+                if ((i->op == I_CALL || i->op == I_RESUME || (i->op == I_THREAD && i->callee)) &&
+                    !i->callee->emitted) {
                     i->callee->emitted = true;
                     changed = true;
                 }
@@ -2102,6 +2165,7 @@ void emit_llvm(Program *p, const char *path)
     for (size_t j = 0; j < sizeof(failures) / sizeof(failures[0]); j++) {
         fprintf(f, "declare void @rh_%s(i32) cold noreturn\n", failures[j]);
     }
+    fputs("declare void @rh_coroutine_fail(i32, i32, i32) cold noreturn\n", f);
     for (int j = 0; j < p->instances.n; j++) {
         Instance *in = p->instances.v[j];
         if (!in->emitted) {
@@ -2115,13 +2179,19 @@ void emit_llvm(Program *p, const char *path)
                               : in->fn->module != p->emitting ? "available_externally"
                               : in->cross_module              ? "dso_local"
                                                               : "internal";
+        // A coroutine's body is its resume function: it takes the frame its parameters and
+        // locals live in, and leaves each turn in the frame's result slot.
+        bool coroutine = in->fn->yields;
         fprintf(f, "\n; %s%s%s\ndefine %s %s @%s(", in->self ? in->self->name : "",
                 in->self ? "." : "", in->fn->name, linkage,
-                direct(in->result) ? llvm_type(in->result) : "void", in->symbol);
-        bool result = in->result->kind != T_VOID;
+                !coroutine && direct(in->result) ? llvm_type(in->result) : "void", in->symbol);
+        bool result = in->result->kind != T_VOID && !coroutine;
         fputs("i64 %sp", f);
         if (p->state_fields.n) {
             fputs(", ptr %context", f);
+        }
+        if (coroutine) {
+            fputs(", ptr noalias %frame", f);
         }
         if (result && !direct(in->result)) {
             fputs(", ptr %out", f);
@@ -2129,7 +2199,7 @@ void emit_llvm(Program *p, const char *path)
         if (in->result->owned) {
             fputs(", ptr %result_stack", f);
         }
-        for (int k = 0; k < in->params.n; k++) {
+        for (int k = 0; !coroutine && k < in->params.n; k++) {
             Type *param = in->params.v[k];
             fprintf(f, ", %s %%arg%d", direct(param) ? llvm_type(param) : "ptr", k);
         }
@@ -2144,7 +2214,11 @@ void emit_llvm(Program *p, const char *path)
         Output o = {f, in, 0, p};
         for (int k = 0; k < in->slots.n; k++) {
             Slot *s = in->slots.v[k];
-            if (!s->alias || (result && direct(in->result) && k == in->result_slot)) {
+            if (coroutine && !s->alias) {
+                fprintf(f, "  %%p%d = getelementptr i8, ptr %%frame, i64 %zu\n", k,
+                        in->frame_offset[k]);
+            }
+            else if (!s->alias || (result && direct(in->result) && k == in->result_slot)) {
                 fprintf(f, "  %%p%d = alloca %s\n", k, llvm_type(s->type));
             }
         }
@@ -2157,7 +2231,7 @@ void emit_llvm(Program *p, const char *path)
         if (result && !direct(in->result)) {
             fprintf(f, "  %%p%d = getelementptr i8, ptr %%out, i64 0\n", in->result_slot);
         }
-        for (int k = 0; k < in->params.n; k++) {
+        for (int k = 0; !coroutine && k < in->params.n; k++) {
             Type *t = in->params.v[k];
             int id = k + (result ? 1 : 0);
             if (direct(t)) {
@@ -2168,6 +2242,16 @@ void emit_llvm(Program *p, const char *path)
                 fprintf(f, "  %%t%d = load %s, ptr %%arg%d\n", r, llvm_type(t), k);
                 save(&o, id, t, fmt("%%t%d", r));
             }
+        }
+        if (coroutine) {
+            // Enter at the start or at the resume point the frame was suspended at.
+            fputs("  %tag = load i32, ptr %frame\n  switch i32 %tag, label %rh.finished [i32 0, "
+                  "label %rh.start",
+                  f);
+            for (int k = 1; k <= in->yield_points; k++) {
+                fprintf(f, " i32 %d, label %%rh.resume%d", k, k);
+            }
+            fputs("]\nrh.finished:\n  unreachable\nrh.start:\n", f);
         }
         for (int k = 0; k < in->code.n; k++) {
             instruction(&o, in->code.v[k]);
@@ -2273,7 +2357,12 @@ void dump_ir(Program *p, const char *path)
                            "context.ref",
                            "context.bind",
                            "thread",
-                           "array.fill"};
+                           "array.fill",
+                           "yield",
+                           "frame.make",
+                           "frame.resume",
+                           "frame.done",
+                           "frame.result"};
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         fprintf(f, "type %s size=%zu align=%zu%s\n", d->name, d->type->size, d->type->align,
@@ -2310,7 +2399,7 @@ void dump_ir(Program *p, const char *path)
         for (int k = 0; k < in->code.n; k++) {
             Instr *i = in->code.v[k];
             fprintf(f, "  %-18s dst=%%%d a=%%%d b=%%%d", names[i->op], i->dst, i->a, i->b);
-            if (i->op == I_STACK_BEGIN || i->op == I_CALL) {
+            if (i->op == I_STACK_BEGIN || i->op == I_CALL || i->op == I_RESUME) {
                 fprintf(f, " stack-offset=%d", i->stack_index);
             }
             if (i->op == I_REGION || (i->op == I_CALL && i->type->owned)) {

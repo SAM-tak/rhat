@@ -146,7 +146,8 @@ enum {
     E_STATE,     // A mutable type member in the current execution context.
     E_LAYOUT,    // sizeof^ / alignof^ query the layout of type_expr.
     E_BYTESOF,   // bytesof^ a borrows the raw representation as read-only bytes.
-    E_DEFAULT    // Default construction of a static member with an explicit type.
+    E_DEFAULT,   // Default construction of a static member with an explicit type.
+    E_YIELD      // yield^ a: suspend the enclosing coroutine, handing it a (or nothing).
 };
 
 struct Expr {
@@ -277,6 +278,7 @@ struct Function {
     bool lhat_export;   // exportL^: registered as an L^ host function.
     bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
     bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.
+    bool yields;        // The body suspends with yield^: a call makes a coroutine frame.
     List uses;          // Top-level bindings of the entry file the body reaches (Stmt *).
 };
 
@@ -362,7 +364,8 @@ enum {
     T_CFUNC,        // externC^ f^ ...;: a C function pointer with elem's signature.
     T_ENUM,         // enum^: a closed set of named integer constants laid out as elem.
     T_BOUNDED,      // T[max^N]: up to count elems inline after an i64 length; owns nothing.
-    T_CHANNEL       // channel_handle^<T>: an opaque, noncopyable channel hold for elem.
+    T_CHANNEL,      // channel_handle^<T>: an opaque, noncopyable channel hold for elem.
+    T_FRAME         // The frame a call to a yielding instance makes: its coroutine's state.
 };
 
 // Owning array length policies; ARRAY_SIZED fixes length after construction,
@@ -382,12 +385,13 @@ struct Type {
     size_t size, align;
     size_t payload_align, payload_bytes, payload_offset;
     bool refs, owned;
-    bool disposable;    // Needs disposal: a Disposable, channel handle, or aggregate holding one.
-    bool structural;    // Anonymous union identity is its canonical alternative set.
-    List params, arms;  // Callable parameters or intersection members.
-    Type *result;       // The result of a callable signature.
-    Function *function; // A noncapturing declaration known at compile time.
-    bool procedure;     // The callable may have procedure effects.
+    bool disposable;     // Needs disposal: a Disposable, channel handle, or aggregate holding one.
+    bool structural;     // Anonymous union identity is its canonical alternative set.
+    List params, arms;   // Callable parameters or intersection members.
+    Type *result;        // The result of a callable signature.
+    Function *function;  // A noncapturing declaration known at compile time.
+    bool procedure;      // The callable may have procedure effects.
+    Instance *coroutine; // T_FRAME: the yielding instance whose state this holds.
 };
 
 struct Program {
@@ -430,6 +434,8 @@ Type *type_spec(Program *p, Spec *s);
 Type *state_field_type(Program *p, Field *field);
 Type *type_builtin(Program *p, int kind);
 Type *type_wrap(Program *p, int kind, Type *elem, int count);
+// The frame type of a yielding instance: what each call of it makes.
+Type *frame_type(Program *p, Instance *in);
 // Whether an inline array owns independently stored rows; its element layout must be known.
 bool owning_rows(Type *t);
 
@@ -504,25 +510,31 @@ enum {
     I_STACK_SAVE,   // Save the caller-owned result stack frontier.
     I_STACK_REWIND, // Restore a result construction checkpoint after an error.
     I_RANGE_GUARD,
-    I_TERMINATE,  // Exit with the string in slot a; label 1 marks panic^.
-    I_DYN,        // Pair reference a with method table label.
-    I_DYNCALL,    // Call method table entry label through args[0].
-    I_DYNIS,      // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
-    I_DYNCAST,    // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
-    I_DYNDATA,    // The data reference of dyn^ a, proven to be type.
-    I_CASE_AT,    // Place dst at union a's payload for alternative label; b also sets the tag.
-    I_CHAR,       // dst (i64^) = the scalar a holds, or -1: a is the one character of a
-                  // string^, or else an i64^ to check.
-    I_HELPER,     // dst (i64^, or none when -1) = runtime function text applied to args: a
-                  // string^ or slice passes its data and length, an i64^ itself, and the
-                  // source line goes last.
-    I_SITE,       // dst = the static record of where an error is built: its source, line,
-                  // column and message; text is the source (length bytes), a NUL, the message.
-    I_STATE_REF,  // Alias dst to context member label.
-    I_STATE_BIND, // Publish entry-owned slot a as context member label.
-    I_THREAD,     // Typed channel transfer or thread ABI bridge; label selects operation.
-    I_FILL        // Fill owning array dst with a copies of element b during construction,
-                  // or with b < 0 reserve a elements of capacity for a T[max^].
+    I_TERMINATE,   // Exit with the string in slot a; label 1 marks panic^.
+    I_DYN,         // Pair reference a with method table label.
+    I_DYNCALL,     // Call method table entry label through args[0].
+    I_DYNIS,       // Test whether dyn^ a holds type: exactly ref^ T, or ref^ dyn^ D's composers.
+    I_DYNCAST,     // Swap dyn^ a's table for the ref^ dyn^ type of the same value.
+    I_DYNDATA,     // The data reference of dyn^ a, proven to be type.
+    I_CASE_AT,     // Place dst at union a's payload for alternative label; b also sets the tag.
+    I_CHAR,        // dst (i64^) = the scalar a holds, or -1: a is the one character of a
+                   // string^, or else an i64^ to check.
+    I_HELPER,      // dst (i64^, or none when -1) = runtime function text applied to args: a
+                   // string^ or slice passes its data and length, an i64^ itself, and the
+                   // source line goes last.
+    I_SITE,        // dst = the static record of where an error is built: its source, line,
+                   // column and message; text is the source (length bytes), a NUL, the message.
+    I_STATE_REF,   // Alias dst to context member label.
+    I_STATE_BIND,  // Publish entry-owned slot a as context member label.
+    I_THREAD,      // Typed channel transfer or thread ABI bridge; label selects operation.
+    I_FILL,        // Fill owning array dst with a copies of element b during construction,
+                   // or with b < 0 reserve a elements of capacity for a T[max^].
+    I_YIELD,       // Suspend at resume point label, the turn already in the result slot.
+    I_FRAME,       // Make callee's frame in dst from args, not yet started.
+    I_RESUME,      // Run frame reference a to its next yield^ or end: label 0 starts, 1 resumes;
+                   // dst receives the turn.
+    I_FRAME_DONE,  // dst = whether frame reference a has finished.
+    I_FRAME_RESULT // dst = the final result of finished frame reference a.
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };
@@ -590,6 +602,12 @@ struct Instance {
     bool returns_unknown; // A returned reference did not come from a parameter.
     bool indirect;        // Reached without a summary: dyn^, a function value or exportC^.
     List callers; // ToolInstantiation records for every use of this concrete specialization.
+    // A yielding instance: the frame its calls make, what it yields, what it finally returns,
+    // and their union, which each start or resume answers.
+    Type *frame, *yielded, *final, *turn;
+    int yield_points;     // Resume points so far, numbered from 1.
+    size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
+    size_t frame_size, frame_align;
 };
 
 // The methods of def iface specialized for concrete, by iface method index;

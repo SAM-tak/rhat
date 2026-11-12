@@ -1180,7 +1180,8 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             if (v.type->owned) {
                 fail(s->loc, "owned temporary requires a binding");
             }
-            if (s->a->kind != E_CALL && s->a->kind != E_TRY && s->a->kind != E_CATCH) {
+            if (s->a->kind != E_CALL && s->a->kind != E_TRY && s->a->kind != E_CATCH &&
+                s->a->kind != E_YIELD) {
                 fail(s->loc, "only calls can be expression statements");
             }
             layout(v.type, s->loc);
@@ -1502,6 +1503,28 @@ static void return_names(List *body, char **name, bool *valid, bool others)
     }
 }
 
+// Where each slot of a yielding instance lives in its frame: a tag first, then every slot
+// that is not a place alias, in order, each at its own alignment.
+static void frame_layout(Instance *in, Loc l)
+{
+    size_t offset = 8, align = 8;
+    in->frame_offset = mem((size_t)in->slots.n * sizeof(size_t));
+    for (int k = 0; k < in->slots.n; k++) {
+        Slot *s = in->slots.v[k];
+        if (s->alias) {
+            continue;
+        }
+        layout(s->type, l);
+        size_t a = s->type->align ? s->type->align : 1;
+        offset = (offset + a - 1) / a * a;
+        in->frame_offset[k] = offset;
+        offset += s->type->size;
+        align = a > align ? a : align;
+    }
+    in->frame_align = align > 8 ? 16 : 8;
+    in->frame_size = (offset + in->frame_align - 1) / in->frame_align * in->frame_align;
+}
+
 static Instance *instantiate_unchecked(Program *p, Instance *in)
 {
     Function *f = in->fn;
@@ -1538,6 +1561,15 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         return in;
     }
     in->state = 1;
+    // Within its own body a yielding instance answers each turn; its callers get the frame.
+    Type *frame = NULL;
+    if (f->yields) {
+        frame = in->result;
+        in->result = in->turn;
+        if (in->turn->owned) {
+            fail(f->loc, "a coroutine cannot yield or return owned values");
+        }
+    }
     Context c = {0};
     c.p = p;
     c.in = in;
@@ -1548,7 +1580,8 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     c.depth = 1;
     c.lexical = f->lexical ? f->lexical : 1;
     if (in->result->kind != T_VOID) {
-        in->result_slot = slot(&c, in->result, true);
+        // A coroutine's turn lives in its frame, where the resumer reads it.
+        in->result_slot = slot(&c, in->result, !frame);
         if (in->result->owned) {
             bool valid = true;
             return_names(&f->body, &in->result_local, &valid, in->result->kind == T_UNION);
@@ -1611,7 +1644,8 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
     }
     statements(&c, &f->body, false);
     if (!c.terminated) {
-        bool implicit_nil = nullable(in->result) && has_error(in->result);
+        bool implicit_nil =
+            nullable(in->result) && (has_error(in->result) || (frame && in->final->kind == T_NIL));
         if (!implicit_nil && in->result->kind != T_VOID && !in->invalid) {
             fail(f->loc, "not all paths return a value in '%s'", f->name);
         }
@@ -1625,6 +1659,11 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         i->type = in->result;
     }
     in->state = 2;
+    if (frame) {
+        frame_layout(in, f->loc);
+        in->result = frame;
+        layout(frame, f->loc);
+    }
     return in;
 }
 

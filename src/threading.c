@@ -112,6 +112,9 @@ static void transferable(Program *p, Type *t, bool arguments, Loc loc)
     else if (t->kind == T_ARRAY || t->kind == T_GROW || t->kind == T_BOUNDED) {
         transferable(p, t->elem, arguments, loc);
     }
+    else if (t->kind == T_FRAME) {
+        fail(loc, "thread transfer of coroutine frames is not supported yet");
+    }
     else if (!(kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL ||
                t->kind == T_CHAR || t->kind == T_NIL || t->kind == T_ENUM)) {
         fail(loc, "thread transfer refuses '%s': use owned data instead of references or views",

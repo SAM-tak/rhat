@@ -83,6 +83,8 @@ def main():
            'if^true^{}\n*tail := *tail + 1\n')
     expect('dereference_after_hat', 'let^f=f^r {return^* r}\n',
            'let^f = f^r {return^*r}\n')
+    expect('yield_like_return', 'let^g=p^n:i32^ {\n    yield^ n\n    yield^\n}\n',
+           'let^g = p^n:i32^{\n    yield^n\n    yield^\n}\n')
     expect('dereference_parentheses_and_power', 'print^(* (r),** (rr),2**3,2*3)\n',
            'print^(*(r), **(rr), 2 ** 3, 2 * 3)\n')
     expect('inline_records', 'let^a={x=1,y=2}\nlet^b={ x=1 }\nlet^c={ }\n',

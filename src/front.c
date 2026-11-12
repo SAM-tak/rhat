@@ -2021,6 +2021,18 @@ static void hidden_import(Module *module, bool needed, const char *name, const c
     }
 }
 
+static bool match_clause(Parser *p);
+static int loop_section(Parser *p);
+
+// Whether a value follows return^ or yield^ written at t: only on the same line, and not a word
+// that ends the statement or starts a clause.
+static bool operand_follows(Parser *p, Token *t)
+{
+    return tok(p)->kind != TOK_EOF && !is(p, "}") && !is(p, ";") && !is(p, ")") && !is(p, ",") &&
+           !branch_word(p) && !match_clause(p) && !catch_head(p) && loop_section(p) < 0 &&
+           tok(p)->loc.line == t->loc.line;
+}
+
 static Expr *primary(Parser *p)
 {
     int first = p->at;
@@ -2235,6 +2247,16 @@ static Expr *primary(Parser *p)
     }
     else if (!strcmp(t->text, "return^")) {
         fail(t->loc, "expected an expression; return^ belongs in a catch^ clause body");
+    }
+    else if (!strcmp(t->text, "yield^")) {
+        if (!p->enclosing) {
+            fail(t->loc, "yield^ belongs inside a function body");
+        }
+        p->enclosing->yields = true;
+        e = node(E_YIELD, t->loc);
+        if (operand_follows(p, t)) {
+            e->a = expr(p, 0);
+        }
     }
     else if (t->kind == TOK_WORD) {
         e = node(!strcmp(t->text, "self^") ? E_SELF : E_NAME, t->loc);
@@ -2537,7 +2559,6 @@ static Expr *expr(Parser *p, int min)
 
 static void block(Parser *p, List *out);
 static Stmt *stmt(Parser *p);
-static int loop_section(Parser *p);
 
 // Whether word can only begin a statement, never a literal's first element.
 static bool statement_word(const char *word)
@@ -3512,9 +3533,7 @@ static Stmt *stmt_unchecked(Parser *p)
     }
     else if (take(p, "return^")) {
         s->kind = S_RETURN;
-        if (tok(p)->kind != TOK_EOF && !is(p, "}") && !is(p, ";") && !branch_word(p) &&
-            !match_clause(p) && !catch_head(p) && loop_section(p) < 0 &&
-            tok(p)->loc.line == t->loc.line) {
+        if (operand_follows(p, t)) {
             s->a = expr(p, 0);
             if (is(p, ",")) {
                 List values = {0};

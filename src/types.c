@@ -100,6 +100,21 @@ Type *type_wrap(Program *p, int k, Type *e, int n)
     return t;
 }
 
+Type *frame_type(Program *p, Instance *in)
+{
+    Type *t = mem(sizeof(*t));
+    t->kind = T_FRAME;
+    t->id = p->types.n;
+    t->coroutine = in;
+    // A frame holds the references its arguments carry; its own locals cannot refer into it
+    // across a suspension.
+    for (int j = 0; j < in->params.n; j++) {
+        t->refs |= ((Type *)in->params.v[j])->refs;
+    }
+    add(&p->types, t);
+    return t;
+}
+
 static void union_arms(List *arms, Type *t)
 {
     if (t->kind == T_UNION && t->structural) {
@@ -569,6 +584,9 @@ char *type_name(Type *t)
     }
     if (t->kind == T_CHANNEL) {
         return fmt("channel_handle^<%s>", type_name(t->elem));
+    }
+    if (t->kind == T_FRAME) {
+        return fmt("frame^ %s", t->coroutine->fn->name);
     }
     if (t->kind == T_FUNCTION) {
         char *name = str(t->procedure ? "p^" : "f^");
@@ -1284,6 +1302,15 @@ void compose(Program *p, Def *d)
 
 static void layout_unchecked(Type *t, Loc l)
 {
+    if (t->kind == T_FRAME) {
+        // The frame is laid out once its instance has been lowered; until then it has no size.
+        if (t->coroutine->state == 1) {
+            fail(l, "coroutine '%s' cannot hold a frame of itself", t->coroutine->fn->name);
+        }
+        t->size = t->coroutine->frame_size;
+        t->align = t->coroutine->frame_align;
+        return;
+    }
     if (callable_type(t)) {
         if (t->kind == T_FUNCTION && !t->function) {
             fail(l, "callable storage requires a statically selected implementation");

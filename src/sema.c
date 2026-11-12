@@ -2240,6 +2240,67 @@ static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
     return result;
 }
 
+// start, resume, done and result of a coroutine frame. Advancing a frame runs its body, so it
+// carries the body's effect and writes the frame, which must be the caller's to write.
+static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int destination)
+{
+    Instance *co = base.type->coroutine;
+    const char *name = target->text;
+    bool advance = !strcmp(name, "start") || !strcmp(name, "resume");
+    bool done = !strcmp(name, "done");
+    if (!advance && !done && strcmp(name, "result")) {
+        fail(target->loc, "a coroutine frame has start, resume, done and result, not '%s'", name);
+    }
+    if (e->args.n) {
+        fail(e->loc, "'%s' takes no arguments", name);
+    }
+    if (advance) {
+        if (co->fn->procedure && !c->in->fn->procedure) {
+            fail(e->loc, "f^ cannot advance a p^ coroutine; '%s' runs its body", name);
+        }
+        store_check(c, base, (Value){0}, e->loc);
+    }
+    Value ref = value(c, type_wrap(c->p, T_REF, base.type, base.readonly));
+    Instr *address = emit(c, I_ADDR, e->loc);
+    address->dst = ref.id;
+    address->a = base.id;
+    address->type = ref.type;
+    // result reads the last turn, which a finished frame's return^ wrote; the final type is
+    // one alternative of it unless the two are the same.
+    bool project = !advance && !done && co->final != co->turn;
+    if (project && co->final->kind == T_UNION) {
+        fail(e->loc, "result of a coroutine whose final type '%s' is a union is not supported yet",
+             type_name(co->final));
+    }
+    Type *t = done ? type_builtin(c->p, T_BOOL) : co->turn;
+    Value out = {.type = t};
+    out.id = destination >= 0 && !project ? destination : slot(c, t, false);
+    if (t->refs) {
+        out.deps = base.deps;
+    }
+    Instr *i = emit(c, advance ? I_RESUME : done ? I_FRAME_DONE : I_FRAME_RESULT, e->loc);
+    i->dst = out.id;
+    i->a = ref.id;
+    i->type = t;
+    i->callee = co;
+    i->label = strcmp(name, "start") != 0;
+    if (advance && co->fn->procedure) {
+        forget_roots(&c->vars, base.deps, false);
+    }
+    if (!project) {
+        return out;
+    }
+    Value v = case_value(c, out, co->final, e->loc);
+    if (destination >= 0) {
+        Instr *copy = emit(c, I_COPY, e->loc);
+        copy->dst = destination;
+        copy->a = v.id;
+        copy->type = v.type;
+        v.id = destination;
+    }
+    return v;
+}
+
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
     Expr *target = e->a;
@@ -2472,6 +2533,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
         Value base = deref(c, receiver, e->loc);
         temporary_check(base, e->loc);
+        if (base.type->kind == T_FRAME) {
+            return frame_member(c, e, target, base, destination);
+        }
         Type *held = base.type->kind == T_DYN ? base.type->elem : base.type;
         if (!strcmp(target->text, "dispose") && held->kind == T_STRUCT && held->def->disposable) {
             fail(e->loc, "dispose is called when the value's scope ends; it cannot be called "
@@ -2746,7 +2810,8 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         fail(e->loc, "'%s' expects %s%d arguments", f->name, f->variadic ? "at least " : "",
              f->params.n - offset - f->variadic);
     }
-    if (f->procedure && !c->in->fn->procedure) {
+    // Making a coroutine's frame runs none of its body; advancing it is what needs p^.
+    if (f->procedure && !f->yields && !c->in->fn->procedure) {
         fail(e->loc, "f^ cannot call p^ '%s'", f->name);
     }
     // Arguments evaluated so far stay in use while later ones may shrink.
@@ -2850,6 +2915,9 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
     }
     Instance *in = instantiate(p, f, self, &actual, e->loc);
+    if (f->yields && in->state == 1) {
+        fail(e->loc, "coroutine '%s' cannot hold a frame of itself", f->name);
+    }
     // A mutable^self^ method that writes what its receiver refers to (or has no summary yet)
     // reaches past the receiver: from an f^ those targets have to be its own as well.
     bool reaches = f->mutable_self && (in->state != 2 || in->writes_reached);
@@ -2911,13 +2979,14 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     }
     Roots returned = flow_call(c, in, &values, e->loc);
     if (t->refs) {
-        out.deps = returned;
+        // A frame holds its arguments until it runs, as a record built from them would.
+        out.deps = f->yields ? deps : returned;
     }
 
     if (t->owned && destination < 0) {
         fail(e->loc, "owned return requires a binding or return destination");
     }
-    Instr *i = emit(c, I_CALL, e->loc);
+    Instr *i = emit(c, f->yields ? I_FRAME : I_CALL, e->loc);
     i->dst = out.id;
     i->callee = in;
     i->type = t;
@@ -4096,6 +4165,58 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
     return out;
 }
 
+// yield^ ends one activation of a coroutine: nothing of the body's own data stacks, nothing
+// it is still building and no reference into its own locals may be left to the next resume.
+static void suspension_check(Context *c, Loc l)
+{
+    if (c->pending_owners.n) {
+        fail(l, "yield^ cannot suspend while an owned value is being built");
+    }
+    for (int j = 0; j < c->vars.n; j++) {
+        Var *v = c->vars.v[j];
+        if (v->hidden || v->unavailable) {
+            continue;
+        }
+        if (v->type->owned) {
+            fail(l,
+                 "'%s' owns data stack storage, which cannot live across yield^; end its "
+                 "scope first or borrow storage owned by the caller",
+                 v->name);
+        }
+        if (v->type->disposable) {
+            fail(l, "Disposable '%s' cannot live across yield^ yet", v->name);
+        }
+        if (((Slot *)c->in->slots.v[v->slot])->alias) {
+            fail(l, "reference binding '%s' cannot live across yield^ yet", v->name);
+        }
+        for (int k = 0; v->type->refs && k < v->deps.n; k++) {
+            if (!v->deps.v[k]->external) {
+                fail(l,
+                     "'%s' refers to a local of this coroutine, which cannot be kept across "
+                     "yield^",
+                     v->name);
+            }
+        }
+    }
+}
+
+// yield^ a: put a into the turn this resume answers and suspend at a new resume point.
+static Value yield_point(Context *c, Expr *e)
+{
+    suspension_check(c, e->loc);
+    Expr none = {.kind = E_NAME, .text = "nil^", .loc = e->loc};
+    Value v = construct(c, e->a ? e->a : &none, c->in->result, c->in->result_slot);
+    if (c->terminated) {
+        return abrupt(c);
+    }
+    if (v.type->owned) {
+        fail(e->loc, "yield^ cannot hand out an owned value");
+    }
+    Instr *i = emit(c, I_YIELD, e->loc);
+    i->label = ++c->in->yield_points;
+    return (Value){.id = -1, .type = type_builtin(c->p, T_VOID)};
+}
+
 Value expression(Context *c, Expr *e, Type *expected)
 {
     if (e->kind == E_STATE) {
@@ -4208,6 +4329,9 @@ Value expression(Context *c, Expr *e, Type *expected)
     }
     if (e->kind == E_PACK) {
         return pack_value(c, e, expected);
+    }
+    if (e->kind == E_YIELD) {
+        return yield_point(c, e);
     }
     if (e->kind == E_PANIC) {
         Value v = snapshot(c, expression(c, e->a, NULL), e->loc);
