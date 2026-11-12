@@ -394,6 +394,23 @@ print^(lib.calls.apply(lib.calls.inc,2),lib.calls.apply(lib.calls.twice,2))
         ('signature_runtime_field', 'def^ V {self^{cb:f^i32^->i32^;}}', 'statically selected implementation'),
     ]:
         negative(name, text, diagnostic)
+    positive('named_arms', '''
+let^ area_i = f^ x:i32^ -> i32^ { x * x }
+let^ area_f = f^ x:f64^ -> f64^ { x * x * 2.0 }
+let^ area_s = f^ s:string^ -> i32^ { 0 }
+let^ area = area_i & area_f
+overload^ area = area_s
+print^(area(i32^(3)), area(1.5), area("x"), area_i(4))
+''', '9 4.5 0 16\n')
+    negative('named_arm_missing', '''
+let^ a = f^ x:i32^ -> i32^ { x }
+let^ g = nothing & a
+''', "'nothing' names no function of this module to stand as an arm")
+    negative('named_arm_overloaded', '''
+let^ a = f^ x:i32^ -> i32^ { x }
+overload^ a = f^ x:string^ -> i32^ { 0 }
+let^ g = a & f^ x:f64^ -> f64^ { x }
+''', "'a' is overloaded; an arm names a function with one declaration")
     suite.finish()
 
 

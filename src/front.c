@@ -1756,6 +1756,12 @@ static Expr *operation(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
 
+// Whether t names a function to stand as an arm: a plain word, not a function literal's start.
+static bool named_arm(Token *t)
+{
+    return t->kind == TOK_WORD && t->text[strlen(t->text) - 1] != '^';
+}
+
 static Expr *node(int k, Loc l)
 {
     Expr *e = mem(sizeof(*e));
@@ -4393,6 +4399,11 @@ static void declaration(Parser *q)
             (!strcmp(initializer->text, "f^") || !strcmp(initializer->text, "p^") ||
              !strcmp(initializer->text, "externC^") || !strcmp(initializer->text, "externLLVM^") ||
              !strcmp(initializer->text, "template^"));
+        // A named function as an arm: always after overload^, and after let^ when & follows,
+        // since let^ g = f alone binds a function value.
+        Token *after = q->at + 4 < q->tokens.n ? q->tokens.v[q->at + 4] : NULL;
+        binding |= !strcmp(equal->text, "=") && named_arm(initializer) &&
+                   (overload || (after && !strcmp(after->text, "&")));
     }
     if ((exported || lhat_export) && (!binding || q->at + 3 >= q->tokens.n ||
                                       strstr(((Token *)q->tokens.v[q->at + 3])->text, "extern"))) {
@@ -4439,7 +4450,14 @@ static void declaration(Parser *q)
     bool first_arm = true;
     do {
         Function *parsed_function = NULL;
-        if (take(q, "externC^")) {
+        if (named_arm(tok(q))) {
+            parsed_function = mem(sizeof(*parsed_function));
+            parsed_function->loc = tok(q)->loc;
+            parsed_function->lexical = q->scope_depth + 2;
+            parsed_function->name = name;
+            parsed_function->forward = word(q);
+        }
+        else if (take(q, "externC^")) {
             parsed_function = external_function(q, name, word(q));
         }
         else if (take(q, "externLLVM^")) {

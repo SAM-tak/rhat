@@ -2092,8 +2092,64 @@ static void collect_aliases(Program *p)
     } while (changed);
 }
 
+// A named arm passes to the one function of that name in its module: it takes the target's
+// parameters and effects, and its body calls the target with them. The target's body is not
+// shared, since resolution rewrites a body in place.
+static void forward_arms(Program *p)
+{
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *m = p->modules.v[j];
+        for (int k = 0; k < m->functions.n; k++) {
+            Function *f = m->functions.v[k], *target = NULL;
+            if (!f->forward) {
+                continue;
+            }
+            int found = 0;
+            for (int n = 0; n < m->functions.n; n++) {
+                Function *g = m->functions.v[n];
+                if (!g->forward && !strcmp(g->name, f->forward)) {
+                    target = g;
+                    found++;
+                }
+            }
+            if (found != 1) {
+                fail(f->loc,
+                     found ? "'%s' is overloaded; an arm names a function with one declaration"
+                           : "'%s' names no function of this module to stand as an arm",
+                     f->forward);
+            }
+            if (target->variadic || target->owner) {
+                fail(f->loc, "'%s' cannot stand as an arm: name a free function without '...'",
+                     f->forward);
+            }
+            f->procedure = target->procedure;
+            f->templ = target->templ;
+            f->result = target->yields ? NULL : target->result;
+            Expr *callee = mem(sizeof(*callee));
+            *callee = (Expr){.kind = E_NAME, .loc = f->loc, .text = f->forward};
+            Expr *call = mem(sizeof(*call));
+            *call = (Expr){.kind = E_CALL, .loc = f->loc, .a = callee};
+            for (int n = 0; n < target->params.n; n++) {
+                Param *param = mem(sizeof(*param));
+                *param = *(Param *)target->params.v[n];
+                param->name = fmt("\001arm%d", n);
+                add(&f->params, param);
+                Expr *arg = mem(sizeof(*arg));
+                *arg =
+                    (Expr){.kind = E_NAME, .loc = f->loc, .text = param->name, .untracked = true};
+                add(&call->args, arg);
+            }
+            Stmt *ret = mem(sizeof(*ret));
+            *ret = (Stmt){.kind = S_RETURN, .loc = f->loc, .a = call};
+            add(&f->body, ret);
+            f->forward = NULL;
+        }
+    }
+}
+
 void resolve_modules(Program *p)
 {
+    forward_arms(p);
     top_bindings = top_calls = top_references = local_types = (List){0};
     top_user = NULL;
     capture_scopes = (List){0};

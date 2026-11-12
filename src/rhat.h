@@ -282,6 +282,7 @@ struct Function {
     bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
     bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.
     bool yields;        // The body suspends with yield^: a call makes a coroutine frame.
+    char *forward;      // A named arm: the function it passes to, until modules are resolved.
     List uses;          // Top-level bindings of the entry file the body reaches (Stmt *).
 };
 
