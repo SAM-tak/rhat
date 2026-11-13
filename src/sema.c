@@ -3742,6 +3742,14 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
             }
             t = d->type;
         }
+        if (t && t->kind == T_CHANNEL && !e->text && !e->args.n) {
+            // {} is the empty hold, a closed channel.
+            Value out = {.type = t, .id = dst >= 0 ? dst : slot(c, t, false)};
+            Instr *z = emit(c, I_ZERO, e->loc);
+            z->dst = out.id;
+            z->type = t;
+            return out;
+        }
         bool results = t && t->kind == T_STRUCT && t->def->tuple;
         if (e->tuple && !results) {
             fail(e->loc, "multiple values go only where multiple results (A, B) are expected, "
@@ -3799,6 +3807,17 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 if (!strcmp(name, e->names.v[k])) {
                     fail(e->loc, "duplicate field initializer '%s'", name);
                 }
+            }
+        }
+        // A private field with no default is written only by its owner, so only the owner
+        // builds the value; elsewhere, its own functions (a static new) do.
+        for (int j = 0; j < t->def->fields.n; j++) {
+            Field *f = t->def->fields.v[j];
+            if (f->priv && !f->init && c->access != f->owner) {
+                fail(e->loc,
+                     "'%s' keeps private field '%s' with no default, so only '%s' builds it; "
+                     "call one of its functions, such as a static new",
+                     t->def->name, f->name, f->owner->name);
             }
         }
         for (int j = 0; j < t->def->fields.n; j++) {

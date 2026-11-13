@@ -1763,6 +1763,9 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
                              "alternatives");
             }
         }
+        if (type && type->kind == T_CHANNEL && !e->text && !e->args.n) {
+            return type; // {} is the empty hold, a closed channel.
+        }
         if (!type || type->kind != T_STRUCT) {
             fail(e->loc, "contextual construction requires a single nominal struct "
                          "type; write Type{field=value}");

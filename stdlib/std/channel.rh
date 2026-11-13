@@ -18,7 +18,7 @@ let^sent = f^status:i64^-> nil^| Error {
 
 # A bounded queue with explicit shared holds. The element type must own its data.
 public^def^Channel<T> {
-    self^{ private^handle:channel_handle^<T> }
+    self^{ private^handle:channel_handle^<T> = {} }  # a default channel is closed
 
     new = p^messages:i64^, bytes:i64^-> Self^| Error {
         if^messages <= 0 or^bytes <= 0 { return^Error.InvalidCapacity{} }

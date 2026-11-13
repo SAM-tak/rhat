@@ -1796,6 +1796,24 @@ let^ use=template^p^ x:A {}
 use(B.new())
 """, "requires nominal 'A'")
 negative("private", 'def^ A { self^{ private^ x:i32^=1 } }\nprint^(A.new().x)', "private member")
+positive("private_field_built_by_owner", """
+def^ S {
+    self^{ private^h:i64^, n:i64^ = 1 }
+    new = f^h:i64^ -> Self^ { Self^{h = h} }
+    get = f^self^ -> i64^ { self^.h }
+}
+def^ W { self^{ inner:S = S.new(4) } }
+def^ D { self^{ private^d:i64^ = 9 } get = f^self^ -> i64^ { self^.d } }
+print^(S.new(3).get(), W{}.inner.get(), D{}.get())
+""", "3 4 9\n")
+for name, text in [
+    ("private_no_default_braces", "let^ s = S{}"),
+    ("private_no_default_omitted_field", "def^ V { self^{ inner:S } } let^ v = V{}"),
+    ("private_no_default_array", "var^ a:S[2] = {}"),
+    ("private_no_default_new", "let^ s = S.new()"),
+]:
+    negative(name, "def^ S { self^{ private^h:i64^ } }\n" + text,
+             "'S' keeps private field 'h' with no default, so only 'S' builds it")
 negative("template_private", """
 def^ A { self^{ private^ x:i32^=1 } }
 let^ use=template^p^ a { print^(a.x) }

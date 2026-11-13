@@ -6,6 +6,8 @@ def main():
     suite = Suite('net')
     positive, negative = suite.positive, suite.negative
 
+    # a's second wait is registered only after its first one fired, so it always comes due
+    # after b's: the order holds however late the timers fire.
     positive('delay_order', '''
 let^ async = import^ std.async
 let^ work = p^ name:string^, pause:f64^, n:i64^ {
@@ -18,8 +20,8 @@ let^ work = p^ name:string^, pause:f64^, n:i64^ {
     return^ nil^
 }
 let^ run = p^ {
-    var^ a = work("a", 0.1, 3)
-    var^ b = work("b", 0.25, 2)
+    var^ a = work("a", 0.1, 2)
+    var^ b = work("b", 0.15, 1)
     var^ loop = async.Loop<nil^>{}
     loop.add(ref^ a)
     loop.add(ref^ b)
@@ -27,7 +29,7 @@ let^ run = p^ {
     print^("done")
 }
 run()
-''', 'a 0\na 1\nb 0\na 2\nb 1\ndone\n')
+''', 'a 0\nb 0\na 1\ndone\n')
 
     positive('tcp_echo', '''
 let^ async = import^ std.async

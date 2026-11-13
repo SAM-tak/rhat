@@ -14,7 +14,7 @@ public^errordef^Error { StartFailed }
 
 # A joinable OS thread. Scope exit waits; close its input before waiting.
 public^def^Thread : std.sys.Disposable {
-    self^{ private^handle:i64^, private^identity:i64^}
+    self^{ private^handle:i64^= 0, private^identity:i64^= 0 }  # empty until spawned
     spawn = template^p^entry, args -> Self^| Error.StartFailed {
         let^worker = thread_entry^(entry, args)
         let^transfer = thread_transfer_type^(args)
