@@ -510,6 +510,8 @@ enum {
     I_ADDR,
     I_DEREF,
     I_FIELD,
+    I_CFIELD_GET, // dst: the union a's C pointer field holds (nil^ for NULL).
+    I_CFIELD_SET, // a: a C pointer field, given union b's pointer (NULL for nil^).
     I_INDEX,
     I_CALL,
     I_PRINT,
@@ -694,6 +696,9 @@ bool lhat_any(Type *t);
 // ref^ T or ref^ T | nil^ to an opaque C type (externC^ def^ T;): R^ never holds a T, so the
 // reference is C's object, not a borrow -- it may move to another thread or sit in a C struct.
 bool foreign_ref(Type *t);
+// How owner keeps field f: an externC^ def^ keeps a ref^ T | nil^ to an opaque C type as C's
+// one pointer (NULL for nil^), which reads and writes convert; any other field as its type.
+Type *field_storage(Type *owner, Field *f);
 // retain, let_go and type_argument of an exportL^ ref^ def^: C callbacks L^ calls for its
 // host data (sharing it across machines, reading its type arguments), not L^ members.
 bool lhat_contract(Function *f);

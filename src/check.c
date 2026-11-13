@@ -54,7 +54,9 @@ static bool c_flat(Type *t)
         return false;
     }
     for (int j = 0; j < t->def->fields.n; j++) {
-        if (!c_flat(((Field *)t->def->fields.v[j])->type)) {
+        Type *field = ((Field *)t->def->fields.v[j])->type;
+        // A C struct may point at C's objects.
+        if (!c_flat(field) && !(t->def->c_name && foreign_ref(field))) {
             return false;
         }
     }
@@ -68,6 +70,15 @@ bool foreign_ref(Type *t)
         t = a->kind == T_NIL ? b : b->kind == T_NIL ? a : t;
     }
     return t->kind == T_REF && t->elem->kind == T_STRUCT && t->elem->def->opaque;
+}
+
+Type *field_storage(Type *owner, Field *f)
+{
+    if (!owner->def->c_name || f->type->kind != T_UNION || !foreign_ref(f->type)) {
+        return f->type;
+    }
+    Type *a = f->type->def->alternatives.v[0], *b = f->type->def->alternatives.v[1];
+    return a->kind == T_NIL ? b : a;
 }
 
 // The reference a C pointer stands for: ref^ to a flat or opaque def^ (or

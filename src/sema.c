@@ -1310,9 +1310,39 @@ static Value coalesce_value(Context *c, Expr *e, int dst)
     return out;
 }
 
+void cfield_store(Context *c, Value dest, Loc l)
+{
+    if (dest.cfield) {
+        Instr *i = emit(c, I_CFIELD_SET, l);
+        i->a = dest.cfield - 1;
+        i->b = dest.id;
+        i->type = dest.type;
+    }
+}
+
 Value field_value(Context *c, Value base, Field *f, Loc l)
 {
     access_check(c, f->priv, f->owner, l, f->name);
+    Type *kept = field_storage(base.type, f);
+    if (kept != f->type) {
+        int at = slot(c, kept, true);
+        Instr *i = emit(c, I_FIELD, l);
+        i->dst = at;
+        i->a = base.id;
+        i->type = base.type;
+        i->label = f->index;
+        Value r = value(c, f->type);
+        Instr *g = emit(c, I_CFIELD_GET, l);
+        g->dst = r.id;
+        g->a = at;
+        g->type = f->type;
+        r.storage = base.storage;
+        r.var = base.var;
+        r.addressable = base.addressable;
+        r.readonly = base.readonly;
+        r.cfield = at + 1;
+        return r;
+    }
     Value r = {0};
     r.type = f->type;
     r.id = slot(c, r.type, true);
@@ -3943,13 +3973,18 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 c->access = f->initializer_owner;
             }
             Value dest = {0};
-            dest.type = f->type;
-            dest.id = slot(c, f->type, true);
-            Instr *a = emit(c, I_FIELD, e->loc);
-            a->dst = dest.id;
-            a->a = out.id;
-            a->type = t;
-            a->label = f->index;
+            if (field_storage(t, f) != f->type) {
+                dest = field_value(c, out, f, e->loc);
+            }
+            else {
+                dest.type = f->type;
+                dest.id = slot(c, f->type, true);
+                Instr *a = emit(c, I_FIELD, e->loc);
+                a->dst = dest.id;
+                a->a = out.id;
+                a->type = t;
+                a->label = f->index;
+            }
             Value v = {0};
             if (t->def->group && !f->index) {
                 // The hidden site records where this error is built and its message.
@@ -4002,6 +4037,7 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
                 c->pending_disposals.n = pending;
                 return abrupt(c);
             }
+            cfield_store(c, dest, e->loc);
             dispose_pending(c, dest);
             out.deps = roots_union(out.deps, v.deps);
         }
@@ -4420,6 +4456,7 @@ static Value pack_value(Context *c, Expr *e, Type *expected)
             if (dead(item)) {
                 return item;
             }
+            cfield_store(c, dest, e->loc);
             out.deps = roots_union(out.deps, item.deps);
         }
         return out;
@@ -5217,6 +5254,9 @@ Value expression(Context *c, Expr *e, Type *expected)
             }
             if (!a.addressable) {
                 fail(e->loc, "cannot borrow a temporary; bind it first");
+            }
+            if (a.cfield) {
+                fail(e->loc, "a C pointer field cannot be borrowed; copy it into a binding");
             }
             bool reading = !strcmp(e->text, "read^") || (expected && read_reference(expected));
             if (a.var && !a.var->mut && !e->top_binding && !reading) {

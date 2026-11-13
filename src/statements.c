@@ -1168,6 +1168,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
                     dispose_value(c, dest[j], s->loc);
                 }
                 copy_to(c, dest[j], src[j], s->loc, false);
+                cfield_store(c, dest[j], s->loc);
                 Expr *target = s->targets.n ? s->targets.v[j] : s->a;
                 if (s->op && target->kind == E_NAME && dest[j].var &&
                     dest[j].type->kind == T_UNION &&

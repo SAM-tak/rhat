@@ -84,6 +84,7 @@ typedef struct {
     // A reference made from a place knows where it points and what is held there.
     Roots target, contents;
     Instr *row_reservation; // Pending row placement, restored on an error path.
+    int cfield; // A copy of a C pointer field: its address slot + 1, written back by cfield_store.
 } Value;
 
 // Loop targets and scope boundaries used by control-flow analysis.
@@ -593,6 +594,8 @@ void nil_jump(Context *c, int label, Loc loc);
 Value nil_literal(Context *c, Loc loc);
 // The place of field f of base.
 Value field_value(Context *c, Value base, Field *f, Loc l);
+// Writes a copy of a C pointer field back to it, after a store into the copy.
+void cfield_store(Context *c, Value dest, Loc l);
 // Dispose what leaving the scopes above these marks abandons, then release the owners.
 void escape_cleanup(Context *c, int bindings, int pending, int disposals, Loc loc);
 // Dispose only, for an exit that must do so before it writes the result.

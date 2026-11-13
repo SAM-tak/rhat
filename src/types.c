@@ -1507,20 +1507,22 @@ static void layout_unchecked(Type *t, Loc l)
     else {
         for (int i = 0; i < t->def->fields.n; i++) {
             Field *f = t->def->fields.v[i];
+            Type *kept = field_storage(t, f);
             layout(f->type, f->loc);
+            layout(kept, f->loc);
             if (f->type->owned && i != t->def->fields.n - 1) {
                 fail(f->loc, "a growable field must be the final field");
             }
-            if (size > SIZE_MAX - (f->type->align - 1)) {
+            if (size > SIZE_MAX - (kept->align - 1)) {
                 fail(f->loc, "structure layout overflows");
             }
-            size = (size + f->type->align - 1) / f->type->align * f->type->align;
-            if (f->type->size > SIZE_MAX - size) {
+            size = (size + kept->align - 1) / kept->align * kept->align;
+            if (kept->size > SIZE_MAX - size) {
                 fail(f->loc, "structure layout overflows");
             }
-            size += f->type->size;
-            if (f->type->align > align) {
-                align = f->type->align;
+            size += kept->size;
+            if (kept->align > align) {
+                align = kept->align;
             }
             t->refs |= f->type->refs;
             t->owned |= f->type->owned;

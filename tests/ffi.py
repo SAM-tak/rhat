@@ -108,6 +108,9 @@ int64_t ffi_box_get(const FfiBox *b);
 int64_t ffi_box_or(const FfiBox *b, int64_t fallback);
 void ffi_box_free(FfiBox *b);
 int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x);
+typedef struct { FfiBox *box; int64_t n; } FfiPair;
+FfiPair *ffi_pair_new(int64_t n);
+int64_t ffi_pair_sum(const FfiPair *p);
 static inline const char *ffi_text(int32_t k) { return k == 0 ? "h\\xc3\\xa9llo" : k == 1 ? "\\xff" : (const char *)0; }
 ''', encoding='utf-8')
     boxes = suite.work / 'ffi_boxes.c'
@@ -120,6 +123,8 @@ int64_t ffi_box_get(const FfiBox *b) {{ return b->n; }}
 int64_t ffi_box_or(const FfiBox *b, int64_t fallback) {{ return b ? b->n : fallback; }}
 void ffi_box_free(FfiBox *b) {{ free(b); }}
 int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x) {{ return fn ? fn(x) : -1; }}
+FfiPair *ffi_pair_new(int64_t n) {{ FfiPair *p = malloc(sizeof *p); p->box = ffi_box_new(n); p->n = 1; return p; }}
+int64_t ffi_pair_sum(const FfiPair *p) {{ return p->n + (p->box ? p->box->n * 10 : 0); }}
 ''', encoding='utf-8')
     header = 'includeC^ "ffi_lib.h"\n'
     value = header + 'externC^ def^ FfiValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }\nexternC^ ffi_int:f^ i:i64^ -> FfiValue;\n'
@@ -179,6 +184,31 @@ let^ run = p^ {
 }
 run()
 ''', "thread transfer refuses")
+    # A C struct may point at C's objects: a ref^ T | nil^ field to an opaque C type is laid out
+    # as one pointer, NULL for nil^, read and written as R^'s union.
+    pair = header + '''externC^ def^ FfiBox;
+externC^ ffi_box_new:p^ n:i64^ -> ref^ FfiBox;
+externC^ ffi_box_get:f^ b:ref^ FfiBox -> i64^;
+externC^ def^ FfiPair { self^{ box:ref^ FfiBox | nil^ = nil^, n:i64^ = 0 } }
+externC^ ffi_pair_new:p^ n:i64^ -> ref^ FfiPair;
+externC^ ffi_pair_sum:f^ p:ref^ FfiPair -> i64^;
+'''
+    positive('ffi_c_pointer_field', pair + '''let^ p = ffi_pair_new(7)
+let^ b = p.box
+if^ b fits^ ref^ FfiBox { print^(ffi_box_get(b), p.n) }
+p.box := nil^
+print^(p.box fits^ nil^, ffi_pair_sum(p))
+p.box := ffi_box_new(4)
+print^(ffi_pair_sum(p))
+var^ local = FfiPair{n = 5}
+print^(local.box fits^ nil^, ffi_pair_sum(ref^ local))
+var^ other = FfiPair{box = ffi_box_new(2), n = 1}
+print^(ffi_pair_sum(ref^ other))
+''', '7 1\ntrue 1\n41\ntrue 5\n21\n', extra=('--runtime', boxes))
+    negative('ffi_c_pointer_field_borrow', pair + '''var^ local = FfiPair{n = 5}
+let^ r = ref^ local.box
+''', 'a C pointer field cannot be borrowed')
+
     # Builder.append_c copies C's NUL-terminated text; NULL adds nothing, and text that is not
     # UTF-8 is refused whole.
     positive('ffi_append_c', header + '''let^ text = import^ std.text

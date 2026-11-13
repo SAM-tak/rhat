@@ -402,6 +402,38 @@ static int pointer_tag(Type *t)
     return ((Type *)t->def->alternatives.v[0])->kind == T_NIL;
 }
 
+// The pointer union id holds, or NULL for nil^: the temporary that has it.
+static int union_pointer(Output *o, Type *t, int id)
+{
+    int tagp = ++o->tmp, tag = ++o->tmp, payload = ++o->tmp, ptr = ++o->tmp;
+    int present = ++o->tmp, arg = ++o->tmp;
+    fprintf(o->f,
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
+            "  %%t%d = load i32, ptr %%t%d\n"
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
+            "  %%t%d = load ptr, ptr %%t%d\n"
+            "  %%t%d = icmp eq i32 %%t%d, %d\n"
+            "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr null\n",
+            tagp, llvm_type(t), id, tag, tagp, payload, llvm_type(t), id, ptr, payload, present,
+            tag, pointer_tag(t), arg, present, ptr);
+    return arg;
+}
+
+// Stores the pointer in temporary pointer into union dst: nil^ for NULL.
+static void pointer_union(Output *o, Type *t, int dst, int pointer)
+{
+    int present = ++o->tmp, tag = ++o->tmp, tagp = ++o->tmp, payload = ++o->tmp;
+    fprintf(o->f,
+            "  %%t%d = icmp ne ptr %%t%d, null\n"
+            "  %%t%d = select i1 %%t%d, i32 %d, i32 %d\n"
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
+            "  store i32 %%t%d, ptr %%t%d\n"
+            "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
+            "  store ptr %%t%d, ptr %%t%d\n",
+            present, pointer, tag, present, pointer_tag(t), !pointer_tag(t), tagp, llvm_type(t),
+            dst, tag, tagp, payload, llvm_type(t), dst, pointer, payload);
+}
+
 // A direct C call without the stack position or result destination: to the callee's symbol,
 // or with signature to the function pointer in slot a.
 static void external_invoke(Output *o, Instr *i, Type *signature)
@@ -421,18 +453,7 @@ static void external_invoke(Output *o, Instr *i, Type *signature)
             continue;
         }
         if (param->kind == T_UNION) {
-            int tagp = ++o->tmp, tag = ++o->tmp, payload = ++o->tmp, ptr = ++o->tmp;
-            int present = ++o->tmp, arg = ++o->tmp;
-            fprintf(o->f,
-                    "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
-                    "  %%t%d = load i32, ptr %%t%d\n"
-                    "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
-                    "  %%t%d = load ptr, ptr %%t%d\n"
-                    "  %%t%d = icmp eq i32 %%t%d, %d\n"
-                    "  %%t%d = select i1 %%t%d, ptr %%t%d, ptr null\n",
-                    tagp, llvm_type(param), id, tag, tagp, payload, llvm_type(param), id, ptr,
-                    payload, present, tag, pointer_tag(param), arg, present, ptr);
-            operands = fmt("%s%sptr %%t%d", operands, sep, arg);
+            operands = fmt("%s%sptr %%t%d", operands, sep, union_pointer(o, param, id));
             continue;
         }
         int v = load(o, id);
@@ -453,18 +474,7 @@ static void external_invoke(Output *o, Instr *i, Type *signature)
     int r = ++o->tmp;
     fprintf(o->f, "  %%t%d = call %s %s(%s)\n", r, c_abi(i->type, false), symbol, operands);
     if (i->type->kind == T_UNION) {
-        // A NULL result becomes nil^.
-        int present = ++o->tmp, tag = ++o->tmp, tagp = ++o->tmp, payload = ++o->tmp;
-        fprintf(o->f,
-                "  %%t%d = icmp ne ptr %%t%d, null\n"
-                "  %%t%d = select i1 %%t%d, i32 %d, i32 %d\n"
-                "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 0\n"
-                "  store i32 %%t%d, ptr %%t%d\n"
-                "  %%t%d = getelementptr %s, ptr %%p%d, i32 0, i32 2\n"
-                "  store ptr %%t%d, ptr %%t%d\n",
-                present, r, tag, present, pointer_tag(i->type), !pointer_tag(i->type), tagp,
-                llvm_type(i->type), i->dst, tag, tagp, payload, llvm_type(i->type), i->dst, r,
-                payload);
+        pointer_union(o, i->type, i->dst, r); // A NULL result becomes nil^.
         return;
     }
     save(o, i->dst, i->type, fmt("%%t%d", r));
@@ -797,6 +807,15 @@ static void instruction(Output *o, Instr *i)
     case I_FIELD:
         fprintf(f, "  %%p%d = getelementptr %s, ptr %%p%d, i32 0, i32 %d\n", i->dst, llvm_type(t),
                 i->a, i->label);
+        break;
+    case I_CFIELD_GET: {
+        int pointer = ++o->tmp;
+        fprintf(f, "  %%t%d = load ptr, ptr %%p%d\n", pointer, i->a);
+        pointer_union(o, i->type, i->dst, pointer);
+        break;
+    }
+    case I_CFIELD_SET:
+        fprintf(f, "  store ptr %%t%d, ptr %%p%d\n", union_pointer(o, i->type, i->b), i->a);
         break;
     case I_INDEX:
         if (owning_rows(t)) {
@@ -2175,7 +2194,7 @@ void emit_llvm(Program *p, const char *path)
         }
         for (int k = 0; k < t->def->fields.n; k++) {
             Field *a = t->def->fields.v[k];
-            fprintf(f, "%s%s", k ? ", " : "", llvm_type(a->type));
+            fprintf(f, "%s%s", k ? ", " : "", llvm_type(field_storage(t, a)));
         }
         fputs(" }\n", f);
     }
@@ -2482,6 +2501,8 @@ void dump_ir(Program *p, const char *path)
                            "borrow",
                            "deref",
                            "field",
+                           "cfield.get",
+                           "cfield.set",
                            "index.checked",
                            "call",
                            "print",
@@ -2685,7 +2706,7 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
     if (!headers || !t->def->c_name) {
         fputs("typedef struct {", f);
         for (int j = 0; j < t->def->fields.n; j++) {
-            Type *base = ((Field *)t->def->fields.v[j])->type;
+            Type *base = field_storage(t, t->def->fields.v[j]);
             char *dims = "";
             for (; base->kind == T_ARRAY; base = base->elem) {
                 dims = fmt("%s[%d]", dims, base->count);
@@ -2705,7 +2726,7 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
             name, t->size, name, t->align, t->def->name);
     size_t offset = 0;
     for (int j = 0; j < t->def->fields.n; j++) {
-        Type *field = ((Field *)t->def->fields.v[j])->type;
+        Type *field = field_storage(t, t->def->fields.v[j]);
         offset = (offset + field->align - 1) / field->align * field->align;
         fprintf(f,
                 "_Static_assert(offsetof(%s, %s) == %zu && sizeof(((%s *)0)->%s) == %zu, "
