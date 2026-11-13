@@ -1,7 +1,6 @@
-// The C half of lib/lhat: what R^ cannot hold itself. An L^ job keeps an L^ machine, its
-// coroutine and its last run result between turns, and a task keeps the detached result and
-// its type: C pointers and C structs, which R^ passes but does not own. Everything else --
-// what L^ sees, the pool, the waits, the sharing contract -- is the R^ of lhat.task.
+// The C half of lib/lhat: the C structs lhat.task reads and writes, and what R^ does not do --
+// counts shared between threads, memory C frees, text built in C, an L^ type heap. How a job
+// runs, what L^ sees, the pool, the waits and the sharing contract are the R^ of lhat.task.
 #ifndef RHAT_LHAT_HOST_H
 #define RHAT_LHAT_HOST_H
 
@@ -183,7 +182,8 @@ static inline char *lhost_job_failure(LhatMachine *machine, LhatRunResult ran)
     return text;
 }
 
-// The job's end: its answer detached from the machine, and the machine gone.
+/// The job's end, after its last run: its answer detached from the machine, or what it failed
+/// with, and the machine gone.
 static inline void lhost_job_conclude(LhatJob *job, LhatRunStatus status)
 {
     LhatJobResult *r = calloc(1, sizeof *r);
@@ -206,53 +206,10 @@ static inline void lhost_job_conclude(LhatJob *job, LhatRunStatus status)
     job->result = r;
 }
 
-// The first turn: the job's own machine, and the job rebuilt on it.
-static inline LhatRunResult lhost_job_begin(LhatJob *job)
+/// The job std.task hands back as its ForeignJob.
+static inline LhatJob *lhost_job(void *job)
 {
-    LhatRunResult ran = {LHAT_RUN_OUT_OF_MEMORY};
-    LhatValue value = lhat_nil();
-    job->machine = lhat_machine_new_with_size(LHAT_HOST_FRAMES, LHAT_HOST_SLOTS);
-    if (!job->machine || !lhat_program_install(job->program, job->machine) ||
-        !lhat_uncarry(job->machine, job->carried, &value)) {
-        return ran;
-    }
-    lhat_machine_set_budget(job->machine, LHAT_HOST_SLICE);
-    if (lhat_is_object_kind(value, LHAT_OBJECT_SUBROUTINE)) {
-        return lhat_machine_call(job->machine, value, NULL, 0);
-    }
-    job->driving = value;
-    job->driving_set = true;
-    return lhat_machine_resume(job->machine, value, NULL, 0);
-}
-
-/// One turn of the job: -1 once it has finished, otherwise what it yielded when that was a
-/// whole number above 0 (a wait it may be waiting for), else 0.
-static inline int64_t lhost_job_turn(LhatJob *job)
-{
-    LhatRunResult ran = !job->machine ? lhost_job_begin(job)
-                        : job->ran.status == LHAT_RUN_SUSPENDED
-                            ? lhat_machine_continue(job->machine)
-                            : lhat_machine_resume(job->machine, job->driving, NULL, 0);
-    job->ran = ran;
-    if (ran.status == LHAT_RUN_SUSPENDED) {
-        return 0; // Out of budget mid-body: it continues next turn.
-    }
-    if (ran.status != LHAT_RUN_OK) {
-        lhost_job_conclude(job, ran.status);
-        return -1;
-    }
-    // A closure answered: a yieldable one answers its coroutine, which is what runs on.
-    if (!job->driving_set && lhat_is_object_kind(ran.value, LHAT_OBJECT_COROUTINE)) {
-        job->driving = ran.value;
-        job->driving_set = true;
-        return 0;
-    }
-    if (!job->driving_set || lhat_machine_coroutine_done(job->driving)) {
-        lhost_job_conclude(job, LHAT_RUN_OK);
-        return -1;
-    }
-    return lhat_is_integer(ran.value) && lhat_as_integer(ran.value) > 0 ? lhat_as_integer(ran.value)
-                                                                        : 0;
+    return job;
 }
 
 /// The job's result, handed to its task once it has finished.

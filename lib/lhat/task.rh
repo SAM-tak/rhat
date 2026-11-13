@@ -11,6 +11,27 @@ let^async = import^std.async
 let^task = import^std.task
 let^l = import^lhat.l
 
+externC^def^LhatCarried;
+externC^def^LhatJobResult;
+
+# An L^ job a pool worker runs a slice at a time, as lhat_host.h lays it out: the program, the job
+# carried off its machine, its own machine once it has run, the coroutine that runs on, the last
+# run, and once it has ended what came of it.
+externC^def^LhatJob {
+    self^{
+        program:ref^l.LhatProgram | nil^= nil^, carried:ref^LhatCarried | nil^= nil^,
+        machine:ref^l.LhatMachine | nil^= nil^, driving:l.LhatValue = l.LhatValue{},
+        driving_set:bool^= false^, ran:l.LhatRunResult = l.LhatRunResult{},
+        result:ref^LhatJobResult | nil^= nil^
+    }
+}
+
+# How big a job's machine is, and how many loop turns it runs before its worker takes another.
+externC^LHAT_HOST_FRAMES:u64^;
+externC^LHAT_HOST_SLOTS:u64^;
+externC^LHAT_HOST_SLICE:i64^;
+externC^lhat_uncarry:p^machine:ref^l.LhatMachine, carried:ref^LhatCarried, out:ref^l.LhatValue -> bool^;
+
 externC^lhost_pool_new:p^workers:i64^, stacks:i64^-> i64^;
 externC^lhost_pool_stop:p^pool:i64^;
 externC^lhost_hardware_threads:p^-> i64^;
@@ -25,7 +46,8 @@ externC^lhost_workers:p^-> i64^;
 externC^lhost_set_pool:p^pool:i64^, workers:i64^-> i64^;
 externC^lhost_job_shape:p^value:l.LhatValue -> bool^;
 externC^lhost_job_new:p^machine:ref^l.LhatMachine, value:l.LhatValue, refusal:ref^i32^-> ref^task.ForeignJob | nil^;
-externC^lhost_job_turn:p^job:ref^task.ForeignJob -> i64^;
+externC^lhost_job:p^job:ref^task.ForeignJob -> ref^LhatJob;
+externC^lhost_job_conclude:p^job:ref^LhatJob, status:i32^;
 externC^lhost_job_finish:p^job:ref^task.ForeignJob -> ref^task.ForeignResult | nil^;
 externC^lhost_job_free:p^job:ref^task.ForeignJob;
 externC^lhost_result_free:p^result:ref^task.ForeignResult;
@@ -67,9 +89,71 @@ exportL^ref^externC^def^Task {
     type_argument = f^self^, index:u64^-> ref^read^l.LhatRuntimeType | nil^{ lhost_task_type(self^, index) }
 }
 
+# The first turn: the job's own machine, and the job rebuilt on it.
+let^begin = p^job:ref^LhatJob -> l.LhatRunResult {
+    let^machine = l.lhat_machine_new_with_size(LHAT_HOST_FRAMES, LHAT_HOST_SLOTS)
+    job.machine := machine
+    let^program = job.program
+    let^carried = job.carried
+    var^value = l.lhat_nil()
+    if^machine fits^ref^l.LhatMachine {
+        if^program fits^ref^l.LhatProgram {
+            if^carried fits^ref^LhatCarried {
+                if^l.lhat_program_install(program, machine) and^lhat_uncarry(machine, carried, ref^value) {
+                    l.lhat_machine_set_budget(machine, LHAT_HOST_SLICE)
+                    if^l.lhat_is_object_kind(value, l.LHAT_OBJECT_SUBROUTINE) {
+                        return^l.lhat_machine_call(machine, value, nil^, 0)
+                    }
+                    job.driving := value
+                    job.driving_set := true^
+                    return^l.lhat_machine_resume(machine, value, nil^, 0)
+                }
+            }
+        }
+    }
+    return^l.LhatRunResult{status = l.LHAT_RUN_OUT_OF_MEMORY}
+}
+
+# One turn of the job: -1 once it has ended, otherwise what it yielded when that is a whole
+# number above 0 (a wait it may be waiting for), else 0.
+let^turn = p^job:ref^LhatJob -> i64^{
+    var^ran = l.LhatRunResult{}
+    let^machine = job.machine
+    if^machine fits^ref^l.LhatMachine {
+        if^job.ran.status = l.LHAT_RUN_SUSPENDED {
+            ran := l.lhat_machine_continue(machine)
+        else^:
+            ran := l.lhat_machine_resume(machine, job.driving, nil^, 0)
+        }
+    else^:
+        ran := begin(job)
+    }
+    job.ran := ran
+    # Out of budget mid-body: it continues next turn.
+    if^ran.status = l.LHAT_RUN_SUSPENDED { return^0 }
+    if^ran.status != l.LHAT_RUN_OK {
+        lhost_job_conclude(job, ran.status)
+        return^-1
+    }
+    # A closure answered: a yieldable one answers its coroutine, which is what runs on.
+    if^!job.driving_set and^l.lhat_is_object_kind(ran.value, l.LHAT_OBJECT_COROUTINE) {
+        job.driving := ran.value
+        job.driving_set := true^
+        return^0
+    }
+    if^!job.driving_set or^l.lhat_machine_coroutine_done(job.driving) {
+        lhost_job_conclude(job, l.LHAT_RUN_OK)
+        return^-1
+    }
+    if^l.lhat_is_integer(ran.value) and^l.lhat_as_integer(ran.value) > 0 {
+        return^l.lhat_as_integer(ran.value)
+    }
+    return^0
+}
+
 # The kind of job the pool runs for L^: called on the worker that runs it.
 exportC^let^rhat_lhost_job_step = p^job:ref^task.ForeignJob -> i64^{
-    let^id = lhost_job_turn(job)
+    let^id = turn(lhost_job(job))
     # A yielded number that is no wait of this thread's lets the job run straight on.
     if^id > 0 and^!async.waiting(id) { return^0 }
     return^id

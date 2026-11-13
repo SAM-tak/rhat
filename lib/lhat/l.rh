@@ -4,10 +4,39 @@ module^lhat.l
 
 includeC^"lhat.h"
 
+public^externC^def^LhatProgram;
 public^externC^def^LhatMachine;
 public^externC^def^LhatRuntimeType;
 public^externC^def^LhatValue { self^{ as:u64^= 0, tag:i32^= 0 } }
 
+# What a run answered. Its C pointers that R^ does not read are kept as their bits.
+public^externC^def^LhatRunResult {
+    self^{
+        status:i32^= 0, value:LhatValue = LhatValue{}, positions:u64^= 0, position_count:u64^= 0,
+        at:u64^= 0, line:u32^= 0, op_name:u64^= 0, op_name_length:u64^= 0, collected:u64^= 0,
+        live:u64^= 0
+    }
+}
+
+public^externC^LHAT_RUN_OK:i32^;
+public^externC^LHAT_RUN_SUSPENDED:i32^;
+public^externC^LHAT_RUN_OUT_OF_MEMORY:i32^;
+public^externC^LHAT_OBJECT_SUBROUTINE:i32^;
+public^externC^LHAT_OBJECT_COROUTINE:i32^;
+
 public^externC^lhat_nil:f^-> LhatValue;
 public^externC^lhat_integer:f^i:i64^-> LhatValue;
 public^externC^lhat_real:f^r:f64^-> LhatValue;
+public^externC^lhat_is_integer:f^v:LhatValue -> bool^;
+public^externC^lhat_as_integer:f^v:LhatValue -> i64^;
+public^externC^lhat_is_object_kind:f^v:LhatValue, kind:i32^-> bool^;
+
+public^externC^lhat_machine_new_with_size:p^frames:u64^, slots:u64^-> ref^LhatMachine | nil^;
+public^externC^lhat_program_install:p^program:ref^LhatProgram, machine:ref^LhatMachine -> bool^;
+public^externC^lhat_machine_set_budget:p^machine:ref^LhatMachine, turns:i64^;
+public^externC^lhat_machine_call:p^machine:ref^LhatMachine, callee:LhatValue,
+    arguments:ref^read^LhatValue | nil^, count:u64^-> LhatRunResult;
+public^externC^lhat_machine_resume:p^machine:ref^LhatMachine, coroutine:LhatValue,
+    sent:ref^read^LhatValue | nil^, count:u64^-> LhatRunResult;
+public^externC^lhat_machine_continue:p^machine:ref^LhatMachine -> LhatRunResult;
+public^externC^lhat_machine_coroutine_done:f^coroutine:LhatValue -> bool^;
