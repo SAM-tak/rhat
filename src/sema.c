@@ -2004,7 +2004,8 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
 
 // One method of a frame's def: it passes straight to the frame's own member of that name,
 // handing in its value parameter when the coroutine receives one.
-static void frame_method(Def *d, Instance *co, const char *name, bool advance, Type *value)
+static void frame_method(Def *d, Instance *co, const char *name, bool advance, Type *value,
+                         Type *result)
 {
     Function *f = mem(sizeof(*f));
     f->name = str(name);
@@ -2015,6 +2016,7 @@ static void frame_method(Def *d, Instance *co, const char *name, bool advance, T
     f->resolved = true;
     f->procedure = advance && co->fn->procedure;
     f->mutable_self = advance && !co->fn->procedure;
+    f->required_result = result; // What the coroutine type answers, widened from the frame's.
     Param *self = mem(sizeof(*self));
     *self = (Param){.loc = f->loc, .name = "self^", .self = true};
     add(&f->params, self);
@@ -2038,14 +2040,19 @@ static void frame_method(Def *d, Instance *co, const char *name, bool advance, T
     add(&d->methods, f);
 }
 
-// The def a coroutine frame stands in for when it goes into a dyn^ of one of std.sys's
-// coroutine types: its resume takes what the coroutine receives, if anything.
-static Def *frame_def(Program *p, Type *frame)
+// The def a coroutine frame stands in for when it goes into a dyn^ of iface, one of std.sys's
+// coroutine types: its resume takes what the coroutine receives, if anything, and its answers
+// widen to iface's.
+static Def *frame_def(Program *p, Type *frame, Def *iface)
 {
     Instance *co = frame->coroutine;
-    if (co->frame_def) {
-        return co->frame_def;
+    for (int j = 0; j < co->frame_defs.n; j += 2) {
+        if (co->frame_defs.v[j] == iface) {
+            return co->frame_defs.v[j + 1];
+        }
     }
+    Type **a = iface->coroutine_args;
+    Type *turn = iface->coroutine_params > 1 ? type_union(p, a[1], a[2], co->fn->loc) : NULL;
     Def *d = mem(sizeof(*d));
     d->name = type_name(frame);
     d->module = co->fn->module;
@@ -2054,11 +2061,12 @@ static Def *frame_def(Program *p, Type *frame)
     d->state = 2;
     d->resolved = true;
     d->id = p->defs.n;
-    frame_method(d, co, "start", true, NULL);
-    frame_method(d, co, "resume", true, co->received);
-    frame_method(d, co, "done", false, NULL);
-    frame_method(d, co, "result", false, NULL);
-    co->frame_def = d;
+    frame_method(d, co, "start", true, NULL, turn);
+    frame_method(d, co, "resume", true, co->received, turn);
+    frame_method(d, co, "done", false, NULL, NULL);
+    frame_method(d, co, "result", false, NULL, a[2]);
+    add(&co->frame_defs, iface);
+    add(&co->frame_defs, d);
     return d;
 }
 
@@ -2082,7 +2090,8 @@ static Value dyn_value(Context *c, Value v, Type *dyn, Loc loc)
         fail(loc, "'%s' cannot become '%s'; pass a reference to a concrete type composing '%s'",
              type_name(v.type), type_name(dyn), dyn->elem->def->name);
     }
-    DynTable *table = dyn_table(c->p, frame ? frame_def(c->p, t) : t->def, dyn->elem->def, loc);
+    DynTable *table =
+        dyn_table(c->p, frame ? frame_def(c->p, t, dyn->elem->def) : t->def, dyn->elem->def, loc);
     Value out = {.id = slot(c, dyn, false), .type = dyn, .deps = v.deps};
     Instr *i = emit(c, I_DYN, loc);
     i->dst = out.id;
@@ -4496,7 +4505,9 @@ static Value await_point(Context *c, Expr *e)
     nil_label(c, end, e->loc);
     c->pending_disposals.n = disposals;
     Value out = turn_part(c, turn, co->final, slot(c, co->final, false), e->loc);
-    out.deps = co->final->refs ? place.deps : (Roots){0};
+    // Its references come from what the frame borrows, if its returns take any from there.
+    bool borrowed = co->returns.n || co->returns_unknown;
+    out.deps = co->final->refs && borrowed ? place.deps : (Roots){0};
     return out;
 }
 

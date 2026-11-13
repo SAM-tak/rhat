@@ -105,18 +105,22 @@ bool procedure_call(const Function *f)
     return f->procedure && !f->yields;
 }
 
+bool sum_accepts(Type *to, Type *from);
+
+// A frame offers a coroutine type whose yielded and final types take its own: what it yields
+// or returns widens to them. What it receives must match.
 bool frame_conforms(Type *frame, Def *d)
 {
     Instance *in = frame->coroutine;
     Type **a = d->coroutine_args;
     int n = d->coroutine_params;
-    if (!n || a[2] != in->final) {
+    if (!n || !sum_accepts(a[2], in->final)) {
         return false;
     }
     if (n == 1) {
         return true;
     }
-    return !(d->coroutine_pure && in->fn->procedure) && a[1] == in->yielded &&
+    return !(d->coroutine_pure && in->fn->procedure) && sum_accepts(a[1], in->yielded) &&
            (n == 2 ? !in->received : a[0] == in->received);
 }
 

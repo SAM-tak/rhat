@@ -638,6 +638,79 @@ let^ run = p^ {
 run()
 ''', '0\n1\ndone\n0\n')
 
+    positive('endless_loops_end_paths', '''
+let^ first_over = p^ limit:i64^ -> i64^ {
+    var^ n:i64^ = 0
+    repeat^ {
+        n += 1
+        if^ n > limit { return^ n }
+    }
+}
+let^ g = p^ {
+    var^ n:i64^ = 0
+    repeat^ {
+        n += 1
+        if^ n > 2 { return^ n }
+        yield^ n
+    }
+}
+print^(first_over(3))
+for^ w in^ g() { print^(w) }
+''', '4\n1\n2\n')
+    negative('endless_loop_unreachable', '''
+let^ f = p^ -> i64^ {
+    repeat^ while^ true^ { return^ 1 }
+    return^ 0
+}
+print^(f())
+''', 'unreachable statement')
+    positive('disposable_through_await', '''
+import^ std.sys
+errordef^ Error { Bad }
+def^ Pending { self^{ wait:i64^ } }
+def^ Conn : std.sys.Disposable {
+    self^{ h:i64^ }
+    dispose = p^ self^ { print^("closed", self^.h) }
+}
+let^ attempt = p^ n:i64^ -> Conn | Pending | Error {
+    if^ n > 2 { return^ Conn{h = n} }
+    return^ Pending{wait = n}
+}
+let^ accept = p^ {
+    var^ n:i64^ = 0
+    repeat^ {
+        n += 1
+        let^ got = try^ attempt(n)
+        if^ got fits^ Conn { return^ got }
+        yield^ got.wait
+    }
+}
+let^ serve = p^ {
+    var^ c = try^ await^ accept()
+    yield^ c.h * 10
+    return^ nil^
+}
+for^ w in^ serve() { print^(w) }
+''', '1\n2\n30\nclosed 3\n')
+    positive('frames_widen_to_coroutine_types', '''
+import^ std.sys
+errordef^ Error { A, B }
+let^ one = p^ { yield^ i64^(1)  return^ Error.A{} }
+let^ two = p^ { yield^ i64^(2)  return^ nil^ }
+let^ drive = p^ c:dynamic^ std.sys.CoroutineNR<i64^, nil^ | Error> {
+    let^ y = c.start()
+    let^ r = c.resume()
+    if^ r fits^ nil^ { print^("nil") el^: print^("error") }
+}
+let^ run = p^ {
+    var^ a = one()
+    var^ b = two()
+    drive(ref^ a)
+    drive(ref^ b)
+}
+run()
+''', 'error\nnil\n')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

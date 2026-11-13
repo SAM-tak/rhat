@@ -107,7 +107,6 @@ let^parse_all = p^text:read^u8^[..], pool:ref^Node[grow^], symbols:ref^u8^[grow^
         }
         roots.push(result.index)
     }
-    return^0
 }
 let^nextof = f^node:Node -> u32^{
     if^node fits^Sym { return^node.next }

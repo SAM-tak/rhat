@@ -111,7 +111,6 @@ let^parse_term = p^text:read^u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> Pars
         pool.push(Bin{ op = op, l = left, r = rhs.index })
         left := u32^(pool.len - 1)
     }
-    return^Parsed{index = left}
 }
 let^parse_expr = p^text:read^u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> ParseResult {
     let^lhs = parse_term(text, c, pool)
@@ -128,7 +127,6 @@ let^parse_expr = p^text:read^u8^[..], c:ref^Cursor, pool:ref^Expr[grow^] -> Pars
         pool.push(Bin{op = op, l = left, r = rhs.index})
         left := u32^(pool.len - 1)
     }
-    return^Parsed{index = left}
 }
 let^eval = f^pool:ref^Expr[grow^], index:u32^-> EvalResult {
     let^node = pool[index]

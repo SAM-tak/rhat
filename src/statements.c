@@ -41,6 +41,29 @@ static void remember_focus(Context *c, Loop *loop, Loc loc, bool restore)
     }
 }
 
+// Whether loop s, with no test, never reaches end: no branch from code on but the one at
+// ignored goes there. Then only leaving the function ends it.
+static bool endless(Context *c, Stmt *s, int code, int ignored, int end)
+{
+    bool forever = s->a->kind == E_BOOL && !strcmp(s->a->text, "true^");
+    for (int j = code; forever && j < c->in->code.n; j++) {
+        Instr *edge = c->in->code.v[j];
+        forever =
+            j == ignored || !((edge->op == I_BR || edge->op == I_CBR) &&
+                              (edge->label == end || (edge->op == I_CBR && edge->other == end)));
+    }
+    return forever;
+}
+
+// After an endless loop, its end is unreachable; a branch back closes that block.
+static void end_endless(Context *c, Loc l, int test)
+{
+    if (!c->terminated) {
+        branch_to(c, test, l);
+        c->terminated = true;
+    }
+}
+
 static void plain_loop(Context *c, Stmt *s)
 {
     int test = ++c->in->labels, body = ++c->in->labels, end = ++c->in->labels;
@@ -54,7 +77,7 @@ static void plain_loop(Context *c, Stmt *s)
     add(&c->loops, &target);
     branch_to(c, test, s->loc);
     int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels;
-    int bindings = c->vars.n;
+    int bindings = c->vars.n, tested = 0;
     List entry_facts = save_facts(&c->vars);
     for (;;) {
         List turn_facts = save_facts(&c->vars);
@@ -79,6 +102,7 @@ static void plain_loop(Context *c, Stmt *s)
         if (cond.type->kind != T_BOOL) {
             fail(s->loc, "condition requires bool");
         }
+        tested = c->in->code.n;
         conditional(c, cond, body, end, s->loc);
         label_at(c, body, s->loc);
         refine_condition(c->p, &c->vars, &c->flow, s->a, true);
@@ -128,8 +152,12 @@ static void plain_loop(Context *c, Stmt *s)
         c->in->labels = labels;
     }
     c->loops.n--;
+    bool forever = endless(c, s, code, tested, end);
     label_at(c, end, s->loc);
     restore_facts(&c->vars, entry_facts);
+    if (forever) {
+        end_endless(c, s->loc, test);
+    }
 }
 
 static void loop_code(Context *c, Stmt *s)
@@ -212,6 +240,7 @@ static void loop_code(Context *c, Stmt *s)
     int code = c->in->code.n, slots = c->in->slots.n, labels = c->in->labels;
     int persistent = c->vars.n;
     List loop_inputs = save_facts(&c->vars);
+    int failed = 0;
     for (;;) {
         List turn_facts = save_facts(&c->vars);
         Type **before_fact = mem((size_t)(persistent + 1) * sizeof(*before_fact));
@@ -363,6 +392,7 @@ static void loop_code(Context *c, Stmt *s)
         cleanup(c, persistent, s->loc);
         c->vars.n = saved;
         c->depth--;
+        failed = c->in->code.n;
         branch_to(c, finish, s->loc);
         restore_facts(&c->vars, turn_facts);
         bool changed = false;
@@ -379,6 +409,7 @@ static void loop_code(Context *c, Stmt *s)
         c->in->labels = labels;
     }
     restore_facts(&c->vars, loop_inputs);
+    bool forever = endless(c, s, code, failed, finish);
     label_at(c, finish, s->loc);
     conditional(c, ran, last, epilog, s->loc);
     label_at(c, last, s->loc);
@@ -402,6 +433,9 @@ static void loop_code(Context *c, Stmt *s)
     c->loops.n--;
     if (!c->terminated) {
         cleanup(c, scope, s->loc);
+    }
+    if (forever) {
+        end_endless(c, s->loc, test);
     }
     c->vars.n = scope;
     c->depth--;
@@ -1537,6 +1571,7 @@ static bool overwrites(Instr *i)
     case I_DEREF:
     case I_FIELD:
     case I_INDEX:
+    case I_CASE_AT:
     case I_LENGTH:
     case I_CONVERT:
         return i->dst >= 0;
@@ -1550,8 +1585,10 @@ static bool overwrites(Instr *i)
 static bool reads_slot(Instance *in, Instr *i, int s)
 {
     // Control operations hold block labels and resume points there, never slots.
+    // A place alias is only ever an operand or an argument, so a label equal to it is not it.
     bool control = i->op == I_BR || i->op == I_CBR || i->op == I_LABEL || i->op == I_YIELD ||
-                   i->op == I_DISPOSE_POINT || i->op == I_RESUME_POINT;
+                   i->op == I_DISPOSE_POINT || i->op == I_RESUME_POINT ||
+                   ((Slot *)in->slots.v[s])->alias;
     if ((!overwrites(i) && names_slot(in, i->dst, s)) || names_slot(in, i->a, s) ||
         names_slot(in, i->b, s) ||
         (!control && (names_slot(in, i->other, s) || names_slot(in, i->label, s)))) {

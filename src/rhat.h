@@ -634,7 +634,7 @@ struct Instance {
     Type *frame, *yielded, *final, *turn;
     Type *received;       // What a resume hands in, which yield^ answers; NULL when nothing is.
     int received_slot;    // Where the frame keeps it.
-    Def *frame_def;       // The def its frames stand in for in dyn^ tables, once needed.
+    List frame_defs;      // The def its frames stand in for in dyn^ tables, per coroutine type.
     int yield_points;     // Resume points so far, numbered from 1.
     List dispose_points;  // Resume points with something to dispose, as intptr_t labels.
     size_t *frame_offset; // Byte offset of each slot kept in the frame; 0 keeps it local.
