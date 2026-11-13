@@ -93,7 +93,7 @@ static void local_plan(Instance *in)
             state.n--;
         }
         else if (i->op == I_CALL || i->op == I_DYNCALL || i->op == I_RESUME ||
-                 i->op == I_FRAME_DISPOSE) {
+                 i->op == I_FRAME_DISPOSE || i->op == I_CCALL) {
             i->stack_index = offset;
             if (state.n) {
                 for (int j = 0; j < n; j++) {

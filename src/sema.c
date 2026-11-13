@@ -2496,6 +2496,59 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     return project ? turn_part(c, out, co->final, NULL, destination, e->loc) : out;
 }
 
+// A call through the C function pointer held by target: C takes the arguments as externC^
+// declarations do. A def^ value passed or returned by value needs a C shim, not made yet.
+static Value pointer_call(Context *c, Expr *e, Expr *target, Type *signature, int destination)
+{
+    if (signature->procedure && !c->in->fn->procedure) {
+        fail(e->loc, "f^ cannot call a p^ C function pointer");
+    }
+    if (e->args.n != signature->params.n) {
+        fail(e->loc, "this C function pointer takes %d arguments, not %d", signature->params.n,
+             e->args.n);
+    }
+    Value pointer = expression(c, target, NULL);
+    if (dead(pointer)) {
+        return pointer;
+    }
+    if (pointer.type->kind == T_REF) {
+        pointer = deref(c, pointer, e->loc);
+    }
+    Instr *i = mem(sizeof(*i));
+    for (int j = 0; j < e->args.n; j++) {
+        Type *param = signature->params.v[j];
+        if (param->kind == T_STRUCT) {
+            fail(((Expr *)e->args.v[j])->loc,
+                 "a C function pointer cannot take a def^ by value yet; pass ref^");
+        }
+        Value v = expression(c, e->args.v[j], param);
+        if (dead(v)) {
+            return v;
+        }
+        if (v.type != param) {
+            v = convert_value(c, v, param, -1, e->loc);
+        }
+        add(&i->args, (void *)(intptr_t)(v.id + 1));
+    }
+    Type *result = signature->result;
+    if (result->kind == T_STRUCT) {
+        fail(e->loc, "a C function pointer cannot return a def^ by value yet");
+    }
+    Value out = {.type = result, .id = -1};
+    if (result->kind != T_VOID) {
+        out.id = destination >= 0 ? destination : slot(c, result, false);
+    }
+    Instr *call = emit(c, I_CCALL, e->loc);
+    *i = (Instr){.op = I_CCALL,
+                 .loc = e->loc,
+                 .dst = out.id,
+                 .a = pointer.id,
+                 .type = result,
+                 .args = i->args};
+    *call = *i;
+    return out;
+}
+
 static Value call(Context *c, Expr *e, Type *expected, int destination)
 {
     Expr *target = e->a;
@@ -2506,6 +2559,22 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
     Program *p = c->p;
     settle_overload(p, target);
     int thread = thread_operation(target);
+    if (!thread && (target->kind == E_NAME || target->kind == E_MEMBER)) {
+        Type *pointer = NULL;
+        if (target->kind == E_NAME) {
+            Var *binding = selected(c, target);
+            pointer = binding ? c_pointer_signature(binding->type) : NULL;
+        }
+        else {
+            Type *base = expression_type(c, target->a, NULL);
+            base = base && base->kind == T_REF ? base->elem : base;
+            Field *f = base && base->kind == T_STRUCT ? field(base->def, target->text) : NULL;
+            pointer = f && !method(base->def, target->text) ? c_pointer_signature(f->type) : NULL;
+        }
+        if (pointer) {
+            return pointer_call(c, e, target, pointer, destination);
+        }
+    }
     if (thread) {
         return thread_call(c, e, thread, destination);
     }

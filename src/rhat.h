@@ -565,8 +565,9 @@ enum {
                      // is live there and finishes it.
     I_RESUME_POINT,  // Where a frame suspended at label continues.
     I_FRAME_DISPOSE, // Dispose frame reference a: finish it where it is suspended, if it is.
-    I_REBASE         // Move the parameters of awaited frame a that point into this frame by as
+    I_REBASE,        // Move the parameters of awaited frame a that point into this frame by as
                      // far as this frame has moved since it last suspended.
+    I_CCALL          // Call the C function pointer in slot a with args; type is its result.
 };
 
 enum { RANGE_SLOT, RANGE_CONST, RANGE_IV, RANGE_LENGTH, RANGE_ADD, RANGE_SUB, RANGE_MUL };

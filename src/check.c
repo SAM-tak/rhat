@@ -812,9 +812,45 @@ static Type *join_types(Program *p, Type *a, Expr *ae, Type *b, Expr *be, Loc lo
     fail(loc, "inferred types disagree: '%s' and '%s'", type_name(a), type_name(b));
 }
 
+// A call through a C function pointer: the binding or field target names holds it.
+static Type *infer_pointer_call(Infer *c, Expr *e, Type *signature)
+{
+    for (int j = 0; j < e->args.n; j++) {
+        infer_expr(c, e->args.v[j], j < signature->params.n ? signature->params.v[j] : NULL);
+    }
+    if (signature->procedure) {
+        forget_paths(&c->vars);
+    }
+    return signature->result;
+}
+
+// The signature of the C function pointer a call target holds, if it holds one: a binding,
+// or a field of a def^ that has no method of that name.
+static Type *infer_pointer_target(Infer *c, Expr *target)
+{
+    if (target->kind == E_NAME) {
+        return c_pointer_signature(infer_lookup(c, target->text));
+    }
+    if (target->kind != E_MEMBER) {
+        return NULL;
+    }
+    Type *base = infer_expr(c, target->a, NULL);
+    base = base && base->kind == T_REF ? base->elem : base;
+    if (!base || base->kind != T_STRUCT) {
+        return NULL;
+    }
+    compose(c->p, base->def);
+    Field *f = field(base->def, target->text);
+    return f && !method(base->def, target->text) ? c_pointer_signature(f->type) : NULL;
+}
+
 static Type *infer_call(Infer *c, Expr *e, Type *expected)
 {
     Expr *target = e->a;
+    Type *pointer = thread_operation(target) ? NULL : infer_pointer_target(c, target);
+    if (pointer) {
+        return infer_pointer_call(c, e, pointer);
+    }
     int thread = thread_operation(target);
     if (thread) {
         Type *element = NULL;
@@ -3696,6 +3732,14 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
             candidates = overload_candidates(c->p, NULL, e->a->text, e->args.n);
             f = candidates.n ? candidates.v[0] : NULL;
             Var *binding = selected(&c->scope, e->a);
+            Type *pointer = binding ? c_pointer_signature(binding->type) : NULL;
+            if (pointer) {
+                for (int j = 0; j < e->args.n; j++) {
+                    body_expr(c, e->args.v[j], j < pointer->params.n ? pointer->params.v[j] : NULL);
+                }
+                n->type = pointer->result;
+                break;
+            }
             if (binding && callable_type(binding->type)) {
                 callable = binding->type;
                 candidates = callable_candidates(callable, e->args.n);

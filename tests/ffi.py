@@ -653,6 +653,39 @@ print^(apply(abs, 1))
     negative('ffi_alias_conflict', 'let^ a = externC^ abs:f^ n:i32^ ->i32^;\nlet^ b = externC^ abs:f^ n:i64^ ->i64^;', 'another signature')
     negative('ffi_local', 'let^ g=p^ { let^ h = externC^ abs:f^ n:i32^ ->i32^; }', 'only allowed at the top level')
     negative('ffi_effect', 'externC^ puts:p^ s:string^ ->i32^;\nlet^ g=f^ ->i32^ { puts("x") }\nprint^(g())', "f^ cannot call p^ 'puts'")
+    # C function pointers held by bindings and fields are called like C functions; an
+    # exportC^ function called through one runs as a callback.
+    positive('ffi_call_function_pointers', '''
+externC^abs:f^x:i32^-> i32^;
+externC^strlen:f^s:string^-> u64^;
+def^ Ops { self^{ size:externC^f^string^-> u64^;, magnitude:externC^f^i32^-> i32^;, step:externC^p^ref^i64^; } }
+exportC^let^bump = p^n:ref^i64^{ *n += 10 }
+let^run = p^ ops:ref^Ops {
+    var^k:i64^ = 1
+    ops.step(ref^ k)
+    ops.step(ref^ k)
+    print^(ops.size("hello"), ops.magnitude(-7), k)
+}
+var^ops = Ops{size = strlen, magnitude = abs, step = bump}
+run(ref^ ops)
+let^g = ops.magnitude
+print^(g(-3))
+''', '5 7 21\n3\n')
+    negative('ffi_pointer_effect', '''
+externC^puts:p^s:string^-> i32^;
+let^f = f^g:externC^p^string^-> i32^; -> i32^{ g("x") }
+print^(f(puts))
+''', 'f^ cannot call a p^ C function pointer')
+    negative('ffi_pointer_arity', '''
+externC^abs:f^x:i32^-> i32^;
+let^g = abs
+let^h = f^p:externC^f^i32^-> i32^; -> i32^{ p(1, 2) }
+print^(h(abs))
+''', 'this C function pointer takes 1 arguments, not 2')
+    negative('ffi_pointer_struct_value', '''
+def^ Point { self^{ x:i32^ = 0 } }
+let^h = p^f:externC^p^Point; { f(Point{}) }
+''', 'a C function pointer cannot take a def^ by value yet')
     suite.finish()
 
 

@@ -484,6 +484,14 @@ static Function *named_function(Program *p, Spec *s, Def **found, List *actual)
     return f;
 }
 
+Type *c_pointer_signature(Type *t)
+{
+    if (t && t->kind == T_REF) {
+        t = t->elem;
+    }
+    return t && t->kind == T_CFUNC ? t->elem : NULL;
+}
+
 void settle_overload(Program *p, Expr *e)
 {
     if (e && e->kind == E_OVERLOAD) {

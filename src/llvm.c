@@ -402,16 +402,18 @@ static int pointer_tag(Type *t)
     return ((Type *)t->def->alternatives.v[0])->kind == T_NIL;
 }
 
-// A direct C call without the stack position or result destination.
-static void external_invoke(Output *o, Instr *i)
+// A direct C call without the stack position or result destination: to the callee's symbol,
+// or with signature to the function pointer in slot a.
+static void external_invoke(Output *o, Instr *i, Type *signature)
 {
-    bool shim = needs_shim(i->callee);
+    bool shim = !signature && needs_shim(i->callee);
+    List *params = signature ? &signature->params : &i->callee->params;
     char *operands = "";
     if (shim && i->type->kind == T_STRUCT) {
         operands = fmt("ptr %%p%d", i->dst);
     }
     for (int j = 0; j < i->args.n; j++) {
-        Type *param = i->callee->params.v[j];
+        Type *param = params->v[j];
         int id = (int)(intptr_t)i->args.v[j] - 1;
         char *sep = *operands ? ", " : "";
         if (param->kind == T_STRUCT) {
@@ -441,13 +443,15 @@ static void external_invoke(Output *o, Instr *i)
         }
         operands = fmt("%s%s%s %%t%d", operands, sep, c_abi(param, false), v);
     }
-    const char *symbol = shim ? fmt("rh_shim_%s", i->callee->symbol) : i->callee->symbol;
+    const char *symbol = signature ? fmt("%%t%d", load(o, i->a))
+                         : shim    ? fmt("@rh_shim_%s", i->callee->symbol)
+                                   : fmt("@%s", i->callee->symbol);
     if (i->type->kind == T_VOID || (shim && i->type->kind == T_STRUCT)) {
-        fprintf(o->f, "  call void @%s(%s)\n", symbol, operands);
+        fprintf(o->f, "  call void %s(%s)\n", symbol, operands);
         return;
     }
     int r = ++o->tmp;
-    fprintf(o->f, "  %%t%d = call %s @%s(%s)\n", r, c_abi(i->type, false), symbol, operands);
+    fprintf(o->f, "  %%t%d = call %s %s(%s)\n", r, c_abi(i->type, false), symbol, operands);
     if (i->type->kind == T_UNION) {
         // A NULL result becomes nil^.
         int present = ++o->tmp, tag = ++o->tmp, tagp = ++o->tmp, payload = ++o->tmp;
@@ -468,10 +472,10 @@ static void external_invoke(Output *o, Instr *i)
 
 // A C call may enter exportC^ functions, which use the data stacks above
 // those this frame keeps live at the call.
-static void external_call(Output *o, Instr *i)
+static void external_call(Output *o, Instr *i, Type *signature)
 {
     int saved = 0;
-    if (o->p->callbacks && !i->callee->fn->intrinsic) {
+    if (o->p->callbacks && (signature || !i->callee->fn->intrinsic)) {
         saved = ++o->tmp;
         int mark = ++o->tmp;
         fprintf(o->f,
@@ -480,7 +484,7 @@ static void external_call(Output *o, Instr *i)
                 "  call void @rh_callback_set(i64 %%t%d)\n",
                 saved, mark, i->stack_index, mark);
     }
-    external_invoke(o, i);
+    external_invoke(o, i, signature);
     if (saved) {
         fprintf(o->f, "  call void @rh_callback_set(i64 %%t%d)\n", saved);
     }
@@ -1711,9 +1715,12 @@ static void instruction(Output *o, Instr *i)
         save(o, i->dst, t, fmt("%%t%d", r));
         break;
     }
+    case I_CCALL:
+        external_call(o, i, slot_type(o, i->a)->elem);
+        break;
     case I_CALL: {
         if (i->callee->fn->external) {
-            external_call(o, i);
+            external_call(o, i, NULL);
             break;
         }
         a = ++o->tmp;

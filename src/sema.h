@@ -278,6 +278,8 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
 // What a call of the function a SPEC_RETURN names answers: its one declaration, or the arm
 // its argument types select.
 Type *return_type_of(Program *p, Spec *s);
+// The signature of a C function pointer value t (externC^ f^ ...;), or NULL.
+Type *c_pointer_signature(Type *t);
 // Turns an overload^name(types) expression into the function value of the arm it selects.
 void settle_overload(Program *p, Expr *e);
 
