@@ -539,6 +539,14 @@ exportL^ let^ named = p^ machine:ref^ LhatMachine, n:i64^ -> LhatValue {
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.echo f^any^ -> any^;\nrhat.kind f^any^ -> number^;\nrhat.named p^number^ -> any^;\n'
              'true\n42 hello 4 made\n', extra=lhat_extra)
+    # exportL^"..." writes the L^ signature itself, for computed types R^'s types cannot say.
+    positive('ffi_export_lhat_signature', anything + '''exportL^"p^c^{->*->*} -> std.task.Task<ARG0.ResultType>;" let^ wrap = p^ job:LhatValue -> LhatValue { return^ job }
+mock_any()
+''', 'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.echo f^any^ -> any^;\nrhat.kind f^any^ -> number^;\nrhat.named p^number^ -> any^;\n'
+             'rhat.wrap p^c^{->*->*} -> std.task.Task<ARG0.ResultType>;\n'
+             'true\n42 hello 4 made\n', extra=lhat_extra)
     negative('ffi_export_lhat_machine_first', header + '''externC^ def^ LhatMachine;
 exportL^ let^ late = f^ n:i64^, m:ref^ LhatMachine -> i64^ { n }''',
              'exportL^ takes the calling ref^ LhatMachine as its first parameter')

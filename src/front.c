@@ -4273,12 +4273,23 @@ static void declaration(Parser *q)
     // reference, and an errordef^ L^ receives as its own errors.
     Loc export_at = tok(q)->loc;
     bool exported = false, lhat_export = false;
+    char *lhat_signature = NULL;
     for (;;) {
         if (take(q, "exportC^")) {
             exported = true;
         }
         else if (take(q, "exportL^")) {
             lhat_export = true;
+            // exportL^"p^c^{->*->*} -> ..." writes the L^ signature itself, for what R^'s
+            // types cannot say, such as L^'s computed result types.
+            if (tok(q)->kind == TOK_STRING) {
+                lhat_signature = str(tok(q)->text);
+                size_t n = strlen(lhat_signature);
+                while (n && (lhat_signature[n - 1] == ';' || lhat_signature[n - 1] == ' ')) {
+                    lhat_signature[--n] = 0;
+                }
+                q->at++;
+            }
         }
         else {
             break;
@@ -4531,6 +4542,7 @@ static void declaration(Parser *q)
         parsed_function->public = public;
         parsed_function->exported = exported;
         parsed_function->lhat_export = lhat_export;
+        parsed_function->lhat_signature = lhat_signature;
         add(&module->functions, parsed_function);
         add(&p->functions, parsed_function);
         first_arm = false;

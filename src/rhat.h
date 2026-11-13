@@ -279,9 +279,10 @@ struct Function {
     bool intrinsic; // externLLVM^ binds an LLVM intrinsic instead of a C symbol.
     bool procedure, templ, abstract, priv, override, mutable_self;
     bool overload, operator_member, right_receiver; // Explicit member roles.
-    bool static_member; // A def^ member without self^, called as Type.name(...).
-    bool exported;      // exportC^: callable from C under its own name.
-    bool lhat_export;   // exportL^: registered as an L^ host function.
+    bool static_member;   // A def^ member without self^, called as Type.name(...).
+    bool exported;        // exportC^: callable from C under its own name.
+    bool lhat_export;     // exportL^: registered as an L^ host function.
+    char *lhat_signature; // exportL^"...": the L^ signature written for it, not derived.
     bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
     bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.
     bool yields;        // The body suspends with yield^: a call makes a coroutine frame.

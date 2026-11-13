@@ -3152,6 +3152,9 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             }
             fprintf(f, "%s  *answer_count = %d;\n}\n", answers, tuple ? t->def->fields.n : 1);
         }
+        if (in->fn->lhat_signature) {
+            signature = in->fn->lhat_signature; // Written as L^ reads it; it names no modules.
+        }
         l_add(&parts, in->fn->module, &registrations,
               l_register(owner
                              ? fmt("lhat_register_%smember(program, module, "
