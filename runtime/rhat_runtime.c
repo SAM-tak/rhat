@@ -40,6 +40,17 @@ RhStack *rh_current_stacks(void)
     return rh_context->stacks;
 }
 
+// std.text's copy of C text: its length up to the NUL, and its bytes.
+uint64_t rh_c_length(const char *text)
+{
+    return strlen(text);
+}
+
+void rh_c_copy(void *to, const void *from, uint64_t n)
+{
+    memcpy(to, from, (size_t)n);
+}
+
 uint64_t rh_callback_get(void)
 {
     rh_current_stacks();

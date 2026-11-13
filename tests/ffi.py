@@ -108,6 +108,7 @@ int64_t ffi_box_get(const FfiBox *b);
 int64_t ffi_box_or(const FfiBox *b, int64_t fallback);
 void ffi_box_free(FfiBox *b);
 int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x);
+static inline const char *ffi_text(int32_t k) { return k == 0 ? "h\\xc3\\xa9llo" : k == 1 ? "\\xff" : (const char *)0; }
 ''', encoding='utf-8')
     boxes = suite.work / 'ffi_boxes.c'
     boxes.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -142,6 +143,52 @@ print^(ffi_box_get(b), found fits^ nil^, missing fits^ nil^, ffi_box_or(found, -
 if^ found fits^ ref^ FfiBox { print^(ffi_box_get(found)) ffi_box_free(found) }
 ffi_box_free(b)
 ''', '1 42 21.0 2.5\n7 false true 9 -1 -2\n9\n', extra=('--runtime', boxes))
+
+    # A reference to an opaque C type is C's object, not a borrow: a job holding one moves to a
+    # pool worker. A reference to a C struct R^ can also hold is still a borrow.
+    positive('ffi_foreign_ref_task', header + '''let^ task = import^ std.task
+externC^ def^ FfiBox;
+externC^ ffi_box_new:p^ n:i64^ -> ref^ FfiBox;
+externC^ ffi_box_get:f^ b:ref^ FfiBox -> i64^;
+let^ job = p^ b:ref^ FfiBox {
+    yield^ i64^(0)
+    return^ ffi_box_get(b)
+}
+let^ run = p^ {
+    do^ {
+        var^ pool = try^ task.Pool.new(1)
+        var^ t = try^ pool.async(job(ffi_box_new(7)))
+        print^((try^ t.wait()).value)
+    catch^: print^("failed")
+    }
+}
+run()
+''', '7\n', extra=('--runtime', boxes))
+    negative('ffi_struct_ref_task', value + '''let^ task = import^ std.task
+let^ job = p^ v:ref^ FfiValue {
+    yield^ i64^(0)
+    return^ v.tag
+}
+let^ run = p^ {
+    do^ {
+        var^ v = FfiValue{}
+        var^ pool = try^ task.Pool.new(1)
+        var^ t = try^ pool.async(job(ref^ v))
+    catch^: print^("failed")
+    }
+}
+run()
+''', "thread transfer refuses")
+    # Builder.append_c copies C's NUL-terminated text; NULL adds nothing, and text that is not
+    # UTF-8 is refused whole.
+    positive('ffi_append_c', header + '''let^ text = import^ std.text
+externC^ ffi_text:f^ k:i32^ -> ref^ read^ u8^ | nil^;
+var^ b = text.Builder{}
+let^ a = b.append_c(ffi_text(0))
+let^ bad = b.append_c(ffi_text(1))
+let^ none = b.append_c(ffi_text(2))
+print^(b.text(), a fits^ nil^, bad fits^ text.Error.Invalid, none fits^ nil^)
+''', 'héllo true true true\n')
 
     def rejected_by_c(name, text, diagnostic):
         """The C compiler checks shims against the header's declarations."""

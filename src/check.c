@@ -61,6 +61,15 @@ static bool c_flat(Type *t)
     return true;
 }
 
+bool foreign_ref(Type *t)
+{
+    if (t->kind == T_UNION && t->def->alternatives.n == 2) {
+        Type *a = t->def->alternatives.v[0], *b = t->def->alternatives.v[1];
+        t = a->kind == T_NIL ? b : b->kind == T_NIL ? a : t;
+    }
+    return t->kind == T_REF && t->elem->kind == T_STRUCT && t->elem->def->opaque;
+}
+
 // The reference a C pointer stands for: ref^ to a flat or opaque def^ (or
 // a scalar), a C function pointer, or either | nil^ for one that may be
 // NULL.

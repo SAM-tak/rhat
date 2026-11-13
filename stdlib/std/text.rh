@@ -4,6 +4,9 @@ module^std.text
 # Invalid: not a number in the accepted form. OutOfRange: too large for the type.
 public^errordef^Error { Invalid, OutOfRange }
 
+externC^rh_c_length:f^text:ref^u8^-> u64^;
+externC^rh_c_copy:p^to:u8^[..], from:ref^read^u8^, n:u64^;
+
 # s without ASCII spaces, tabs or line ends at either end, as a view of s.
 public^let^trim = f^s:string^-> string^{
     let^bytes = s.bytes
@@ -65,6 +68,21 @@ public^def^Builder {
         let^start = self^.bytes.len
         self^.bytes.append(s)
         return^string^(self^.bytes[start ..]) catch^""
+    }
+    # Appends a copy of C's NUL-terminated text, which need not outlive the call; NULL appends
+    # nothing. Text that is not UTF-8 is refused, and nothing is appended.
+    append_c = p^self^, text:ref^read^u8^| nil^-> nil^| Error.Invalid {
+        if^text fits^nil^{ return^nil^}
+        let^start = self^.bytes.len
+        let^n = rh_c_length(text)
+        for^k in^0 .. i64^(n) { self^.bytes.push(0) }
+        rh_c_copy(self^.bytes[start ..], text, n)
+        let^added = string^(self^.bytes[start ..])
+        if^added fits^Error.Invalid {
+            self^.bytes.truncate(start)
+            return^Error.Invalid{}
+        }
+        return^nil^
     }
     text = f^self^{ string^(self^.bytes[..]) catch^"" }
     clear = p^self^{ self^.bytes.clear() }

@@ -6,12 +6,14 @@ R^ の文字列と文字の扱いです。
 
 - 実装済み: `char^`、文字列リテラルの UTF-8 検査、`string^(bytes)` のキャスト、`s.bytes`、`s.slice(r)`、
   `s.decode(at)`、`s.count_chars()`、`s.chars()`、`s.find(t)`・`s.starts_with(t)`・`s.ends_with(t)`、`s.trim()`・`s.split(t)`、比較。
-- 実装済み: `std.text.Builder`（`append`・`append_char`・`text`・`clear`）、値の `write_text(out)`・`tostring()`、
+- 実装済み: `std.text.Builder`（`append`・`append_char`・`append_c`・`text`・`clear`）、値の `write_text(out)`・`tostring()`、
   数値型の `T.parse(s)`（[文字列から数値への変換](design.md#文字列から数値への変換)）。
 - 実装済み: 文字列補間 `$"...{x}...{y:%.2f}..."` と書式。
 - 未実装: `split`・`trim`、確保しない反復（`each_char`・`char_indices`）、
   `std.text` の大文字・小文字変換と正規化。
-- `externC^` の結果として受け取る `string^` は、まだ検査していません（C 側が UTF-8 を渡す前提です）。
+- C の文字列（`const char *`）は `ref^ read^ u8^ | nil^` として受け取り、`std.text.Builder.append_c(p)` で
+  NUL までを Builder へ複製します。UTF-8 でなければ `Error.Invalid` で、何も足しません。NULL は何も足しません。
+  ビューとして直接 `string^` にはしません（C が解放した後も使えてしまい、検査で防げないため）。
 
 ## 方針
 

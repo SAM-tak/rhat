@@ -691,6 +691,9 @@ const char *c_function_symbol(Function *f);
 Def *lhat_data_def(Type *t);
 // LhatValue, the C type of any L^ value: an exportL^ function passes it through as is (any^).
 bool lhat_any(Type *t);
+// ref^ T or ref^ T | nil^ to an opaque C type (externC^ def^ T;): R^ never holds a T, so the
+// reference is C's object, not a borrow -- it may move to another thread or sit in a C struct.
+bool foreign_ref(Type *t);
 // retain, let_go and type_argument of an exportL^ ref^ def^: C callbacks L^ calls for its
 // host data (sharing it across machines, reading its type arguments), not L^ members.
 bool lhat_contract(Function *f);

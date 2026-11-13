@@ -180,7 +180,7 @@ static void transferable(Program *p, Type *t, bool arguments, Loc loc)
         frame_transferable(p, t->coroutine, false, loc);
     }
     else if (!(kind_integer(t->kind) || kind_float(t->kind) || t->kind == T_BOOL ||
-               t->kind == T_CHAR || t->kind == T_NIL || t->kind == T_ENUM)) {
+               t->kind == T_CHAR || t->kind == T_NIL || t->kind == T_ENUM || foreign_ref(t))) {
         fail(loc, "thread transfer refuses '%s': use owned data instead of references or views",
              type_name(t));
     }
