@@ -41,7 +41,7 @@ public^let^wait = p^timeout:f64^-> i64^| nil^{
     return^id
 }
 
-# Suspends the awaiting coroutine for seconds: await^ std.async.delay(0.5).
+# Suspends the awaiting coroutine for seconds: await^std.async.delay(0.5).
 public^let^delay = p^seconds:f64^{
     yield^timer(seconds)
 }
