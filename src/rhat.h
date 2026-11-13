@@ -412,6 +412,7 @@ struct Program {
     struct FormatSyntax *format; // Optional parser trace for the source formatter.
     bool library_root;           // Check a standalone module using library rules.
     bool tooling;                // Retain source and checked resolutions for editor clients.
+    bool defs_ready;             // Definitions have types; later specializations make their own.
     List sources, overlays, resolutions; // ToolSource and ToolRef records.
     List tool_spans; // ToolSpan declaration extents retained for editor outlines.
     List modules, module_paths;
@@ -442,6 +443,10 @@ void parse_file(Program *p, const char *path, Module *module);
 void resolve_modules(Program *p);
 // Clone a generic definition, substituting its lexical type parameters and Self^.
 Def *specialize_definition(Def *source, List *arguments, const char *name);
+// source<types...>: the specialization a written source<...> of those types makes.
+Type *generic_type(Program *p, Def *source, List *types, Loc loc);
+// Gives a generic specialization made after the definitions were set up its type and layout.
+void define_specialization(Program *p, Def *d);
 void analyze(Program *p);
 Type *type_spec(Program *p, Spec *s);
 // Resolve the fixed type of a mutable member from its annotation or initializer.
@@ -609,6 +614,7 @@ typedef struct {
 struct Instance {
     bool read_checked;   // This call shape has checked its explicit result-origin contract.
     bool thread_entry;   // Invoked on an independent shard, never with the parent's state.
+    bool task_job;       // Its frames run on std.task pools: it needs a job descriptor.
     bool state_shrinks;  // This call may shrink a task-owned static flex array.
     bool uses_state;     // This instance or a reachable callee accesses the task context.
     bool invalid;        // Partial editor analysis; must never produce executable code.

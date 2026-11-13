@@ -917,6 +917,63 @@ static void instruction(Output *o, Instr *i)
             save(o, i->dst, result, fmt("%d", o->p->stack_count));
             break;
         }
+        if (i->label == THREAD_SUBMIT) {
+            int pool = load(o, (int)(intptr_t)i->args.v[0] - 1);
+            int frame = load(o, (int)(intptr_t)i->args.v[1] - 1);
+            int copy = ++o->tmp, task = ++o->tmp;
+            fprintf(
+                f,
+                "  %%t%d = alloca %s\n  store %s %%t%d, ptr %%t%d\n"
+                "  %%t%d = call i64 @rh_pool_submit_frame(i64 %%t%d, ptr @rh_job_%d, ptr %%t%d)\n",
+                copy, llvm_type(i->type), llvm_type(i->type), frame, copy, task, pool,
+                i->callee->id, copy);
+            save(o, i->dst, result, fmt("%%t%d", task));
+            break;
+        }
+        if (i->label == THREAD_TASK) {
+            int task = load(o, (int)(intptr_t)i->args.v[0] - 1);
+            size_t at = 0;
+            for (int k = 0, offset = 0; k < result->def->fields.n; k++) {
+                Type *part = ((Field *)result->def->fields.v[k])->type;
+                offset = (offset + (int)part->align - 1) / (int)part->align * (int)part->align;
+                if (!strcmp(((Field *)result->def->fields.v[k])->name, "handle")) {
+                    at = (size_t)offset;
+                }
+                offset += (int)part->size;
+            }
+            int field = ++o->tmp;
+            fprintf(
+                f,
+                "  store %s zeroinitializer, ptr %%p%d\n"
+                "  %%t%d = getelementptr i8, ptr %%p%d, i64 %zu\n  store i64 %%t%d, ptr %%t%d\n",
+                llvm_type(result), i->dst, field, i->dst, at, task, field);
+            break;
+        }
+        if (i->label == THREAD_TAKE) {
+            int task = load(o, (int)(intptr_t)i->args.v[0] - 1);
+            int value_tag = -1, taken_tag = -1;
+            size_t size = 0;
+            for (int j = 0; j < result->def->alternatives.n; j++) {
+                Type *arm = result->def->alternatives.v[j];
+                if (arm->kind == T_STRUCT && arm->def->generic) {
+                    value_tag = j;
+                    size = arm->size;
+                }
+                else if (arm->kind == T_STRUCT && !strcmp(arm->def->name, "std.task.Error.Taken")) {
+                    taken_tag = j;
+                }
+            }
+            if (value_tag < 0 || taken_tag < 0) {
+                fail(i->loc, "task_take^ result must be std.task.Done<T> | std.task.Error.Taken");
+            }
+            fprintf(
+                f,
+                "  store %s zeroinitializer, ptr %%p%d\n"
+                "  call void @rh_task_take(i64 %%t%d, ptr %%p%d, i32 %d, i32 %d, i64 %zu, i64 %zu)\n",
+                llvm_type(result), i->dst, task, i->dst, value_tag, taken_tag,
+                result->payload_offset, size);
+            break;
+        }
         int first = load(o, (int)(intptr_t)i->args.v[0] - 1);
         if (i->label != THREAD_NEW) {
             int handle = ++o->tmp;

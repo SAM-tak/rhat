@@ -22,6 +22,9 @@
 #ifndef RH_NET_PATH
 #define RH_NET_PATH "runtime/rhat_net.c"
 #endif
+#ifndef RH_TASK_PATH
+#define RH_TASK_PATH "runtime/rhat_task.c"
+#endif
 
 static char *directory(const char *path)
 {
@@ -330,7 +333,7 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         // unresolved. lld-link tolerated the conflict.
         add(&args, "-Wl,-nodefaultlib:libcmt");
     }
-    bool random = false, net = false, threads = p->transfer_types.n != 0;
+    bool random = false, net = false, task = false, threads = p->transfer_types.n != 0;
     for (int j = 0; j < p->modules.n; j++) {
         Module *m = p->modules.v[j];
         p->emitting = m;
@@ -342,6 +345,9 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
         }
         if (m->name && (!strcmp(m->name, "std.net") || !strcmp(m->name, "std.async"))) {
             net = true;
+        }
+        if (m->name && !strcmp(m->name, "std.task")) {
+            task = threads = true;
         }
         char *temporary = fmt("%s/module-%d-%d.tmp.ll", cache, (int)pid(), j);
         emit_llvm(p, temporary);
@@ -392,6 +398,10 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
 #if defined(_WIN32)
         add(&args, "-lbcrypt");
 #endif
+    }
+    if (task) {
+        add(&args, compile(tool_resource(compiler, RH_TASK_PATH, "rhat_task.c"), identity,
+                           "task pool", clang_path, opt, cache, reuse, verbose, &includes));
     }
     if (net) {
         add(&args, compile(tool_resource(compiler, RH_NET_PATH, "rhat_net.c"), identity,

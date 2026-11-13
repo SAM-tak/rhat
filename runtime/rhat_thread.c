@@ -13,120 +13,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-typedef SRWLOCK Mutex;
-typedef CONDITION_VARIABLE Condition;
-
-static bool lock_init(Mutex *m)
-{
-    InitializeSRWLock(m);
-    return true;
-}
-
-static void lock(Mutex *m)
-{
-    AcquireSRWLockExclusive(m);
-}
-
-static void unlock(Mutex *m)
-{
-    ReleaseSRWLockExclusive(m);
-}
-
-static void lock_free(Mutex *m)
-{
-    (void)m;
-}
-
-static bool cond_init(Condition *c)
-{
-    InitializeConditionVariable(c);
-    return true;
-}
-
-static void cond_wait(Condition *c, Mutex *m)
-{
-    if (!SleepConditionVariableSRW(c, m, INFINITE, 0)) {
-        abort();
-    }
-}
-
-static void wake(Condition *c)
-{
-    WakeAllConditionVariable(c);
-}
-
-static void cond_free(Condition *c)
-{
-    (void)c;
-}
-#else
-#include <pthread.h>
-#include <time.h>
-#include <unistd.h>
-typedef pthread_mutex_t Mutex;
-typedef pthread_cond_t Condition;
-
-static bool lock_init(Mutex *m)
-{
-    return pthread_mutex_init(m, NULL) == 0;
-}
-
-static void lock(Mutex *m)
-{
-    if (pthread_mutex_lock(m)) {
-        abort();
-    }
-}
-
-static void unlock(Mutex *m)
-{
-    if (pthread_mutex_unlock(m)) {
-        abort();
-    }
-}
-
-static void lock_free(Mutex *m)
-{
-    pthread_mutex_destroy(m);
-}
-
-static bool cond_init(Condition *c)
-{
-    return pthread_cond_init(c, NULL) == 0;
-}
-
-static void cond_wait(Condition *c, Mutex *m)
-{
-    if (pthread_cond_wait(c, m)) {
-        abort();
-    }
-}
-
-static void wake(Condition *c)
-{
-    pthread_cond_broadcast(c);
-}
-
-static void cond_free(Condition *c)
-{
-    pthread_cond_destroy(c);
-}
-#endif
+#include "rhat_sync.h"
 
 typedef struct Message {
     struct Message *next;
     uint64_t size;
     unsigned char bytes[];
 } Message;
-
-// A std.async external wait: completing it wakes the thread that waits on it. Its first
-// member is all this runtime needs; rhat_net.c owns the rest.
-typedef struct RhWatch {
-    void (*complete)(struct RhWatch *);
-} RhWatch;
 
 typedef struct {
     atomic_uint_fast64_t holds;

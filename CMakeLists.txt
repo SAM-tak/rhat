@@ -22,6 +22,7 @@ target_compile_definitions(rhat PRIVATE RH_THREAD_PATH="${CMAKE_CURRENT_SOURCE_D
 
 target_compile_definitions(rhat PRIVATE RH_RANDOM_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_random.c")
 target_compile_definitions(rhat PRIVATE RH_NET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_net.c")
+target_compile_definitions(rhat PRIVATE RH_TASK_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_task.c")
 target_compile_definitions(rhat PRIVATE RH_RUNTIME_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_runtime.c")
 string(REGEX REPLACE ",.*$" "" RH_VS_ROOT "${CMAKE_GENERATOR_INSTANCE}")
 find_program(RH_CLANG NAMES clang HINTS
@@ -124,8 +125,9 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/formatting-tests")
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
-install(FILES runtime/rhat_runtime.c runtime/rhat_thread.c runtime/rhat_thread.h DESTINATION share/rhat)
-install(FILES runtime/rhat_random.c runtime/rhat_net.c DESTINATION share/rhat)
+install(FILES runtime/rhat_runtime.c runtime/rhat_thread.c runtime/rhat_thread.h runtime/rhat_sync.h
+  DESTINATION share/rhat)
+install(FILES runtime/rhat_random.c runtime/rhat_net.c runtime/rhat_task.c DESTINATION share/rhat)
 install(DIRECTORY stdlib/ DESTINATION share/rhat/stdlib)
 install(FILES LICENSE DESTINATION share/rhat/licenses RENAME rhat.txt)
 install(FILES vendor/cjson/LICENSE DESTINATION share/rhat/licenses RENAME cJSON.txt)

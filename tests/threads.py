@@ -426,6 +426,105 @@ let^run = p^ -> nil^ | c.Error | t.Error.StartFailed {
 let^r = run()
 ''', '60 14 true\n')
 
+    positive('task_pool_results', '''
+let^task = import^std.task
+let^crunch = p^n:i64^ {
+    var^sum:i64^ = 0
+    var^k:i64^ = 0
+    repeat^ while^ k < n {
+        sum += k
+        k += 1
+        if^ k % 1000 = 0 { yield^ i64^(0) }
+    }
+    return^ sum
+}
+let^run = p^ -> nil^ | task.Error {
+    var^pool = try^ task.Pool.new(3)
+    var^a = try^ pool.async(crunch(10000))
+    var^b = try^ pool.async(crunch(20000))
+    let^ra = try^ a.wait()
+    let^rb = try^ b.wait()
+    print^(ra.value, rb.value)
+    print^(a.wait() fits^ task.Error.Taken, a.done())
+    return^ nil^
+}
+let^r = run()
+''', '49995000 199990000\ntrue true\n')
+    # A job that lends its locals to an awaited frame and waits on std.async runs on a worker;
+    # meanwhile the Loop that awaits its Task runs other tasks.
+    positive('task_pool_join_in_loop', '''
+let^task = import^std.task
+let^async = import^std.async
+let^thread = import^std.thread
+let^fill = p^into:i64^[..], start:i64^ {
+    var^k:i64^ = 0
+    repeat^ while^ k < into.len {
+        await^ async.delay(0.01)
+        into[k] := start + k
+        k += 1
+    }
+    return^ into.len
+}
+let^job = p^base:i64^, main:i64^ {
+    var^buf = i64^[4]{0, 0, 0, 0}
+    let^n = await^ fill(buf[..], base)
+    var^ total:i64^ = buf[0] + buf[1] + buf[2] + buf[3]
+    total += n * 1000
+    if^ thread.current_id() != main { total += 1000000 }
+    return^ total
+}
+let^ticks = p^ {
+    var^k:i64^ = 0
+    repeat^ while^ k < 3 { await^ async.delay(0.005)  k += 1 }
+    return^ k
+}
+let^waiter = p^t:ref^ task.Task<i64^> {
+    let^r = try^ await^ t.join()
+    return^ r.value
+}
+let^run = p^ -> nil^ | task.Error {
+    var^pool = try^ task.Pool.new(2)
+    let^main = thread.current_id()
+    var^a = try^ pool.async(job(10, main))
+    var^b = try^ pool.async(job(100, main))
+    var^w = waiter(ref^ a)
+    var^k = ticks()
+    var^loop = async.Loop<i64^ | task.Error>{}
+    loop.add(ref^ w)
+    loop.add(ref^ k)
+    loop.run()
+    let^ wr = w.result()
+    if^ wr fits^ i64^ { print^(wr, k.result()) }
+    let^rb = try^ b.wait()
+    print^(rb.value)
+    return^ nil^
+}
+let^r = run()''', '1004046 3\n1004406\n')
+    for name, text, diagnostic in [
+        ('task_refuses_reference', '''
+let^job = p^x:ref^i64^ { yield^ i64^(0)  return^ *x }
+var^n:i64^ = 1
+let^run = p^ -> nil^ | task.Error { var^pool = try^ task.Pool.new(1)  var^t = try^ pool.async(job(ref^ n))  return^ nil^ }
+let^r = run()
+''', 'thread transfer refuses'),
+        ('task_refuses_yielded_type', '''
+let^job = p^ { yield^ "x"  return^ i64^(1) }
+let^run = p^ -> nil^ | task.Error { var^pool = try^ task.Pool.new(1)  var^t = try^ pool.async(job())  return^ nil^ }
+let^r = run()
+''', 'must yield i64^'),
+        ('task_refuses_owned_result', '''
+let^job = p^ { yield^ i64^(0)  return^ i64^[grow^]{1} }
+let^run = p^ -> nil^ | task.Error { var^pool = try^ task.Pool.new(1)  var^t = try^ pool.async(job())  return^ nil^ }
+let^r = run()
+''', 'a task cannot return owned data yet'),
+        ('task_refuses_received', '''
+let^job = p^ { var^x:i64^ = yield^ i64^(0)  return^ x }
+let^run = p^ -> nil^ | task.Error { var^pool = try^ task.Pool.new(1)  var^t = try^ pool.async(job())  return^ nil^ }
+let^r = run()
+''', 'it receives values at resume'),
+    ]:
+        negative(name, 'let^task = import^std.task\n' + text, diagnostic)
+
     positive('default_channel_is_closed', HEADER + '''
 var^q:c.Channel<i32^> = {}
 var^n:i32^ = 0

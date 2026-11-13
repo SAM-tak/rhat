@@ -1969,6 +1969,20 @@ static void initialize_definition(Program *p, Def *d, int j)
     add(&p->types, t);
 }
 
+void define_specialization(Program *p, Def *d)
+{
+    if (d->type) {
+        return;
+    }
+    int j = 0;
+    while (j < p->defs.n && p->defs.v[j] != d) {
+        j++;
+    }
+    initialize_definition(p, d, j);
+    compose(p, d);
+    layout(d->type, d->loc);
+}
+
 static void check_declaration(Program *p, Function *f, Def *owner)
 {
     if (f->captures.n && !f->environment) {
@@ -1998,6 +2012,7 @@ void analyze(Program *p)
         TOOL_CHECK(p, initialize_definition(p, d, j););
         d->invalid |= !d->type;
     }
+    p->defs_ready = true;
     for (int j = 0; j < p->state_fields.n; j++) {
         TOOL_CHECK(p, state_field_type(p, p->state_fields.v[j]););
     }

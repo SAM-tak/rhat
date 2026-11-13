@@ -1,0 +1,77 @@
+module^std.task
+
+# Worker threads that run coroutines. A job is an unstarted (or suspended) frame: it moves to
+# a worker as its bytes, runs there, yields std.async wait ids as under a std.async.Loop, and
+# hands its final result back through its Task. Jobs never move between workers once started.
+
+let^async = import^std.async
+import^std.sys
+
+externC^rh_pool_new:p^workers:i64^, stacks:i64^-> i64^;
+externC^rh_pool_stop:p^pool:i64^;
+externC^rh_hardware_threads:p^-> i64^;
+externC^rh_task_done:p^task:i64^-> bool^;
+externC^rh_task_watch:p^task:i64^, token:i64^;
+externC^rh_task_wait:p^task:i64^;
+externC^rh_task_drop:p^task:i64^;
+
+public^errordef^Error { StartFailed, Taken }
+
+# A finished job's result.
+public^struct^Done<T> { value:T }
+
+# The result of a job a Pool runs; it is taken once.
+public^def^Task<T> : std.sys.Disposable {
+    self^{ private^handle:i64^}
+
+    # Whether the job has finished.
+    done = p^self^-> bool^{ return^rh_task_done(self^.handle) }
+    # A std.async wait that is ready once the job has finished.
+    awaitable = p^self^-> i64^{
+        let^wait = async.external()
+        rh_task_watch(self^.handle, wait.token)
+        return^wait.id
+    }
+    # Blocks this thread until the job has finished, and takes its result.
+    wait = p^self^-> Done<T> | Error.Taken {
+        rh_task_wait(self^.handle)
+        return^task_take^(self^.handle)
+    }
+    # Waits in a coroutine: let^r = try^ await^ t.join().
+    join = p^self^{
+        repeat^{
+            if^rh_task_done(self^.handle) { return^self^.wait() }
+            yield^self^.awaitable()
+        }
+    }
+    dispose = p^self^{
+        rh_task_drop(self^.handle)
+        self^.handle := 0
+    }
+}
+
+# Worker threads, each with its own data stacks. Leaving its scope waits for every job it was
+# given, then stops the workers.
+public^def^Pool : std.sys.Disposable {
+    self^{ private^handle:i64^}
+
+    # Starts workers threads; 0 or less starts one per hardware thread.
+    new = p^workers:i64^-> Self^| Error.StartFailed {
+        var^count = workers
+        if^count <= 0 { count := rh_hardware_threads() }
+        let^h = rh_pool_new(count, thread_stack_count^())
+        if^h = 0 { return^Error.StartFailed{} }
+        return^Self^{handle = h}
+    }
+    # Runs job, an unstarted coroutine frame such as gen(args), on a worker: Task<T> for its
+    # final result T.
+    async = template^p^self^, job {
+        let^task = task_submit^(self^.handle, job)
+        if^task = 0 { return^Error.StartFailed{} }
+        return^task_handle^(task, job)
+    }
+    dispose = p^self^{
+        rh_pool_stop(self^.handle)
+        self^.handle := 0
+    }
+}

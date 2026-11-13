@@ -444,6 +444,9 @@ static Type *resolve_spec_type(Program *p, Spec *s)
     if (d->invalid) {
         tool_abort();
     }
+    if (!d->type && d->generic && p->defs_ready) {
+        define_specialization(p, d); // Specialized after the definitions were set up.
+    }
     return d->type;
 }
 

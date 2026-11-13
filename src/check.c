@@ -821,6 +821,19 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         if (thread == THREAD_NEW) {
             element = channel_new_element(c->p, e);
         }
+        else if (thread == THREAD_TASK) {
+            Type *frame = e->args.n == 2 ? infer_expr(c, e->args.v[1], NULL) : NULL;
+            if (!frame) {
+                return NULL;
+            }
+            if (frame->kind != T_FRAME) {
+                fail(e->loc, "a task runs a coroutine frame, found '%s'", type_name(frame));
+            }
+            element = frame->coroutine->final;
+            if (!element) {
+                return NULL;
+            }
+        }
         else if ((thread >= THREAD_SEND && thread <= THREAD_VALID) || thread == THREAD_READY ||
                  thread == THREAD_WATCH) {
             if (!e->args.n) {

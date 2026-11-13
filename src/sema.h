@@ -16,8 +16,11 @@ enum {
     THREAD_TRANSFER,
     THREAD_ARGS,
     THREAD_STACKS,
-    THREAD_READY, // channel_ready^(ref^h): a message is there, or the channel is closed.
-    THREAD_WATCH  // channel_watch^(ref^h, token): complete a std.async external wait then.
+    THREAD_READY,  // channel_ready^(ref^h): a message is there, or the channel is closed.
+    THREAD_WATCH,  // channel_watch^(ref^h, token): complete a std.async external wait then.
+    THREAD_SUBMIT, // task_submit^(pool, job): copy frame job to a std.task pool; its task.
+    THREAD_TASK,   // task_handle^(task, job): the std.task.Task<T> for job's final type T.
+    THREAD_TAKE    // task_take^(task): Done<T> | Error.Taken, as the caller's result says.
 };
 
 // The interface shared by semantic IR construction (sema.c and the files

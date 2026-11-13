@@ -137,6 +137,15 @@ static char *canonical(Module *m, const char *name)
     return m->name ? fmt("%s.%s", m->name, name) : str(name);
 }
 
+// Whether declared names name in m: as written, or canonical once resolution has qualified
+// it (a generic definition specialized late resolves its members then).
+static bool names(Module *m, const char *declared, const char *name)
+{
+    size_t n = m->name ? strlen(m->name) : 0;
+    return !strcmp(declared, name) || (n && !strncmp(declared, m->name, n) && declared[n] == '.' &&
+                                       !strcmp(declared + n + 1, name));
+}
+
 static bool has_name(Module *m, const char *name, bool external, Constant **constant)
 {
     for (int j = 0; j < m->aliases.n; j++) {
@@ -147,13 +156,13 @@ static bool has_name(Module *m, const char *name, bool external, Constant **cons
     }
     for (int j = 0; j < m->defs.n; j++) {
         Def *d = m->defs.v[j];
-        if (!strcmp(d->name, name)) {
+        if (names(m, d->name, name)) {
             return !external || d->public;
         }
     }
     for (int j = 0; j < m->functions.n; j++) {
         Function *f = m->functions.v[j];
-        if (!strcmp(f->name, name)) {
+        if (names(m, f->name, name)) {
             return !external || f->public;
         }
     }
@@ -294,6 +303,16 @@ static Def *named_definition(Program *p, const char *name)
             return d;
         }
     }
+    // After resolution, generic definitions are kept only by their modules.
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *m = p->modules.v[j];
+        for (int k = 0; k < m->defs.n; k++) {
+            Def *d = m->defs.v[k];
+            if (d->type_params.n && (!strcmp(d->name, name) || names(m, d->name, name))) {
+                return d;
+            }
+        }
+    }
     return NULL;
 }
 
@@ -410,6 +429,28 @@ static void apply_definition(Module *m, Spec *s, Def *source)
     s->name = canonical(instance->module, instance->name);
     s->self_type = instance;
     s->type_args = (List){0};
+}
+
+Type *generic_type(Program *p, Def *source, List *types, Loc loc)
+{
+    Spec *s = mem(sizeof(*s));
+    *s = (Spec){.kind = SPEC_NAME, .loc = loc, .name = source->name};
+    for (int j = 0; j < types->n; j++) {
+        Type *t = types->v[j];
+        Spec *a = mem(sizeof(*a));
+        *a = (Spec){.kind = SPEC_NAME,
+                    .loc = loc,
+                    .name = (char *)type_name(t),
+                    .type = t,
+                    .resolved = true};
+        add(&s->type_args, a);
+    }
+    apply_definition(source->module, s, source);
+    // The source's name is already qualified, and so is the specialization made from it.
+    s->name = s->self_type->name;
+    s->resolved = true;
+    define_specialization(p, s->self_type);
+    return type_spec(p, s);
 }
 
 static Stmt *top_binding(const char *name);
