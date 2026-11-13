@@ -35,9 +35,12 @@ let^tick = p^name:string^ {
 | `async.readable(socket)` / `async.writable(socket)` | `i64^`（ソケットが読める・書ける、または閉じたら準備のできる待ち） |
 | `async.wait(timeout)` | `i64^ \| nil^`（準備のできた待ち。`timeout` 秒待っても無ければ `nil^`） |
 | `await^ async.delay(seconds)` | — |
+| `async.external()` | `External{id, token}`（別スレッドが `async.complete(token)` で完了する待ち） |
 
 - 待ちの表はスレッドごとです（`_Thread_local`）。thread-per-core のプログラムでは、ワーカーごとに `Loop` を回します。
 - `wait` は期限の来たタイマーのうち一番早いものを先に答えます。ソケットは `poll`（Windows は `WSAPoll`）で待ちます。
+- 外部待ちは、待つスレッドの起こし用ソケット（ループバックの UDP ソケット）も `poll` に加えて待ちます。
+  完了したスレッドがそこへ 1 バイト送ります。Channel の `awaitable`・`take` はこれでできています。
 - id は 1 から配ります。準備ができて答えた待ちは表から消えます。答える前にコルーチンが捨てられた待ちは表に残ります（v1）。
 
 ## Loop
@@ -116,5 +119,5 @@ let^worker = p^listener:ref^net.TcpListener {
 
 - 待ちの取り消し（捨てたコルーチンの待ちを表から外す）。
 - `epoll`・`kqueue`・IOCP。インターフェースは変わりません。
-- Channel の `await^ ch.take()` と `std.task`（[coroutines.md](coroutines.md) の手順 5）。
+- `std.task`（[coroutines.md](coroutines.md) の手順 5b）。Channel の `await^ ch.take()` は実装済み（[threads.md](threads.md)）。
 - 再貸しの入れ子（受け取った参照をさらに `await^` に渡す）。これができると `read_exact` のような補助を重ねられます。

@@ -10,6 +10,8 @@
 - `ch.clone() -> Channel<T>`、`ch.close()`、スコープ終了による保持の解放。
 - `ch.send(ref^value)` / `ch.try_send(ref^value) -> nil^ | std.channel.Error`
 - `ch.receive()` / `ch.try_receive() -> Message<T> | Closed | Empty`
+- `ch.ready() -> bool^`（メッセージがあるか閉じている）、`ch.awaitable() -> i64^`（std.async の待ち）、
+  `await^ ch.take() -> Message<T> | Closed | Empty`（コルーチンで待つ。`Empty` は別の受け手が先に取った場合だけ）
 - `std.thread.spawn(worker, ref^args) -> Thread | std.thread.Error.StartFailed`
 - `thread.join()`、スコープ終了による自動 join、`std.thread.hardware_threads()`。
 - `std.thread.sleep(seconds:f64^)`。L^ と同じ秒単位で、`sleep(0.2)` は200ミリ秒。
@@ -43,7 +45,12 @@ POSIX はナノ秒へ切り上げて `nanosleep` を呼び、シグナルで中�
 起動引数用にスタック番号 0 を確保し、ワーカーの通常の配置は番号 1 から始めます。
 現在は全入口を覆う共通の最大スタック数を各シャードに予約します。
 
-Windows と POSIX の実装を持ちます。時間制限、select、名前付き Channel、タスクによる待機、
+コルーチンからは `await^ ch.take()` で待てます。待つスレッドは眠らず、その間 std.async の Loop は他のタスクを進めます。
+Channel は到着と close のときに、自分に登録された std.async の外部待ち（`ch.awaitable()`）を完了します。
+外部待ちを完了すると、待つスレッドの起こし用ソケット（ループバックの UDP ソケット）へ 1 バイト送り、`poll` から起こします。
+所有値の要素でも使えます（メッセージは待つコルーチンのスタックに作られます。[coroutines.md](coroutines.md#所有値の最終結果)）。
+
+Windows と POSIX の実装を持ちます。時間制限、select、名前付き Channel、
 外部スレッドからの R^ 呼び込みには未対応です。Channel を含むメッセージは今後も禁止します。
 実行例は [examples/threads.rh](../examples/threads.rh) を参照してください。
 
