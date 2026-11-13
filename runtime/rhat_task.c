@@ -135,6 +135,42 @@ static void frame_release(Job *job)
 
 static const JobOps frame_ops = {frame_step, frame_finish, frame_release};
 
+// A kind of job given by function pointers (std.task's JobKind): an L^ machine run a slice at a
+// time, say. The pool keeps a copy of it with each job.
+typedef struct {
+    int64_t (*step)(void *job);
+    void *(*finish)(void *job);
+    void (*release)(void *job);
+    void (*free_result)(void *result);
+} RhJobKind;
+
+typedef struct {
+    RhJobKind kind;
+    void *job;
+} Foreign;
+
+static int64_t foreign_step(Job *job)
+{
+    Foreign *f = job->data;
+    return f->kind.step(f->job);
+}
+
+static void foreign_finish(Job *job, Task *task)
+{
+    Foreign *f = job->data;
+    void *result = f->kind.finish(f->job);
+    task_complete(task, result, f->kind.free_result);
+}
+
+static void foreign_release(Job *job)
+{
+    Foreign *f = job->data;
+    f->kind.release(f->job);
+    free(f);
+}
+
+static const JobOps foreign_ops = {foreign_step, foreign_finish, foreign_release};
+
 #if defined(_WIN32)
 static DWORD WINAPI worker_main(void *data)
 #else
@@ -314,6 +350,23 @@ int64_t rh_pool_submit_frame(int64_t pool, const RhFrameJob *type, const void *f
     return submit((Pool *)(uintptr_t)pool, job);
 }
 
+// Hands job, of the kind given, to a worker; its task, or 0.
+int64_t rh_pool_submit_job(int64_t pool, const RhJobKind *kind, void *data)
+{
+    Job *job = calloc(1, sizeof(*job));
+    Foreign *f = malloc(sizeof(*f));
+    if (!pool || !job || !f) {
+        free(job);
+        free(f);
+        return 0;
+    }
+    f->kind = *kind;
+    f->job = data;
+    job->ops = &foreign_ops;
+    job->data = f;
+    return submit((Pool *)(uintptr_t)pool, job);
+}
+
 // Lets each worker finish its jobs, then joins it.
 void rh_pool_stop(int64_t pool)
 {
@@ -430,6 +483,24 @@ void rh_task_take(int64_t task, void *out, int32_t value_tag, int32_t taken_tag,
     t->result = NULL;
     unlock(&t->mutex);
     memcpy(out, &value_tag, sizeof(value_tag));
+}
+
+// Takes the result a job of a given kind finished with, once: it is the caller's to free then.
+// NULL when it is not done, has no result or was taken.
+void *rh_task_take_raw(int64_t task)
+{
+    Task *t = (Task *)(uintptr_t)task;
+    if (!t) {
+        return NULL;
+    }
+    lock(&t->mutex);
+    void *result = t->done && !t->taken ? t->result : NULL;
+    if (t->done) {
+        t->taken = true;
+        t->result = NULL;
+    }
+    unlock(&t->mutex);
+    return result;
 }
 
 void rh_task_drop(int64_t task)

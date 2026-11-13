@@ -751,6 +751,43 @@ ffi_on_thread(work, 7)
 mine.push(3)
 print^("main", mine.len, mine[2])
 ''', 'foreign 4 70\nforeign 4 80\nmain 3 3\n', extra=('--runtime', foreign))
+    # A std.task pool runs jobs of a kind given by C function pointers; the step is an exportC^
+    # function, called on the workers.
+    counter = suite.work / 'ffi_counter.c'
+    counter.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
+typedef struct {{ int64_t left, total; }} Counter;
+void *counter_new(int64_t n) {{ Counter *c = calloc(1, sizeof *c); c->left = n; return c; }}
+int64_t counter_tick(void *job) {{ Counter *c = job; if (c->left == 0) return -1; c->total += c->left--; return 0; }}
+void *counter_finish(void *job) {{ int64_t *r = malloc(sizeof *r); *r = ((Counter *)job)->total; return r; }}
+void counter_release(void *job) {{ free(job); }}
+void counter_free(void *r) {{ free(r); }}
+int64_t counter_value(void *r) {{ int64_t v = *(int64_t *)r; free(r); return v; }}
+''', encoding='utf-8')
+    positive('ffi_task_foreign_jobs', '''
+let^task = import^std.task
+externC^counter_new:p^n:i64^-> ref^task.ForeignJob;
+externC^counter_tick:p^job:ref^task.ForeignJob -> i64^;
+externC^counter_finish:p^job:ref^task.ForeignJob -> ref^task.ForeignResult | nil^;
+externC^counter_release:p^job:ref^task.ForeignJob;
+externC^counter_free:p^r:ref^task.ForeignResult;
+externC^counter_value:p^r:ref^task.ForeignResult -> i64^;
+exportC^let^counter_step = p^job:ref^task.ForeignJob -> i64^{ return^counter_tick(job) }
+let^run = p^-> nil^| task.Error {
+    var^pool = try^task.Pool.new(2)
+    let^kind = task.JobKind{step = counter_step, finish = counter_finish, release = counter_release, free_result = counter_free}
+    var^a = try^pool.submit(ref^kind, counter_new(100))
+    var^b = try^pool.submit(ref^kind, counter_new(10))
+    a.wait()
+    b.wait()
+    let^r = a.take()
+    let^s = b.take()
+    if^r fits^ref^task.ForeignResult { print^(counter_value(r)) }
+    if^s fits^ref^task.ForeignResult { print^(counter_value(s)) }
+    print^(a.take() fits^nil^)
+    return^nil^
+}
+let^x = run()
+''', '5050\n55\ntrue\n', extra=('--runtime', counter))
     suite.finish()
 
 

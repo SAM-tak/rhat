@@ -15,6 +15,25 @@ externC^rh_task_watch:p^task:i64^, token:i64^;
 externC^rh_task_wait:p^task:i64^;
 externC^rh_task_drop:p^task:i64^;
 
+# Jobs of other kinds: C state stepped through C function pointers (exportC^ functions), as
+# an L^ host steps an L^ machine a slice at a time.
+public^externC^def^ForeignJob;
+public^externC^def^ForeignResult;
+
+# What a pool calls for a job of this kind, on the worker that runs it. step answers -1 once the
+# job has finished, 0 to run again, or the std.async wait it waits for; finish answers its
+# result, which the Task holds until it is taken; release frees the job; free_result frees a
+# result nobody took.
+public^struct^JobKind {
+    step:externC^p^ref^ForeignJob -> i64^;,
+    finish:externC^p^ref^ForeignJob -> ref^ForeignResult | nil^;,
+    release:externC^p^ref^ForeignJob;,
+    free_result:externC^p^ref^ForeignResult;
+}
+
+externC^rh_pool_submit_job:p^pool:i64^, kind:ref^read^JobKind, job:ref^ForeignJob -> i64^;
+externC^rh_task_take_raw:p^task:i64^-> ref^ForeignResult | nil^;
+
 public^errordef^Error { StartFailed, Taken }
 
 # A finished job's result.
@@ -50,6 +69,29 @@ public^def^Task<T> : std.sys.Disposable {
     }
 }
 
+# The result of a job of a given kind; it is taken once, and then the taker frees it.
+public^def^RawTask : std.sys.Disposable {
+    self^{ private^handle:i64^}
+
+    new = f^handle:i64^-> Self^{ Self^{handle = handle} }
+    # Whether the job has finished.
+    done = p^self^-> bool^{ return^rh_task_done(self^.handle) }
+    # A std.async wait that is ready once the job has finished.
+    awaitable = p^self^-> i64^{
+        let^wait = async.external()
+        rh_task_watch(self^.handle, wait.token)
+        return^wait.id
+    }
+    # Blocks this thread until the job has finished.
+    wait = p^self^{ rh_task_wait(self^.handle) }
+    # The finished job's result, the first time; nil^ before it finishes and after it is taken.
+    take = p^self^-> ref^ForeignResult | nil^{ return^rh_task_take_raw(self^.handle) }
+    dispose = p^self^{
+        rh_task_drop(self^.handle)
+        self^.handle := 0
+    }
+}
+
 # Worker threads, each with its own data stacks. Leaving its scope waits for every job it was
 # given, then stops the workers.
 public^def^Pool : std.sys.Disposable {
@@ -69,6 +111,13 @@ public^def^Pool : std.sys.Disposable {
         let^task = task_submit^(self^.handle, job)
         if^task = 0 { return^Error.StartFailed{} }
         return^task_handle^(task, job)
+    }
+    # Runs job, C state of a kind given by kind, on a worker. The pool copies kind and keeps
+    # job until release: it must not live on R^'s data stacks.
+    submit = p^self^, kind:ref^read^JobKind, job:ref^ForeignJob -> RawTask | Error.StartFailed {
+        let^task = rh_pool_submit_job(self^.handle, kind, job)
+        if^task = 0 { return^Error.StartFailed{} }
+        return^RawTask.new(task)
     }
     dispose = p^self^{
         rh_pool_stop(self^.handle)

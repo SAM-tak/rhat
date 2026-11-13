@@ -44,8 +44,8 @@ static bool c_scalar(Type *t)
 // fixed array built only of such values (no references, strings or unions).
 static bool c_flat(Type *t)
 {
-    if (c_scalar(t)) {
-        return true;
+    if (c_scalar(t) || t->kind == T_CFUNC) {
+        return true; // A C function pointer is laid out as C's.
     }
     if (t->kind == T_ARRAY) {
         return c_flat(t->elem);
