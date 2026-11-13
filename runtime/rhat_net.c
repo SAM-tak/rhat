@@ -68,14 +68,24 @@ static int64_t handle_of(RhSocket s)
     return (int64_t)s + 1;
 }
 
+#if defined(_WIN32)
+static BOOL CALLBACK net_startup(PINIT_ONCE once, PVOID parameter, PVOID *context)
+{
+    (void)once;
+    (void)parameter;
+    (void)context;
+    WSADATA data;
+    WSAStartup(MAKEWORD(2, 2), &data);
+    return TRUE;
+}
+#endif
+
+// Starts Winsock once; a thread that arrives while another starts it waits for it to finish.
 static void net_start(void)
 {
 #if defined(_WIN32)
-    static volatile LONG started;
-    if (InterlockedCompareExchange(&started, 1, 0) == 0) {
-        WSADATA data;
-        WSAStartup(MAKEWORD(2, 2), &data);
-    }
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once, net_startup, NULL, NULL);
 #endif
 }
 
@@ -627,6 +637,18 @@ int64_t rh_async_pending(void)
 bool rh_async_waiting(int64_t id)
 {
     return find_wait(id) >= 0;
+}
+
+double rh_async_next(void)
+{
+    double t = now(), next = -1;
+    for (int64_t k = 0; k < wait_count; k++) {
+        if (!waits[k].handle && !waits[k].external) {
+            double left = waits[k].due > t ? waits[k].due - t : 0;
+            next = next < 0 || left < next ? left : next;
+        }
+    }
+    return next;
 }
 
 // Answers the id of one wait that is ready, sleeping up to timeout seconds for one; 0 when
