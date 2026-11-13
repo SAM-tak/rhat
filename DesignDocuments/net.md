@@ -119,5 +119,5 @@ let^worker = p^listener:ref^net.TcpListener {
 
 - 待ちの取り消し（捨てたコルーチンの待ちを表から外す）。
 - `epoll`・`kqueue`・IOCP。インターフェースは変わりません。
-- `std.task`（[coroutines.md](coroutines.md) の手順 5b）。Channel の `await^ ch.take()` は実装済み（[threads.md](threads.md)）。
+- Channel の `await^ ch.take()` と `std.task.Pool` の `await^ t.join()` は実装済み（[threads.md](threads.md)・[coroutines.md](coroutines.md)）。
 - 再貸しの入れ子（受け取った参照をさらに `await^` に渡す）。これができると `read_exact` のような補助を重ねられます。

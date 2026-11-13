@@ -16,6 +16,10 @@
 - `thread.join()`、スコープ終了による自動 join、`std.thread.hardware_threads()`。
 - `std.thread.sleep(seconds:f64^)`。L^ と同じ秒単位で、`sleep(0.2)` は200ミリ秒。
 - `std.thread.current_id() -> i64^`、`thread.id() -> i64^`。
+- `std.task.Pool.new(workers) -> Pool | std.task.Error.StartFailed`、`pool.async(frame) -> Task<T> | Error.StartFailed`、
+  `t.done()`・`t.awaitable()`・`t.wait()`・`await^ t.join() -> Done<T> | Error.Taken`
+  （[coroutines.md](coroutines.md#標準ライブラリ-l-の-stdtaskstdasyncstdchannel-を踏襲する)）。
+- フレームの値は Channel でも送れます（中断を跨いで持つものがすべて転送可能なとき）。
 
 スレッド ID は OS のハンドルやネイティブ ID とは別の、プロセス内で一意の正の整数です。
 メインスレッドも取得でき、同一スレッドでは常に同じ値を返します。終了後も ID を再利用しません。

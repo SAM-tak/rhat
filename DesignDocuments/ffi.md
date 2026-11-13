@@ -159,6 +159,15 @@ let^program = lhat_program_new(true^, lhat_load_file, nil^)
   （[データスタックの受け渡し](#データスタックの受け渡し)）。C 側が保存して後から別スレッドで呼ぶ使い方は検査できません。
 - R^ から関数ポインタを呼ぶことはまだできません。
 
+### L^ のホストに std.task を提供するために（今後）
+
+R^ の `std.task.Pool` を L^ の `std.task` として公開し、L^ のジョブを同じワーカーに積むには次が要ります
+（[coroutines.md](coroutines.md#l-のホストと-pool-を共有する今後)）。
+
+- exportL^ の引数と結果に、L^ の任意の値（未開始のコルーチン、結果のオブジェクト）を渡せる型。
+- `exportC^` 関数をワーカースレッドから呼べること（`rh_callback_sp` をスレッドごとにする）。
+- R^ から C の関数ポインタを呼べること（ジョブの種類を関数ポインタで std.task に渡す）。
+
 ## L^ に R^ を公開する（exportL^）
 
 ```rhat
