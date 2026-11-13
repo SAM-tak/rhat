@@ -176,7 +176,7 @@ print^(ops.size("hello"))
 R^ の `std.task.Pool` を L^ の `std.task` として公開し、L^ のジョブを同じワーカーに積むには次が要ります
 （[coroutines.md](coroutines.md#l-のホストと-pool-を共有する今後)）。
 
-- exportL^ の引数と結果に、L^ の任意の値（未開始のコルーチン、結果のオブジェクト）を渡せる型。
+- exportL^ の引数と結果に、L^ の任意の値（未開始のコルーチン、結果のオブジェクト）を渡せる型（実装済み。`LhatValue`）。
 - `exportC^` 関数をワーカースレッドから呼べること（実装済み。R^ が起こしていないスレッドからも呼べます）。
 - R^ から C の関数ポインタを呼べること（実装済み）。std.task にジョブの種類を関数ポインタで渡す口は、残りの 2 点とあわせて足します。
 
@@ -199,7 +199,7 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
 - 署名は R^ の型から決まります。数値型は `number^`、`bool^` は `bool^`、`string^` は `string^`、
   `exportL^ def^` は `<module>.<名前>` です（例: `f^number^, number^ -> number^;`）。結果には
   `exportL^ errordef^` のエラーを `|` で加えられます（[下記](#エラーとして渡す型exportl-errordef)）。
-  それ以外の型は引数にも結果にもできません。
+  それ以外の型は引数にも結果にもできません（任意の値は下の `LhatValue` で受け渡します）。
   `f^` / `p^` と結果型の注釈、`template^` などの制限は `exportC^` と同じです。
 - 整数型の引数に整数でない数が渡ると「exportL^ NAME needs a whole number」で終了します。浮動小数点型は
   整数も受け取ります。文字列の引数は呼び出しの間 L^ の文字列を借り、結果の文字列は
@@ -296,6 +296,29 @@ exportL^let^split = f^k:i64^-> (i64^, string^) | Error.Bad { ... }
 - `exportL^ ref^ def^` への `ref^ T | nil^` にもエラーを加えられます（L^ の署名は `-> rhat.T|rhat.Error|nil^`）。
   `nil^` を含めてよいのはこの形だけで、`i64^ | nil^ | Error` などはコンパイルエラーです。
 
+
+### 任意の値をそのまま渡す（LhatValue）
+
+```rhat
+includeC^"lhat.h"
+externC^def^LhatMachine;
+externC^def^LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
+
+exportL^let^echo = f^v:LhatValue -> LhatValue { v }                     # rhat.echo(any^) -> any^
+exportL^let^named = p^machine:ref^LhatMachine, n:i64^ -> LhatValue { ... } # rhat.named(number^) -> any^
+```
+
+- 引数と結果の型に C の型 `LhatValue`（`externC^ def^ LhatValue`）を書くと、L^ の任意の値をそのまま受け渡します。L^ の署名は `any^` です。
+  未開始のコルーチン・閉包・表・エラー値も、そのまま R^ に届きます。
+- 先頭の引数（メソッドでは `self^` の次）を `ref^ LhatMachine` にすると、呼んだ機械が入ります。L^ の署名にも引数の数にも出ません。
+  値を作る・carry する・根に載せるといった L^ の C API は、たいていこの機械を取ります。
+- **寿命**: 受け取った値はその呼び出しの間だけ有効です。C が持つ値は L^ の GC の根ではありません。呼び出しを越えて持つなら、
+  L^ の C API で根に載せます（`lhat_machine_host_root` の表に `lhat_machine_table_set` で書き、手放すときは nil^ を書く）。
+  結果の `LhatValue` は呼んだ機械の値でなければなりません。
+- **機械をまたぐ**: 値は一つの機械に属します。別の機械（std.task のワーカーの機械など）へは `lhat_carry` / `lhat_uncarry` で写し、
+  終わった機械の結果は `lhat_machine_detach_result` / `lhat_machine_adopt_result` で移します。
+- これらの規則は R^ からは検査できません。`externC^` と同じく信頼境界です。安全な包み（借用・根に載せた値・carry 済みの値の型）は、
+  L^ ホスト用の R^ ライブラリとして後で用意します。
 ## 効果と安全性
 
 `f^` の宣言は副作用がないことの約束です。引数がすべてスカラーの `f^` 宣言には LLVM の `memory(none)` を付けるため、

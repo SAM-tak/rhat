@@ -2730,6 +2730,7 @@ static const char *l_name(Type *t)
         return names;
     }
     return data                  ? fmt("%%s.%s%s", data->name, t->kind == T_UNION ? "|nil^" : "")
+           : lhat_any(t)         ? "any^"
            : t->kind == T_STRUCT ? fmt("%%s.%s", t->def->name)
            : t->kind == T_STRING ? "string^"
            : t->kind == T_BOOL   ? "bool^"
@@ -2794,6 +2795,9 @@ static char *l_answer(Type *t, const char *v, int k)
 {
     Def *data = lhat_data_def(t);
     char *nil = fmt(")) {\n    answers[%d] = lhat_nil();\n  }\n", k);
+    if (lhat_any(t)) {
+        return fmt("  answers[%d] = %s;\n", k, v); // Any L^ value, answered as it is.
+    }
     if (t->kind == T_STRING) {
         return fmt(
             "  if (!lhat_machine_make_string(machine, %s.text, (size_t)%s.length, &answers[%d]%s",
@@ -2986,19 +2990,32 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                               : "";
         char *call = failing ? "u" : text ? "&r.text, &r.length" : value ? "&r" : "";
         char *signature = fmt("%s", in->fn->procedure ? "p^" : "f^"), *body = "";
-        for (int k = 0; k < in->params.n; k++) {
+        // L^ numbers its arguments without the calling machine, which L^ does not pass.
+        for (int k = 0, l = 0; k < in->params.n; k++) {
             Type *param = in->params.v[k];
             char *sep = *entry ? ", " : "", *comma = *call ? ", " : "";
+            if (lhat_machine(param)) {
+                entry = fmt("%s%sLhatMachine *", entry, sep);
+                call = fmt("%s%smachine", call, comma);
+                continue;
+            }
+            int a = l++;
             // A method's receiver comes as ref^ to the host value or data.
             bool self = owner && !k;
             Def *pointed = lhat_data_def(param);
             Type *held = self && !pointed ? param->elem : param;
-            signature = fmt("%s%s%s", signature, k ? ", " : "", self ? "self^" : l_name(param));
+            signature = fmt("%s%s%s", signature, a ? ", " : "", self ? "self^" : l_name(param));
+            if (lhat_any(param)) {
+                entry = fmt("%s%sLhatValue *", entry, sep);
+                body = fmt("%s  LhatValue v%d = arguments[%d];\n", body, k, a);
+                call = fmt("%s%s&v%d", call, comma, k);
+                continue;
+            }
             if (pointed) {
                 entry = fmt("%s%svoid *", entry, sep);
                 body =
                     fmt("%s  void *v%d = rh_lhat_data(arguments[%d], rh_lhat_data_%d, %s);\n", body,
-                        k, k, pointed->type->id, param->kind == T_UNION ? "true" : "false");
+                        k, a, pointed->type->id, param->kind == T_UNION ? "true" : "false");
                 call = fmt("%s%sv%d", call, comma, k);
                 continue;
             }
@@ -3007,7 +3024,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 body =
                     fmt("%s  %s v%d;\n  memcpy(&v%d, rh_lhat_value(arguments[%d], rh_lhat_tag_%d), "
                         "sizeof v%d);\n",
-                        body, c_name(held), k, k, k, held->id, k);
+                        body, c_name(held), k, k, a, held->id, k);
                 call = fmt("%s%s&v%d", call, comma, k);
                 continue;
             }
@@ -3015,24 +3032,24 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 entry = fmt("%s%sconst char *, int64_t", entry, sep);
                 body = fmt(
                     "%s  const LhatString *s%d = (const LhatString *)lhat_as_object(arguments[%d]);\n",
-                    body, k, k);
+                    body, k, a);
                 call = fmt("%s%ss%d->text, (int64_t)s%d->length", call, comma, k, k);
                 continue;
             }
             entry = fmt("%s%s%s", entry, sep, c_name(param));
             if (param->kind == T_BOOL) {
-                call = fmt("%s%sarguments[%d].as.boolean", call, comma, k);
+                call = fmt("%s%sarguments[%d].as.boolean", call, comma, a);
             }
             else if (kind_float(param->kind)) {
                 call = fmt("%s%s(%s)lhat_number_as_real(arguments[%d])", call, comma, c_name(param),
-                           k);
+                           a);
             }
             else {
                 body = fmt(
                     "%s  LhatInteger w%d;\n  if (!lhat_number_as_whole(arguments[%d], &w%d)) {\n"
                     "    static const char m[] = \"exportL^ %s needs a whole number\";\n"
                     "    rh_terminate(m, sizeof m - 1, 0, 1);\n  }\n",
-                    body, k, k, k, name);
+                    body, k, a, k, name);
                 call = fmt("%s%s(%s)w%d", call, comma, c_name(param), k);
             }
         }

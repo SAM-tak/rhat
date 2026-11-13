@@ -290,13 +290,24 @@ Type *lhat_success(Type *t)
     return !errors ? t : others == 1 ? success : NULL;
 }
 
+bool lhat_any(Type *t)
+{
+    return t && t->kind == T_STRUCT && t->def->c_name && !strcmp(t->def->c_name, "LhatValue");
+}
+
+bool lhat_machine(Type *t)
+{
+    return t && t->kind == T_REF && t->elem->kind == T_STRUCT && t->elem->def->c_name &&
+           !strcmp(t->elem->def->c_name, "LhatMachine");
+}
+
 // A value L^ hands a host function: number^ (integers to 64 bits and
-// floats), bool^, string^, an exportL^ def^ host value or a reference to
-// an exportL^ ref^ def^ host data.
+// floats), bool^, string^, an exportL^ def^ host value, a reference to
+// an exportL^ ref^ def^ host data, or any value as LhatValue.
 static bool l_value(Type *t)
 {
     return t->kind == T_STRING || (c_scalar(t) && t->kind != T_ENUM) ||
-           (t->kind == T_STRUCT && t->def->lhat_value) || lhat_data_def(t);
+           (t->kind == T_STRUCT && t->def->lhat_value) || lhat_data_def(t) || lhat_any(t);
 }
 
 // An ASCII C identifier other than main, which the entry file defines.
@@ -350,10 +361,20 @@ void export_validate(Program *p, Function *f)
         if (param->self) {
             continue;
         }
+        // The calling machine comes first, after self^ if there is one.
+        bool first = j == 0 || (j == 1 && ((Param *)f->params.v[0])->self);
+        if (f->lhat_export && lhat_machine(t)) {
+            if (!first) {
+                fail(param->loc, "exportL^ takes the calling ref^ LhatMachine as its first "
+                                 "parameter");
+            }
+            continue;
+        }
         if (!t || (f->exported && !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) ||
             (f->lhat_export && !l_value(t))) {
             fail(param->loc, "%s parameter '%s' needs a %s type annotation, not '%s'", kind,
-                 param->name, f->exported ? "C" : "number, bool^, string^ or exportL^ def^",
+                 param->name,
+                 f->exported ? "C" : "number, bool^, string^, exportL^ def^ or LhatValue",
                  t ? type_name(t) : "?");
         }
     }
@@ -383,8 +404,9 @@ void export_validate(Program *p, Function *f)
     for (int j = 0; result && f->lhat_export && j < (tuple ? success->def->fields.n : 1); j++) {
         Type *part = !success ? NULL : tuple ? ((Field *)success->def->fields.v[j])->type : success;
         if (!part || !l_value(part)) {
-            fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^ "
-                                 "or ref^ to an exportL^ ref^ def^, with | errors if it fails");
+            fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^, "
+                                 "LhatValue or ref^ to an exportL^ ref^ def^, with | errors if "
+                                 "it fails");
         }
     }
 }

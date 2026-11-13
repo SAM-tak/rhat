@@ -687,6 +687,11 @@ bool emit_c_shims(Program *p, const char *path, bool headers);
 const char *c_function_symbol(Function *f);
 // The exportL^ ref^ def^ that t, a ref^ (or a ref^ | nil^), refers to.
 Def *lhat_data_def(Type *t);
+// LhatValue, the C type of any L^ value: an exportL^ function passes it through as is (any^).
+bool lhat_any(Type *t);
+// ref^LhatMachine: the machine that called an exportL^ function, given to it ahead of the
+// L^ arguments.
+bool lhat_machine(Type *t);
 // The errordef^ t is, or is a variant of, else NULL.
 Def *error_group(Type *t);
 // What an exportL^ result t answers when it does not fail: t itself unless

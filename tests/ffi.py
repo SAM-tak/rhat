@@ -267,6 +267,7 @@ void mock_values(int32_t mode);
 void mock_multi(void);
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
 void mock_fail(void);
+void mock_any(void);
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -428,6 +429,14 @@ void mock_run(int32_t mode)
     fflush(stdout);
     call("shout", &hi, 1);
 }}
+void mock_any(void)
+{{
+    LhatValue n = lhat_integer(42), s = text("hello"), seven = lhat_integer(7);
+    LhatValue a = call("echo", &n, 1), b = call("echo", &s, 1), k = call("kind", &s, 1);
+    LhatValue m = call("named", &seven, 1);
+    printf("%lld %s %lld %s\\n", (long long)a.as.integer, ((LhatString *)lhat_as_object(b))->text,
+           (long long)k.as.integer, ((LhatString *)lhat_as_object(m))->text);
+}}
 void mock_values(int32_t mode)
 {{
     LhatValue xyz[3] = {{lhat_integer(1), lhat_integer(2), lhat_integer(3)}};
@@ -513,6 +522,26 @@ print^(rhat_lhat_register(mock_program(), "rhat"))
              'exportL^ result must be')
     negative('ffi_extern_multiple', 'externC^ div:f^ a:i32^, b:i32^ -> (i32^, i32^);\nlet^ q, r = div(7, 2)',
              'externC^ result must be')
+    # Any L^ value passes through as LhatValue (any^); the calling machine comes first.
+    anything = lhat.replace('externC^ mock_run:p^ mode:i32^;', '''externC^ mock_any:p^;
+externC^ def^ LhatMachine;
+externC^ def^ LhatValue { self^{ as:u64^ = 0, tag:i32^ = 0 } }
+externC^ lhat_machine_make_string:p^ machine:ref^ LhatMachine, text:string^, length:u64^, out:ref^ LhatValue -> bool^;''') + '''exportL^ let^ echo = f^ v:LhatValue -> LhatValue { v }
+exportL^ let^ kind = f^ v:LhatValue -> i32^ { v.tag }
+exportL^ let^ named = p^ machine:ref^ LhatMachine, n:i64^ -> LhatValue {
+  var^ out = LhatValue{}
+  let^ made = lhat_machine_make_string(machine, "made", 4, ref^ out)
+  return^ out
+}
+'''
+    positive('ffi_export_lhat_any', anything + 'mock_any()\n',
+             'rhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.echo f^any^ -> any^;\nrhat.kind f^any^ -> number^;\nrhat.named p^number^ -> any^;\n'
+             'true\n42 hello 4 made\n', extra=lhat_extra)
+    negative('ffi_export_lhat_machine_first', header + '''externC^ def^ LhatMachine;
+exportL^ let^ late = f^ n:i64^, m:ref^ LhatMachine -> i64^ { n }''',
+             'exportL^ takes the calling ref^ LhatMachine as its first parameter')
     suite.runtime_failure('ffi_export_lhat_whole', lhat + 'mock_run(1)\n', 'exportL^ add needs a whole number', extra=lhat_extra)
     values = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_values:p^ mode:i32^;') + '''exportL^ def^ Vec3 {
   self^{ x:f32^ = 0.0, y:f32^ = 0.0, z:f32^ = 0.0, on:bool^ = false^ }
@@ -599,7 +628,7 @@ mock_fail()
     negative('ffi_export_lhat_ref_function', header + 'exportL^ ref^ let^ g = f^ x:i32^ -> i32^ { x }', 'or exportL^ to a def^ or errordef^')
     negative('ffi_export_lhat_no_header', 'exportL^ let^ g = f^ x:i32^ -> i32^ { x }', 'exportL^ needs a module with includeC^')
     negative('ffi_export_lhat_param', header + 'externC^ def^ FfiBox;\nexportL^ let^ g = f^ b:ref^ FfiBox -> i32^ { 0 }',
-             "exportL^ parameter 'b' needs a number, bool^, string^ or exportL^ def^ type annotation")
+             "exportL^ parameter 'b' needs a number, bool^, string^, exportL^ def^ or LhatValue type annotation")
     negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[..] { {} }', 'exportL^ result must be')
     negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
 
