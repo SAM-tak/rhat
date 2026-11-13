@@ -542,6 +542,15 @@ exportL^ let^ named = p^ machine:ref^ LhatMachine, n:i64^ -> LhatValue {
     negative('ffi_export_lhat_machine_first', header + '''externC^ def^ LhatMachine;
 exportL^ let^ late = f^ n:i64^, m:ref^ LhatMachine -> i64^ { n }''',
              'exportL^ takes the calling ref^ LhatMachine as its first parameter')
+    # Each R^ module's exportL^ declarations also register on their own, under an L^ module the
+    # host names.
+    own = lhat.replace('print^(rhat_lhat_register(mock_program(), "rhat"))\n', '''externC^ rhat_lhat_register_main:p^ program:ref^ LhatProgram, module:string^ -> bool^;
+print^(rhat_lhat_register_main(mock_program(), "mine"))
+''')
+    positive('ffi_export_lhat_per_module', own,
+             'mine.add f^number^, number^ -> number^;\nmine.half f^number^ -> number^;\n'
+             'mine.greet f^string^ -> string^;\nmine.flip f^bool^ -> bool^;\nmine.shout p^string^;\ntrue\n',
+             extra=lhat_extra)
     suite.runtime_failure('ffi_export_lhat_whole', lhat + 'mock_run(1)\n', 'exportL^ add needs a whole number', extra=lhat_extra)
     values = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_values:p^ mode:i32^;') + '''exportL^ def^ Vec3 {
   self^{ x:f32^ = 0.0, y:f32^ = 0.0, z:f32^ = 0.0, on:bool^ = false^ }

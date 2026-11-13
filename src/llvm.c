@@ -2818,6 +2818,20 @@ static char *l_answer(Type *t, const char *v, int k)
                v);
 }
 
+// Adds one registration to all of them, and to those of m, the R^ module it comes from.
+static void l_add(List *parts, Module *m, char **all, const char *registration)
+{
+    *all = fmt("%s%s", *all, registration);
+    for (int j = 0; j < parts->n; j += 2) {
+        if (parts->v[j] == m) {
+            parts->v[j + 1] = fmt("%s%s", (char *)parts->v[j + 1], registration);
+            return;
+        }
+    }
+    add(parts, m);
+    add(parts, str(registration));
+}
+
 // LhatHostFn wrappers for exportL^ functions and methods, and the function
 // that registers them, with the exportL^ def^ host value types and their
 // scalar fields and the exportL^ ref^ def^ host data types, under an L^
@@ -2923,6 +2937,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             f);
     }
     char *registrations = "";
+    List parts = {0}; // Each R^ module and its registrations, for rhat_lhat_register_<module>.
     for (int j = 0; j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         if (d->lhat_data) {
@@ -2932,10 +2947,10 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 "bool rhat_lhat_wrap_%s(LhatMachine *machine, void *pointer, LhatValue *out)\n{\n"
                 "  return %s(machine, rh_lhat_data_%d, pointer, out);\n}\n",
                 d->type->id, d->name, l_make(d), d->type->id);
-            registrations =
-                fmt("%s  rh_lhat_data_%d = lhat_register_hostdata_type(program, module, \"%s\");\n"
-                    "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
-                    registrations, d->type->id, d->name, d->type->id);
+            l_add(&parts, d->module, &registrations,
+                  fmt("  rh_lhat_data_%d = lhat_register_hostdata_type(program, module, \"%s\");\n"
+                      "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
+                      d->type->id, d->name, d->type->id));
         }
         // An error kind's variant names live as long as the program.
         char *variants = "", *kinds = "";
@@ -2949,30 +2964,30 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             }
         }
         if (d->lhat_error) {
-            registrations =
-                fmt("%s  {\n    static const char *const names[] = {%s};\n"
-                    "    const LhatErrorKind *kinds[%d];\n"
-                    "    if (!lhat_register_error_kind(program, module, \"%s\", names, %d, NULL, "
-                    "kinds)) {\n      return false;\n    }\n%s  }\n",
-                    registrations, variants, count, d->name, count, kinds);
+            l_add(&parts, d->module, &registrations,
+                  fmt("  {\n    static const char *const names[] = {%s};\n"
+                      "    const LhatErrorKind *kinds[%d];\n"
+                      "    if (!lhat_register_error_kind(program, module, \"%s\", names, %d, NULL, "
+                      "kinds)) {\n      return false;\n    }\n%s  }\n",
+                      variants, count, d->name, count, kinds));
         }
         if (!d->lhat_value) {
             continue;
         }
         char *name = c_name(d->type);
         fprintf(f, "static const LhatHostValueTag *rh_lhat_tag_%d;\n", d->type->id);
-        registrations =
-            fmt("%s  rh_lhat_tag_%d = lhat_register_hostvalue_type(program, module, \"%s\", "
-                "sizeof(%s));\n  if (!rh_lhat_tag_%d) {\n    return false;\n  }\n",
-                registrations, d->type->id, d->name, name, d->type->id);
+        l_add(&parts, d->module, &registrations,
+              fmt("  rh_lhat_tag_%d = lhat_register_hostvalue_type(program, module, \"%s\", "
+                  "sizeof(%s));\n  if (!rh_lhat_tag_%d) {\n    return false;\n  }\n",
+                  d->type->id, d->name, name, d->type->id));
         for (int k = 0; k < d->fields.n; k++) {
             Field *field = d->fields.v[k];
             if (l_field(field->type) && !field->priv) {
-                registrations =
-                    fmt("%s  if (!lhat_register_hostvalue_field(program, module, \"%s\", \"%s\", "
-                        "offsetof(%s, %s), %s)) {\n    return false;\n  }\n",
-                        registrations, d->name, field->name, name,
-                        d->c_name ? field->name : fmt("f%d", k), l_field(field->type));
+                l_add(&parts, d->module, &registrations,
+                      fmt("  if (!lhat_register_hostvalue_field(program, module, \"%s\", \"%s\", "
+                          "offsetof(%s, %s), %s)) {\n    return false;\n  }\n",
+                          d->name, field->name, name, d->c_name ? field->name : fmt("f%d", k),
+                          l_field(field->type)));
             }
         }
     }
@@ -3137,20 +3152,33 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             }
             fprintf(f, "%s  *answer_count = %d;\n}\n", answers, tuple ? t->def->fields.n : 1);
         }
-        registrations = fmt(
-            "%s%s", registrations,
-            l_register(owner ? fmt("lhat_register_%smember(program, module, "
+        l_add(&parts, in->fn->module, &registrations,
+              l_register(owner
+                             ? fmt("lhat_register_%smember(program, module, "
                                    "\"%s\", \"%s\", s, rh_lhat_%s, NULL)",
                                    owner->lhat_data ? "" : "hostvalue_", owner->name, name, symbol)
                              : fmt("lhat_register_func(program, module, \"%s\", s, "
                                    "rh_lhat_%s, NULL)",
                                    name, symbol),
-                       signature));
+                         signature));
     }
     fprintf(f,
             "bool rhat_lhat_register(LhatProgram *program, const char *module)\n{\n"
             "  char s[1024];\n  (void)s;\n%s  return true;\n}\n",
             registrations);
+    // One R^ module's exportL^ declarations, under an L^ module of their own: lhat.task's
+    // become rhat_lhat_register_lhat_task(program, "std.task").
+    for (int j = 0; j < parts.n; j += 2) {
+        Module *m = parts.v[j];
+        char *symbol = str(m->name ? m->name : "main");
+        for (char *c = symbol; *c; c++) {
+            *c = *c == '.' ? '_' : *c;
+        }
+        fprintf(f,
+                "bool rhat_lhat_register_%s(LhatProgram *program, const char *module)\n{\n"
+                "  char s[1024];\n  (void)s;\n%s  return true;\n}\n",
+                symbol, (char *)parts.v[j + 1]);
+    }
 }
 
 bool emit_c_shims(Program *p, const char *path, bool headers)
