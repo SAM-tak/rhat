@@ -21,6 +21,7 @@ target_compile_definitions(rhat PRIVATE RH_STDLIB_PATH="${CMAKE_CURRENT_SOURCE_D
 target_compile_definitions(rhat PRIVATE RH_THREAD_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_thread.c")
 
 target_compile_definitions(rhat PRIVATE RH_RANDOM_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_random.c")
+target_compile_definitions(rhat PRIVATE RH_NET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_net.c")
 target_compile_definitions(rhat PRIVATE RH_RUNTIME_PATH="${CMAKE_CURRENT_SOURCE_DIR}/runtime/rhat_runtime.c")
 string(REGEX REPLACE ",.*$" "" RH_VS_ROOT "${CMAKE_GENERATOR_INSTANCE}")
 find_program(RH_CLANG NAMES clang HINTS
@@ -91,6 +92,8 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/dispose-tests")
   add_test(NAME coroutines COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/coroutines.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/coroutine-tests")
+  add_test(NAME net COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/net.py"
+    --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/net-tests")
   add_test(NAME lsp COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.py"
     --server $<TARGET_FILE:rhat> --work "${CMAKE_CURRENT_BINARY_DIR}/lsp-tests")
   add_test(NAME inference COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/inference.py"
@@ -122,7 +125,7 @@ if(BUILD_TESTING)
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c runtime/rhat_thread.c runtime/rhat_thread.h DESTINATION share/rhat)
-install(FILES runtime/rhat_random.c DESTINATION share/rhat)
+install(FILES runtime/rhat_random.c runtime/rhat_net.c DESTINATION share/rhat)
 install(DIRECTORY stdlib/ DESTINATION share/rhat/stdlib)
 install(FILES LICENSE DESTINATION share/rhat/licenses RENAME rhat.txt)
 install(FILES vendor/cjson/LICENSE DESTINATION share/rhat/licenses RENAME cJSON.txt)

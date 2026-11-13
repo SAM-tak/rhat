@@ -1,0 +1,243 @@
+module^std.net
+
+# TCP and UDP over non-blocking sockets. Each operation has a try_ form that answers at once,
+# with Pending when it would block, and a yieldable form that waits through std.async: write
+# await^ conn.read(buf[..]) in a coroutine a std.async.Loop runs.
+
+let^async = import^std.async
+import^std.sys
+
+externC^rh_net_resolve:p^host:read^u8^[..], length:i64^, port:i64^, address:u8^[..] -> i64^;
+externC^rh_net_address_host:p^address:read^u8^[..], out:u8^[..], capacity:i64^-> i64^;
+externC^rh_net_listen:p^address:read^u8^[..] -> i64^;
+externC^rh_net_accept:p^listener:i64^-> i64^;
+externC^rh_net_connect:p^address:read^u8^[..] -> i64^;
+externC^rh_net_connected:p^socket:i64^-> i64^;
+externC^rh_net_read:p^socket:i64^, buffer:u8^[..], capacity:i64^-> i64^;
+externC^rh_net_write:p^socket:i64^, data:read^u8^[..], length:i64^-> i64^;
+externC^rh_net_close:p^socket:i64^;
+externC^rh_net_port:p^socket:i64^-> i64^;
+externC^rh_net_udp_open:p^address:read^u8^[..] -> i64^;
+externC^rh_net_udp_bind:p^socket:i64^, address:read^u8^[..] -> i64^;
+externC^rh_net_udp_peer:p^socket:i64^, address:read^u8^[..] -> i64^;
+externC^rh_net_udp_broadcast:p^socket:i64^, on:bool^-> i64^;
+externC^rh_net_udp_send:p^socket:i64^, data:read^u8^[..], length:i64^, address:read^u8^[..] -> i64^;
+externC^rh_net_udp_send_peer:p^socket:i64^, data:read^u8^[..], length:i64^-> i64^;
+externC^rh_net_udp_receive:p^socket:i64^, buffer:u8^[..], capacity:i64^, from:u8^[..] -> i64^;
+
+public^errordef^Error { AddressInUse, Resolve, Unreachable, Refused, Reset, TooLarge, Closed, Failed }
+
+# The operation would block: yield wait to have the Loop resume once it may succeed.
+public^def^Pending { self^{ wait:i64^} }
+
+let^PENDING:i64^= -100
+
+let^failure = f^code:i64^-> Error {
+    for^code:
+    when^-2: Error.AddressInUse{}
+    when^-3: Error.Resolve{}
+    when^-4: Error.Unreachable{}
+    when^-5: Error.Refused{}
+    when^-6: Error.Reset{}
+    when^-7: Error.TooLarge{}
+    when^-8: Error.Closed{}
+    other^: Error.Failed{};
+}
+
+# An IPv4 or IPv6 address and port.
+public^def^Address {
+    self^{ raw:u8^[32] = {} }  # the sockaddr, which tells its family
+
+    # Resolves host (a name or a numeric address) with getaddrinfo, which blocks; the first
+    # answer is used.
+    resolve = p^host:string^, port:i64^-> Self^| Error {
+        var^address = Self^{}
+        let^code = rh_net_resolve(host.bytes, host.bytes.len, port, address.raw[..])
+        if^code < 0 { return^failure(code) }
+        return^address
+    }
+    # The port, kept big-endian at the same place by both families.
+    port = f^self^-> i64^{ i64^(self^.raw[2]) * 256 + i64^(self^.raw[3]) }
+    # Appends the numeric host, such as 127.0.0.1 or ::1.
+    write_host = p^self^, out:ref^u8^[grow^] {
+        var^text:u8^[64] = {}
+        let^n = rh_net_address_host(self^.raw[..], text[..], 64)
+        out.append(text[0 .. n])
+    }
+}
+
+# A connection. Closing it, or leaving its scope, closes the socket.
+public^def^TcpStream : std.sys.Disposable {
+    self^{ socket:i64^}  # the OS socket plus one; 0 once closed
+
+    # Reads what has arrived into into and answers how many bytes; 0 means the peer closed.
+    try_read = p^self^, into:u8^[..] -> i64^| Pending | Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        let^n = rh_net_read(self^.socket, into, into.len)
+        if^n = PENDING { return^Pending{wait = async.readable(self^.socket)} }
+        if^n < 0 { return^failure(n) }
+        return^n
+    }
+    # Writes what fits now and answers how many bytes.
+    try_write = p^self^, data:read^u8^[..] -> i64^| Pending | Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        let^n = rh_net_write(self^.socket, data, data.len)
+        if^n = PENDING { return^Pending{wait = async.writable(self^.socket)} }
+        if^n < 0 { return^failure(n) }
+        return^n
+    }
+    # Waits for something to read: await^ conn.read(buf[..]).
+    read = p^self^, into:u8^[..] {
+        repeat^{
+            let^got = try^self^.try_read(into)
+            if^got fits^Pending {
+                yield^got.wait
+                next^
+            }
+            return^got
+        }
+    }
+    # Writes all of data, waiting while the socket is full.
+    write = p^self^, data:read^u8^[..] {
+        var^at:i64^= 0
+        repeat^while^at < data.len {
+            let^sent = try^self^.try_write(data[at .. data.len])
+            if^sent fits^Pending {
+                yield^sent.wait
+                next^
+            }
+            at += sent
+        }
+        return^nil^
+    }
+    close = p^self^{
+        rh_net_close(self^.socket)
+        self^.socket := 0
+    }
+    dispose = p^self^{ self^.close() }
+}
+
+# A socket that accepts connections.
+public^def^TcpListener : std.sys.Disposable {
+    self^{ socket:i64^}  # the OS socket plus one; 0 once closed
+
+    try_accept = p^self^-> TcpStream | Pending | Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        let^s = rh_net_accept(self^.socket)
+        if^s = PENDING { return^Pending{wait = async.readable(self^.socket)} }
+        if^s < 0 { return^failure(s) }
+        return^TcpStream{socket = s}
+    }
+    # Waits for the next connection: var^conn = try^ await^ listener.accept().
+    accept = p^self^{
+        repeat^{
+            let^got = try^self^.try_accept()
+            if^got fits^TcpStream { return^got }
+            yield^got.wait
+        }
+    }
+    # The local port, which tells the one picked for port 0.
+    port = p^self^-> i64^{ return^rh_net_port(self^.socket) }
+    close = p^self^{
+        rh_net_close(self^.socket)
+        self^.socket := 0
+    }
+    dispose = p^self^{ self^.close() }
+}
+
+# Listens on host and port; port 0 picks a free one.
+public^let^listen = p^host:string^, port:i64^-> TcpListener | Error {
+    let^address = try^Address.resolve(host, port)
+    let^s = rh_net_listen(address.raw[..])
+    if^s < 0 { return^failure(s) }
+    return^TcpListener{socket = s}
+}
+
+# Connects to host and port: var^conn = try^ await^ std.net.connect("example.com", 80).
+public^let^connect = p^host:string^, port:i64^{
+    let^address = try^Address.resolve(host, port)
+    let^s = rh_net_connect(address.raw[..])
+    if^s < 0 { return^failure(s) }
+    var^stream = TcpStream{socket = s}
+    yield^async.writable(s)
+    let^code = rh_net_connected(s)
+    if^code < 0 { return^failure(code) }
+    return^stream
+}
+
+# A datagram that arrived: its length in the buffer, and who sent it.
+public^struct^Datagram { length:i64^, from:Address }
+
+# A UDP socket. It is made by the first bind, set_peer or send_to, in the family of that address.
+public^def^Udp : std.sys.Disposable {
+    self^{ socket:i64^= 0 }  # the OS socket plus one; 0 until made or once closed
+
+    private^opened = p^self^, address:ref^read^Address -> nil^| Error {
+        if^self^.socket = 0 {
+            let^s = rh_net_udp_open(address.raw[..])
+            if^s < 0 { return^failure(s) }
+            self^.socket := s
+        }
+        return^nil^
+    }
+    private^done = p^self^, code:i64^-> nil^| Error {
+        if^code < 0 { return^failure(code) }
+        return^nil^
+    }
+    # Receives on host and port; port 0 picks a free one.
+    bind = p^self^, host:string^, port:i64^-> nil^| Error {
+        let^address = try^Address.resolve(host, port)
+        try^self^.opened(ref^address)
+        return^self^.done(rh_net_udp_bind(self^.socket, address.raw[..]))
+    }
+    # Names the one peer send sends to.
+    set_peer = p^self^, host:string^, port:i64^-> nil^| Error {
+        let^address = try^Address.resolve(host, port)
+        try^self^.opened(ref^address)
+        return^self^.done(rh_net_udp_peer(self^.socket, address.raw[..]))
+    }
+    set_broadcast = p^self^, on:bool^-> nil^| Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        return^self^.done(rh_net_udp_broadcast(self^.socket, on))
+    }
+    # Sends to the peer. A datagram the send buffer cannot take is dropped, as UDP may.
+    send = p^self^, data:read^u8^[..] -> nil^| Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        return^self^.done(rh_net_udp_send_peer(self^.socket, data, data.len))
+    }
+    send_to = p^self^, data:read^u8^[..], to:ref^read^Address -> nil^| Error {
+        try^self^.opened(to)
+        return^self^.done(rh_net_udp_send(self^.socket, data, data.len, to.raw[..]))
+    }
+    try_receive = p^self^, into:u8^[..] -> Datagram | Pending | Error {
+        if^self^.socket = 0 { return^Error.Closed{} }
+        var^from = Address{}
+        let^n = rh_net_udp_receive(self^.socket, into, into.len, from.raw[..])
+        if^n = PENDING { return^Pending{wait = async.readable(self^.socket)} }
+        if^n < 0 { return^failure(n) }
+        return^Datagram{length = n, from = from}
+    }
+    # Waits for the next datagram: let^got = try^ await^ sock.receive(buf[..]).
+    receive = p^self^, into:u8^[..] {
+        repeat^{
+            let^got = try^self^.try_receive(into)
+            if^got fits^Pending {
+                yield^got.wait
+                next^
+            }
+            return^got
+        }
+    }
+    # The local port, which tells the one picked for port 0.
+    port = p^self^-> i64^{
+        if^self^.socket = 0 { return^0 }
+        return^rh_net_port(self^.socket)
+    }
+    close = p^self^{
+        rh_net_close(self^.socket)
+        self^.socket := 0
+    }
+    dispose = p^self^{ self^.close() }
+}
+
+public^let^udp = p^-> Udp { return^Udp{} }

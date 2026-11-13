@@ -1,0 +1,77 @@
+module^std.async
+
+# Waiting without a thread per wait. A coroutine yields the id of what it waits for; a Loop
+# resumes it once that is ready. The table of waits belongs to the thread, so each worker of a
+# thread-per-core program runs a Loop of its own.
+
+import^std.sys
+
+externC^rh_async_timer:p^seconds:f64^-> i64^;
+externC^rh_async_watch:p^socket:i64^, write:bool^-> i64^;
+externC^rh_async_wait:p^timeout:f64^-> i64^;
+
+# A wait that is ready once seconds have passed.
+public^let^timer = p^seconds:f64^-> i64^{ return^rh_async_timer(seconds) }
+
+# A wait that is ready once the socket can be read without blocking, or has closed.
+public^let^readable = p^socket:i64^-> i64^{ return^rh_async_watch(socket, false^) }
+
+# A wait that is ready once the socket can be written without blocking, or has closed.
+public^let^writable = p^socket:i64^-> i64^{ return^rh_async_watch(socket, true^) }
+
+# The id of a wait that became ready, sleeping up to timeout seconds; nil^ when none did.
+public^let^wait = p^timeout:f64^-> i64^| nil^{
+    let^id = rh_async_wait(timeout)
+    if^id = 0 { return^nil^}
+    return^id
+}
+
+# Suspends the awaiting coroutine for seconds: await^ std.async.delay(0.5).
+public^let^delay = p^seconds:f64^{
+    yield^timer(seconds)
+}
+
+struct^Task<T> { task:dynamic^std.sys.CoroutineNR<i64^, T>, wait:i64^, started:bool^}
+
+# Runs coroutines that yield wait ids, each until it finishes. A task that yields 0 only lets
+# the others run. The frames stay where their owner keeps them; read their results there.
+public^def^Loop<T> {
+    self^{ private^tasks:Task<T>[grow^] = {} }
+
+    add = p^self^, task:dynamic^std.sys.CoroutineNR<i64^, T> {
+        self^.tasks.push(Task<T>{task = task, wait = 0, started = false^})
+    }
+
+    # Runs every task until all have finished, sleeping while all of them wait.
+    run = p^self^{
+        repeat^while^self^.tasks.len > 0 {
+            var^awake:i64^= 0
+            var^i:i64^= 0
+            repeat^while^i < self^.tasks.len {
+                if^self^.tasks[i].wait != 0 {
+                    i += 1
+                    next^
+                }
+                awake += 1
+                let^task = self^.tasks[i].task
+                let^asked = if^self^.tasks[i].started: task.resume() el^: task.start();
+                self^.tasks[i].started := true^
+                if^task.done() {
+                    self^.tasks[i] := self^.tasks[self^.tasks.len - 1]
+                    self^.tasks.pop()
+                    next^
+                }
+                if^asked fits^i64^{ self^.tasks[i].wait := asked }
+                i += 1
+            }
+            if^awake = 0 {
+                let^ready = wait(60.0)
+                if^ready fits^i64^{
+                    for^k in^0 .. self^.tasks.len {
+                        if^self^.tasks[k].wait = ready { self^.tasks[k].wait := 0 }
+                    }
+                }
+            }
+        }
+    }
+}
