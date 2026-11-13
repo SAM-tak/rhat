@@ -374,6 +374,75 @@ static inline int32_t lhost_task_adopt(LhatMachine *machine, LhatTask *t, LhatVa
     return 0;
 }
 
+/// Lets go of one hold on the task, freeing it and its pool task with the last.
+static inline void lhost_task_let_go(LhatTask *t)
+{
+    if (lhost_task_hold(t, -1) == 0) {
+        rh_task_drop(t->raw);
+        lhost_task_free(t);
+    }
+}
+
+int64_t rh_async_external(int64_t *token);
+
+// One step of a join: the wait for the task to finish while it runs, then its result -- or the
+// std.task.TaskError await would answer -- as what the coroutine ends with.
+static bool lhost_join_step(LhatMachine *machine, void *context, const LhatValue *sent,
+                            size_t sent_count, LhatValue *answers, int *answer_count)
+{
+    LhatTask *t = context;
+    (void)sent;
+    (void)sent_count;
+    *answer_count = 1;
+    if (!rh_task_done(t->raw)) {
+        int64_t token = 0, id = rh_async_external(&token);
+        if (id) {
+            rh_task_watch(t->raw, token);
+        }
+        answers[0] = lhat_integer(id); // 0 is no wait: the job just comes back and looks again.
+        return true;
+    }
+    static const char *const variants[] = {"Failed", "Refused", "Taken"};
+    static const char *const messages[] = {
+        "the job failed", "task result cannot transfer ownership", "task result was already taken"};
+    int32_t how = lhost_task_adopt(machine, t, &answers[0]);
+    if (how) {
+        LhatJobResult *r = t->result;
+        const char *message = how == 1 && r && r->failure ? r->failure : messages[how - 1];
+        const LhatErrorKind *kind = lhat_lookup_error_kind(
+            lhat_machine_program(machine), "std.task", "TaskError", variants[how - 1]);
+        if (!kind || !lhat_machine_make_error(machine, kind, message, lhat_nil(), &answers[0])) {
+            answers[0] = lhat_nil();
+        }
+    }
+    return false;
+}
+
+static void lhost_join_release(LhatMachine *machine, void *context, const LhatValue *arguments,
+                               size_t count, LhatValue *answers, int *answer_count)
+{
+    (void)machine;
+    (void)arguments;
+    (void)count;
+    (void)answers;
+    (void)answer_count;
+    lhost_task_let_go(context);
+}
+
+/// A coroutine for await^ that waits for the task without holding its thread, and ends with
+/// the task's result; false when memory ran out.
+static inline bool lhost_task_join(LhatMachine *machine, LhatTask *t, LhatValue *out)
+{
+    lhost_task_hold(t, 1); // The coroutine's own hold.
+    if (!lhat_machine_make_coroutine(machine, lhost_join_step, t, lhost_join_release, lhat_nil(),
+                                     out)) {
+        lhost_task_let_go(t);
+        *out = lhat_nil();
+        return false;
+    }
+    return true;
+}
+
 // The keys lhat.value roots values under in a machine's host root: negative, apart from the
 // ones a host makes of its own.
 static atomic_llong lhost_keys;

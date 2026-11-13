@@ -32,17 +32,11 @@ externC^lhost_result_free:p^result:ref^task.ForeignResult;
 externC^lhost_task_new:p^raw:i64^, value:l.LhatValue -> ref^Task | nil^;
 externC^lhost_task_raw:f^t:ref^Task -> i64^;
 externC^lhost_task_hold:p^t:ref^Task, delta:i32^-> i32^;
-externC^lhost_task_free:p^t:ref^Task;
+externC^lhost_task_let_go:p^t:ref^Task;
+externC^lhost_task_join:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> bool^;
 externC^lhost_task_type:f^t:ref^Task, index:u64^-> ref^read^(t) l.LhatRuntimeType | nil^;
 externC^lhost_task_failure:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> bool^;
 externC^lhost_task_adopt:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> i32^;
-
-let^let_go = p^t:ref^Task {
-    if^lhost_task_hold(t, -1) = 0 {
-        lhost_raw_drop(lhost_task_raw(t))
-        lhost_task_free(t)
-    }
-}
 
 exportL^errordef^TaskError { NotStarted, Refused, Failed, Taken }
 
@@ -60,9 +54,16 @@ exportL^ref^externC^def^Task {
         lhost_raw_watch(lhost_task_raw(self^), wait.token)
         return^wait.id
     }
-    dispose = p^self^{ let_go(self^) }
+    # What await^ delegates to: waits for the job without holding the thread -- inside a job,
+    # the worker runs others meanwhile -- and ends with its result, as std.task.await answers it.
+    exportL^"f^self^ -> c^{f^ -> number^ -> self^.T0|std.task.TaskError}" join = p^self^, machine:ref^l.LhatMachine -> l.LhatValue {
+        var^out = l.lhat_nil()
+        let^made = lhost_task_join(machine, self^, ref^out)
+        return^out
+    }
+    dispose = p^self^{ lhost_task_let_go(self^) }
     retain = p^self^{ let^held = lhost_task_hold(self^, 1) }
-    let_go = p^self^{ let_go(self^) }
+    let_go = p^self^{ lhost_task_let_go(self^) }
     type_argument = f^self^, index:u64^-> ref^read^l.LhatRuntimeType | nil^{ lhost_task_type(self^, index) }
 }
 

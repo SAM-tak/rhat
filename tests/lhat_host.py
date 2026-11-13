@@ -146,6 +146,30 @@ std.io.print(try^std.task.await(second))
 std.task.stop()
 ''', '21\n')
 
+    # join waits inside a job without holding its worker: with one worker, the job it waits for
+    # runs meanwhile; a failure ends the join with the TaskError await would answer.
+    case('task_join', '''import^std.io
+import^std.task
+import^std.async
+try^std.task.start(1)
+let^slow = p^{ yield^std.async.timer(0.05) return^20 }
+let^inner = try^std.task.async(slow())
+let^add = p^{
+    let^v = try^ await^ inner.join()
+    return^v + 1
+}
+let^outer = try^std.task.async(add())
+std.io.print(try^std.task.await(outer))
+let^bad = try^std.task.async(p^{ panic^"boom" })
+let^probe = p^{
+    let^v = await^ bad.join() catch^ -1
+    return^v
+}
+let^second = try^std.task.async(probe())
+std.io.print(try^std.task.await(second))
+std.task.stop()
+''', '21\n-1\n')
+
     # std.async on the host's own thread.
     case('async_waits', '''import^std.io
 import^std.async

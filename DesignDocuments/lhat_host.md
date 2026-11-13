@@ -29,6 +29,11 @@ rhat_lhat_register_lhat_async(program, "std.async");
 L^ の `std.task` と同じ振る舞いです: `start()` / `start(n)`・`stop()`・`workers()`・`async(job)`（未開始のコルーチンか、
 引数のない閉包）・`await(task)`、Task の `done()`・`failed()`・`awaitable()`・`dispose`。
 
+- Task の `join()` は `await^` が委譲するコルーチン（`c^{f^ -> number^ -> self^.T0|std.task.TaskError}`）です。
+  終わるまで待ちの id を yield^ し、終わったら `await` と同じ結果（失敗は `TaskError`。Failed の message は失敗の内容）で終わります。
+  `std.task.await` は終わるまでスレッドを寝かせるので、ジョブの中で待つときは `try^ await^ t.join()` を使います。
+  ジョブは最初に載ったワーカーから動かないため、ジョブの中の `await` は同じワーカー上の相手を待つと進まなくなります。
+
 - ジョブは R^ の std.task の Pool（`rh_pool_*`）に、関数ポインタの組 `std.task.JobKind` で積みます。ジョブごとに専用の L^ の機械を作り
   （フレーム 64・スロット 2048）、1 歩で 20000 ターン（`lhat_machine_set_budget`）だけ走らせて他のジョブに譲ります。
 - ジョブが整数を yield^ し、それがそのワーカーの std.async の待ち（`std.async.waiting`）なら、待ちが済むまでジョブを休ませ、
