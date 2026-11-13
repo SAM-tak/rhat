@@ -1,0 +1,154 @@
+module^lhat.task
+
+# L^'s std.task over R^'s pool: an L^ host registers this module as std.task, and L^ jobs run on
+# the workers of an R^ std.task pool, each on a machine of its own, a slice at a time. A job that
+# yields a std.async wait (lhat.async) parks until the wait is ready, and the worker runs others.
+# The names and signatures are L^'s own; L^'s check that a job's result fits one slot is not
+# made here.
+
+includeC^"lhat_host.h"
+let^async = import^std.async
+let^task = import^std.task
+let^l = import^lhat.l
+
+externC^lhost_pool_new:p^workers:i64^, stacks:i64^-> i64^;
+externC^lhost_pool_stop:p^pool:i64^;
+externC^lhost_hardware_threads:p^-> i64^;
+externC^lhost_pool_submit:p^pool:i64^, kind:ref^read^task.JobKind, job:ref^task.ForeignJob -> i64^;
+externC^lhost_raw_done:p^task:i64^-> bool^;
+externC^lhost_raw_watch:p^task:i64^, token:i64^;
+externC^lhost_raw_wait:p^task:i64^;
+externC^lhost_raw_drop:p^task:i64^;
+
+externC^lhost_pool:p^-> i64^;
+externC^lhost_workers:p^-> i64^;
+externC^lhost_set_pool:p^pool:i64^, workers:i64^-> i64^;
+externC^lhost_job_shape:p^value:l.LhatValue -> bool^;
+externC^lhost_job_new:p^machine:ref^l.LhatMachine, value:l.LhatValue, refusal:ref^i32^-> ref^task.ForeignJob | nil^;
+externC^lhost_job_turn:p^job:ref^task.ForeignJob -> i64^;
+externC^lhost_job_finish:p^job:ref^task.ForeignJob -> ref^task.ForeignResult | nil^;
+externC^lhost_job_free:p^job:ref^task.ForeignJob;
+externC^lhost_result_free:p^result:ref^task.ForeignResult;
+externC^lhost_task_new:p^raw:i64^, value:l.LhatValue -> ref^Task | nil^;
+externC^lhost_task_raw:f^t:ref^Task -> i64^;
+externC^lhost_task_hold:p^t:ref^Task, delta:i32^-> i32^;
+externC^lhost_task_free:p^t:ref^Task;
+externC^lhost_task_type:f^t:ref^Task, index:u64^-> ref^read^(t) l.LhatRuntimeType | nil^;
+externC^lhost_task_failure:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> bool^;
+externC^lhost_task_adopt:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> i32^;
+
+let^let_go = p^t:ref^Task {
+    if^lhost_task_hold(t, -1) = 0 {
+        lhost_raw_drop(lhost_task_raw(t))
+        lhost_task_free(t)
+    }
+}
+
+exportL^errordef^TaskError { NotStarted, Refused, Failed, Taken }
+
+# A job's task, as L^ holds it: shared by every machine it is carried to, and freed when the
+# last lets it go.
+exportL^ref^externC^def^Task {
+    exportL^"f^self^ -> bool^" done = p^self^-> bool^{ return^lhost_raw_done(lhost_task_raw(self^)) }
+    exportL^"f^self^ -> string^|nil^" failed = p^self^, machine:ref^l.LhatMachine -> l.LhatValue {
+        var^out = l.lhat_nil()
+        if^lhost_raw_done(lhost_task_raw(self^)) { let^made = lhost_task_failure(machine, self^, ref^out) }
+        return^out
+    }
+    exportL^"f^self^ -> number^" awaitable = p^self^-> i64^{
+        let^wait = async.external()
+        lhost_raw_watch(lhost_task_raw(self^), wait.token)
+        return^wait.id
+    }
+    dispose = p^self^{ let_go(self^) }
+    retain = p^self^{ let^held = lhost_task_hold(self^, 1) }
+    let_go = p^self^{ let_go(self^) }
+    type_argument = f^self^, index:u64^-> ref^read^l.LhatRuntimeType | nil^{ lhost_task_type(self^, index) }
+}
+
+# The kind of job the pool runs for L^: called on the worker that runs it.
+exportC^let^rhat_lhost_job_step = p^job:ref^task.ForeignJob -> i64^{
+    let^id = lhost_job_turn(job)
+    # A yielded number that is no wait of this thread's lets the job run straight on.
+    if^id > 0 and^!async.waiting(id) { return^0 }
+    return^id
+}
+exportC^let^rhat_lhost_job_finish = p^job:ref^task.ForeignJob -> ref^task.ForeignResult | nil^{
+    return^lhost_job_finish(job)
+}
+exportC^let^rhat_lhost_job_release = p^job:ref^task.ForeignJob { lhost_job_free(job) }
+exportC^let^rhat_lhost_job_free_result = p^result:ref^task.ForeignResult { lhost_result_free(result) }
+
+let^start_pool = p^wanted:i64^-> i64^{
+    stop()
+    let^pool = lhost_pool_new(wanted, thread_stack_count^())
+    if^pool = 0 { return^0 }
+    let^old = lhost_set_pool(pool, wanted)
+    return^wanted
+}
+
+# Starts the pool, one worker per hardware thread; a second start is a fresh pool.
+exportL^"start" "p^ -> number^|std.sys.Error.OutOfMemory" let^start_default = p^-> i64^{
+    return^start_pool(lhost_hardware_threads())
+}
+
+# Starts the pool with workers threads, between 1 and 1024.
+exportL^"start" "p^number^ -> number^|std.sys.Error.OutOfMemory" let^start = p^workers:f64^-> i64^{
+    var^wanted:i64^= 1
+    if^workers > 1024.0 { wanted := 1024 elif^workers > 1.0: wanted := i64^(workers) }
+    return^start_pool(wanted)
+}
+
+# Stops the pool once every job it was given has finished.
+exportL^let^stop = p^{
+    let^pool = lhost_set_pool(0, 0)
+    if^pool != 0 { lhost_pool_stop(pool) }
+}
+
+exportL^"f^ -> number^" let^workers = p^-> i64^{ return^lhost_workers() }
+
+let^submit = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+    let^pool = lhost_pool()
+    if^pool = 0 { return^TaskError.NotStarted{message = "std.task.start has not been called"} }
+    if^!lhost_job_shape(job) {
+        return^TaskError.Refused{message = "async takes a coroutine or a closure taking nothing; a yieldable one is handed over as the call of it"}
+    }
+    var^refusal:i32^= 0
+    let^carried = lhost_job_new(machine, job, ref^refusal)
+    if^carried fits^ref^task.ForeignJob {
+        let^kind = task.JobKind{step = rhat_lhost_job_step, finish = rhat_lhost_job_finish,
+                                release = rhat_lhost_job_release, free_result = rhat_lhost_job_free_result}
+        let^raw = lhost_pool_submit(pool, ref^kind, carried)
+        if^raw = 0 { return^TaskError.Failed{message = "the pool could not take the job"} }
+        let^made = lhost_task_new(raw, job)
+        if^made fits^ref^Task { return^made }
+        lhost_raw_drop(raw)
+        return^TaskError.Failed{message = "out of memory"}
+    }
+    if^refusal = 1 { return^TaskError.Refused{message = "the job cannot leave its machine"} }
+    return^TaskError.Failed{message = "out of memory"}
+}
+
+# Runs a coroutine not yet started on the pool.
+exportL^"async" "p^c^{->*->*} -> std.task.Task<ARG0.ResultType>|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
+let^async_frame = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+    return^submit(machine, job)
+}
+
+# Runs a closure taking nothing on the pool.
+exportL^"async" "p^(p^;)|(p^->any^;) -> std.task.Task<ARG0.ReturnType>|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
+let^async_call = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+    return^submit(machine, job)
+}
+
+# Waits for the job and takes its result, once across every machine holding the task.
+exportL^"await" "p^std.task.Task -> ARG0.T0|std.task.TaskError.Taken|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
+let^await_task = p^machine:ref^l.LhatMachine, t:ref^Task -> l.LhatValue | TaskError {
+    lhost_raw_wait(lhost_task_raw(t))
+    var^out = l.lhat_nil()
+    let^how = lhost_task_adopt(machine, t, ref^out)
+    if^how = 1 { return^TaskError.Failed{message = "the job failed; Task.failed() says how"} }
+    if^how = 2 { return^TaskError.Refused{message = "task result cannot transfer ownership"} }
+    if^how = 3 { return^TaskError.Taken{message = "task result was already taken"} }
+    return^out
+}

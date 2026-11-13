@@ -16,8 +16,10 @@ import traceback
 
 
 class Suite:
-    def __init__(self, label):
+    def __init__(self, label, options=()):
         parser = argparse.ArgumentParser()
+        for option in options:
+            parser.add_argument(option, required=True)
         parser.add_argument('--compiler', required=True)
         parser.add_argument('--clang', required=True)
         parser.add_argument('--work', required=True)

@@ -1,0 +1,13 @@
+module^lhat.l
+
+# L^'s C types and the few of its C functions every lib/lhat module uses.
+
+includeC^"lhat.h"
+
+public^externC^def^LhatMachine;
+public^externC^def^LhatRuntimeType;
+public^externC^def^LhatValue { self^{ as:u64^= 0, tag:i32^= 0 } }
+
+public^externC^lhat_nil:f^-> LhatValue;
+public^externC^lhat_integer:f^i:i64^-> LhatValue;
+public^externC^lhat_real:f^r:f64^-> LhatValue;

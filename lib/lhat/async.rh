@@ -1,0 +1,28 @@
+module^lhat.async
+
+# L^'s std.async over R^'s: an L^ host registers this module as std.async, and L^ code then
+# waits in the table of the thread that runs it -- the host's, or a pool worker's for a job of
+# lhat.task. Each name has L^'s own signature. An external wait is completed through R^'s
+# std.async.External, not by its id.
+
+includeC^"lhat.h"
+let^async = import^std.async
+let^l = import^lhat.l
+
+exportL^"f^number^ -> number^" let^timer = p^seconds:f64^-> i64^{ return^async.timer(seconds) }
+
+exportL^"p^number^" let^drop = p^id:i64^{ async.drop(id) }
+
+exportL^"f^number^ -> number^|nil^" let^wait = p^seconds:f64^-> l.LhatValue {
+    let^id = async.wait(seconds)
+    if^id fits^i64^{ return^l.lhat_integer(id) }
+    return^l.lhat_nil()
+}
+
+exportL^"f^ -> number^|nil^" let^next = p^-> l.LhatValue {
+    let^left = async.next()
+    if^left fits^f64^{ return^l.lhat_real(left) }
+    return^l.lhat_nil()
+}
+
+exportL^"f^ -> number^" let^pending = p^-> i64^{ return^async.pending() }

@@ -1,0 +1,60 @@
+module^lhat.value
+
+# L^ values a host keeps past the call that handed them over. An LhatValue C holds is no root of
+# L^'s collector, and belongs to one machine: Held roots one on its machine until disposed, and
+# Carried takes one off its machine to put back together on any other.
+
+includeC^"lhat_host.h"
+import^std.sys
+let^l = import^lhat.l
+
+externC^def^LhatCarried;
+externC^lhost_hold:p^machine:ref^l.LhatMachine, value:l.LhatValue -> i64^;
+externC^lhost_held:f^machine:ref^l.LhatMachine, key:i64^-> l.LhatValue;
+externC^lhost_unhold:p^machine:ref^l.LhatMachine, key:i64^;
+externC^lhost_carry:p^value:l.LhatValue -> ref^LhatCarried | nil^;
+externC^lhost_uncarry:f^machine:ref^l.LhatMachine, carried:ref^LhatCarried, out:ref^l.LhatValue -> bool^;
+externC^lhost_carried_free:p^carried:ref^LhatCarried;
+
+# A value rooted on its machine: the collector keeps it until dispose.
+public^def^Held : std.sys.Disposable {
+    self^{ private^machine:ref^l.LhatMachine, private^key:i64^}
+
+    # Roots value on machine; nil^ when the machine has no room for it.
+    new = p^machine:ref^l.LhatMachine, value:l.LhatValue -> Self^| nil^{
+        let^key = lhost_hold(machine, value)
+        if^key = 0 { return^nil^}
+        return^Self^{machine = machine, key = key}
+    }
+    # The value, good until the machine next runs; hold it again to keep it longer.
+    get = f^self^-> l.LhatValue { lhost_held(self^.machine, self^.key) }
+    dispose = p^self^{ lhost_unhold(self^.machine, self^.key) }
+}
+
+# A value taken off its machine: strings, tables, closures and the like, copied whole.
+public^def^Carried : std.sys.Disposable {
+    self^{ private^carried:ref^LhatCarried | nil^}
+
+    # value carried off its machine; nil^ when it cannot leave it (a coroutine running, a host
+    # value no machine may share).
+    new = p^value:l.LhatValue -> Self^| nil^{
+        let^carried = lhost_carry(value)
+        if^carried fits^nil^{ return^nil^}
+        return^Self^{carried = carried}
+    }
+    # The value put back together on machine, as often and on as many machines as asked;
+    # nil^ when memory ran out.
+    into = f^self^, machine:ref^l.LhatMachine -> l.LhatValue | nil^{
+        var^out = l.lhat_nil()
+        let^carried = self^.carried
+        if^carried fits^ref^LhatCarried {
+            if^lhost_uncarry(machine, carried, ref^out) { return^out }
+        }
+        return^nil^
+    }
+    dispose = p^self^{
+        let^carried = self^.carried
+        if^carried fits^ref^LhatCarried { lhost_carried_free(carried) }
+        self^.carried := nil^
+    }
+}

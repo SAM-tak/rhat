@@ -123,12 +123,25 @@ if(BUILD_TESTING)
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/thread-tests")
   add_test(NAME formatting COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/formatting.py"
     --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/formatting-tests")
+  # lib/lhat against a real L^ build, when one sits beside this repository.
+  set(RHAT_LHAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lhat" CACHE PATH "An L^ checkout built in build/release")
+  if(WIN32)
+    set(RHAT_LHAT_PROBE "${RHAT_LHAT_DIR}/build/release/lhat.lib")
+  else()
+    set(RHAT_LHAT_PROBE "${RHAT_LHAT_DIR}/build/release/liblhat.a")
+  endif()
+  if(EXISTS "${RHAT_LHAT_DIR}/include/lhat.h" AND EXISTS "${RHAT_LHAT_PROBE}")
+    add_test(NAME lhat_host COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lhat_host.py"
+      --compiler $<TARGET_FILE:rhat> ${RHAT_TEST_ARGS} --work "${CMAKE_CURRENT_BINARY_DIR}/lhat-host-tests"
+      --lhat "${RHAT_LHAT_DIR}")
+  endif()
 endif()
 install(TARGETS rhat RUNTIME DESTINATION bin)
 install(FILES runtime/rhat_runtime.c runtime/rhat_thread.c runtime/rhat_thread.h runtime/rhat_sync.h
   DESTINATION share/rhat)
 install(FILES runtime/rhat_random.c runtime/rhat_net.c runtime/rhat_task.c DESTINATION share/rhat)
 install(DIRECTORY stdlib/ DESTINATION share/rhat/stdlib)
+install(DIRECTORY lib/ DESTINATION share/rhat/lib)
 install(FILES LICENSE DESTINATION share/rhat/licenses RENAME rhat.txt)
 install(FILES vendor/cjson/LICENSE DESTINATION share/rhat/licenses RENAME cJSON.txt)
 install(FILES lsp/LICENSE.lhat DESTINATION share/rhat/licenses RENAME lhat.txt)
