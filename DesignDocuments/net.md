@@ -118,6 +118,12 @@ let^worker = p^listener:ref^net.TcpListener {
 ## 今後
 
 - 待ちの取り消し（捨てたコルーチンの待ちを表から外す）。
-- `epoll`・`kqueue`・IOCP。インターフェースは変わりません。
+- OS の待ちの仕組みへの置き換え（実装予定。汎用言語として大量の接続をさばくには必須）。
+  今の `poll`（Windows は `WSAPoll`）は待つたびに全ソケットを渡し直すので、1回の待ちが待ち数 N に比例します。
+  - `epoll`（Linux）・`kqueue`（macOS / BSD）: 対象を一度登録し、準備のできたものだけを受け取ります。
+    `rh_async_watch` を登録、`rh_async_wait` を受け取りに差し替えるだけで、std.async・std.net のインターフェースは変わりません。
+  - IOCP（Windows）: 完了型（I/O を出しておき、終わったら知らされる）です。I/O の間バッファが動かないことが要るので、
+    フレームと一緒に動く再貸しのバッファはそのまま渡せません。std.net の読み書きの形（呼び出し元が持つバッファを使うなど）を
+    確かめてから入れます。
 - Channel の `await^ ch.take()` と `std.task.Pool` の `await^ t.join()` は実装済み（[threads.md](threads.md)・[coroutines.md](coroutines.md)）。
 - 再貸しの入れ子（受け取った参照をさらに `await^` に渡す）。これができると `read_exact` のような補助を重ねられます。
