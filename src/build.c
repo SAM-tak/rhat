@@ -388,10 +388,10 @@ int build_objects(Program *p, const char *compiler, const char *clang, const cha
             compile(thread_runtime ? thread_runtime
                                    : tool_resource(compiler, RH_THREAD_PATH, "rhat_thread.c"),
                     identity, "thread runtime", clang_path, opt, cache, reuse, verbose, &includes));
-#if !defined(_WIN32)
-        add(&args, "-pthread");
-#endif
     }
+#if !defined(_WIN32)
+    add(&args, "-pthread"); // The runtime gives foreign threads data stacks through a key.
+#endif
     if (random) {
         add(&args, compile(tool_resource(compiler, RH_RANDOM_PATH, "rhat_random.c"), identity,
                            "random OS bridge", clang_path, opt, cache, reuse, verbose, NULL));

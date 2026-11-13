@@ -15,6 +15,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
+#include <pthread.h>
 #include <sys/mman.h>
 #endif
 
@@ -27,12 +28,14 @@
 #define RH_COMMIT_BYTES (UINT64_C(1024) * 1024)
 
 static _Thread_local RhThreadContext *rh_context;
+static uint64_t rh_stack_count; // Each thread's data stacks, as the program planned them.
+
+static void rh_foreign_attach(void);
 
 RhStack *rh_current_stacks(void)
 {
     if (!rh_context) {
-        fputs("R^ runtime error: external thread has no execution context\n", stderr);
-        abort();
+        rh_foreign_attach();
     }
     return rh_context->stacks;
 }
@@ -181,8 +184,67 @@ RhThreadContext *rh_context_new(uint64_t count)
     return context;
 }
 
+// A thread R^ did not start, calling an exportC^ function (a C library's own thread), gets
+// data stacks of its own on its first call; they are released when the thread ends.
+#if defined(_WIN32)
+static DWORD rh_foreign_slot = FLS_OUT_OF_INDEXES;
+
+static void WINAPI rh_foreign_release(void *context)
+{
+    if (context) {
+        rh_context_free(context);
+    }
+}
+
+static BOOL CALLBACK rh_foreign_once(INIT_ONCE *once, void *parameter, void **context)
+{
+    (void)once;
+    (void)parameter;
+    (void)context;
+    rh_foreign_slot = FlsAlloc(rh_foreign_release);
+    return rh_foreign_slot != FLS_OUT_OF_INDEXES;
+}
+#else
+static pthread_key_t rh_foreign_key;
+static bool rh_foreign_ready;
+
+static void rh_foreign_release(void *context)
+{
+    rh_context_free(context);
+}
+
+static void rh_foreign_once(void)
+{
+    rh_foreign_ready = pthread_key_create(&rh_foreign_key, rh_foreign_release) == 0;
+}
+#endif
+
+static void rh_foreign_attach(void)
+{
+    if (!rh_stack_count) {
+        fputs("R^ runtime error: R^ was called before its program started\n", stderr);
+        abort();
+    }
+    RhThreadContext *context = rh_context_new(rh_stack_count);
+#if defined(_WIN32)
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    bool ready = InitOnceExecuteOnce(&once, rh_foreign_once, NULL, NULL) &&
+                 FlsSetValue(rh_foreign_slot, context);
+#else
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    pthread_once(&once, rh_foreign_once);
+    bool ready = rh_foreign_ready && pthread_setspecific(rh_foreign_key, context) == 0;
+#endif
+    if (!context || !ready) {
+        fputs("R^ runtime error: cannot give a foreign thread its data stacks\n", stderr);
+        abort();
+    }
+    rh_context = context;
+}
+
 void rh_runtime_init(uint64_t count)
 {
+    rh_stack_count = count;
 #if defined(_WIN32)
     SYSTEM_INFO info;
     GetSystemInfo(&info);

@@ -686,6 +686,42 @@ print^(h(abs))
 def^ Point { self^{ x:i32^ = 0 } }
 let^h = p^f:externC^p^Point; { f(Point{}) }
 ''', 'a C function pointer cannot take a def^ by value yet')
+    # A thread C starts, not R^, gets data stacks of its own when it calls an exportC^ function.
+    foreign = suite.work / 'ffi_foreign.c'
+    foreign.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
+typedef struct {{ void (*f)(int64_t); int64_t v; }} Job;
+#if defined(_WIN32)
+static DWORD WINAPI run(void *data) {{ Job *j = data; j->f(j->v); j->f(j->v + 1); return 0; }}
+void ffi_on_thread(void (*f)(int64_t), int64_t v)
+{{
+    Job j = {{f, v}};
+    HANDLE h = CreateThread(NULL, 0, run, &j, 0, NULL);
+    WaitForSingleObject(h, INFINITE);
+    CloseHandle(h);
+}}
+#else
+static void *run(void *data) {{ Job *j = data; j->f(j->v); j->f(j->v + 1); return NULL; }}
+void ffi_on_thread(void (*f)(int64_t), int64_t v)
+{{
+    Job j = {{f, v}};
+    pthread_t t;
+    pthread_create(&t, NULL, run, &j);
+    pthread_join(t, NULL);
+}}
+#endif
+''', encoding='utf-8')
+    positive('ffi_foreign_thread_callback', '''
+externC^ffi_on_thread:p^f:externC^p^i64^;, v:i64^;
+exportC^let^work = p^n:i64^{
+    var^xs = i64^[grow^]{n repeat^ 3}
+    xs.push(n * 10)
+    print^("foreign", xs.len, xs[3])
+}
+var^mine = i64^[grow^]{1, 2}
+ffi_on_thread(work, 7)
+mine.push(3)
+print^("main", mine.len, mine[2])
+''', 'foreign 4 70\nforeign 4 80\nmain 3 3\n', extra=('--runtime', foreign))
     suite.finish()
 
 
