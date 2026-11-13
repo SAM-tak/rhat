@@ -8,4 +8,5 @@ R^ の設計理由、実装方針、現状の制約、検討中の仕様を記�
 
 - [コルーチンと非同期処理](coroutines.md): L^ の `yield^`・`await^` を引き継ぐ stackless な値フレーム。
 - [std.async と std.net](net.md): 待ちの id を yield するコルーチンと Loop、ノンブロッキングの TCP・UDP。
+- [L^ のホスト用ライブラリ](lhat_host.md): lib/lhat。L^ の std.task・std.async を R^ の Pool と待ちで提供し、L^ の値を包む。
 - [スレッドと Channel の実装プラン](threads.md): スレッドごとのデータスタックシャード、値の転送、共有 Channel と終了処理（同期 API を実装済み）。

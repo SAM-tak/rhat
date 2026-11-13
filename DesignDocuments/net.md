@@ -5,7 +5,7 @@ L^ の `std.async`（`timer`・`wait`）と `std.net`（UDP）を踏襲し、TCP
 
 ## 実装状況
 
-- 実装済み: `std.async` の `timer`・`readable`・`writable`・`wait`・`delay`・`Loop<T>`。
+- 実装済み: `std.async` の `timer`・`readable`・`writable`・`wait`・`drop`・`pending`・`waiting`・`next`・`delay`・`Loop<T>`。
 - 実装済み: `std.net` の `listen`・`connect`・`TcpListener`・`TcpStream`・`udp`・`Udp`・`Address`・`Datagram`。
 - サンプル: [examples/echo_server.rh](../examples/echo_server.rh)。
 - テスト: [tests/net.py](../tests/net.py)（ループバックで TCP の往復・UDP の往復・遅延の順序・`Pending`・`Closed`）。
@@ -36,12 +36,16 @@ let^tick = p^name:string^ {
 | `async.wait(timeout)` | `i64^ \| nil^`（準備のできた待ち。`timeout` 秒待っても無ければ `nil^`） |
 | `await^ async.delay(seconds)` | — |
 | `async.external()` | `External{id, token}`（別スレッドが `async.complete(token)` で完了する待ち） |
+| `async.drop(id)` | —（待ちを答えずに表から外す） |
+| `async.pending()` | `i64^`（このスレッドの表にある待ちの数） |
+| `async.waiting(id)` | `bool^`（id がまだこのスレッドの表にある待ちか） |
+| `async.next()` | `f64^ \| nil^`（一番早いタイマーまでの秒数。タイマーが無ければ `nil^`） |
 
 - 待ちの表はスレッドごとです（`_Thread_local`）。thread-per-core のプログラムでは、ワーカーごとに `Loop` を回します。
 - `wait` は期限の来たタイマーのうち一番早いものを先に答えます。ソケットは `poll`（Windows は `WSAPoll`）で待ちます。
 - 外部待ちは、待つスレッドの起こし用ソケット（ループバックの UDP ソケット）も `poll` に加えて待ちます。
   完了したスレッドがそこへ 1 バイト送ります。Channel の `awaitable`・`take` はこれでできています。
-- id は 1 から配ります。準備ができて答えた待ちは表から消えます。答える前にコルーチンが捨てられた待ちは表に残ります（v1）。
+- id は 1 から配ります。準備ができて答えた待ちは表から消えます。答える前にコルーチンが捨てられた待ちは、`drop` で外すまで表に残ります。
 
 ## Loop
 

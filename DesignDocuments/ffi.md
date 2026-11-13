@@ -171,14 +171,11 @@ var^ops = Ops{size = strlen, step = bump}
 print^(ops.size("hello"))
 ```
 
-### L^ のホストに std.task を提供するために（今後）
+### L^ のホストに std.task を提供する
 
-R^ の `std.task.Pool` を L^ の `std.task` として公開し、L^ のジョブを同じワーカーに積むには次が要ります
-（[coroutines.md](coroutines.md#l-のホストと-pool-を共有する今後)）。
-
-- exportL^ の引数と結果に、L^ の任意の値（未開始のコルーチン、結果のオブジェクト）を渡せる型（実装済み。`LhatValue`）。
-- `exportC^` 関数をワーカースレッドから呼べること（実装済み。R^ が起こしていないスレッドからも呼べます）。
-- R^ から C の関数ポインタを呼べること（実装済み）。std.task にジョブの種類を関数ポインタで渡す口は、残りの 2 点とあわせて足します。
+R^ の std.task の Pool に L^ のジョブを積み、L^ の `std.task` / `std.async` として公開するライブラリが `lib/lhat` です
+（[lhat_host.md](lhat_host.md)）。std.task はジョブの種類を C の関数ポインタの組（`std.task.JobKind`）で受け取り、
+`exportC^` 関数をワーカースレッドから呼び戻せます。
 
 ## L^ に R^ を公開する（exportL^）
 
@@ -208,6 +205,37 @@ rhat_lhat_register(program, "rhat")    # lhat_program_check より前に
   （データスタックの受け渡しは上と同じ）。
 - `exportL^` には `includeC^ "lhat.h"` を書いたモジュールが必要です。L^ のライブラリは MSVC で
   `/MD`（DLL 版 CRT）でビルドされるため、Windows でリンクするときは `--crt-dll` を付けます。
+- モジュールごとにも登録関数 `bool rhat_lhat_register_<モジュール>(LhatProgram *, const char *module)` を生成します
+  （`.` は `_`。メインモジュールは `main`）。`lib/lhat` の `lhat.task` を `rhat_lhat_register_lhat_task(program, "std.task")` で
+  L^ の `std.task` として登録する、といった使い方です。
+- L^ に見せる名前（型・エラー・署名の中の型名・`rhat_lhat_wrap_<名前>`）は R^ のモジュール名を除いた短い名前です。
+  `lhat.task.Task` は、`std.task` の下に登録すれば L^ では `std.task.Task` です。
+
+### 署名と名前を書く（exportL^"..."）
+
+```rhat
+exportL^"p^c^{->*->*} -> std.task.Task<ARG0.ResultType>" let^wrap = p^job:LhatValue -> LhatValue { ... }
+exportL^"start" "p^ -> number^" let^start_default = p^-> i64^{ ... }       # L^ の start の一つの腕
+exportL^"start" "p^number^ -> number^" let^start = p^n:f64^-> i64^{ ... }  # もう一つの腕
+exportL^ref^externC^def^Task {
+    exportL^"f^self^ -> bool^" done = p^self^-> bool^{ ... }               # メンバの署名
+}
+```
+
+- `exportL^` の後に文字列を 1 つ書くと、R^ の型から作る代わりにその文字列を L^ の署名として登録します（末尾の `;` は省略可）。
+  L^ の計算される型（`ARG0.ResultType` など）や、R^ の `p^` を L^ では `f^` と見せる場合に使います。
+  署名の正しさは C の宣言と同じく信頼境界で、R^ は照合しません。
+- 文字列を 2 つ書くと、1 つめが L^ での名前です。同じ名前で別の腕を登録できます（L^ の多重定義）。
+- exportL^ def^ の本体では、メンバの前に `exportL^"署名"` を書けます。
+
+### host data の契約（retain・let_go・type_argument）
+
+`exportL^ ref^ def^` が次の名前のメソッドを持つと、L^ のメンバとしてではなく、L^ が host data に求める C の呼び口として登録します。
+
+- `retain = p^self^` と `let_go = p^self^` の両方: `lhat_register_hostdata_shared`。値を carry で機械の間で受け渡せるようになり、
+  L^ は写した先が持つたびに `retain`、手放すたびに `let_go` を呼びます（別スレッドからも呼ばれます）。
+- `type_argument = f^self^, index:u64^ -> ref^read^LhatRuntimeType | nil^`: `lhat_register_hostdata_type_arguments`。
+  値ごとの型引数（`std.task.Task<number^>` の `number^`）を L^ の実行時の型検査に答えます。
 
 ### 値として渡す型（exportL^ def^）
 
