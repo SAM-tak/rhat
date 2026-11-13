@@ -9,6 +9,8 @@ import^std.sys
 externC^rh_async_timer:p^seconds:f64^-> i64^;
 externC^rh_async_watch:p^socket:i64^, write:bool^-> i64^;
 externC^rh_async_wait:p^timeout:f64^-> i64^;
+externC^rh_async_external:p^token:ref^i64^-> i64^;
+externC^rh_async_complete:p^token:i64^;
 
 # A wait that is ready once seconds have passed.
 public^let^timer = p^seconds:f64^-> i64^{ return^rh_async_timer(seconds) }
@@ -18,6 +20,19 @@ public^let^readable = p^socket:i64^-> i64^{ return^rh_async_watch(socket, false^
 
 # A wait that is ready once the socket can be written without blocking, or has closed.
 public^let^writable = p^socket:i64^-> i64^{ return^rh_async_watch(socket, true^) }
+
+# A wait another thread completes: yield id here, and hand token to the one thread that calls
+# complete(token), exactly once. Channel.awaitable is made of one.
+public^struct^External { id:i64^, token:i64^}
+
+public^let^external = p^-> External {
+    var^token:i64^= 0
+    let^id = rh_async_external(ref^token)
+    return^External{id = id, token = token}
+}
+
+# Completes an external wait from any thread, waking the thread that waits on it.
+public^let^complete = p^token:i64^{ rh_async_complete(token) }
 
 # The id of a wait that became ready, sleeping up to timeout seconds; nil^ when none did.
 public^let^wait = p^timeout:f64^-> i64^| nil^{

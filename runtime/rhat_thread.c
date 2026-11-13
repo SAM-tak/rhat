@@ -122,6 +122,12 @@ typedef struct Message {
     unsigned char bytes[];
 } Message;
 
+// A std.async external wait: completing it wakes the thread that waits on it. Its first
+// member is all this runtime needs; rhat_net.c owns the rest.
+typedef struct RhWatch {
+    void (*complete)(struct RhWatch *);
+} RhWatch;
+
 typedef struct {
     atomic_uint_fast64_t holds;
     Mutex mutex;
@@ -130,7 +136,28 @@ typedef struct {
     Message *first, *last;
     uint64_t count, bytes, count_limit, byte_limit;
     bool closed;
+    RhWatch **watches; // Waits completed by the next arrival or by closing.
+    size_t watch_count, watch_capacity;
 } Channel;
+
+// Completes the waits taken from a channel, outside its lock.
+static void complete_watches(RhWatch **watches, size_t count)
+{
+    for (size_t j = 0; j < count; j++) {
+        watches[j]->complete(watches[j]);
+    }
+    free(watches);
+}
+
+// Takes a channel's waits while its lock is held.
+static RhWatch **take_watches(Channel *c, size_t *count)
+{
+    RhWatch **taken = c->watches;
+    *count = c->watch_count;
+    c->watches = NULL;
+    c->watch_count = c->watch_capacity = 0;
+    return taken;
+}
 
 // Public bridge handles are private integer fields of noncopyable R^ wrappers.
 static Channel *channel_of(int64_t handle)
@@ -162,6 +189,8 @@ void rh_channel_drop(int64_t handle)
         free(m);
         m = next;
     }
+    size_t count;
+    complete_watches(take_watches(c, &count), count);
     cond_free(&c->readable);
     cond_free(&c->writable);
     lock_free(&c->mutex);
@@ -209,6 +238,54 @@ void rh_channel_close(int64_t handle)
     c->closed = true;
     wake(&c->readable);
     wake(&c->writable);
+    size_t count;
+    RhWatch **taken = take_watches(c, &count);
+    unlock(&c->mutex);
+    complete_watches(taken, count);
+}
+
+bool rh_channel_ready(int64_t handle)
+{
+    if (!handle) {
+        return true; // An empty hold is a closed channel.
+    }
+    Channel *c = channel_of(handle);
+    lock(&c->mutex);
+    bool ready = c->first || c->closed;
+    unlock(&c->mutex);
+    return ready;
+}
+
+// Completes token once a message is there or the channel is closed: now, if it already is.
+void rh_channel_watch(int64_t handle, int64_t token)
+{
+    RhWatch *w = (RhWatch *)(uintptr_t)token;
+    if (!w) {
+        return;
+    }
+    if (!handle) {
+        w->complete(w);
+        return;
+    }
+    Channel *c = channel_of(handle);
+    lock(&c->mutex);
+    if (c->first || c->closed) {
+        unlock(&c->mutex);
+        w->complete(w);
+        return;
+    }
+    if (c->watch_count == c->watch_capacity) {
+        size_t capacity = c->watch_capacity ? c->watch_capacity * 2 : 4;
+        RhWatch **grown = realloc(c->watches, capacity * sizeof(*grown));
+        if (!grown) {
+            unlock(&c->mutex);
+            w->complete(w); // The waiter looks again and finds nothing yet.
+            return;
+        }
+        c->watches = grown;
+        c->watch_capacity = capacity;
+    }
+    c->watches[c->watch_count++] = w;
     unlock(&c->mutex);
 }
 
@@ -412,7 +489,10 @@ int64_t rh_channel_send(int64_t handle, void *value, int64_t blocking)
     }
     c->last = m;
     wake(&c->readable);
+    size_t count;
+    RhWatch **taken = take_watches(c, &count);
     unlock(&c->mutex);
+    complete_watches(taken, count);
     return 0;
 }
 

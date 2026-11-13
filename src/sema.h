@@ -15,7 +15,9 @@ enum {
     THREAD_ENTRY,
     THREAD_TRANSFER,
     THREAD_ARGS,
-    THREAD_STACKS
+    THREAD_STACKS,
+    THREAD_READY, // channel_ready^(ref^h): a message is there, or the channel is closed.
+    THREAD_WATCH  // channel_watch^(ref^h, token): complete a std.async external wait then.
 };
 
 // The interface shared by semantic IR construction (sema.c and the files

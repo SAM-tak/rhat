@@ -16,8 +16,10 @@ int thread_operation(Expr *target)
                            "thread_entry^",
                            "thread_transfer_type^",
                            "thread_args^",
-                           "thread_stack_count^"};
-    for (int j = THREAD_NEW; j <= THREAD_STACKS; j++) {
+                           "thread_stack_count^",
+                           "channel_ready^",
+                           "channel_watch^"};
+    for (int j = THREAD_NEW; j <= THREAD_WATCH; j++) {
         if (*names[j] && !strcmp(target->text, names[j])) {
             return j;
         }
@@ -56,10 +58,10 @@ Type *thread_result(Program *p, Function *caller, int operation, Type *element)
     if (operation == THREAD_NEW || operation == THREAD_CLONE) {
         return type_wrap(p, T_CHANNEL, element, 0);
     }
-    if (operation == THREAD_VALID) {
+    if (operation == THREAD_VALID || operation == THREAD_READY) {
         return type_builtin(p, T_BOOL);
     }
-    if (operation == THREAD_CLOSE || operation == THREAD_DROP) {
+    if (operation == THREAD_CLOSE || operation == THREAD_DROP || operation == THREAD_WATCH) {
         return type_builtin(p, T_VOID);
     }
     if (operation == THREAD_ENTRY) {
@@ -136,7 +138,7 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
     int count = operation == THREAD_STACKS ? 0
                 : operation == THREAD_TRANSFER || operation == THREAD_ARGS ||
                         operation == THREAD_CLONE || operation == THREAD_CLOSE ||
-                        operation == THREAD_VALID
+                        operation == THREAD_VALID || operation == THREAD_READY
                     ? 1
                 : operation == THREAD_SEND || operation == THREAD_NEW ? 3
                                                                       : 2;
@@ -146,8 +148,9 @@ Value thread_call(Context *c, Expr *e, int operation, int destination)
     Value args[3] = {0};
     for (int j = operation == THREAD_NEW ? 1 : 0; j < count; j++) {
         bool integer =
-            operation == THREAD_NEW ||
-            ((operation == THREAD_SEND || operation == THREAD_RECEIVE) && j == count - 1);
+            operation == THREAD_NEW || ((operation == THREAD_SEND || operation == THREAD_RECEIVE ||
+                                         operation == THREAD_WATCH) &&
+                                        j == count - 1);
         args[j] = expression(c, e->args.v[j], integer ? type_builtin(c->p, T_I64) : NULL);
     }
     Type *payload = NULL;
@@ -272,7 +275,9 @@ void emit_thread_support(Program *p, FILE *f)
           "declare void @rh_channel_close(i64)\n"
           "declare void @rh_channel_drop(i64)\n"
           "declare void @rh_channel_receive(i64, ptr, ptr, i64, i32, i32, i32, i64)\n"
-          "declare void @rh_thread_unhandled() cold noreturn\n",
+          "declare void @rh_thread_unhandled() cold noreturn\n"
+          "declare i1 @rh_channel_ready(i64)\n"
+          "declare void @rh_channel_watch(i64, i64)\n",
           f);
     for (int j = 0; j < p->transfer_types.n; j++) {
         Type *t = p->transfer_types.v[j];

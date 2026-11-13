@@ -1,5 +1,6 @@
 module^std.channel
 
+let^async = import^std.async
 import^std.sys
 
 public^errordef^Error { InvalidCapacity, OutOfMemory, Closed, Full, MessageTooLarge }
@@ -43,5 +44,25 @@ public^def^Channel<T> {
     }
     close = p^self^{
         channel_close^(ref^self^.handle)
+    }
+    # Whether a message is there or the channel is closed: receive will not wait.
+    ready = p^self^-> bool^{ return^channel_ready^(ref^self^.handle) }
+    # A std.async wait that is ready once a message arrives or the channel closes; yield it,
+    # then try_receive.
+    awaitable = p^self^-> i64^{
+        let^wait = async.external()
+        channel_watch^(ref^self^.handle, wait.token)
+        return^wait.id
+    }
+    # Waits for a message in a coroutine: let^m = await^ ch.take(). It answers Empty only when
+    # another receiver took the message first.
+    take = p^self^{
+        repeat^{
+            if^!self^.ready() {
+                yield^self^.awaitable()
+                next^
+            }
+            return^self^.try_receive()
+        }
     }
 }

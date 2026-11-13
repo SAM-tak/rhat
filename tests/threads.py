@@ -372,6 +372,60 @@ for^mode from^0 to^1 {
 }
 ''', '9\n7\n')
 
+    # Messages from a worker wake a std.async Loop asleep in poll; owned rows arrive whole.
+    positive('loop_awaits_channels', HEADER + '''
+let^async = import^std.async
+struct^Args { out:c.Channel<i64^>, rows:c.Channel<i64^[grow^]> }
+let^worker = p^a:ref^Args {
+    for^i:i64^ from^1 to^3 {
+        t.sleep(0.02)
+        var^n:i64^ = i * 10
+        try^a.out.send(ref^n)
+        var^row = i64^[grow^]{i repeat^ i}
+        try^a.rows.send(ref^row)
+    }
+    a.out.close()
+    a.rows.close()
+}
+let^numbers = p^ch:ref^c.Channel<i64^> {
+    var^sum:i64^ = 0
+    repeat^ {
+        let^m = await^ch.take()
+        if^m fits^c.Message<i64^> { sum += m.value }
+        if^m fits^c.Closed { return^sum }
+    }
+}
+let^rows = p^ch:ref^c.Channel<i64^[grow^]> {
+    var^total:i64^ = 0
+    repeat^ {
+        var^closed = false^
+        do^ {
+            var^m = await^ch.take()
+            if^m fits^c.Message<i64^[grow^]> {
+                for^x in^m.value { total += x }
+            }
+            closed := m fits^c.Closed
+        }
+        if^closed { return^total }
+    }
+}
+let^run = p^ -> nil^ | c.Error | t.Error.StartFailed {
+    var^out = try^c.Channel<i64^>.new(4, 256)
+    var^rowsch = try^c.Channel<i64^[grow^]>.new(4, 4096)
+    var^args = Args{out = out.clone(), rows = rowsch.clone()}
+    var^w = try^t.spawn(worker, ref^args)
+    var^a = numbers(ref^out)
+    var^b = rows(ref^rowsch)
+    var^loop = async.Loop<i64^>{}
+    loop.add(ref^a)
+    loop.add(ref^b)
+    loop.run()
+    print^(a.result(), b.result(), out.ready())
+    return^nil^
+}
+let^r = run()
+''', '60 14 true\n')
+
     positive('default_channel_is_closed', HEADER + '''
 var^q:c.Channel<i32^> = {}
 var^n:i32^ = 0

@@ -4,6 +4,7 @@
 //
 // Sockets answer a handle (the OS socket plus one, so 0 means none) or a negative code:
 // RH_NET_PENDING when the operation would block, else one of the failures below.
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -407,16 +408,94 @@ int64_t rh_net_udp_receive(int64_t handle, uint8_t *buffer, int64_t capacity, ui
     return n;
 }
 
-// Waits: each is an id a coroutine yields, ready when its socket is or its time has come.
+// Waits: each is an id a coroutine yields, ready when its socket is, its time has come, or
+// another thread completes it (an external wait).
+typedef struct External External;
+
 typedef struct {
     int64_t id;
-    int64_t handle; // 0 for a timer.
+    int64_t handle; // A socket; 0 for a timer or an external wait.
     bool write;
-    double due; // Seconds on the monotonic clock, for a timer.
+    double due;         // Seconds on the monotonic clock, for a timer.
+    External *external; // An external wait, completed by another thread.
 } Wait;
 
 static _Thread_local Wait *waits;
 static _Thread_local int64_t wait_count, wait_capacity, last_id;
+
+// The socket a waiting thread polls so that another thread can wake it: a loopback UDP socket
+// that sends to itself.
+typedef struct {
+    RhSocket socket;
+    struct sockaddr_in address;
+    atomic_int holds;
+} Waker;
+
+static _Thread_local Waker *waker;
+
+// Its first member is what the Channel runtime calls; see RhWatch in rhat_thread.c.
+struct External {
+    void (*complete)(External *);
+    atomic_int done, holds;
+    Waker *waker;
+};
+
+static void waker_release(Waker *w)
+{
+    if (atomic_fetch_sub(&w->holds, 1) == 1) {
+        rh_close_socket(w->socket);
+        free(w);
+    }
+}
+
+static void external_release(External *e)
+{
+    if (atomic_fetch_sub(&e->holds, 1) == 1) {
+        waker_release(e->waker);
+        free(e);
+    }
+}
+
+// Completes e once, from any thread: its waiter finds it done and wakes from poll.
+static void external_complete(External *e)
+{
+    if (atomic_exchange(&e->done, 1) == 0) {
+        char byte = 1;
+        sendto(e->waker->socket, &byte, 1, 0, (const struct sockaddr *)&e->waker->address,
+               sizeof(e->waker->address));
+    }
+    external_release(e);
+}
+
+static Waker *thread_waker(void)
+{
+    if (waker) {
+        return waker;
+    }
+    net_start();
+    struct sockaddr_in loopback = {0};
+    loopback.sin_family = AF_INET;
+    loopback.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    RhSocket s = open_socket((const struct sockaddr *)&loopback, SOCK_DGRAM);
+    socklen_t length = sizeof(loopback);
+    if (s == RH_BAD_SOCKET || bind(s, (const struct sockaddr *)&loopback, sizeof(loopback)) != 0 ||
+        getsockname(s, (struct sockaddr *)&loopback, &length) != 0) {
+        if (s != RH_BAD_SOCKET) {
+            rh_close_socket(s);
+        }
+        return NULL;
+    }
+    Waker *w = calloc(1, sizeof(*w));
+    if (!w) {
+        rh_close_socket(s);
+        return NULL;
+    }
+    w->socket = s;
+    w->address = loopback;
+    atomic_init(&w->holds, 1); // The thread's own hold, kept while it lives.
+    waker = w;
+    return w;
+}
 
 static double now(void)
 {
@@ -435,7 +514,7 @@ static double now(void)
 #endif
 }
 
-static int64_t add_wait(int64_t handle, bool write, double due)
+static int64_t add_wait(Wait w)
 {
     if (wait_count == wait_capacity) {
         int64_t capacity = wait_capacity ? wait_capacity * 2 : 16;
@@ -446,24 +525,34 @@ static int64_t add_wait(int64_t handle, bool write, double due)
         waits = grown;
         wait_capacity = capacity;
     }
-    waits[wait_count++] = (Wait){.id = ++last_id, .handle = handle, .write = write, .due = due};
+    w.id = ++last_id;
+    waits[wait_count++] = w;
     return last_id;
 }
 
 static int64_t take_wait(int64_t k)
 {
     int64_t id = waits[k].id;
+    if (waits[k].external) {
+        external_release(waits[k].external);
+    }
     waits[k] = waits[--wait_count];
     return id;
 }
 
-// The id of the timer that came due first by t, taken from the table; 0 if none has.
+// The id of the timer that came due first by t, or of an external wait another thread has
+// completed, taken from the table; 0 if there is none.
 static int64_t take_due(double t)
 {
     int64_t first = -1;
     for (int64_t k = 0; k < wait_count; k++) {
-        if (!waits[k].handle && waits[k].due <= t &&
-            (first < 0 || waits[k].due < waits[first].due)) {
+        if (waits[k].external) {
+            if (atomic_load(&waits[k].external->done)) {
+                return take_wait(k);
+            }
+        }
+        else if (!waits[k].handle && waits[k].due <= t &&
+                 (first < 0 || waits[k].due < waits[first].due)) {
             first = k;
         }
     }
@@ -472,12 +561,43 @@ static int64_t take_due(double t)
 
 int64_t rh_async_timer(double seconds)
 {
-    return add_wait(0, false, now() + (seconds > 0 ? seconds : 0));
+    return add_wait((Wait){.due = now() + (seconds > 0 ? seconds : 0)});
 }
 
 int64_t rh_async_watch(int64_t handle, bool write)
 {
-    return add_wait(handle, write, 0);
+    return add_wait((Wait){.handle = handle, .write = write});
+}
+
+// A wait another thread completes: *token goes to whoever completes it (rh_async_complete,
+// or a Channel through rh_channel_watch), exactly once.
+int64_t rh_async_external(int64_t *token)
+{
+    Waker *w = thread_waker();
+    External *e = w ? calloc(1, sizeof(*e)) : NULL;
+    if (!e) {
+        *token = 0;
+        return 0;
+    }
+    e->complete = external_complete;
+    atomic_init(&e->done, 0);
+    atomic_init(&e->holds, 2); // The table's and the completer's.
+    atomic_fetch_add(&w->holds, 1);
+    e->waker = w;
+    *token = (int64_t)(uintptr_t)e;
+    int64_t id = add_wait((Wait){.external = e});
+    if (!id) {
+        external_release(e);
+    }
+    return id;
+}
+
+void rh_async_complete(int64_t token)
+{
+    External *e = (External *)(uintptr_t)token;
+    if (e) {
+        e->complete(e);
+    }
 }
 
 // Answers the id of one wait that is ready, sleeping up to timeout seconds for one; 0 when
@@ -491,8 +611,12 @@ int64_t rh_async_wait(double timeout)
         if (due) {
             return due;
         }
+        bool externals = false;
         for (int64_t k = 0; k < wait_count; k++) {
-            if (!waits[k].handle) {
+            if (waits[k].external) {
+                externals = true;
+            }
+            else if (!waits[k].handle) {
                 next = waits[k].due < next ? waits[k].due : next;
             }
             else {
@@ -502,8 +626,10 @@ int64_t rh_async_wait(double timeout)
         if (!wait_count) {
             return 0;
         }
-        struct pollfd *polled = sockets ? malloc((size_t)sockets * sizeof(struct pollfd)) : NULL;
-        int64_t *which = sockets ? malloc((size_t)sockets * sizeof(int64_t)) : NULL;
+        // The waker is polled too, last, while any external wait is pending.
+        int64_t slots = sockets + (externals && waker ? 1 : 0);
+        struct pollfd *polled = slots ? malloc((size_t)slots * sizeof(struct pollfd)) : NULL;
+        int64_t *which = slots ? malloc((size_t)slots * sizeof(int64_t)) : NULL;
         int64_t n = 0;
         for (int64_t k = 0; polled && which && k < wait_count; k++) {
             if (waits[k].handle) {
@@ -511,6 +637,10 @@ int64_t rh_async_wait(double timeout)
                                             .events = waits[k].write ? POLLOUT : POLLIN};
                 which[n++] = k;
             }
+        }
+        if (polled && which && externals && waker) {
+            polled[n] = (struct pollfd){.fd = waker->socket, .events = POLLIN};
+            which[n++] = -1;
         }
         int ms = next > t ? (int)((next - t) * 1000.0 + 0.999) : 0;
         int ready = 0;
@@ -527,17 +657,26 @@ int64_t rh_async_wait(double timeout)
         }
         int64_t found = 0;
         for (int64_t j = 0; ready > 0 && j < n && !found; j++) {
-            if (polled[j].revents) {
-                found = take_wait(which[j]);
+            if (!polled[j].revents) {
+                continue;
             }
+            if (which[j] < 0) {
+                // Drain the wake-ups; take_due finds the completed waits below.
+                char bytes[64];
+                while (recv(waker->socket, bytes, sizeof(bytes), 0) > 0) {
+                }
+                continue;
+            }
+            found = take_wait(which[j]);
         }
         free(polled);
         free(which);
         if (found) {
             return found;
         }
-        if (now() >= limit) {
-            return take_due(now()); // The timers that came due meanwhile.
+        due = take_due(now());
+        if (due || now() >= limit) {
+            return due; // A completion, or a timer that came due meanwhile.
         }
     }
 }

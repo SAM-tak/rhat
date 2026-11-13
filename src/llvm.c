@@ -927,6 +927,17 @@ static void instruction(Output *o, Instr *i)
             fprintf(f, "  call void @rh_channel_close(i64 %%t%d)\n", first);
             break;
         }
+        if (i->label == THREAD_READY) {
+            int ready = ++o->tmp;
+            fprintf(f, "  %%t%d = call i1 @rh_channel_ready(i64 %%t%d)\n", ready, first);
+            save(o, i->dst, result, fmt("%%t%d", ready));
+            break;
+        }
+        if (i->label == THREAD_WATCH) {
+            int token = load(o, (int)(intptr_t)i->args.v[1] - 1);
+            fprintf(f, "  call void @rh_channel_watch(i64 %%t%d, i64 %%t%d)\n", first, token);
+            break;
+        }
         if (i->label == THREAD_CLONE || i->label == THREAD_VALID) {
             int value = ++o->tmp;
             if (i->label == THREAD_CLONE) {

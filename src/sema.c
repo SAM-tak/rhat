@@ -3674,6 +3674,11 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (e->kind == E_AWAIT && built && built->owned && sum_accepts(t, built)) {
             return await_point(c, e, t, dst); // Its owned result goes straight into t.
         }
+        if (built && built->owned && built->kind == T_UNION && dst >= 0 && sum_accepts(t, built)) {
+            // Built as itself on dst's stacks, then moved into the wider union.
+            Value held = held_operand(c, e, dst);
+            return dead(held) ? held : convert_value(c, held, t, dst, e->loc);
+        }
         Value arm = expression(c, e, hint);
         if (dead(arm)) {
             return arm;

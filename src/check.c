@@ -821,7 +821,8 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
         if (thread == THREAD_NEW) {
             element = channel_new_element(c->p, e);
         }
-        else if (thread >= THREAD_SEND && thread <= THREAD_VALID) {
+        else if ((thread >= THREAD_SEND && thread <= THREAD_VALID) || thread == THREAD_READY ||
+                 thread == THREAD_WATCH) {
             if (!e->args.n) {
                 fail(e->loc, "invalid thread operation arguments");
             }
