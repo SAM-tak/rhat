@@ -179,7 +179,9 @@ public^def^PureCoroutineR<R, Y, T> : CoroutineR<R, Y, T> {
 - f^ 本体のフレームは `Pure` 版も満たします。`Pure` 版は一般版を合成するので、`ref^CoroutineNR<Y, T>` を受ける手続きには
   p^ 本体と f^ 本体のどちらのフレームも渡せます。`Pure` 版は進める操作を `override^abstract^` で
   `f^mutable^self^` に宣言し直します（[design.md](design.md)）。
-- 適合は型引数の照合で決まります。フレームはこれらの型を合成するのではなく、R・Y・T と本体の種別で満たします。
+- 適合は型引数で決まります。フレームはこれらの型を合成するのではなく、R・Y・T と本体の種別で満たします。
+  Y と T は広がる先でもよく（`Error.A | nil^` を返すフレームは `CoroutineNR<i64^, nil^ | Error>` を満たします）、
+  dyn^ の表の転送メソッドが答えを広げます。R は一致が要ります。
 
 使い方は [dyn.md](dyn.md) の `Shape` と同じです。
 
@@ -480,7 +482,7 @@ L^ との違いは次のとおりです。
 - **結果は転送の規則で渡します。** L^ は GC の管理を移譲しますが、R^ は [threads.md](threads.md) の転送の規則でエンコードして渡します。
 - **待ちは通知で受けます。** L^ は待機集合を時計で見ますが、R^ は epoll・kqueue・IOCP の通知を使えます。インターフェースは変わりません。
 
-ソケット・タイマー・`run_blocking` の細かい API は、実装する段階で L^ に合わせて決めます。
+ソケットとタイマーの API は [net.md](net.md) にあります。`run_blocking` は手順 5 で決めます。
 
 ## 下ろし方
 
@@ -534,12 +536,12 @@ llvm.coro で縮む分のうち効きの大きいもの（実際には使われ�
 
 ## 未決事項
 
-ソケット・タイマー・`run_blocking` の細かい API は実装時に L^ に合わせて決めます。
+`run_blocking` と、Channel・`std.task` の待ちの API は手順 5 で L^ に合わせて決めます。
 
 ## 手順
 
 1〜3（検査器・生成・テスト）は手順 1a・1b・2 として実装済みです（[実装状況](#実装状況)）。Channel 越しの再開は、
 フレームのスレッド転送とあわせて後で入れます。
 
-4. ネットワーク: ノンブロッキングのソケットと待機（まず `poll`、続いて `epoll` / `kqueue` / IOCP）。
+4. ネットワーク: ノンブロッキングのソケットと待機。`poll` で実装済み（[net.md](net.md)）。`epoll` / `kqueue` / IOCP は後で。
 5. 標準ライブラリ: L^ に倣った `std.async`・`std.task`・`std.channel` の待ちと、thread-per-core のサンプル。

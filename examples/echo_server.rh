@@ -1,0 +1,34 @@
+# A TCP echo server on one thread: four workers share the listener, and each serves one
+# connection at a time. Try it with: python -c "import socket; s=socket.create_connection(('127.0.0.1', 7000)); s.send(b'hi'); print(s.recv(9))"
+
+let^async = import^std.async
+let^net = import^std.net
+
+# Accepts a connection, echoes it until the peer closes, then accepts the next.
+let^worker = p^listener:ref^net.TcpListener {
+    var^buf:u8^[1024] = {}
+    repeat^{
+        var^conn = try^await^listener.accept()
+        repeat^{
+            let^n = try^await^conn.read(buf[..])
+            if^n = 0 { break^}
+            try^await^conn.write(buf[0 .. n])
+        }
+    }
+}
+
+let^serve = p^-> nil^| net.Error {
+    var^listener = try^net.listen("127.0.0.1", 7000)
+    print^("listening on", listener.port())
+    # The frames live here; the loop only refers to them.
+    var^workers:worker.ReturnType^[max^4] = {}
+    var^loop = async.Loop<nil^| net.Error>{}
+    repeat^while^workers.len < 4 {
+        workers.push(worker(ref^listener))
+        loop.add(ref^workers[workers.len - 1])
+    }
+    loop.run()
+    return^nil^
+}
+
+let^result = serve()

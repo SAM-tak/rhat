@@ -25,7 +25,16 @@ externC^rh_net_udp_send:p^socket:i64^, data:read^u8^[..], length:i64^, address:r
 externC^rh_net_udp_send_peer:p^socket:i64^, data:read^u8^[..], length:i64^-> i64^;
 externC^rh_net_udp_receive:p^socket:i64^, buffer:u8^[..], capacity:i64^, from:u8^[..] -> i64^;
 
-public^errordef^Error { AddressInUse, Resolve, Unreachable, Refused, Reset, TooLarge, Closed, Failed }
+public^errordef^Error {
+    AddressInUse,
+    Resolve,
+    Unreachable,
+    Refused,
+    Reset,
+    TooLarge,
+    Closed,
+    Failed
+}
 
 # The operation would block: yield wait to have the Loop resume once it may succeed.
 public^def^Pending { self^{ wait:i64^} }
