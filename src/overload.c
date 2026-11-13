@@ -288,6 +288,17 @@ const char *c_function_symbol(Function *f)
     return f->external ? f->external : dot ? dot + 1 : f->name;
 }
 
+Function *c_constant(Program *p, const char *name)
+{
+    for (int j = 0; j < p->functions.n; j++) {
+        Function *f = p->functions.v[j];
+        if (f->c_constant && !strcmp(f->name, name)) {
+            return f;
+        }
+    }
+    return NULL;
+}
+
 Type *callable_group(Program *p, Def *owner, const char *name)
 {
     List *functions = owner ? &owner->methods : &p->functions;

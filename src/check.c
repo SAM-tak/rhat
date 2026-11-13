@@ -483,6 +483,10 @@ void external_validate(Program *p, Function *f)
     if (f->templ || f->variadic) {
         fail(f->loc, "externC^ declaration cannot be template^ or variadic");
     }
+    if (f->c_constant && !f->module->c_headers.n) {
+        fail(f->declaration, "externC^ constant '%s' needs a module with includeC^ to define it",
+             f->name);
+    }
     // Scalars and flat def^ values cross as their C types, the latter through
     // a generated C shim; ref^, slices and strings as a data pointer.
     for (int j = 0; j < f->params.n; j++) {
@@ -1818,6 +1822,10 @@ static Type *infer_expr(Infer *c, Expr *e, Type *expected)
         }
         {
             Type *type = infer_lookup(c, e->text);
+            Function *constant = type ? NULL : c_constant(c->p, e->text);
+            if (constant) {
+                return type_spec(c->p, constant->result);
+            }
             return type ? type : callable_group(c->p, NULL, e->text);
         }
     case E_SELF:
@@ -3568,6 +3576,10 @@ static BodyNode *body_expr(BodyCheck *c, Expr *e, Type *want)
                     break;
                 }
             }
+        }
+        else if (e->kind == E_NAME && c_constant(c->p, e->text)) {
+            n->type = type_spec(c->p, c_constant(c->p, e->text)->result);
+            break;
         }
         else if (e->kind == E_NAME && (n->type = callable_group(c->p, NULL, e->text))) {
             break;

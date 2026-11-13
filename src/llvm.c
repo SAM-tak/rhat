@@ -3385,12 +3385,12 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
         }
         // A header's pointer result may be const; R^ keeps it as void *.
         bool pointer = !out && !none && !strcmp(c_name(in->result), "void *");
-        fprintf(f, "%s rh_shim_%s(%s) { %s%s%s(%s); }\n", out || none ? "void" : c_name(in->result),
+        fprintf(f, "%s rh_shim_%s(%s) { %s%s%s%s; }\n", out || none ? "void" : c_name(in->result),
                 in->symbol, *shim ? shim : "void",
                 out    ? "*out = "
                 : none ? ""
                        : "return ",
-                pointer ? "(void *)" : "", in->symbol, call);
+                pointer ? "(void *)" : "", in->symbol, in->fn->c_constant ? "" : fmt("(%s)", call));
     }
     if (fclose(f)) {
         fail((Loc){path, 1, 1}, "cannot write C shims");

@@ -5018,6 +5018,10 @@ Value expression(Context *c, Expr *e, Type *expected)
             fail(e->loc, "default initializer cannot capture caller locals or self^");
         }
         Var *v = selected(c, e);
+        if (!v && e->kind == E_NAME && !e->scope_kind && c_constant(p, e->text)) {
+            Expr read = {.kind = E_CALL, .loc = e->loc, .a = e};
+            return call(c, &read, expected, -1);
+        }
         if (!v && e->kind == E_NAME && !e->scope_kind) {
             Type *type = callable_group(p, NULL, e->text);
             if (type) {

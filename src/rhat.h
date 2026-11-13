@@ -283,6 +283,7 @@ struct Function {
     bool exported;        // exportC^: callable from C under its own name.
     bool lhat_export;     // exportL^: registered as an L^ host function.
     char *lhat_signature; // exportL^"...": the L^ signature written for it, not derived.
+    bool c_constant;      // externC^ NAME:T;: reads the C constant NAME, as a call with nothing.
     char *lhat_name;      // exportL^"name" "...": the L^ name it registers under, if not its own.
     bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
     bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.

@@ -109,6 +109,8 @@ int64_t ffi_box_or(const FfiBox *b, int64_t fallback);
 void ffi_box_free(FfiBox *b);
 int64_t ffi_apply(int64_t (*fn)(int64_t), int64_t x);
 typedef struct { FfiBox *box; int64_t n; } FfiPair;
+#define FFI_ANSWER 42
+enum { FFI_RED = 3, FFI_BLUE = 7 };
 FfiPair *ffi_pair_new(int64_t n);
 int64_t ffi_pair_sum(const FfiPair *p);
 static inline const char *ffi_text(int32_t k) { return k == 0 ? "h\\xc3\\xa9llo" : k == 1 ? "\\xff" : (const char *)0; }
@@ -209,6 +211,15 @@ print^(ffi_pair_sum(ref^ other))
 let^ r = ref^ local.box
 ''', 'a C pointer field cannot be borrowed')
 
+    # externC^ NAME:T; reads a C constant -- a macro or an enum value -- through the header.
+    positive('ffi_c_constant', header + '''externC^ FFI_ANSWER:i64^;
+externC^ FFI_RED:i32^;
+externC^ FFI_BLUE:i32^;
+let^ pick = f^ k:i32^ -> i64^ { if^ k = FFI_RED: 1 el^: 2; }
+print^(FFI_ANSWER, FFI_RED + FFI_BLUE, pick(FFI_RED), pick(FFI_BLUE))
+''', '42 10 1 2\n')
+    negative('ffi_c_constant_no_header', 'externC^ ANSWER:i64^;\nprint^(ANSWER)\n',
+             "externC^ constant 'ANSWER' needs a module with includeC^")
     # Builder.append_c copies C's NUL-terminated text; NULL adds nothing, and text that is not
     # UTF-8 is refused whole.
     positive('ffi_append_c', header + '''let^ text = import^ std.text

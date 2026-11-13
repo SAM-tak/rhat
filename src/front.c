@@ -3914,6 +3914,19 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
 static Function *external_function(Parser *p, char *name, char *symbol)
 {
     need(p, ":");
+    if (!is(p, "f^") && !is(p, "p^") && !is(p, "template^")) {
+        // A C constant (an enum value, a macro): read through a C function the shims make.
+        Function *f = mem(sizeof(*f));
+        f->loc = tok(p)->loc;
+        f->enclosing = p->enclosing;
+        f->lexical = p->scope_depth + 2;
+        f->name = name;
+        f->result = spec(p);
+        f->external = symbol;
+        f->c_constant = true;
+        need(p, ";");
+        return f;
+    }
     Function *f = function(p, name, NULL, true);
     f->abstract = false;
     f->external = symbol;

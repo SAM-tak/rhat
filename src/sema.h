@@ -305,6 +305,8 @@ Type *callable_signature(Program *p, List *params, Type *result, bool procedure,
 Type *callable_declaration(Program *p, Function *f);
 Type *callable_intersection(Program *p, Type *a, Type *b, Loc loc);
 Type *callable_group(Program *p, Def *owner, const char *name);
+// The externC^ constant name reads, or NULL.
+Function *c_constant(Program *p, const char *name);
 // Recover static implementations from an unbound callable value.
 List callable_candidates(Type *type, int arity);
 // Include declaration identity in specializations receiving callable values.
