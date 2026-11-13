@@ -2345,15 +2345,22 @@ static Value push_owned_row(Context *c, Value base, Expr *element, Loc loc)
 // The frame's turn seen as the part a caller wants, what it yielded or what it returned, in
 // dst (a new slot when dst < 0). The turn is Y | T flattened into one union, so a part that is
 // itself a union is taken alternative by alternative and retagged as that part.
-static Value turn_part(Context *c, Value turn, Type *part, int dst, Loc l)
+static Value turn_part(Context *c, Value turn, Type *part, Type *into, int dst, Loc l)
 {
-    if (turn.type == part && dst < 0) {
+    // into, a union taking part, receives it instead when given.
+    into = into ? into : part;
+    if (turn.type == part && into == part && dst < 0) {
         return turn;
     }
-    Value out = {.type = part, .deps = part->refs ? turn.deps : (Roots){0}};
-    out.id = dst >= 0 ? dst : slot(c, part, false);
+    Value out = {.type = into, .deps = into->refs ? turn.deps : (Roots){0}};
+    out.id = dst >= 0 ? dst : slot(c, into, false);
     if (turn.type == part || part->kind != T_UNION) {
         Value v = turn.type == part ? turn : case_value(c, turn, part, l);
+        v.held |= part->owned; // Moved out of the turn, which is done with it.
+        if (into != part) {
+            convert_value(c, v, into, out.id, l);
+            return out;
+        }
         Instr *copy = emit(c, I_COPY, l);
         copy->dst = out.id;
         copy->a = v.id;
@@ -2372,7 +2379,9 @@ static Value turn_part(Context *c, Value turn, Type *part, int dst, Loc l)
         int here = ++c->in->labels, next = ++c->in->labels;
         nil_branch(c, test, here, next, l);
         nil_label(c, here, l);
-        convert_value(c, case_value(c, turn, arm, l), part, out.id, l);
+        Value held = case_value(c, turn, arm, l);
+        held.held |= arm->owned;
+        convert_value(c, held, into, out.id, l);
         nil_jump(c, end, l);
         nil_label(c, next, l);
     }
@@ -2411,6 +2420,11 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
     bool done = !strcmp(name, "done");
     if (!advance && !done && strcmp(name, "result")) {
         fail(target->loc, "a coroutine frame has start, resume, done and result, not '%s'", name);
+    }
+    if (!done && co->final->owned) {
+        // Its result is built on the data stack of whoever ran the last resume, so it is
+        // handed over there; only await^ takes it.
+        fail(e->loc, "a coroutine with an owned final result is run only by await^");
     }
     // A resume hands in what yield^ receives, if anything does; start and the rest take nothing.
     bool hands = !strcmp(name, "resume") && co->received;
@@ -2474,12 +2488,12 @@ static Value frame_member(Context *c, Expr *e, Expr *target, Value base, int des
         int skip = ++c->in->labels, take = ++c->in->labels;
         nil_branch(c, finished, skip, take, e->loc);
         nil_label(c, take, e->loc);
-        Value part = turn_part(c, out, co->yielded, y, e->loc);
+        Value part = turn_part(c, out, co->yielded, NULL, y, e->loc);
         nil_jump(c, skip, e->loc);
         nil_label(c, skip, e->loc);
         return part;
     }
-    return project ? turn_part(c, out, co->final, destination, e->loc) : out;
+    return project ? turn_part(c, out, co->final, NULL, destination, e->loc) : out;
 }
 
 static Value call(Context *c, Expr *e, Type *expected, int destination)
@@ -3479,6 +3493,8 @@ static bool zero_default(Type *t)
            t->kind == T_NIL || t->kind == T_ENUM;
 }
 
+static Value await_point(Context *c, Expr *e, Type *into, int dst);
+
 Value construct(Context *c, Expr *e, Type *t, int dst)
 {
     if (e->kind == E_DEFAULT) {
@@ -3641,17 +3657,22 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
         if (built && built->kind != T_NEVER) {
             layout(built, e->loc);
         }
-        bool forwarded = built == t && e->kind == E_CALL && !guarded_chain(e);
+        bool forwarded =
+            built == t && ((e->kind == E_CALL && !guarded_chain(e)) || e->kind == E_AWAIT);
         if (built && built->owned &&
             (forwarded || (built != t && union_alternative(t, built) >= 0))) {
             if (dst < 0) {
                 fail(e->loc, "owned construction requires a destination");
             }
             Value u = {.id = dst, .type = t};
-            Value v = forwarded ? call(c, e, t, dst)
-                                : construct(c, e, built, case_at(c, u, built, true, e->loc));
+            Value v = forwarded && e->kind == E_AWAIT ? await_point(c, e, NULL, dst)
+                      : forwarded ? call(c, e, t, dst)
+                                  : construct(c, e, built, case_at(c, u, built, true, e->loc));
             u.deps = v.deps;
             return dead(v) ? v : u;
+        }
+        if (e->kind == E_AWAIT && built && built->owned && sum_accepts(t, built)) {
+            return await_point(c, e, t, dst); // Its owned result goes straight into t.
         }
         Value arm = expression(c, e, hint);
         if (dead(arm)) {
@@ -3665,6 +3686,9 @@ Value construct(Context *c, Expr *e, Type *t, int dst)
     }
     if (e->kind == E_CALL && !guarded_chain(e)) {
         return call(c, e, t, dst);
+    }
+    if (e->kind == E_AWAIT && t && t->owned && expression_type(c, e, NULL) == t) {
+        return await_point(c, e, NULL, dst);
     }
     if (e->kind == E_IF) {
         if (!t) {
@@ -4424,11 +4448,11 @@ static Value yield_point(Context *c, Expr *e)
 {
     suspension_check(c, e->loc);
     Expr none = {.kind = E_NAME, .text = "nil^", .loc = e->loc};
-    Value v = construct(c, e->a ? e->a : &none, c->in->result, c->in->result_slot);
+    construct(c, e->a ? e->a : &none, c->in->result, c->in->result_slot);
     if (c->terminated) {
         return abrupt(c);
     }
-    if (v.type->owned) {
+    if (c->in->yielded && c->in->yielded->owned) {
         fail(e->loc, "yield^ cannot hand out an owned value");
     }
     suspend(c, e->loc);
@@ -4442,6 +4466,19 @@ static Value yield_point(Context *c, Expr *e)
     copy->a = c->in->received_slot;
     copy->type = r;
     return out;
+}
+
+// Reserve (I_STACK_BEGIN) or give back (I_RELEASE) the data stacks of owned destination dst.
+static void reserve_result(Context *c, int op, int dst, Type *t, Loc l)
+{
+    Instr *i = emit(c, op, l);
+    if (op == I_RELEASE) {
+        i->a = dst;
+    }
+    else {
+        i->dst = dst;
+    }
+    i->type = t;
 }
 
 // A fresh reference to the frame held at holder: its address if holder is the frame, else the
@@ -4463,7 +4500,7 @@ static int frame_reference(Context *c, Value holder, Loc l)
 // await^ a: run frame a to its end through this coroutine. Each of its suspensions suspends
 // this one with what it yielded, and each resume of this one resumes it with what was handed
 // in; its result is the value.
-static Value await_point(Context *c, Expr *e)
+static Value await_point(Context *c, Expr *e, Type *into, int dst)
 {
     Value holder = expression(c, e->a, NULL);
     if (dead(holder) || c->terminated) {
@@ -4500,11 +4537,31 @@ static Value await_point(Context *c, Expr *e)
     if (holder.type->kind != T_REF && !holder.var) {
         dispose_pending(c, holder);
     }
+    // An owned final result is built on the stack of the resume that ends the frame. The
+    // destination is reserved for each resume and given back before each suspension, since
+    // this coroutine's own stacks may lie elsewhere when it is resumed.
+    bool owned = co->final->owned;
+    int owners = c->pending_owners.n;
+    // The binding that owns the destination; built into this coroutine's own result instead,
+    // it lies on the stack each resume of this coroutine is handed.
+    int owner = dst >= 0 ? ((Slot *)c->in->slots.v[dst])->owner : -1;
+    bool reserve = owned && !c->building_result;
+    if (owned && (dst < 0 || (reserve && (!owners || (intptr_t)c->pending_owners.v[owners - 1] !=
+                                                         owner + 1)))) {
+        fail(e->loc, "bind the owned result of await^ to a variable of its type");
+    }
+    Type *held = owner >= 0 ? ((Slot *)c->in->slots.v[owner])->type : NULL;
+    if (reserve) {
+        reserve_result(c, I_RELEASE, owner, held, e->loc);
+        c->pending_owners.n--;
+        reserve_result(c, I_STACK_BEGIN, owner, held, e->loc);
+    }
     Value turn = value(c, co->turn);
     int ref = frame_reference(c, holder, e->loc);
     Instr *start = emit(c, I_RESUME, e->loc);
     start->dst = turn.id;
     start->a = ref;
+    start->b = owned ? dst : -1;
     start->type = co->turn;
     start->callee = co;
     start->label = 2;
@@ -4520,9 +4577,12 @@ static Value await_point(Context *c, Expr *e)
     test->callee = co;
     nil_branch(c, done, end, more, e->loc);
     nil_label(c, more, e->loc);
+    if (reserve) {
+        reserve_result(c, I_RELEASE, owner, held, e->loc);
+    }
     suspension_check(c, e->loc);
-    convert_value(c, turn_part(c, turn, co->yielded, -1, e->loc), c->in->result, c->in->result_slot,
-                  e->loc);
+    convert_value(c, turn_part(c, turn, co->yielded, NULL, -1, e->loc), c->in->result,
+                  c->in->result_slot, e->loc);
     suspend(c, e->loc);
     ref = frame_reference(c, holder, e->loc);
     if (lends) {
@@ -4530,9 +4590,13 @@ static Value await_point(Context *c, Expr *e)
         rebase->a = ref;
         rebase->callee = co;
     }
+    if (reserve) {
+        reserve_result(c, I_STACK_BEGIN, owner, held, e->loc);
+    }
     Instr *again = emit(c, I_RESUME, e->loc);
     again->dst = turn.id;
     again->a = ref;
+    again->b = owned ? dst : -1;
     again->type = co->turn;
     again->callee = co;
     again->label = 1;
@@ -4542,7 +4606,9 @@ static Value await_point(Context *c, Expr *e)
     nil_jump(c, top, e->loc);
     nil_label(c, end, e->loc);
     c->pending_disposals.n = disposals;
-    Value out = turn_part(c, turn, co->final, slot(c, co->final, false), e->loc);
+    c->pending_owners.n = owners;
+    Value out =
+        turn_part(c, turn, co->final, into, owned ? dst : slot(c, co->final, false), e->loc);
     // Its references come from what the frame borrows, if its returns take any from there.
     bool borrowed = co->returns.n || co->returns_unknown;
     out.deps = co->final->refs && borrowed ? place.deps : (Roots){0};
@@ -4667,7 +4733,7 @@ Value expression(Context *c, Expr *e, Type *expected)
         return yield_point(c, e);
     }
     if (e->kind == E_AWAIT) {
-        return await_point(c, e);
+        return await_point(c, e, NULL, -1);
     }
     if (e->kind == E_PANIC) {
         Value v = snapshot(c, expression(c, e->a, NULL), e->loc);

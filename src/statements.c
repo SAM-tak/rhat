@@ -1765,8 +1765,8 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
                  type_name(written));
         }
         in->result = in->turn;
-        if (in->turn->owned) {
-            fail(f->loc, "a coroutine cannot yield or return owned values");
+        if (in->yielded && in->yielded->owned) {
+            fail(f->loc, "a coroutine cannot yield owned values");
         }
     }
     Context c = {0};

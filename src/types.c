@@ -114,8 +114,8 @@ bool frame_conforms(Type *frame, Def *d)
     Instance *in = frame->coroutine;
     Type **a = d->coroutine_args;
     int n = d->coroutine_params;
-    if (!n || !sum_accepts(a[2], in->final)) {
-        return false;
+    if (!n || in->final->owned || !sum_accepts(a[2], in->final)) {
+        return false; // An owned final result is taken only by await^.
     }
     if (n == 1) {
         return true;

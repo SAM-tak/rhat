@@ -711,6 +711,86 @@ let^ run = p^ {
 run()
 ''', 'error\nnil\n')
 
+    positive('owned_final_through_await', '''
+errordef^ E { Bad }
+let^ make = p^ n:i64^ {
+    yield^ i64^(0)
+    if^ n < 0 { return^ E.Bad{} }
+    return^ i64^[grow^]{n repeat^ 3}
+}
+let^ mid = p^ n:i64^ {
+    yield^ i64^(10)
+    return^ await^ make(n)
+}
+let^ outer = p^ n:i64^ {
+    var^ xs = try^ await^ mid(n)
+    xs.push(7)
+    print^(xs.len, xs[0], xs[3])
+    return^ nil^
+}
+let^ drive = p^ n:i64^ {
+    var^ o = outer(n)
+    for^ w in^ o { print^("w", w) }
+    let^ r = o.result()
+    if^ r fits^ E { print^("error") }
+}
+drive(5)
+drive(-1)
+''', 'w 10\nw 0\n4 5 7\nw 10\nw 0\nerror\n')
+    positive('owned_final_on_resumers_stack', '''
+let^ make = p^ n:i64^ {
+    yield^ i64^(0)
+    return^ i64^[grow^]{n repeat^ 4}
+}
+let^ outer = p^ n:i64^ {
+    var^ total:i64^ = 0
+    do^ {
+        var^ xs = await^ make(n)
+        for^ x in^ xs { total += x }
+        xs.push(1)
+        total += xs.len
+    }
+    yield^ total
+    return^ nil^
+}
+let^ first = p^ o:ref^ outer.ReturnType^ { let^ t = o.start() }
+let^ second = p^ o:ref^ outer.ReturnType^ {
+    var^ ys = i64^[grow^]{9 repeat^ 1000}
+    let^ t = o.resume()
+    if^ t fits^ i64^ { print^("total", t) }
+    ys.push(5)
+    var^ zs = i64^[grow^]{8 repeat^ 10}
+    print^(ys.len, ys[0], zs[9])
+}
+let^ run = p^ {
+    var^ a = i64^[grow^]{1, 2, 3}
+    var^ o = outer(6)
+    first(ref^ o)
+    second(ref^ o)
+    let^ t = o.resume()
+    print^(a.len, a[2])
+}
+run()
+''', 'total 29\n1001 9 8\n3 3\n')
+    for name, use in [
+        ('owned_final_result', 'let^ r = c.result()'),
+        ('owned_final_start', 'let^ r = c.start()'),
+        ('owned_final_walk', 'for^ w in^ c { print^(w) }'),
+    ]:
+        negative(name, '''
+let^ make = p^ { yield^ i64^(0)  return^ i64^[grow^]{1} }
+var^ c = make()
+''' + use, 'a coroutine with an owned final result is run only by await^')
+    negative('owned_final_unbound', '''
+let^ make = p^ { yield^ i64^(0)  return^ i64^[grow^]{1} }
+let^ outer = p^ { print^((await^ make()).len)  return^ nil^ }
+for^ w in^ outer() {}
+''', 'bind the owned result of await^ to a variable of its type')
+    negative('owned_yield', '''
+let^ make = p^ { yield^ i64^[grow^]{1}  return^ nil^ }
+var^ c = make()
+''', 'a coroutine cannot yield owned values')
+
     negative('written_result', '''
 let^ g = p^ -> i32^ { yield^ 1
     return^ 2 }

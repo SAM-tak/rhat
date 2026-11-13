@@ -96,7 +96,8 @@ static char *stack_for(Output *o, int id)
         return fmt("%%nested%d", slot->nested_stack - 1);
     }
     int owner = slot->owner;
-    if (o->in->result->owned && owner == o->in->result_slot) {
+    Type *answer = o->in->fn->yields ? o->in->turn : o->in->result;
+    if (answer->owned && owner == o->in->result_slot) {
         return "%result_stack";
     }
     return fmt("%%s%d", owner);
@@ -986,9 +987,6 @@ static void instruction(Output *o, Instr *i)
         break;
     }
     case I_STACK_BEGIN:
-        a = ++o->tmp;
-        fprintf(f, "  %%t%d = add i64 %%sp, %d\n", a, i->stack_index);
-        fprintf(f, "  %%s%d = getelementptr %%RhStack, ptr %%stacks, i64 %%t%d\n", i->dst, a);
         fprintf(f, "  call void @rh_stack_group_save(ptr %%s%d, ptr %%mark%d, i64 %d)\n", i->dst,
                 i->dst, t->regions);
         break;
@@ -1957,7 +1955,8 @@ static void instruction(Output *o, Instr *i)
         if (o->p->state_fields.n) {
             fputs(", ptr %context", f);
         }
-        fprintf(f, ", ptr %%t%d)\n  br label %%dispose_done_%d\ndispose_done_%d:\n", a, id, id);
+        fprintf(f, ", ptr %%t%d%s)\n  br label %%dispose_done_%d\ndispose_done_%d:\n", a,
+                co->turn->owned ? ", ptr null" : "", id, id);
         break;
     }
     case I_FRAME: {
@@ -2013,7 +2012,11 @@ static void instruction(Output *o, Instr *i)
             if (o->p->state_fields.n) {
                 fputs(", ptr %context", f);
             }
-            fprintf(f, ", ptr %%t%d)\n", a);
+            fprintf(f, ", ptr %%t%d", a);
+            if (co->turn->owned) {
+                fprintf(f, ", ptr %s", i->b >= 0 ? stack_for(o, i->b) : "null");
+            }
+            fputs(")\n", f);
         }
         int at = ++o->tmp, turn = ++o->tmp;
         fprintf(f, "  %%t%d = getelementptr i8, ptr %%t%d, i64 %zu\n  %%t%d = load %s, ptr %%t%d\n",
@@ -2269,7 +2272,7 @@ void emit_llvm(Program *p, const char *path)
         if (result && !direct(in->result)) {
             fputs(", ptr %out", f);
         }
-        if (in->result->owned) {
+        if ((coroutine ? in->turn : in->result)->owned) {
             fputs(", ptr %result_stack", f);
         }
         for (int k = 0; !coroutine && k < in->params.n; k++) {
@@ -2295,10 +2298,21 @@ void emit_llvm(Program *p, const char *path)
                 fprintf(f, "  %%p%d = alloca %s\n", k, llvm_type(s->type));
             }
         }
+        // An owner may be reserved more than once (await^ reserves its destination for each
+        // resume), always at the same place: declare its stack and marks once.
         for (int k = 0; k < in->code.n; k++) {
             Instr *i = in->code.v[k];
-            if (i->op == I_STACK_BEGIN) {
-                fprintf(f, "  %%mark%d = alloca [%d x ptr]\n", i->dst, i->type->regions);
+            bool first = i->op == I_STACK_BEGIN;
+            for (int q = 0; first && q < k; q++) {
+                Instr *earlier = in->code.v[q];
+                first = earlier->op != I_STACK_BEGIN || earlier->dst != i->dst;
+            }
+            if (first) {
+                int at = ++o.tmp;
+                fprintf(f,
+                        "  %%mark%d = alloca [%d x ptr]\n  %%t%d = add i64 %%sp, %d\n"
+                        "  %%s%d = getelementptr %%RhStack, ptr %%stacks, i64 %%t%d\n",
+                        i->dst, i->type->regions, at, i->stack_index, i->dst, at);
             }
         }
         if (result && !direct(in->result)) {

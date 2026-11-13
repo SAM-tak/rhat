@@ -107,8 +107,9 @@ static void local_plan(Instance *in)
         }
         if (i->op == I_REGION || (i->op == I_CALL && i->type->owned)) {
             int owner = ((Slot *)in->slots.v[i->dst])->owner;
-            bool found = ((Slot *)in->slots.v[i->dst])->nested_stack ||
-                         (owner == in->result_slot && in->result->owned);
+            bool found =
+                ((Slot *)in->slots.v[i->dst])->nested_stack ||
+                (owner == in->result_slot && (in->fn->yields ? in->turn : in->result)->owned);
             for (int j = 0; j < state.n; j++) {
                 found |= owners[j] == owner;
             }
