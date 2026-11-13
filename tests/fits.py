@@ -65,6 +65,25 @@ let^ show=p^ value:Result {
 show(3) show(Error.Missing{}) show(Error.Invalid{})
 ''', '4\ntrue\nfalse\n')
 
+    positive('fits_variant_of_held_errordef', '''
+errordef^ E { A, B }
+let^ f = p^ n:i64^ -> i64^ | E {
+    if^ n > 1 { return^ E.B{} }
+    if^ n = 1 { return^ E.A{} }
+    return^ n
+}
+let^ show = p^ n:i64^ {
+    let^ v = f(n)
+    if^ v fits^ E.B {
+        let^ w:E.B = v
+        print^("B")
+    el^:
+        if^ v fits^ i64^ { print^("int", v) el^: print^("A") }
+    }
+}
+show(0) show(1) show(5)
+''', 'int 0\nA\nB\n')
+
     positive('fits_false_subset', '''
 let^ test=p^ x:i32^|i64^|nil^ {
  if^ x fits^ i32^|nil^ {

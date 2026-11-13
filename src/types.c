@@ -858,9 +858,13 @@ Type *fits_subset(Program *p, Type *from, Type *to, bool yes, Loc loc)
     int count = 0;
     for (int j = 0; j < from->def->alternatives.n; j++) {
         Type *arm = from->def->alternatives.v[j];
-        if (fits_type(arm, to) == yes) {
-            subset = subset ? type_union(p, subset, arm, loc) : arm;
-            count++;
+        // A named sum held whole may fit in part; its fitting alternatives join.
+        Type *part = fits_type(arm, to) == yes ? arm
+                     : arm->kind == T_UNION    ? fits_subset(p, arm, to, yes, loc)
+                                               : NULL;
+        if (part) {
+            subset = subset ? type_union(p, subset, part, loc) : part;
+            count += part == arm;
         }
     }
     return count == from->def->alternatives.n ? from : subset;

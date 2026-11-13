@@ -947,7 +947,9 @@ Value convert_value(Context *c, Value src, Type *to, int dst, Loc loc)
     List selected = {0};
     for (int j = 0; j < src.type->def->alternatives.n; j++) {
         Type *arm = src.type->def->alternatives.v[j];
-        if (sum_accepts(to, arm)) {
+        // A named sum held whole projects through what it holds.
+        if (sum_accepts(to, arm) ||
+            (arm->kind == T_UNION && fits_subset(c->p, arm, to, true, loc))) {
             add(&selected, arm);
         }
     }
@@ -1165,7 +1167,10 @@ Value fits_value(Context *c, Expr *e)
     bool first = true;
     for (int j = 0; j < src.type->def->alternatives.n; j++) {
         Type *arm = src.type->def->alternatives.v[j];
-        if (!fits_type(arm, target)) {
+        // A named sum held whole, such as an errordef^, fits in part: test what it holds.
+        bool part = !fits_type(arm, target) && arm->kind == T_UNION &&
+                    fits_subset(c->p, arm, target, true, e->loc);
+        if (!part && !fits_type(arm, target)) {
             continue;
         }
         Value test = value(c, out.type);
@@ -1174,6 +1179,20 @@ Value fits_value(Context *c, Expr *e)
         i->a = src.id;
         i->type = src.type;
         i->label = j;
+        if (part) {
+            int held_arm = ++c->in->labels, other = ++c->in->labels, end = ++c->in->labels;
+            nil_branch(c, test, held_arm, other, e->loc);
+            nil_label(c, held_arm, e->loc);
+            Value payload = case_value(c, src, arm, e->loc);
+            Expr held = {.kind = E_SAVED, .loc = e->loc, .compiler_value = &payload};
+            Expr inner = *e;
+            inner.a = &held;
+            copy_to(c, test, fits_value(c, &inner), e->loc, false);
+            nil_jump(c, end, e->loc);
+            nil_label(c, other, e->loc);
+            nil_jump(c, end, e->loc);
+            nil_label(c, end, e->loc);
+        }
         if (first) {
             copy_to(c, out, test, e->loc, true);
         }
