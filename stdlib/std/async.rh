@@ -11,6 +11,9 @@ externC^rh_async_watch:p^socket:i64^, write:bool^-> i64^;
 externC^rh_async_wait:p^timeout:f64^-> i64^;
 externC^rh_async_external:p^token:ref^i64^-> i64^;
 externC^rh_async_complete:p^token:i64^;
+externC^rh_async_drop:p^id:i64^;
+externC^rh_async_pending:p^-> i64^;
+externC^rh_async_waiting:p^id:i64^-> bool^;
 
 # A wait that is ready once seconds have passed.
 public^let^timer = p^seconds:f64^-> i64^{ return^rh_async_timer(seconds) }
@@ -40,6 +43,16 @@ public^let^wait = p^timeout:f64^-> i64^| nil^{
     if^id = 0 { return^nil^}
     return^id
 }
+
+# Takes wait id out of this thread's table, unready: no wait answers it after. An external
+# wait's completer may still complete it, to no effect.
+public^let^drop = p^id:i64^{ rh_async_drop(id) }
+
+# How many waits this thread's table holds.
+public^let^pending = p^-> i64^{ return^rh_async_pending() }
+
+# Whether id is a wait in this thread's table, not yet answered by wait nor dropped.
+public^let^waiting = p^id:i64^-> bool^{ return^rh_async_waiting(id) }
 
 # Suspends the awaiting coroutine for seconds: await^std.async.delay(0.5).
 public^let^delay = p^seconds:f64^{

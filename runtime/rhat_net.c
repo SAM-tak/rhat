@@ -600,6 +600,35 @@ void rh_async_complete(int64_t token)
     }
 }
 
+// The index of wait id in this thread's table, or -1.
+static int64_t find_wait(int64_t id)
+{
+    for (int64_t k = 0; k < wait_count; k++) {
+        if (waits[k].id == id) {
+            return k;
+        }
+    }
+    return -1;
+}
+
+void rh_async_drop(int64_t id)
+{
+    int64_t k = find_wait(id);
+    if (k >= 0) {
+        take_wait(k);
+    }
+}
+
+int64_t rh_async_pending(void)
+{
+    return wait_count;
+}
+
+bool rh_async_waiting(int64_t id)
+{
+    return find_wait(id) >= 0;
+}
+
 // Answers the id of one wait that is ready, sleeping up to timeout seconds for one; 0 when
 // none became ready, or when nothing is waited for.
 int64_t rh_async_wait(double timeout)

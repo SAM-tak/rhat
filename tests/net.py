@@ -31,6 +31,22 @@ let^ run = p^ {
 run()
 ''', 'a 0\nb 0\na 1\ndone\n')
 
+    # A dropped wait leaves the table and never comes back from wait.
+    positive('async_drop', '''
+let^ async = import^ std.async
+let^ run = p^ {
+    let^ a = async.timer(0.0)
+    let^ b = async.timer(0.0)
+    print^(async.pending(), async.waiting(a), async.waiting(b))
+    async.drop(a)
+    print^(async.pending(), async.waiting(a), async.waiting(b))
+    let^ got = async.wait(1.0)
+    if^ got fits^ i64^ { print^(got = b) }
+    print^(async.pending(), async.waiting(b), async.wait(0.0) = nil^)
+}
+run()
+''', '2 true true\n1 false true\ntrue\n0 false true\n')
+
     positive('tcp_echo', '''
 let^ async = import^ std.async
 let^ net = import^ std.net
