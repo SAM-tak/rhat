@@ -268,6 +268,13 @@ void mock_multi(void);
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
 void mock_fail(void);
 void mock_any(void);
+typedef struct LhatRuntimeType LhatRuntimeType;
+typedef void (*LhatHostHoldFn)(void *pointer, void *context);
+typedef const LhatRuntimeType *(*LhatHostTypeArgumentFn)(const void *pointer, size_t index, void *context);
+bool lhat_register_hostdata_shared(LhatProgram *program, const char *module, const char *name, LhatHostHoldFn retain, LhatHostHoldFn let_go, void *context);
+bool lhat_register_hostdata_type_arguments(LhatProgram *program, const char *module, const char *name, LhatHostTypeArgumentFn read, void *context);
+void mock_contract(void *pointer);
+LhatRuntimeType *mock_type(void);
 ''', encoding='utf-8')
     host = suite.work / 'mock_lhat.c'
     host.write_text(f'''#include "{(suite.repo / 'runtime/rhat_runtime.c').as_posix()}"
@@ -416,6 +423,33 @@ void mock_fail(void)
         }}
     }}
 }}
+static LhatHostHoldFn retained, released;
+static LhatHostTypeArgumentFn argued;
+bool lhat_register_hostdata_shared(LhatProgram *p, const char *module, const char *name, LhatHostHoldFn retain, LhatHostHoldFn let_go, void *context)
+{{
+    (void)p;
+    (void)context;
+    printf("%s.%s shared\\n", module, name);
+    retained = retain;
+    released = let_go;
+    return true;
+}}
+bool lhat_register_hostdata_type_arguments(LhatProgram *p, const char *module, const char *name, LhatHostTypeArgumentFn read, void *context)
+{{
+    (void)p;
+    (void)context;
+    printf("%s.%s type arguments\\n", module, name);
+    argued = read;
+    return true;
+}}
+LhatRuntimeType *mock_type(void) {{ return (LhatRuntimeType *)&program; }}
+void mock_contract(void *pointer)
+{{
+    retained(pointer, NULL);
+    retained(pointer, NULL);
+    released(pointer, NULL);
+    printf("%d %d\\n", argued(pointer, 0, NULL) == NULL, argued(pointer, 1, NULL) == NULL);
+}}
 static LhatValue text(const char *t) {{ LhatValue v; lhat_machine_make_string(NULL, t, strlen(t), &v); return v; }}
 void mock_run(int32_t mode)
 {{
@@ -547,6 +581,39 @@ mock_any()
              'rhat.echo f^any^ -> any^;\nrhat.kind f^any^ -> number^;\nrhat.named p^number^ -> any^;\n'
              'rhat.wrap p^c^{->*->*} -> std.task.Task<ARG0.ResultType>;\n'
              'true\n42 hello 4 made\n', extra=lhat_extra)
+    # A module's exportL^ names drop the R^ module: L^ registers them under its own. One L^ name
+    # can take several arms, a member its written signature, and a host data type the contracts
+    # that share it across machines and give its type arguments.
+    (suite.work / 'lhost').mkdir(parents=True, exist_ok=True)
+    (suite.work / 'lhost' / 'shared.rh').write_text('''module^ lhost.shared
+includeC^ "lhat.h"
+externC^ def^ LhatRuntimeType;
+externC^ mock_type:f^ -> ref^ read^ LhatRuntimeType;
+public^ exportL^ ref^ def^ Job {
+  self^{ n:i64^ = 0 }
+  exportL^"f^self^ -> number^|nil^" count = f^ self^ -> i64^ { self^.n }
+  retain = p^ self^ { self^.n += 1 }
+  let_go = p^ self^ { self^.n -= 1 }
+  type_argument = f^ self^, index:u64^ -> ref^ read^ LhatRuntimeType | nil^ {
+    if^ index = 0 { return^ mock_type() }
+    return^ nil^
+  }
+}
+exportL^ let^ peek = f^ j:ref^ Job -> i64^ { j.n }
+exportL^"start" "p^ -> number^" let^ start_default = p^ -> i64^ { return^ 2 }
+exportL^"start" "p^number^ -> number^" let^ start_with = p^ n:i64^ -> i64^ { return^ n }
+''', encoding='utf-8')
+    contract = lhat.replace('externC^ mock_run:p^ mode:i32^;', '''let^ shared = import^lhost.shared
+externC^ mock_contract:p^ j:ref^ shared.Job;''') + '''var^ j = shared.Job{n = 1}
+mock_contract(ref^ j)
+print^(j.n)
+'''
+    positive('ffi_export_lhat_contract', contract,
+             'rhat.Job data\nrhat.add f^number^, number^ -> number^;\nrhat.half f^number^ -> number^;\n'
+             'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
+             'rhat.peek f^rhat.Job -> number^;\nrhat.start p^ -> number^;\nrhat.start p^number^ -> number^;\n'
+             'rhat.Job.count f^self^ -> number^|nil^;\nrhat.Job shared\nrhat.Job type arguments\n'
+             'true\n0 1\n2\n', extra=lhat_extra)
     negative('ffi_export_lhat_machine_first', header + '''externC^ def^ LhatMachine;
 exportL^ let^ late = f^ n:i64^, m:ref^ LhatMachine -> i64^ { n }''',
              'exportL^ takes the calling ref^ LhatMachine as its first parameter')

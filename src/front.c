@@ -1796,6 +1796,17 @@ static Expr *operation(Parser *p, int min);
 static bool catch_head(Parser *p);
 static Function *function(Parser *p, char *name, Def *owner, bool abstr);
 
+// An exportL^ signature as written, without the ; L^ ends one with, which registration adds.
+static char *lhat_signature_text(const char *text)
+{
+    char *s = str(text);
+    size_t n = strlen(s);
+    while (n && (s[n - 1] == ';' || s[n - 1] == ' ')) {
+        s[--n] = 0;
+    }
+    return s;
+}
+
 // Whether t names a function to stand as an arm: a plain word, not a function literal's start.
 static bool named_arm(Token *t)
 {
@@ -3983,9 +3994,18 @@ static void def_member(Parser *p, Def *d)
         return;
     }
     bool priv = false, abstr = false, over = false, overload = false;
-    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") || is(p, "overload^")) {
+    char *lhat_signature = NULL;
+    while (is(p, "private^") || is(p, "abstract^") || is(p, "override^") || is(p, "overload^") ||
+           is(p, "exportL^")) {
         if (take(p, "private^")) {
             priv = true;
+        }
+        else if (take(p, "exportL^")) {
+            // exportL^"f^self^ -> string^|nil^" writes the L^ signature of a member.
+            if (tok(p)->kind != TOK_STRING) {
+                fail(tok(p)->loc, "exportL^ before a member takes the L^ signature, as a string");
+            }
+            lhat_signature = lhat_signature_text(next(p)->text);
         }
         else if (take(p, "abstract^")) {
             abstr = true;
@@ -4076,6 +4096,7 @@ static void def_member(Parser *p, Def *d)
     Function *f = function(p, name, d, abstr);
     f->declaration = declaration;
     f->priv = priv;
+    f->lhat_signature = lhat_signature;
     f->override = over;
     f->overload = overload;
     f->static_member = !f->operator_member && (!f->params.n || !((Param *)f->params.v[0])->self);
@@ -4273,7 +4294,7 @@ static void declaration(Parser *q)
     // reference, and an errordef^ L^ receives as its own errors.
     Loc export_at = tok(q)->loc;
     bool exported = false, lhat_export = false;
-    char *lhat_signature = NULL;
+    char *lhat_signature = NULL, *lhat_name = NULL;
     for (;;) {
         if (take(q, "exportC^")) {
             exported = true;
@@ -4282,13 +4303,15 @@ static void declaration(Parser *q)
             lhat_export = true;
             // exportL^"p^c^{->*->*} -> ..." writes the L^ signature itself, for what R^'s
             // types cannot say, such as L^'s computed result types.
+            // exportL^"async" "p^..." also names it, for another arm of one L^ name.
             if (tok(q)->kind == TOK_STRING) {
-                lhat_signature = str(tok(q)->text);
-                size_t n = strlen(lhat_signature);
-                while (n && (lhat_signature[n - 1] == ';' || lhat_signature[n - 1] == ' ')) {
-                    lhat_signature[--n] = 0;
-                }
+                lhat_signature = lhat_signature_text(tok(q)->text);
                 q->at++;
+                if (tok(q)->kind == TOK_STRING) {
+                    lhat_name = str(((Token *)q->tokens.v[q->at - 1])->text);
+                    lhat_signature = lhat_signature_text(tok(q)->text);
+                    q->at++;
+                }
             }
         }
         else {
@@ -4543,6 +4566,7 @@ static void declaration(Parser *q)
         parsed_function->exported = exported;
         parsed_function->lhat_export = lhat_export;
         parsed_function->lhat_signature = lhat_signature;
+        parsed_function->lhat_name = lhat_name;
         add(&module->functions, parsed_function);
         add(&p->functions, parsed_function);
         first_arm = false;

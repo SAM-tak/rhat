@@ -283,6 +283,7 @@ struct Function {
     bool exported;        // exportC^: callable from C under its own name.
     bool lhat_export;     // exportL^: registered as an L^ host function.
     char *lhat_signature; // exportL^"...": the L^ signature written for it, not derived.
+    char *lhat_name;      // exportL^"name" "...": the L^ name it registers under, if not its own.
     bool variadic;      // The last parameter "..." collects trailing arguments as a slice or pack.
     bool heterogeneous; // An untyped template^ ... parameter carries a fixed argument pack.
     bool yields;        // The body suspends with yield^: a call makes a coroutine frame.
@@ -690,6 +691,9 @@ const char *c_function_symbol(Function *f);
 Def *lhat_data_def(Type *t);
 // LhatValue, the C type of any L^ value: an exportL^ function passes it through as is (any^).
 bool lhat_any(Type *t);
+// retain, let_go and type_argument of an exportL^ ref^ def^: C callbacks L^ calls for its
+// host data (sharing it across machines, reading its type arguments), not L^ members.
+bool lhat_contract(Function *f);
 // ref^LhatMachine: the machine that called an exportL^ function, given to it ahead of the
 // L^ arguments.
 bool lhat_machine(Type *t);

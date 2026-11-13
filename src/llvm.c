@@ -2718,6 +2718,14 @@ static void c_struct(FILE *f, Type *t, List *done, bool headers)
 
 // The L^ spelling of a value an exportL^ function takes or answers; a host
 // type is qualified by the module, which the registration receives.
+// d's name as L^ sees it, without its R^ module: lhat.task.Task is Task under std.task.
+static const char *l_short(Def *d)
+{
+    size_t n = d->module && d->module->name ? strlen(d->module->name) : 0;
+    return n && !strncmp(d->name, d->module->name, n) && d->name[n] == '.' ? d->name + n + 1
+                                                                           : d->name;
+}
+
 static const char *l_name(Type *t)
 {
     Def *data = lhat_data_def(t);
@@ -2729,9 +2737,9 @@ static const char *l_name(Type *t)
         }
         return names;
     }
-    return data                  ? fmt("%%s.%s%s", data->name, t->kind == T_UNION ? "|nil^" : "")
+    return data                  ? fmt("%%s.%s%s", l_short(data), t->kind == T_UNION ? "|nil^" : "")
            : lhat_any(t)         ? "any^"
-           : t->kind == T_STRUCT ? fmt("%%s.%s", t->def->name)
+           : t->kind == T_STRUCT ? fmt("%%s.%s", l_short(t->def))
            : t->kind == T_STRING ? "string^"
            : t->kind == T_BOOL   ? "bool^"
                                  : "number^";
@@ -2946,11 +2954,11 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 "static const LhatHostDataTag *rh_lhat_data_%d;\n"
                 "bool rhat_lhat_wrap_%s(LhatMachine *machine, void *pointer, LhatValue *out)\n{\n"
                 "  return %s(machine, rh_lhat_data_%d, pointer, out);\n}\n",
-                d->type->id, d->name, l_make(d), d->type->id);
+                d->type->id, l_short(d), l_make(d), d->type->id);
             l_add(&parts, d->module, &registrations,
                   fmt("  rh_lhat_data_%d = lhat_register_hostdata_type(program, module, \"%s\");\n"
                       "  if (!rh_lhat_data_%d) {\n    return false;\n  }\n",
-                      d->type->id, d->name, d->type->id));
+                      d->type->id, l_short(d), d->type->id));
         }
         // An error kind's variant names live as long as the program.
         char *variants = "", *kinds = "";
@@ -2969,7 +2977,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                       "    const LhatErrorKind *kinds[%d];\n"
                       "    if (!lhat_register_error_kind(program, module, \"%s\", names, %d, NULL, "
                       "kinds)) {\n      return false;\n    }\n%s  }\n",
-                      variants, count, d->name, count, kinds));
+                      variants, count, l_short(d), count, kinds));
         }
         if (!d->lhat_value) {
             continue;
@@ -2979,21 +2987,25 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
         l_add(&parts, d->module, &registrations,
               fmt("  rh_lhat_tag_%d = lhat_register_hostvalue_type(program, module, \"%s\", "
                   "sizeof(%s));\n  if (!rh_lhat_tag_%d) {\n    return false;\n  }\n",
-                  d->type->id, d->name, name, d->type->id));
+                  d->type->id, l_short(d), name, d->type->id));
         for (int k = 0; k < d->fields.n; k++) {
             Field *field = d->fields.v[k];
             if (l_field(field->type) && !field->priv) {
                 l_add(&parts, d->module, &registrations,
                       fmt("  if (!lhat_register_hostvalue_field(program, module, \"%s\", \"%s\", "
                           "offsetof(%s, %s), %s)) {\n    return false;\n  }\n",
-                          d->name, field->name, name, d->c_name ? field->name : fmt("f%d", k),
+                          l_short(d), field->name, name, d->c_name ? field->name : fmt("f%d", k),
                           l_field(field->type)));
             }
         }
     }
     for (int j = 0; j < hosts->n; j++) {
         Instance *in = hosts->v[j];
-        const char *name = c_function_symbol(in->fn), *symbol = in->symbol;
+        if (lhat_contract(in->fn)) {
+            continue; // Registered below as a callback, not as an L^ member.
+        }
+        const char *name = in->fn->lhat_name ? in->fn->lhat_name : c_function_symbol(in->fn);
+        const char *symbol = in->symbol;
         // A result that may fail comes back whole into u.
         Type *t = lhat_success(in->result);
         bool failing = t != in->result;
@@ -3100,7 +3112,7 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                 kind = fmt("%s}[inner]", kind);
                 at += arm->payload_offset;
             }
-            signature = fmt("%s|%%s.%s", signature, arm->def->name);
+            signature = fmt("%s|%%s.%s", signature, l_short(arm->def));
             failures =
                 fmt("%s  if (tag == %d) {\n%s    rh_lhat_fail(machine, %s, u + %zu, answers, "
                     "answer_count);\n    return;\n  }\n",
@@ -3156,14 +3168,55 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             signature = in->fn->lhat_signature; // Written as L^ reads it; it names no modules.
         }
         l_add(&parts, in->fn->module, &registrations,
-              l_register(owner
-                             ? fmt("lhat_register_%smember(program, module, "
-                                   "\"%s\", \"%s\", s, rh_lhat_%s, NULL)",
-                                   owner->lhat_data ? "" : "hostvalue_", owner->name, name, symbol)
-                             : fmt("lhat_register_func(program, module, \"%s\", s, "
-                                   "rh_lhat_%s, NULL)",
-                                   name, symbol),
+              l_register(owner ? fmt("lhat_register_%smember(program, module, "
+                                     "\"%s\", \"%s\", s, rh_lhat_%s, NULL)",
+                                     owner->lhat_data ? "" : "hostvalue_", l_short(owner), name,
+                                     symbol)
+                               : fmt("lhat_register_func(program, module, \"%s\", s, "
+                                     "rh_lhat_%s, NULL)",
+                                     name, symbol),
                          signature));
+    }
+    // A host data type with retain and let_go is shared across machines; with type_argument,
+    // L^ reads its type arguments from each value.
+    for (int j = 0; j < p->defs.n; j++) {
+        Def *d = p->defs.v[j];
+        Instance *retain = NULL, *let_go = NULL, *type = NULL;
+        for (int k = 0; d->lhat_data && k < hosts->n; k++) {
+            Instance *in = hosts->v[k];
+            const char *s = c_function_symbol(in->fn);
+            if (in->fn->owner == d && lhat_contract(in->fn)) {
+                retain = !strcmp(s, "retain") ? in : retain;
+                let_go = !strcmp(s, "let_go") ? in : let_go;
+                type = !strcmp(s, "type_argument") ? in : type;
+            }
+        }
+        if (retain && let_go) {
+            fprintf(f,
+                    "void rh_entry_%s(void *);\nvoid rh_entry_%s(void *);\n"
+                    "static void rh_lhat_retain_%d(void *pointer, void *context)\n{\n"
+                    "  (void)context;\n  rh_entry_%s(pointer);\n}\n"
+                    "static void rh_lhat_let_go_%d(void *pointer, void *context)\n{\n"
+                    "  (void)context;\n  rh_entry_%s(pointer);\n}\n",
+                    retain->symbol, let_go->symbol, d->type->id, retain->symbol, d->type->id,
+                    let_go->symbol);
+            l_add(&parts, d->module, &registrations,
+                  fmt("  if (!lhat_register_hostdata_shared(program, module, \"%s\", "
+                      "rh_lhat_retain_%d, rh_lhat_let_go_%d, NULL)) {\n    return false;\n  }\n",
+                      l_short(d), d->type->id, d->type->id));
+        }
+        if (type) {
+            fprintf(f,
+                    "const LhatRuntimeType *rh_entry_%s(void *, uint64_t);\n"
+                    "static const LhatRuntimeType *rh_lhat_type_%d(const void *pointer, size_t "
+                    "index, void *context)\n{\n  (void)context;\n"
+                    "  return rh_entry_%s((void *)pointer, (uint64_t)index);\n}\n",
+                    type->symbol, d->type->id, type->symbol);
+            l_add(&parts, d->module, &registrations,
+                  fmt("  if (!lhat_register_hostdata_type_arguments(program, module, \"%s\", "
+                      "rh_lhat_type_%d, NULL)) {\n    return false;\n  }\n",
+                      l_short(d), d->type->id));
+        }
     }
     fprintf(f,
             "bool rhat_lhat_register(LhatProgram *program, const char *module)\n{\n"

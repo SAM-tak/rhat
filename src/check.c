@@ -290,6 +290,13 @@ Type *lhat_success(Type *t)
     return !errors ? t : others == 1 ? success : NULL;
 }
 
+bool lhat_contract(Function *f)
+{
+    const char *s = strrchr(f->name, '.') ? strrchr(f->name, '.') + 1 : f->name;
+    return f->owner && f->owner->lhat_data &&
+           (!strcmp(s, "retain") || !strcmp(s, "let_go") || !strcmp(s, "type_argument"));
+}
+
 bool lhat_any(Type *t)
 {
     return t && t->kind == T_STRUCT && t->def->c_name && !strcmp(t->def->c_name, "LhatValue");
@@ -371,7 +378,7 @@ void export_validate(Program *p, Function *f)
             continue;
         }
         if (!t || (f->exported && !((c_flat(t) && t->kind != T_ARRAY) || c_pointer(t))) ||
-            (f->lhat_export && !l_value(t))) {
+            (f->lhat_export && !lhat_contract(f) && !l_value(t))) {
             fail(param->loc, "%s parameter '%s' needs a %s type annotation, not '%s'", kind,
                  param->name,
                  f->exported ? "C" : "number, bool^, string^, exportL^ def^ or LhatValue",
@@ -401,7 +408,9 @@ void export_validate(Program *p, Function *f)
         success = arm->kind == T_NIL && !lhat_data_def(success) ? NULL : success;
     }
     bool tuple = success && success->kind == T_STRUCT && success->def->tuple;
-    for (int j = 0; result && f->lhat_export && j < (tuple ? success->def->fields.n : 1); j++) {
+    for (int j = 0;
+         result && f->lhat_export && !lhat_contract(f) && j < (tuple ? success->def->fields.n : 1);
+         j++) {
         Type *part = !success ? NULL : tuple ? ((Field *)success->def->fields.v[j])->type : success;
         if (!part || !l_value(part)) {
             fail(f->result->loc, "exportL^ result must be a number, bool^, string^, exportL^ def^, "
