@@ -56,7 +56,7 @@ exportL^ref^externC^def^Task {
     }
     # What await^ delegates to: waits for the job without holding the thread -- inside a job,
     # the worker runs others meanwhile -- and ends with its result, as std.task.await answers it.
-    exportL^"f^self^ -> c^{f^ -> number^ -> self^.T0|std.task.TaskError}" join = p^self^, machine:ref^l.LhatMachine -> l.LhatValue {
+    exportL^"f^self^ -> c^{f^ -> number^ -> self^.T0|std.task.TaskError|std.sys.Error.OutOfMemory}" join = p^self^, machine:ref^l.LhatMachine -> l.LhatValue {
         var^out = l.lhat_nil()
         let^made = lhost_task_join(machine, self^, ref^out)
         return^out
