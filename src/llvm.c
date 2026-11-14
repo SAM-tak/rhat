@@ -3251,6 +3251,15 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
                       l_short(d), d->type->id));
         }
     }
+    // Last, the C registrars: L^ registers more against what is already there (checks).
+    for (int j = 0; j < p->modules.n; j++) {
+        Module *m = p->modules.v[j];
+        for (int k = 0; k < m->lhat_registrars.n; k++) {
+            l_add(&parts, m, &registrations,
+                  fmt("  if (!%s(program, module)) {\n    return false;\n  }\n",
+                      (char *)m->lhat_registrars.v[k]));
+        }
+    }
     fprintf(f,
             "bool rhat_lhat_register(LhatProgram *program, const char *module)\n{\n"
             "  char s[1024];\n  (void)s;\n%s  return true;\n}\n",
@@ -3304,6 +3313,9 @@ bool emit_c_shims(Program *p, const char *path, bool headers)
     for (int j = 0; headers && j < p->defs.n; j++) {
         Def *d = p->defs.v[j];
         lhat |= d->lhat_value || d->lhat_data || d->lhat_error;
+    }
+    for (int j = 0; headers && j < p->modules.n; j++) {
+        lhat |= ((Module *)p->modules.v[j])->lhat_registrars.n > 0;
     }
     if (!shims.n && !exports.n && !lhat) {
         return false;

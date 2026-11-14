@@ -3,14 +3,16 @@ module^lhat.task
 # L^'s std.task over R^'s pool: an L^ host registers this module as std.task, and L^ jobs run on
 # the workers of an R^ std.task pool, each on a machine of its own, a slice at a time. A job that
 # yields a std.async wait (lhat.async) parks until the wait is ready, and the worker runs others.
-# The names and signatures are L^'s own; L^'s check that a job's result fits one slot is not
-# made here.
+# The names, signatures and checks are L^'s own.
 
 includeC^"lhat_host.h"
 let^async = import^std.async
 let^task = import^std.task
 let^l = import^lhat.l
 let^sys = import^std.sys
+
+# Registered last: async's check that a job's result fits one slot.
+exportL^externC^lhost_task_register;
 
 externC^def^LhatCarried;
 externC^def^LhatJobResult;

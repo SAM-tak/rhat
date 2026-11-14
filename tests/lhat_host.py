@@ -90,12 +90,12 @@ def main():
     (suite.work / 'host.h').write_text(HOST, encoding='utf-8')
 
     # rhat is R^ for the main module; its exportL^ declarations register as L^'s rhat module.
-    def case(name, script, expected, rhat=''):
+    def case(name, script, expected, rhat='', status='0'):
         path = suite.work / f'{name}.lh'
         path.write_text(script, encoding='utf-8')
         more = 'rhat_lhat_register_main' if rhat else 'nil^'
         text = MAIN.replace('{script}', path.as_posix()).replace('{extra}', rhat)
-        suite.positive(name, text.replace('{more}', more), expected + '0\n', extra=extra)
+        suite.positive(name, text.replace('{more}', more), expected + status + '\n', extra=extra)
 
     # Jobs run on R^ pool workers; one waits on a timer there while the other goes on.
     case('task_pool', '''import^std.io
@@ -169,6 +169,13 @@ let^second = try^std.task.async(probe())
 std.io.print(try^std.task.await(second))
 std.task.stop()
 ''', '21\n-1\n')
+
+    # async's check, registered after lhat.task's functions: a job answering two values does not
+    # fit the one slot a task carries, so the script does not compile.
+    case('task_slot', '''import^std.task
+let^job = p^{ yield^0 return^(1, 2) }
+let^t = std.task.async(job()) catch^ panic^ it^
+''', '', status='-2')
 
     # std.async on the host's own thread.
     case('async_waits', '''import^std.io

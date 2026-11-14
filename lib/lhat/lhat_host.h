@@ -12,6 +12,7 @@
 
 #include "lhat.h"
 #include "stdlib/carry.h"
+#include "stdlib/task_check.h"
 
 // How big a task's machine is, and how many loop turns it runs before its worker takes
 // another job: the measures L^'s own std.task uses.
@@ -47,6 +48,22 @@ typedef struct LhatTask {
     LhatHeap heap;
     LhatRuntimeType *type;
 } LhatTask;
+
+/// What lhat.task's exportL^ registration ends with: async's check, as L^'s own std.task makes
+/// it, that a job's result fits the one slot a task carries.
+static inline bool lhost_task_register(LhatProgram *program, const char *module)
+{
+#if LHAT_WITH_FRONTEND
+    return lhat_register_instantiation_check_handler(program, module, NULL, "async", 0,
+                                                     task_check_async, NULL) &&
+           lhat_register_instantiation_check_handler(program, module, NULL, "async", 1,
+                                                     task_check_async, NULL);
+#else
+    (void)program;
+    (void)module;
+    return true;
+#endif
+}
 
 // R^'s runtime, which lhat.task drives directly: the pool's handle is kept in C (below), where
 // a pool worker's callbacks can read it.

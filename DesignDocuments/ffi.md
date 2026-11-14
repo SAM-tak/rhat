@@ -264,6 +264,19 @@ exportL^ref^externC^def^Task {
 - `type_argument = f^self^, index:u64^ -> ref^read^LhatRuntimeType | nil^`: `lhat_register_hostdata_type_arguments`。
   値ごとの型引数（`std.task.Task<number^>` の `number^`）を L^ の実行時の型検査に答えます。
 
+### 登録の最後に C を呼ぶ（exportL^ externC^ NAME;）
+
+```rhat
+includeC^"lhat_host.h"
+exportL^externC^lhost_task_register;
+```
+
+- モジュールの `rhat_lhat_register_<module>(program, module)` は、関数・型・エラー・契約をすべて登録した後、
+  最後に C の `bool NAME(LhatProgram *program, const char *module)` を呼びます。false ならその登録も false です。
+- R^ の型で書けない登録（`lhat_register_instantiation_check_handler` の検査など、登録済みの関数に対するもの）に使います。
+  モジュール名は L^ のもの（ホストが渡したもの）で、R^ の側では文字列として受け取れないため C の関数にします。
+- NAME の宣言は includeC^ のヘッダーに置きます。R^ からは呼べません。
+
 ### 値として渡す型（exportL^ def^）
 
 ```rhat

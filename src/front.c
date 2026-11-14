@@ -4332,6 +4332,15 @@ static void declaration(Parser *q)
         }
     }
     bool lhat_ref = lhat_export && take(q, "ref^");
+    // exportL^ externC^ NAME;: the module's exportL^ registration ends by calling the C
+    // function NAME(program, module).
+    if (lhat_export && !exported && !lhat_ref && !lhat_signature && is(q, "externC^") &&
+        q->at + 2 < q->tokens.n && !strcmp(((Token *)q->tokens.v[q->at + 2])->text, ";")) {
+        q->at++;
+        add(&module->lhat_registrars, decl_word(q));
+        need(q, ";");
+        return;
+    }
     bool lhat_def = lhat_export && !exported &&
                     (is(q, "def^") || is(q, "struct^") || (is(q, "errordef^") && !lhat_ref) ||
                      (is(q, "externC^") && q->at + 1 < q->tokens.n &&

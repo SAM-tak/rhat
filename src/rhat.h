@@ -68,6 +68,9 @@ struct Module {
     char *name, *path;
     List imports, defs, functions, constants, aliases;
     List c_headers; // includeC^ headers its externC^ shims read.
+    // exportL^ externC^ NAME;: C functions bool NAME(LhatProgram *, const char *module) its
+    // exportL^ registration calls last, for what L^ registers beyond functions and types.
+    List lhat_registrars;
     Function *entry;
     bool root;
     int state;

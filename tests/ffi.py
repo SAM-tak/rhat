@@ -358,6 +358,7 @@ void mock_multi(void);
 void mock_data(LhatValue v, bool (*wrap)(LhatMachine *, void *, LhatValue *));
 void mock_fail(void);
 void mock_any(void);
+bool mock_registered(LhatProgram *program, const char *module);
 typedef struct LhatRuntimeType LhatRuntimeType;
 typedef void (*LhatHostHoldFn)(void *pointer, void *context);
 typedef const LhatRuntimeType *(*LhatHostTypeArgumentFn)(const void *pointer, size_t index, void *context);
@@ -567,6 +568,11 @@ void mock_run(int32_t mode)
     printf("%lld %g %s %d\\n", (long long)added, halved, greeted, flipped);
     fflush(stdout);
     call("shout", &hi, 1);
+}}
+bool mock_registered(LhatProgram *p, const char *module)
+{{
+    printf("registered %s %d\\n", module, p->n);
+    return true;
 }}
 void mock_any(void)
 {{
@@ -798,6 +804,7 @@ exportL^ let^ split = f^ k:i64^ -> (i64^, i64^) | Error.Bad {
   if^ k = 1 { return^ Error.Bad{} }
   return^ k, k + 1
 }
+exportL^ externC^ mock_registered;
 exportL^ let^ spare = f^ k:i64^ -> i64^ | std.sys.Error {
   if^ k = 2 { return^ std.sys.Error.OutOfMemory{message = "no room"} }
   return^ k
@@ -809,7 +816,7 @@ mock_fail()
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.check f^number^ -> number^|rhat.Error;\n'
              'rhat.split f^number^ -> (number^, number^)|rhat.Error.Bad;\n'
-             'rhat.spare f^number^ -> number^|std.sys.Error;\n'
+             'rhat.spare f^number^ -> number^|std.sys.Error;\nregistered rhat 8\n'
              'true\ncheck Zero: Error.Zero\ncheck Bad: bad one\ncheck 1 20\n'
              'split 2 0\nsplit Bad: Error.Bad\nsplit 2 2\n'
              'spare 1 0\nspare 1 1\nspare std.sys.Error.OutOfMemory: no room\n', extra=lhat_extra)

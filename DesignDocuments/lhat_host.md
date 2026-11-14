@@ -45,8 +45,9 @@ L^ の `std.task` と同じ振る舞いです: `start()` / `start(n)`・`stop()`
   ジョブに渡すなど）。参照数が 0 になると Pool の Task を手放します。`type_argument` が結果の型を答えるので、
   `std.task.Task<number^>` のような実行時の型検査も通ります。
 - Pool の handle は C の静的変数に置きます（R^ のモジュール変数はワーカーの入口から読めないため）。
-- L^ の標準の std.task との違い: ジョブの結果が 1 スロットに収まるかの静的検査（`task_check_async`）は登録しません。
-  `await` はデバッガの一時停止点を作りません。
+- ジョブの結果が 1 スロットに収まるかの静的検査（L^ の `stdlib/task_check.h` の `task_check_async`）は、
+  `exportL^ externC^ lhost_task_register;` により登録の最後に `async` の 2 つの腕へ登録します。
+- L^ の標準の std.task との違い: `await` はデバッガの一時停止点を作りません。
 - `start`・`async` のメモリ不足は L^ と同じく `std.sys.Error.OutOfMemory` です（R^ の `std.sys.Error` を返すと、
   exportL^ の中継が L^ の同名のエラーにします）。ジョブ自身がメモリ不足で終わったときは、L^ と同じく `TaskError.Failed` です。
 
