@@ -4,6 +4,10 @@
 //
 // Sockets answer a handle (the OS socket plus one, so 0 means none) or a negative code:
 // RH_NET_PENDING when the operation would block, else one of the failures below.
+// -std=c11 hides POSIX: getaddrinfo, clock_gettime and nanosleep need it asked for.
+#if !defined(_WIN32) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE
+#endif
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
