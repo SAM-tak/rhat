@@ -503,6 +503,20 @@ void *rh_task_take_raw(int64_t task)
     return result;
 }
 
+// The finished job's result, left with the task, which frees it when it is let go; NULL before
+// the job finishes and once it is taken.
+void *rh_task_result_raw(int64_t task)
+{
+    Task *t = (Task *)(uintptr_t)task;
+    if (!t) {
+        return NULL;
+    }
+    lock(&t->mutex);
+    void *result = t->done ? t->result : NULL;
+    unlock(&t->mutex);
+    return result;
+}
+
 void rh_task_drop(int64_t task)
 {
     Task *t = (Task *)(uintptr_t)task;

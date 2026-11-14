@@ -43,8 +43,6 @@ typedef struct LhatJob {
 typedef struct LhatTask {
     atomic_int holds;
     int64_t raw;
-    atomic_int settled; // 0 not taken from the pool, 1 being taken, 2 taken into result.
-    LhatJobResult *result;
     atomic_bool taken;
     LhatHeap heap;
     LhatRuntimeType *type;
@@ -59,7 +57,7 @@ int64_t rh_pool_submit_job(int64_t pool, const void *kind, void *job);
 bool rh_task_done(int64_t task);
 void rh_task_watch(int64_t task, int64_t token);
 void rh_task_wait(int64_t task);
-void *rh_task_take_raw(int64_t task);
+void *rh_task_result_raw(int64_t task);
 void rh_task_drop(int64_t task);
 
 /// std.task's runtime under names R^ may call: R^ keeps rh_ for its own modules.
@@ -276,9 +274,6 @@ static inline int32_t lhost_task_hold(LhatTask *t, int32_t delta)
 /// Frees the task once nothing holds it.
 static inline void lhost_task_free(LhatTask *t)
 {
-    if (t->result) {
-        lhost_result_free(t->result);
-    }
     lhat_object_free_all(&t->heap);
     free(t);
 }
@@ -289,23 +284,16 @@ static inline const LhatRuntimeType *lhost_task_type(LhatTask *t, uint64_t index
     return index == 0 ? t->type : NULL;
 }
 
-// The finished task's result, taken from the pool once for every machine that asks.
-static inline LhatJobResult *lhost_task_settle(LhatTask *t)
+// The finished task's result, which stays with the pool's task until the last hold lets it go.
+static inline LhatJobResult *lhost_task_result(LhatTask *t)
 {
-    int expected = 0;
-    if (atomic_compare_exchange_strong(&t->settled, &expected, 1)) {
-        t->result = rh_task_take_raw(t->raw);
-        atomic_store(&t->settled, 2);
-    }
-    while (atomic_load(&t->settled) != 2) {
-    }
-    return t->result;
+    return rh_task_result_raw(t->raw);
 }
 
 /// What the finished task failed with, as an L^ string in *out, or nil^.
 static inline bool lhost_task_failure(LhatMachine *machine, LhatTask *t, LhatValue *out)
 {
-    LhatJobResult *r = lhost_task_settle(t);
+    LhatJobResult *r = lhost_task_result(t);
     *out = lhat_nil();
     return !r || !r->failure ||
            lhat_machine_make_string(machine, r->failure, strlen(r->failure), out);
@@ -315,7 +303,7 @@ static inline bool lhost_task_failure(LhatMachine *machine, LhatTask *t, LhatVal
 /// failed, 2 when its answer could not leave its machine, 3 when it was taken already.
 static inline int32_t lhost_task_adopt(LhatMachine *machine, LhatTask *t, LhatValue *out)
 {
-    LhatJobResult *r = lhost_task_settle(t);
+    LhatJobResult *r = lhost_task_result(t);
     *out = lhat_nil();
     if (atomic_exchange(&t->taken, true)) {
         return 3;
@@ -364,7 +352,7 @@ static bool lhost_join_step(LhatMachine *machine, void *context, const LhatValue
         "the job failed", "task result cannot transfer ownership", "task result was already taken"};
     int32_t how = lhost_task_adopt(machine, t, &answers[0]);
     if (how) {
-        LhatJobResult *r = t->result;
+        LhatJobResult *r = lhost_task_result(t);
         const char *message = how == 1 && r && r->failure ? r->failure : messages[how - 1];
         const LhatErrorKind *kind = lhat_lookup_error_kind(
             lhat_machine_program(machine), "std.task", "TaskError", variants[how - 1]);
