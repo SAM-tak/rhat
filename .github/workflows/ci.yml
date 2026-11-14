@@ -46,7 +46,7 @@ jobs:
       # The libraries depend on the commit alone, so one build serves every run until it moves.
       - name: L^ build cache
         id: lhat-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: lhat/build/release
           key: lhat-release-${{ runner.os }}-${{ steps.lhat.outputs.rev }}
