@@ -59,6 +59,13 @@ L^ の `std.task` と同じ振る舞いです: `start()` / `start(n)`・`stop()`
 L^ のスクリプトは自分を走らせているスレッド（ホストの本体、または Pool のワーカー）の表で待ちます。
 `external` は提供しません。外から済ませる待ちは R^ の `std.async.External` で作り、トークンで済ませます。
 
+**未対応（先送り）**: L^ の `std.async.external()` がない。L^ の C 版では、L^ のコードが `external()` で待ちを作って id を
+ホストに渡し、ホストが `lhatstdlib_async_complete(waits, id)` で済ませる。R^ のホストでは、このスクリプトは
+`std.async.external` が無くてコンパイルが通らず、ホストが id で済ませる口も無い。ホストの exportL^ 関数が自分で待ちを
+作ってその id を返す形（`Task.awaitable` と同じ）なら代わりになる。提供するなら、L^ 向けの `external`（R^ の
+`async.external()` の id を返し、id からトークンへの対応を lib が持つ）と、ホスト向けの `complete(id)` が要る。
+対応表は他のスレッドから引くのでロックが要り、待ちの表がスレッドごとなので id がスレッドをまたいで衝突しないかの確認も要る。
+
 ## lhat.value（値の包み）
 
 - `Held`（Disposable）: 値を機械の host root の表（`lhat_machine_host_root`）に負の整数の鍵で載せ、GC から守ります。
