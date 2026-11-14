@@ -26,13 +26,48 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
+      # R^ and L^ side by side, as locally: lib/lhat's tests (tests/lhat_host.py) build against
+      # ../lhat, at the commit scripts/lhat.rev records (scripts/update-lhat.ps1 moves it).
       - uses: actions/checkout@v5
+        with:
+          path: rhat
+
+      - name: L^ commit
+        id: lhat
+        shell: bash
+        run: echo "rev=$(tr -d '[:space:]' < rhat/scripts/lhat.rev)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          repository: SAM-tak/lhat
+          ref: ${{ steps.lhat.outputs.rev }}
+          path: lhat
+
+      # The libraries depend on the commit alone, so one build serves every run until it moves.
+      - name: L^ build cache
+        id: lhat-cache
+        uses: actions/cache@v4
+        with:
+          path: lhat/build/release
+          key: lhat-release-${{ runner.os }}-${{ steps.lhat.outputs.rev }}
+
+      - name: Build L^
+        if: steps.lhat-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./rhat/scripts/build-lhat.ps1
 
       # The same steps as a local build: the MSVC environment, the Clang that
       # is on the machine, then the whole suite.
       - name: Build and test
         shell: pwsh
-        run: ./scripts/build.ps1 -Release -Test
+        run: ./rhat/scripts/build.ps1 -Release -Test
+
+      # The suite registers lhat_host only when it finds the L^ build; here it must have.
+      - name: lhat_host ran
+        shell: pwsh
+        run: |
+          $listed = ctest --test-dir rhat/build -C Release -N -R '^lhat_host$'
+          if (-not ($listed -match 'Total Tests: 1')) { throw 'lhat_host was not registered.' }
 
   linux:
     name: linux / gcc + clang (experimental)

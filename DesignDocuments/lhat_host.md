@@ -95,3 +95,15 @@ L^ のスクリプトは自分を走らせているスレッド（ホストの�
 
 `tests/lhat_host.py` は、本物の L^ をリンクしたホストで L^ のスクリプトを走らせます。CMake は `RHAT_LHAT_DIR`
 （既定 `../lhat`）に `include/lhat.h` とビルド済みのライブラリがあるときだけ登録します。
+
+### CI と L^ のコミット
+
+- CI（`.github/workflows/ci.yml` の Windows ジョブ）は、R^ と L^ を手元と同じく隣り合わせに取り出します。L^ は
+  `scripts/lhat.rev` に記録したコミットで、`scripts/build-lhat.ps1` がテストのリンクする 4 つのライブラリ
+  （`lhat`・`lhatstdlib`・`lhatport`・`lhatthread`）を L^ の `release` プリセットでビルドします。ビルド結果はコミットごとに
+  キャッシュします。最後に lhat_host が登録されたこと（L^ が見つかったこと）を確かめます。
+- `scripts/lhat.rev` の更新は `scripts/update-lhat.ps1`。既定で手元の `../lhat` の HEAD を記録します
+  （`-Rev origin/main` で L^ のリモートの最新、`-Lhat PATH` で別の場所）。CI が取り出せるよう、L^ のリモートにある
+  コミットでなければ断ります。手元の L^ に未コミットの変更があれば警告し、前の記録からのコミットの一覧を出します。
+- 手元のテストは `../lhat` の作業ツリーとそのビルドを使うので、`scripts/lhat.rev` とずれていても動きます。
+  lib/lhat が新しい L^ を要する変更をしたら、L^ を push して `scripts/update-lhat.ps1` で記録を進め、同じコミットに含めます。
