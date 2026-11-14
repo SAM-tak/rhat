@@ -3,6 +3,7 @@
         {
             "name": "rhat",
             "configurationProvider": "ms-vscode.cmake-tools",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang.exe",
             "includePath": [
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/runtime",
@@ -12,7 +13,7 @@
                 "${workspaceFolder}/../lhat"
             ],
             "cStandard": "c11",
-            "intelliSenseMode": "windows-msvc-x64"
+            "intelliSenseMode": "windows-clang-x64"
         }
     ],
     "version": 4

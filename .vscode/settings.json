@@ -1,5 +1,10 @@
 {
     "rhat.serverPath": "${workspaceFolder}/.rhat-ls/rhat.exe",
     "rhat.serverAutoRestart": false,
-    "rhat.modulePaths": ["${workspaceFolder}/lib"]
+    "rhat.modulePaths": ["${workspaceFolder}/lib"],
+    // The sources are C11; only the comparison benchmarks under bench/ are C++.
+    "files.associations": {
+        "*.h": "c",
+        "**/bench/**/*.h": "cpp"
+    }
 }
