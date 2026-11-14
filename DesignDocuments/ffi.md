@@ -263,6 +263,8 @@ exportL^ref^externC^def^Task {
   L^ は写した先が持つたびに `retain`、手放すたびに `let_go` を呼びます（別スレッドからも呼ばれます）。
 - `type_argument = f^self^, index:u64^ -> ref^read^LhatRuntimeType | nil^`: `lhat_register_hostdata_type_arguments`。
   値ごとの型引数（`std.task.Task<number^>` の `number^`）を L^ の実行時の型検査に答えます。
+- C の呼び口の形は決まっているので、これらの名前のメソッドは上の形でなければコンパイルエラーです
+  （「exportL^ ref^ def^ retain must be p^self^ with no result」など）。
 
 ### 登録の最後に C を呼ぶ（exportL^ externC^ NAME;）
 

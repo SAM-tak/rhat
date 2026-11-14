@@ -833,6 +833,15 @@ mock_fail()
              "exportL^ parameter 'b' needs a number, bool^, string^, exportL^ def^ or LhatValue type annotation")
     negative('ffi_export_lhat_result', header + 'exportL^ let^ g = f^ x:i32^ -> i32^[..] { {} }', 'exportL^ result must be')
     negative('ffi_export_lhat_template', header + 'exportL^ let^ g = template^ f^ x:i32^ -> i32^ { x }', 'exportL^ function cannot be template^')
+    held = header + 'externC^ def^ LhatRuntimeType;\nexportL^ ref^ def^ W {\n  self^{ n:i32^ = 0 }\n  '
+    negative('ffi_export_lhat_contract_retain', held + 'retain = p^ self^, k:i32^ { self^.n += k }\n}',
+             'exportL^ ref^ def^ retain must be p^self^ with no result')
+    negative('ffi_export_lhat_contract_let_go', held + 'let_go = p^ self^ -> i32^ { return^ 0 }\n}',
+             'exportL^ ref^ def^ let_go must be p^self^ with no result')
+    negative('ffi_export_lhat_contract_type', held + 'type_argument = f^ self^, index:i32^ -> ref^ read^ LhatRuntimeType | nil^ { nil^ }\n}',
+             'exportL^ ref^ def^ type_argument must be f^self^, index:u64^ -> ref^read^LhatRuntimeType | nil^')
+    negative('ffi_export_lhat_member_unwritten', held + 'exportL^ get = f^ self^ -> i32^ { self^.n }\n}',
+             'exportL^ before a member takes the L^ signature, as a string')
 
     # externC^ function types: C function pointers to externC^ and exportC^ functions.
     positive('ffi_function_pointer', '''externC^ qsort:p^ base:i32^[..], n:u64^, size:u64^, compare:externC^ f^ ref^ i32^, ref^ i32^ -> i32^;;

@@ -370,6 +370,29 @@ void export_validate(Program *p, Function *f)
     if (!f->result && !f->procedure) {
         fail(f->loc, "%s f^ needs a result type annotation", kind);
     }
+    // L^ calls the contract through C callbacks of fixed shapes.
+    if (lhat_contract(f)) {
+        bool typed = !strcmp(s, "type_argument");
+        Type *index = f->params.n == 2 ? type_spec(p, ((Param *)f->params.v[1])->spec) : NULL;
+        Type *answer = f->result ? type_spec(p, f->result) : NULL, *ref = NULL;
+        bool nil = false;
+        for (int j = 0;
+             answer && answer->kind == T_UNION && answer->def->alternatives.n == 2 && j < 2; j++) {
+            Type *arm = answer->def->alternatives.v[j];
+            ref = arm->kind == T_REF ? arm : ref;
+            nil |= arm->kind == T_NIL;
+        }
+        bool shaped = typed ? index && index->kind == T_U64 && nil && ref &&
+                                  ref->elem->kind == T_STRUCT && ref->elem->def->c_name &&
+                                  !strcmp(ref->elem->def->c_name, "LhatRuntimeType")
+                            : f->params.n == 1 && !answer;
+        if (!shaped) {
+            fail(f->loc, "exportL^ ref^ def^ %s",
+                 typed ? "type_argument must be f^self^, index:u64^ -> "
+                         "ref^read^LhatRuntimeType | nil^"
+                       : fmt("%s must be p^self^ with no result", s));
+        }
+    }
     for (int j = 0; f->exported && j < p->functions.n; j++) {
         Function *other = p->functions.v[j];
         const char *name = strrchr(other->name, '.') ? strrchr(other->name, '.') + 1 : other->name;
