@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "rhat",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/runtime",
+                "${workspaceFolder}/lib/lhat",
+                "${workspaceFolder}/../lhat/include",
+                "${workspaceFolder}/../lhat/build/release/include",
+                "${workspaceFolder}/../lhat"
+            ],
+            "cStandard": "c11",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}

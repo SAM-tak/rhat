@@ -1,4 +1,5 @@
 {
     "rhat.serverPath": "${workspaceFolder}/.rhat-ls/rhat.exe",
-    "rhat.serverAutoRestart": false
+    "rhat.serverAutoRestart": false,
+    "rhat.modulePaths": ["${workspaceFolder}/lib"]
 }
