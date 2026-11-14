@@ -114,7 +114,8 @@ std.task.stop()
 std.io.print(std.task.workers())
 ''', '42 2\n0\n')
 
-    # A closure job; a result taken twice; a failing job; a task waited on through std.async.
+    # A closure job; a result taken twice; a failing job, whose Failed says what failed() says; a
+    # task waited on through std.async.
     case('task_outcomes', '''import^std.io
 import^std.task
 import^std.async
@@ -123,12 +124,14 @@ let^t = try^std.task.async(f^{ 20 })
 std.io.print(try^std.task.await(t), std.task.await(t) catch^ -1)
 let^bad = try^std.task.async(p^{ panic^"boom" })
 std.io.print(std.task.await(bad) catch^ -2, bad.done(), bad.failed() != nil^)
+let^worse = try^std.task.async(p^{ panic^"bang" })
+std.io.print((std.task.await(worse) catch^ it^.message) = worse.failed())
 let^gen = p^{ yield^std.async.timer(0.05) return^7 }
 let^slow = try^std.task.async(gen())
 let^id = slow.awaitable()
 std.io.print(std.async.wait(5) = id, std.async.pending(), try^std.task.await(slow))
 std.task.stop()
-''', '20 -1\n-2 true true\ntrue 0 7\n')
+''', '20 -1\n-2 true true\ntrue\ntrue 0 7\n')
 
     # A task carried to another job's machine through a channel: shared, and awaited there.
     case('task_shared', '''import^std.io

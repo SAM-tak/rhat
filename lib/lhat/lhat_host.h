@@ -316,24 +316,30 @@ static inline bool lhost_task_failure(LhatMachine *machine, LhatTask *t, LhatVal
            lhat_machine_make_string(machine, r->failure, strlen(r->failure), out);
 }
 
-/// Takes the finished task's result into machine as *out: 0 when it is there, 1 when the job
-/// failed, 2 when its answer could not leave its machine, 3 when it was taken already.
-static inline int32_t lhost_task_adopt(LhatMachine *machine, LhatTask *t, LhatValue *out)
+/// Takes the finished task's result into machine as *out, or the std.task.TaskError it fails
+/// with: Failed with what the job failed with, Refused when its answer could not leave its
+/// machine, Taken when it was taken already.
+static inline void lhost_task_take(LhatMachine *machine, LhatTask *t, LhatValue *out)
 {
+    static const char *const variants[] = {"Failed", "Refused", "Taken"};
+    static const char *const messages[] = {
+        "the job failed", "task result cannot transfer ownership", "task result was already taken"};
     LhatJobResult *r = lhost_task_result(t);
-    *out = lhat_nil();
-    if (atomic_exchange(&t->taken, true)) {
-        return 3;
+    int how = 2;
+    if (!atomic_exchange(&t->taken, true)) {
+        if (r && r->status == LHAT_RUN_OK && !r->refused) {
+            *out = lhat_machine_adopt_result(machine, r->detached);
+            r->detached = NULL;
+            return;
+        }
+        how = r && r->status == LHAT_RUN_OK ? 1 : 0;
     }
-    if (!r || r->status != LHAT_RUN_OK) {
-        return 1;
+    const char *message = how == 0 && r && r->failure ? r->failure : messages[how];
+    const LhatErrorKind *kind = lhat_lookup_error_kind(lhat_machine_program(machine), "std.task",
+                                                       "TaskError", variants[how]);
+    if (!kind || !lhat_machine_make_error(machine, kind, message, lhat_nil(), out)) {
+        *out = lhat_nil();
     }
-    if (r->refused) {
-        return 2;
-    }
-    *out = lhat_machine_adopt_result(machine, r->detached);
-    r->detached = NULL;
-    return 0;
 }
 
 /// Lets go of one hold on the task, freeing it and its pool task with the last.
@@ -364,19 +370,7 @@ static bool lhost_join_step(LhatMachine *machine, void *context, const LhatValue
         answers[0] = lhat_integer(id); // 0 is no wait: the job just comes back and looks again.
         return true;
     }
-    static const char *const variants[] = {"Failed", "Refused", "Taken"};
-    static const char *const messages[] = {
-        "the job failed", "task result cannot transfer ownership", "task result was already taken"};
-    int32_t how = lhost_task_adopt(machine, t, &answers[0]);
-    if (how) {
-        LhatJobResult *r = lhost_task_result(t);
-        const char *message = how == 1 && r && r->failure ? r->failure : messages[how - 1];
-        const LhatErrorKind *kind = lhat_lookup_error_kind(
-            lhat_machine_program(machine), "std.task", "TaskError", variants[how - 1]);
-        if (!kind || !lhat_machine_make_error(machine, kind, message, lhat_nil(), &answers[0])) {
-            answers[0] = lhat_nil();
-        }
-    }
+    lhost_task_take(machine, t, &answers[0]);
     return false;
 }
 

@@ -40,7 +40,9 @@ L^ の `std.task` と同じ振る舞いです: `start()` / `start(n)`・`stop()`
   ワーカーは他のジョブを進めます。待ちでない数は L^ と同じく「止まっただけ」で、すぐ続けます。
 - 終わったジョブの答えは `lhat_machine_detach_result` で機械から外し、`await` が `lhat_machine_adopt_result` で呼んだ機械に移します。
   失敗は `TaskError.Failed`、機械から出せない答えは `TaskError.Refused`、2 度目の await は `TaskError.Taken` です。
-  失敗の内容（状態・値・行・トレースバック）は `failed()` が答えます。
+  失敗の内容（状態・値・行・トレースバック）は `failed()` が答え、`Failed` の message も同じ文です。
+  `await` と `join` は同じ C の `lhost_task_take` で結果か `TaskError` を作ります（R^ の errordef の message は
+  リテラルなので、実行時の文は C で L^ のエラーにします）。
 - Task は `exportL^ ref^ externC^ def^`（C のヒープ）で、`retain`・`let_go` の契約により機械の間で受け渡せます（channel で別の
   ジョブに渡すなど）。参照数が 0 になると Pool の Task を手放します。`type_argument` が結果の型を答えるので、
   `std.task.Task<number^>` のような実行時の型検査も通ります。

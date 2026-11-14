@@ -61,7 +61,7 @@ externC^lhost_task_let_go:p^t:ref^Task;
 externC^lhost_task_join:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> bool^;
 externC^lhost_task_type:f^t:ref^Task, index:u64^-> ref^read^(t) l.LhatRuntimeType | nil^;
 externC^lhost_task_failure:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> bool^;
-externC^lhost_task_adopt:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue -> i32^;
+externC^lhost_task_take:p^machine:ref^l.LhatMachine, t:ref^Task, out:ref^l.LhatValue;
 
 exportL^errordef^TaskError { NotStarted, Refused, Failed, Taken }
 
@@ -231,12 +231,9 @@ let^async_call = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | Task
 
 # Waits for the job and takes its result, once across every machine holding the task.
 exportL^"await" "p^std.task.Task -> ARG0.T0|std.task.TaskError.Taken|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
-let^await_task = p^machine:ref^l.LhatMachine, t:ref^Task -> l.LhatValue | TaskError {
+let^await_task = p^machine:ref^l.LhatMachine, t:ref^Task -> l.LhatValue {
     lhost_raw_wait(lhost_task_raw(t))
     var^out = l.lhat_nil()
-    let^how = lhost_task_adopt(machine, t, ref^out)
-    if^how = 1 { return^TaskError.Failed{message = "the job failed; Task.failed() says how"} }
-    if^how = 2 { return^TaskError.Refused{message = "task result cannot transfer ownership"} }
-    if^how = 3 { return^TaskError.Taken{message = "task result was already taken"} }
+    lhost_task_take(machine, t, ref^out)
     return^out
 }
