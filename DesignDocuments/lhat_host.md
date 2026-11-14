@@ -70,8 +70,9 @@ L^ のスクリプトは自分を走らせているスレッド（ホストの�
 
 ## lhat.value（値の包み）
 
-- `Held`（Disposable）: 値を機械の host root の表（`lhat_machine_host_root`）に負の整数の鍵で載せ、GC から守ります。
-  `get()` で読み、dispose で外します。ホスト自身が host root に置く鍵とは負の整数で分けます。
+- `Held`（Disposable）: 値を機械の host root の表（`lhat_machine_host_root`）の下に載せ、GC から守ります。
+  `get()` で読み、dispose で外します。host root に取る鍵は `"lhat.value"` の 1 つだけで、その下の表に整数の鍵で
+  値を置きます。ホストや他のバインディングが host root に自分の鍵を置いても、`"lhat.value"` 以外なら衝突しません。
 - `Carried`（Disposable）: `lhat_carry` で機械から外した値です。`into(machine)` で何度でも、どの機械にも組み立て直せ、
   dispose で `lhat_carried_free` します。
 

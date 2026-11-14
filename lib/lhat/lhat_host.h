@@ -412,33 +412,56 @@ static inline bool lhost_task_join(LhatMachine *machine, LhatTask *t, LhatValue 
     return true;
 }
 
-// The keys lhat.value roots values under in a machine's host root: negative, apart from the
-// ones a host makes of its own.
+// The keys lhat.value roots values under, in its own table.
 static atomic_llong lhost_keys;
+
+// The table lhat.value roots values in: under "lhat.value" in the machine's host root, the one
+// key it takes there of the keys a host and other bindings make of their own. Made when make
+// and missing; NULL when it is not there. The collector runs between instructions only, so the
+// key and the table made here stand until they are rooted.
+static inline LhatTable *lhost_held_table(LhatMachine *machine, bool make)
+{
+    static const char name[] = "lhat.value";
+    LhatTable *root = lhat_machine_host_root(machine);
+    LhatValue key, table;
+    bool refused = false;
+    if (!lhat_machine_make_string(machine, name, sizeof name - 1, &key)) {
+        return NULL;
+    }
+    table = lhat_table_get(root, key);
+    if (!lhat_is_object_kind(table, LHAT_OBJECT_TABLE) &&
+        (!make || !lhat_machine_make_table(machine, &table) ||
+         !lhat_machine_table_set(machine, root, key, table, &refused))) {
+        return NULL;
+    }
+    return (LhatTable *)lhat_as_object(table);
+}
 
 /// Roots value on machine under a key of its own, answering the key; 0 when it could not.
 static inline int64_t lhost_hold(LhatMachine *machine, LhatValue value)
 {
-    int64_t key = -1 - atomic_fetch_add(&lhost_keys, 1);
+    int64_t key = 1 + atomic_fetch_add(&lhost_keys, 1);
+    LhatTable *held = lhost_held_table(machine, true);
     bool refused = false;
-    return lhat_machine_table_set(machine, lhat_machine_host_root(machine), lhat_integer(key),
-                                  value, &refused)
-               ? key
-               : 0;
+    return held && lhat_machine_table_set(machine, held, lhat_integer(key), value, &refused) ? key
+                                                                                             : 0;
 }
 
 /// The value rooted under key, nil^ once it is let go.
 static inline LhatValue lhost_held(LhatMachine *machine, int64_t key)
 {
-    return lhat_table_get(lhat_machine_host_root(machine), lhat_integer(key));
+    LhatTable *held = lhost_held_table(machine, false);
+    return held ? lhat_table_get(held, lhat_integer(key)) : lhat_nil();
 }
 
 /// Unroots the value under key.
 static inline void lhost_unhold(LhatMachine *machine, int64_t key)
 {
+    LhatTable *held = lhost_held_table(machine, false);
     bool refused = false;
-    lhat_machine_table_set(machine, lhat_machine_host_root(machine), lhat_integer(key), lhat_nil(),
-                           &refused);
+    if (held) {
+        lhat_machine_table_set(machine, held, lhat_integer(key), lhat_nil(), &refused);
+    }
 }
 
 /// value taken off its machine, or NULL when it cannot leave it.

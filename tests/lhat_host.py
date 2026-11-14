@@ -43,6 +43,15 @@ static void host_hook(LhatMachine *machine, void *context, LhatDebugEvent event,
     (void)where;
     host_pauses += event == LHAT_DEBUG_HOST_PAUSE_POINT;
 }
+// A host's own roots, under integer keys of its own making.
+static inline void host_clobber(LhatMachine *machine)
+{
+    bool refused = false;
+    for (LhatInteger k = -2; k <= 2; k++) {
+        lhat_machine_table_set(machine, lhat_machine_host_root(machine), lhat_integer(k),
+                               lhat_integer(k * 100), &refused);
+    }
+}
 static inline int32_t host_run(const char *path, bool (*more)(LhatProgram *, const char *))
 {
     LhatProgram *program = lhat_program_new(true, host_load, NULL);
@@ -220,15 +229,18 @@ std.io.print(std.async.pending(), (std.async.next() ?? 99) < 1)
 std.async.drop(b)
 std.io.print(std.async.wait(1) = a, std.async.pending(), std.async.next() = nil^)
 ''', '2 true\ntrue 0 true\n')
-    # A value the host roots, and carries off its machine and back.
+    # A value the host roots, and carries off its machine and back; the host's own roots under
+    # integer keys leave it be.
     case('value_wraps', '''import^std.io
 import^rhat
 std.io.print(rhat.roundtrip("hello"), rhat.roundtrip(42))
 ''', 'hello 42\n', rhat='''let^value = import^lhat.value
 let^l = import^lhat.l
 externC^rhat_lhat_register_main:p^program:ref^LhatProgram, module:string^-> bool^;
+externC^host_clobber:p^machine:ref^l.LhatMachine;
 exportL^let^roundtrip = p^machine:ref^l.LhatMachine, v:l.LhatValue -> l.LhatValue {
     let^held = value.Held.new(machine, v)
+    host_clobber(machine)
     if^held fits^value.Held {
         let^carried = value.Carried.new(held.get())
         if^carried fits^value.Carried {
