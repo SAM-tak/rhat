@@ -29,6 +29,20 @@ static char *host_load(void *context, const char *path, size_t *length)
     fclose(f);
     return text;
 }
+// The debugger pause points host functions offered on the main machine: what a DAP pause stops at.
+static int64_t host_pauses;
+static inline int64_t host_paused(void)
+{
+    return host_pauses;
+}
+static void host_hook(LhatMachine *machine, void *context, LhatDebugEvent event,
+                      const LhatFrameInfo *where)
+{
+    (void)machine;
+    (void)context;
+    (void)where;
+    host_pauses += event == LHAT_DEBUG_HOST_PAUSE_POINT;
+}
 static inline int32_t host_run(const char *path, bool (*more)(LhatProgram *, const char *))
 {
     LhatProgram *program = lhat_program_new(true, host_load, NULL);
@@ -52,6 +66,7 @@ static inline int32_t host_run(const char *path, bool (*more)(LhatProgram *, con
     }
     LhatMachine *machine = lhat_machine_new();
     lhat_program_install(program, machine);
+    lhat_machine_set_debug_hook(machine, host_hook, NULL);
     LhatRunResult ran = lhat_run(machine, lhat_unit_proto(root));
     if (ran.status != LHAT_RUN_OK) {
         char text[1024] = "";
@@ -179,6 +194,22 @@ std.task.stop()
 let^job = p^{ yield^0 return^(1, 2) }
 let^t = std.task.async(job()) catch^ panic^ it^
 ''', '', status='-2')
+
+    # await offers a debugger pause point while it waits, so a DAP pause stops it there.
+    case('task_pause', '''import^std.io
+import^std.task
+import^std.async
+import^rhat
+try^std.task.start(1)
+let^slow = p^{ yield^std.async.timer(0.1) return^5 }
+let^t = try^std.task.async(slow())
+let^before = rhat.paused()
+std.io.print(try^std.task.await(t), rhat.paused() > before)
+std.task.stop()
+''', '5 true\n', rhat='''externC^rhat_lhat_register_main:p^program:ref^LhatProgram, module:string^-> bool^;
+externC^host_paused:p^-> i64^;
+exportL^let^paused = p^-> i64^{ return^host_paused() }
+''')
 
     # std.async on the host's own thread.
     case('async_waits', '''import^std.io

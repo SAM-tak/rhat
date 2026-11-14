@@ -2,6 +2,7 @@
 #ifndef RHAT_SYNC_H
 #define RHAT_SYNC_H
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -43,6 +44,14 @@ static inline void cond_wait(Condition *c, Mutex *m)
     }
 }
 
+// Waits at most ms milliseconds, or until woken.
+static inline void cond_wait_for(Condition *c, Mutex *m, int64_t ms)
+{
+    if (!SleepConditionVariableSRW(c, m, (DWORD)ms, 0) && GetLastError() != ERROR_TIMEOUT) {
+        abort();
+    }
+}
+
 static inline void wake(Condition *c)
 {
     WakeAllConditionVariable(c);
@@ -53,6 +62,7 @@ static inline void cond_free(Condition *c)
     (void)c;
 }
 #else
+#include <errno.h>
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
@@ -91,6 +101,23 @@ static inline bool cond_init(Condition *c)
 static inline void cond_wait(Condition *c, Mutex *m)
 {
     if (pthread_cond_wait(c, m)) {
+        abort();
+    }
+}
+
+// Waits at most ms milliseconds, or until woken.
+static inline void cond_wait_for(Condition *c, Mutex *m, int64_t ms)
+{
+    struct timespec until;
+    clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += ms / 1000;
+    until.tv_nsec += (long)(ms % 1000) * 1000000;
+    if (until.tv_nsec >= 1000000000) {
+        until.tv_sec++;
+        until.tv_nsec -= 1000000000;
+    }
+    int failed = pthread_cond_timedwait(c, m, &until);
+    if (failed && failed != ETIMEDOUT) {
         abort();
     }
 }

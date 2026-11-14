@@ -19,6 +19,8 @@
 #define LHAT_HOST_FRAMES 64
 #define LHAT_HOST_SLOTS 2048
 #define LHAT_HOST_SLICE 20000
+// How long await waits between debugger pause points, as L^'s own std.task does.
+#define LHAT_HOST_PAUSE_MS 20
 
 /// What came of an L^ job: std.task's ForeignResult, which its Task holds until taken.
 typedef struct LhatJobResult {
@@ -73,7 +75,7 @@ int64_t rh_hardware_threads(void);
 int64_t rh_pool_submit_job(int64_t pool, const void *kind, void *job);
 bool rh_task_done(int64_t task);
 void rh_task_watch(int64_t task, int64_t token);
-void rh_task_wait(int64_t task);
+bool rh_task_wait_for(int64_t task, int64_t ms);
 void *rh_task_result_raw(int64_t task);
 void rh_task_drop(int64_t task);
 
@@ -106,11 +108,6 @@ static inline bool lhost_raw_done(int64_t task)
 static inline void lhost_raw_watch(int64_t task, int64_t token)
 {
     rh_task_watch(task, token);
-}
-
-static inline void lhost_raw_wait(int64_t task)
-{
-    rh_task_wait(task);
 }
 
 static inline void lhost_raw_drop(int64_t task)
@@ -340,6 +337,22 @@ static inline void lhost_task_take(LhatMachine *machine, LhatTask *t, LhatValue 
     if (!kind || !lhat_machine_make_error(machine, kind, message, lhat_nil(), out)) {
         *out = lhat_nil();
     }
+}
+
+/// Waits for the task as L^'s own await does: a debugger pause point before each wait of at
+/// most LHAT_HOST_PAUSE_MS, so a DAP pause stops the machine while it waits. False when the
+/// debugger ended the run, which then must answer nothing that matters.
+static inline bool lhost_task_wait(LhatMachine *machine, LhatTask *t)
+{
+    while (!rh_task_done(t->raw)) {
+        if (!lhat_machine_debug_pause_point(machine)) {
+            return false;
+        }
+        if (rh_task_wait_for(t->raw, LHAT_HOST_PAUSE_MS)) {
+            break;
+        }
+    }
+    return true;
 }
 
 /// Lets go of one hold on the task, freeing it and its pool task with the last.

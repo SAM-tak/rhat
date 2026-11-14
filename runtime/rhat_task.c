@@ -458,6 +458,22 @@ void rh_task_wait(int64_t task)
     unlock(&t->mutex);
 }
 
+// Waits at most ms milliseconds for the job to finish, answering whether it has.
+bool rh_task_wait_for(int64_t task, int64_t ms)
+{
+    Task *t = (Task *)(uintptr_t)task;
+    if (!t) {
+        return true;
+    }
+    lock(&t->mutex);
+    if (!t->done) {
+        cond_wait_for(&t->finished, &t->mutex, ms);
+    }
+    bool done = t->done;
+    unlock(&t->mutex);
+    return done;
+}
+
 // Writes Done<T> | Taken: the result (size bytes) at offset with value_tag the first time, then
 // taken_tag. The task must be done.
 void rh_task_take(int64_t task, void *out, int32_t value_tag, int32_t taken_tag, uint64_t offset,

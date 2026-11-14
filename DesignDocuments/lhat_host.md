@@ -49,7 +49,9 @@ L^ の `std.task` と同じ振る舞いです: `start()` / `start(n)`・`stop()`
 - Pool の handle は C の静的変数に置きます（R^ のモジュール変数はワーカーの入口から読めないため）。
 - ジョブの結果が 1 スロットに収まるかの静的検査（L^ の `stdlib/task_check.h` の `task_check_async`）は、
   `exportL^ externC^ lhost_task_register;` により登録の最後に `async` の 2 つの腕へ登録します。
-- L^ の標準の std.task との違い: `await` はデバッガの一時停止点を作りません。
+- `await` は L^ の C 版と同じく、待つ間 `lhat_machine_debug_pause_point` を呼んでから最大 20ms 待つ
+  （ランタイムの `rh_task_wait_for`）を繰り返すので、DAP の一時停止は await 中でも効きます。デバッガが実行を
+  終わらせたら（一時停止点が false）、結果を取らずに戻ります。
 - `start`・`async` のメモリ不足は L^ と同じく `std.sys.Error.OutOfMemory` です（R^ の `std.sys.Error` を返すと、
   exportL^ の中継が L^ の同名のエラーにします）。ジョブ自身がメモリ不足で終わったときは、L^ と同じく `TaskError.Failed` です。
 
