@@ -89,18 +89,27 @@ static bool direct(Type *t)
     return t->kind != T_VOID && !t->owned && t->size > 0 && t->size <= 16;
 }
 
+// The first data stack slot id builds on: its group's, past the stacks of the fields before it.
+// Emits the step into the group, so it is called before the instruction that uses it.
 static char *stack_for(Output *o, int id)
 {
     Slot *slot = o->in->slots.v[id];
+    char *group = NULL;
     if (slot->nested_stack) {
-        return fmt("%%nested%d", slot->nested_stack - 1);
+        group = fmt("%%nested%d", slot->nested_stack - 1);
     }
-    int owner = slot->owner;
-    Type *answer = o->in->fn->yields ? o->in->turn : o->in->result;
-    if (answer->owned && owner == o->in->result_slot) {
-        return "%result_stack";
+    else {
+        Type *answer = o->in->fn->yields ? o->in->turn : o->in->result;
+        group = answer->owned && slot->owner == o->in->result_slot ? "%result_stack"
+                                                                   : fmt("%%s%d", slot->owner);
     }
-    return fmt("%%s%d", owner);
+    if (!slot->stack_offset) {
+        return group;
+    }
+    int at = ++o->tmp;
+    fprintf(o->f, "  %%t%d = getelementptr %%RhStack, ptr %s, i64 %d\n", at, group,
+            slot->stack_offset);
+    return fmt("%%t%d", at);
 }
 
 // Non-owning storage and owning descriptors use separate TBAA classes.
@@ -1750,6 +1759,7 @@ static void instruction(Output *o, Instr *i)
                 values[j] = load(o, (int)(intptr_t)i->args.v[j] - 1);
             }
         }
+        char *stack = t->owned ? stack_for(o, i->dst) : NULL;
         r = ++o->tmp;
         if (direct(t)) {
             fprintf(f, "  %%t%d = call %s @%s(i64 %%t%d", r, llvm_type(t), i->callee->symbol, a);
@@ -1763,8 +1773,8 @@ static void instruction(Output *o, Instr *i)
         if (t->kind != T_VOID && !direct(t)) {
             fprintf(f, ", ptr %%p%d", i->dst);
         }
-        if (t->owned) {
-            fprintf(f, ", ptr %s", stack_for(o, i->dst));
+        if (stack) {
+            fprintf(f, ", ptr %s", stack);
         }
         for (int j = 0; j < i->args.n; j++) {
             Type *param = i->callee->params.v[j];
@@ -2100,6 +2110,7 @@ static void instruction(Output *o, Instr *i)
                 at, a, co->frame_offset[co->received_slot], llvm_type(co->received), handed, at);
         }
         if (i->op == I_RESUME) {
+            char *stack = co->turn->owned && i->b >= 0 ? stack_for(o, i->b) : "null";
             int sp = ++o->tmp;
             fprintf(f, "  %%t%d = add i64 %%sp, %d\n  call void @%s(i64 %%t%d", sp, i->stack_index,
                     co->symbol, sp);
@@ -2108,7 +2119,7 @@ static void instruction(Output *o, Instr *i)
             }
             fprintf(f, ", ptr %%t%d", a);
             if (co->turn->owned) {
-                fprintf(f, ", ptr %s", i->b >= 0 ? stack_for(o, i->b) : "null");
+                fprintf(f, ", ptr %s", stack);
             }
             fputs(")\n", f);
         }

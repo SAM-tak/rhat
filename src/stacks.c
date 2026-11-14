@@ -42,8 +42,13 @@ static void local_plan(Instance *in)
             (i->op == I_INDEX && owning_rows(i->type))) {
             Slot *dst = in->slots.v[i->dst], *src = in->slots.v[i->a];
             dst->owner = src->owner;
-            dst->nested_stack =
-                (i->op == I_ROW_SLOT || i->op == I_INDEX) ? i->dst + 1 : src->nested_stack;
+            bool row = i->op == I_ROW_SLOT || i->op == I_INDEX;
+            dst->nested_stack = row ? i->dst + 1 : src->nested_stack;
+            // A row starts its own group; a field follows the stacks of the fields before it.
+            dst->stack_offset = row ? 0
+                                : i->op == I_FIELD
+                                    ? src->stack_offset + field_stack(i->type, i->label)
+                                    : src->stack_offset;
         }
     }
     // A value built on another owner's data stack names that owner.

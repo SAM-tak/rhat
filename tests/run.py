@@ -1957,7 +1957,68 @@ let^ bad=p^ v:ref^ View { var^ x:i32^=1; v.p := ref^ x }
 """, "reference would outlive its owner")
 negative("owned_copy", 'var^ a:i32^[grow^]={}; let^ b=a', "owned region values cannot be copied")
 negative("owned_reassign", 'var^ a:i32^[grow^]={}; a := {1}', "owned values cannot be reassigned")
-negative("grow_not_tail", 'def^ A { self^{ a:i32^[grow^], b:i32^=1 } }\n', "final field")
+# A struct's owned fields each take their own data stacks: any field may own one, and pushing
+# to one leaves references into the others, and its own, where they were.
+positive("owned_fields_anywhere", """
+def^Item { self^{ id:i64^= 0 } }
+def^World {
+    self^{ names:u8^[grow^] = {}, count:i64^= 0, items:Item[grow^] = {}, scores:f64^[flex^] = {} }
+    add = p^self^, id:i64^{
+        self^.items.push(Item{id = id})
+        self^.names.push(u8^(65 + id))
+        self^.scores.push(f64^(id) * 1.5)
+        self^.count += 1
+    }
+}
+let^fill = p^w:ref^World, n:i64^{
+    var^k:i64^= 0
+    repeat^while^k < n {
+        w.add(k)
+        k += 1
+    }
+}
+var^w = World{}
+fill(ref^w, 5)
+let^first = ref^w.items[0]
+w.add(9)
+print^(w.count, w.items.len, w.names.len, w.scores.len, first.id, w.items[5].id, w.names[5], w.scores[4])
+var^total:i64^= 0
+for^it in^w.items { total += it.id }
+print^(total)
+""", "6 6 6 6 0 9 74 6.0\n19\n")
+# Nested, as rows of an array, returned, and built from a literal: each owned field's stacks
+# follow those of the fields before it.
+positive("owned_fields_nested", """
+def^Pair { self^{ a:i64^[grow^] = {}, b:i64^[grow^] = {} } }
+def^Outer { self^{ tag:i64^= 7, left:Pair = Pair{}, mid:u8^[grow^] = {}, right:Pair = Pair{} } }
+let^make = p^n:i64^-> Pair {
+    var^p = Pair{}
+    var^k:i64^= 0
+    repeat^while^k < n {
+        p.a.push(k)
+        p.b.push(k * 10)
+        k += 1
+    }
+    return^p
+}
+var^o = Outer{}
+o.left.a.push(1)
+o.right.b.push(2)
+o.mid.push(3)
+o.left.b.push(4)
+o.right.a.push(5)
+print^(o.left.a[0], o.left.b[0], o.mid[0], o.right.a[0], o.right.b[0], o.tag)
+var^rows = Pair[3]{}
+rows[0].a.push(10)
+rows[2].b.push(20)
+rows[1].a.push(30)
+rows[1].b.push(40)
+print^(rows[0].a[0], rows[1].a[0], rows[1].b[0], rows[2].b[0], rows[0].b.len, rows[2].a.len)
+var^m = make(4)
+print^(m.a.len, m.b.len, m.a[3], m.b[3])
+var^q = Pair{a = {1, 2, 3}, b = {4, 5}}
+print^(q.a.len, q.b.len, q.a[2], q.b[1])
+""", "1 4 3 5 2 7\n10 30 40 20 0 0\n4 4 3 30\n3 2 3 5\n")
 negative("reference_default_array", 'def^ A { self^{ a:ref^ i32^[2] } }\nlet^ a=A.new()', "needs an initializer")
 negative("pure_mutation", 'let^ bad=f^ x:ref^ i32^ { *x := 2 }\n', "cannot mutate borrowed storage")
 negative("pure_procedure", 'let^ bad=f^ { print^(1) }\n', "print^ requires p^")

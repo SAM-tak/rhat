@@ -1510,8 +1510,10 @@ static void layout_unchecked(Type *t, Loc l)
             Type *kept = field_storage(t, f);
             layout(f->type, f->loc);
             layout(kept, f->loc);
-            if (f->type->owned && i != t->def->fields.n - 1) {
-                fail(f->loc, "a growable field must be the final field");
+            // A tuple's owned part is built in place last; a struct's owned fields each take
+            // their own data stacks, in field order, so any of them may own one.
+            if (f->type->owned && t->def->tuple && i != t->def->fields.n - 1) {
+                fail(f->loc, "a growable part must be the last of multiple results");
             }
             if (size > SIZE_MAX - (kept->align - 1)) {
                 fail(f->loc, "structure layout overflows");
@@ -1526,9 +1528,10 @@ static void layout_unchecked(Type *t, Loc l)
             }
             t->refs |= f->type->refs;
             t->owned |= f->type->owned;
-            if (f->type->regions > t->regions) {
-                t->regions = f->type->regions;
+            if (f->type->regions > INT_MAX - t->regions) {
+                fail(f->loc, "data stack count overflows");
             }
+            t->regions += f->type->regions;
             t->disposable |= f->type->disposable;
         }
     }
@@ -1540,6 +1543,15 @@ static void layout_unchecked(Type *t, Loc l)
     if (!t->size) {
         t->size = 1;
     }
+}
+
+int field_stack(Type *owner, int index)
+{
+    int stacks = 0;
+    for (int j = 0; owner->kind == T_STRUCT && j < index; j++) {
+        stacks += ((Field *)owner->def->fields.v[j])->type->regions;
+    }
+    return stacks;
 }
 
 void layout(Type *t, Loc l)

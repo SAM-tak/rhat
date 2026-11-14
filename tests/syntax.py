@@ -1253,7 +1253,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('results_short', 'let^ f=f^ ->(i32^,i32^) {return^ 1}', "expected '(i32^, i32^)'"),
         ('results_position', 'let^ f=f^ x:(i32^,i32^) {0}', 'written only after ->'),
         ('results_part_type', 'let^ f=f^ ->(i32^,i32^) {return^ 1,2}\nlet^ a:i64^,b=f()', "result 0 is 'i32^'"),
-        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ {1},{2}}', 'final field'),
+        ('results_growable_twice', 'let^ f=f^ ->(i32^[grow^],i32^[grow^]) {return^ {1},{2}}', 'last of multiple results'),
         ('results_owned_moved', 'let^ f=f^ ->(i32^,i32^[grow^]) {\nvar^ a:i32^[grow^]={}\nvar^ b:i32^[grow^]={}\nif^ true^ {return^ 1,a}\nreturn^ 2,b\n}\nlet^ n,x=f()', 'cannot be copied'),
         ('duplicate_first', 'repeat^ 1 {first^: let^ x=1 let^ x=2 main^:}', 'duplicate binding'),
         ('prolog_self_jump', 'repeat^ 1 {prolog^: break^ main^:}', 'own loop'),

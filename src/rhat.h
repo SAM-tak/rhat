@@ -618,6 +618,7 @@ typedef struct {
     bool alias;
     int owner;
     int nested_stack; // One plus the row destination supplying this slot's stack group.
+    int stack_offset; // Its first data stack within that group: an owned field after others.
 } Slot;
 
 struct Instance {
@@ -705,6 +706,8 @@ bool foreign_ref(Type *t);
 // How owner keeps field f: an externC^ def^ keeps a ref^ T | nil^ to an opaque C type as C's
 // one pointer (NULL for nil^), which reads and writes convert; any other field as its type.
 Type *field_storage(Type *owner, Field *f);
+// The first of owner's data stacks its field at index owns: the stacks of the fields before it.
+int field_stack(Type *owner, int index);
 // retain, let_go and type_argument of an exportL^ ref^ def^: C callbacks L^ calls for its
 // host data (sharing it across machines, reading its type arguments), not L^ members.
 bool lhat_contract(Function *f);
