@@ -692,6 +692,8 @@ bool emit_c_shims(Program *p, const char *path, bool headers);
 const char *c_function_symbol(Function *f);
 // The exportL^ ref^ def^ that t, a ref^ (or a ref^ | nil^), refers to.
 Def *lhat_data_def(Type *t);
+// std.sys.Error: an exportL^ result fails with it as L^'s own std.sys.Error of the same variant.
+bool lhat_sys_error(Def *group);
 // LhatValue, the C type of any L^ value: an exportL^ function passes it through as is (any^).
 bool lhat_any(Type *t);
 // ref^ T or ref^ T | nil^ to an opaque C type (externC^ def^ T;): R^ never holds a T, so the

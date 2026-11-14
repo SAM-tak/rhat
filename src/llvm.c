@@ -2766,6 +2766,17 @@ static const char *l_name(Type *t)
                                  : "number^";
 }
 
+// The L^ error kind of the errordef^ variant v: its own registered kind, or for std.sys.Error
+// L^'s std.sys kind of the same variant.
+static char *l_error_kind(Def *v)
+{
+    return lhat_sys_error(v->group)
+               ? fmt("lhat_lookup_error_kind(lhat_machine_program(machine), \"std.sys\", "
+                     "\"Error\", \"%s\")",
+                     strrchr(v->name, '.') + 1)
+               : fmt("rh_lhat_error_%d", v->id);
+}
+
 // The LhatHostValueFieldKind L^ reads a scalar field with, or NULL.
 static const char *l_field(Type *t)
 {
@@ -3122,18 +3133,19 @@ static void lhat_glue(Program *p, FILE *f, List *hosts)
             }
             // A whole errordef^ comes as a union of its variants.
             size_t at = in->result->payload_offset;
-            char *kind = fmt("rh_lhat_error_%d", arm->def->id), *inner = "";
+            char *kind = l_error_kind(arm->def), *inner = "";
             if (arm->kind == T_UNION) {
                 inner = fmt("    int32_t inner;\n    memcpy(&inner, u + %zu, sizeof inner);\n", at);
                 kind = "(const LhatErrorKind *[]){";
                 for (int n = 0; n < arm->def->alternatives.n; n++) {
-                    kind = fmt("%s%srh_lhat_error_%d", kind, n ? ", " : "",
-                               ((Type *)arm->def->alternatives.v[n])->def->id);
+                    kind = fmt("%s%s%s", kind, n ? ", " : "",
+                               l_error_kind(((Type *)arm->def->alternatives.v[n])->def));
                 }
                 kind = fmt("%s}[inner]", kind);
                 at += arm->payload_offset;
             }
-            signature = fmt("%s|%%s.%s", signature, l_short(arm->def));
+            signature = fmt(lhat_sys_error(error_group(arm)) ? "%s|std.sys.%s" : "%s|%%s.%s",
+                            signature, l_short(arm->def));
             failures =
                 fmt("%s  if (tag == %d) {\n%s    rh_lhat_fail(machine, %s, u + %zu, answers, "
                     "answer_count);\n    return;\n  }\n",

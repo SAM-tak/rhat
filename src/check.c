@@ -317,6 +317,11 @@ bool lhat_contract(Function *f)
            (!strcmp(s, "retain") || !strcmp(s, "let_go") || !strcmp(s, "type_argument"));
 }
 
+bool lhat_sys_error(Def *group)
+{
+    return group && !strcmp(group->name, "std.sys.Error");
+}
+
 bool lhat_any(Type *t)
 {
     return t && t->kind == T_STRUCT && t->def->c_name && !strcmp(t->def->c_name, "LhatValue");
@@ -416,7 +421,7 @@ void export_validate(Program *p, Function *f)
          result && f->lhat_export && result->kind == T_UNION && j < result->def->alternatives.n;
          j++) {
         Def *group = error_group(result->def->alternatives.v[j]);
-        if (group && !group->lhat_error) {
+        if (group && !group->lhat_error && !lhat_sys_error(group)) {
             fail(f->result->loc, "errordef^ '%s' needs exportL^ to fail an exportL^ result",
                  group->name);
         }

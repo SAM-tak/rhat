@@ -346,7 +346,10 @@ exportL^let^split = f^k:i64^-> (i64^, string^) | Error.Bad { ... }
 - L^ に渡るのはエラーの種別と message だけです。message は構築時に `message = "..."` で与えた文字列、
   なければ variant の名前（`Error.Zero` など）です。`message()` を上書きしても L^ 側には反映されません。
   付随フィールドと生成位置（source / line / column）は渡しません。
-- 結果に含めるエラーはすべて `exportL^ errordef^` のものに限り、ほかの `errordef^` を含むと
+- R^ の `std.sys.Error`（`OutOfMemory`・`CastFail`）は、L^ の `std.sys.Error` の同名の variant
+  （`lhat_lookup_error_kind(program, "std.sys", "Error", variant)`）として返します。登録はせず、L^ の `std.sys` の
+  登録をホストに任せます。署名では `std.sys.Error.OutOfMemory` のようにモジュール名をそのまま書きます。
+- 結果に含めるエラーはこれと `exportL^ errordef^` のものに限り、ほかの `errordef^` を含むと
   「errordef^ 'E' needs exportL^ to fail an exportL^ result」でコンパイルエラーになります。
 - `exportL^ ref^ def^` への `ref^ T | nil^` にもエラーを加えられます（L^ の署名は `-> rhat.T|rhat.Error|nil^`）。
   `nil^` を含めてよいのはこの形だけで、`i64^ | nil^ | Error` などはコンパイルエラーです。

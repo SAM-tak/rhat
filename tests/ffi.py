@@ -349,6 +349,8 @@ void *lhat_hostdata_pointer(LhatValue value, const LhatHostDataTag *tag);
 typedef struct LhatErrorKind { const char *name; } LhatErrorKind;
 bool lhat_register_error_kind(LhatProgram *program, const char *module, const char *name, const char *const *variant_names, size_t variant_count, const LhatErrorKind **out_group, const LhatErrorKind **out_variants);
 bool lhat_machine_make_error(LhatMachine *machine, const LhatErrorKind *kind, const char *message, LhatValue cause, LhatValue *out);
+const LhatProgram *lhat_machine_program(const LhatMachine *machine);
+const LhatErrorKind *lhat_lookup_error_kind(const LhatProgram *program, const char *module, const char *name, const char *variant);
 LhatProgram *mock_program(void);
 void mock_run(int32_t mode);
 void mock_values(int32_t mode);
@@ -491,13 +493,28 @@ bool lhat_machine_make_error(LhatMachine *machine, const LhatErrorKind *kind, co
     out->tag = LHAT_VALUE_OBJECT;
     return true;
 }}
+const LhatProgram *lhat_machine_program(const LhatMachine *machine)
+{{
+    (void)machine;
+    return &program;
+}}
+const LhatErrorKind *lhat_lookup_error_kind(const LhatProgram *p, const char *module, const char *name, const char *variant)
+{{
+    (void)p;
+    LhatErrorKind *k = malloc(sizeof *k);
+    char *text = malloc(strlen(module) + strlen(name) + strlen(variant) + 3);
+    sprintf(text, "%s.%s.%s", module, name, variant);
+    k->name = text;
+    return k;
+}}
 void mock_fail(void)
 {{
     for (int j = 0; j < program.n; j++) {{
         for (LhatInteger k = 0; k < 3; k++) {{
             LhatValue a = lhat_integer(k), answers[2];
             int count = 0;
-            if (strcmp(program.names[j], "check") && strcmp(program.names[j], "split")) {{
+            if (strcmp(program.names[j], "check") && strcmp(program.names[j], "split") &&
+                strcmp(program.names[j], "spare")) {{
                 continue;
             }}
             program.fns[j](NULL, NULL, &a, 1, answers, &count);
@@ -769,7 +786,7 @@ print^(c.n)
              'rhat.find f^rhat.Counter, number^ -> rhat.Counter|rhat.Miss.Gone|nil^;\n'
              'rhat.Counter.bump p^self^, number^ -> number^;\nrhat.Counter.dispose p^self^;\n'
              'true\ntrue\n42 1 1 1\n2 1 3 2 1\n1 1 Gone\ndispose 42\n1\n42\n', extra=lhat_extra)
-    errors = lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_fail:p^;') + '''exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
+    errors = 'import^ std.sys\n' + lhat.replace('externC^ mock_run:p^ mode:i32^;', 'externC^ mock_fail:p^;') + '''exportL^ errordef^ Error { Zero, Bad { self^{ code:i32^ = 0 } } }
 exportL^ let^ check = f^ k:i64^ -> i64^ | Error {
   if^ k = 0 { let^ e:Error = Error.Zero{}
  return^ e }
@@ -781,6 +798,10 @@ exportL^ let^ split = f^ k:i64^ -> (i64^, i64^) | Error.Bad {
   if^ k = 1 { return^ Error.Bad{} }
   return^ k, k + 1
 }
+exportL^ let^ spare = f^ k:i64^ -> i64^ | std.sys.Error {
+  if^ k = 2 { return^ std.sys.Error.OutOfMemory{message = "no room"} }
+  return^ k
+}
 mock_fail()
 '''
     positive('ffi_export_lhat_error', errors,
@@ -788,8 +809,10 @@ mock_fail()
              'rhat.greet f^string^ -> string^;\nrhat.flip f^bool^ -> bool^;\nrhat.shout p^string^;\n'
              'rhat.check f^number^ -> number^|rhat.Error;\n'
              'rhat.split f^number^ -> (number^, number^)|rhat.Error.Bad;\n'
+             'rhat.spare f^number^ -> number^|std.sys.Error;\n'
              'true\ncheck Zero: Error.Zero\ncheck Bad: bad one\ncheck 1 20\n'
-             'split 2 0\nsplit Bad: Error.Bad\nsplit 2 2\n', extra=lhat_extra)
+             'split 2 0\nsplit Bad: Error.Bad\nsplit 2 2\n'
+             'spare 1 0\nspare 1 1\nspare std.sys.Error.OutOfMemory: no room\n', extra=lhat_extra)
     negative('ffi_export_lhat_error_unexported', header + 'errordef^ E { Bad }\nexportL^ let^ g = f^ -> i32^ | E { E.Bad{} }',
              "errordef^ 'E' needs exportL^ to fail an exportL^ result")
     negative('ffi_export_lhat_error_nil', header + 'exportL^ errordef^ E { Bad }\nexportL^ let^ g = f^ k:i64^ -> i64^ | nil^ | E.Bad { k }',

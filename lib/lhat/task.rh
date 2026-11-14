@@ -10,6 +10,7 @@ includeC^"lhat_host.h"
 let^async = import^std.async
 let^task = import^std.task
 let^l = import^lhat.l
+let^sys = import^std.sys
 
 externC^def^LhatCarried;
 externC^def^LhatJobResult;
@@ -164,21 +165,21 @@ exportC^let^rhat_lhost_job_finish = p^job:ref^task.ForeignJob -> ref^task.Foreig
 exportC^let^rhat_lhost_job_release = p^job:ref^task.ForeignJob { lhost_job_free(job) }
 exportC^let^rhat_lhost_job_free_result = p^result:ref^task.ForeignResult { lhost_result_free(result) }
 
-let^start_pool = p^wanted:i64^-> i64^{
+let^start_pool = p^wanted:i64^-> i64^| sys.Error {
     stop()
     let^pool = lhost_pool_new(wanted, thread_stack_count^())
-    if^pool = 0 { return^0 }
+    if^pool = 0 { return^sys.Error.OutOfMemory{message = "the pool could not be made"} }
     let^old = lhost_set_pool(pool, wanted)
     return^wanted
 }
 
 # Starts the pool, one worker per hardware thread; a second start is a fresh pool.
-exportL^"start" "p^ -> number^|std.sys.Error.OutOfMemory" let^start_default = p^-> i64^{
+exportL^"start" "p^ -> number^|std.sys.Error.OutOfMemory" let^start_default = p^-> i64^| sys.Error {
     return^start_pool(lhost_hardware_threads())
 }
 
 # Starts the pool with workers threads, between 1 and 1024.
-exportL^"start" "p^number^ -> number^|std.sys.Error.OutOfMemory" let^start = p^workers:f64^-> i64^{
+exportL^"start" "p^number^ -> number^|std.sys.Error.OutOfMemory" let^start = p^workers:f64^-> i64^| sys.Error {
     var^wanted:i64^= 1
     if^workers > 1024.0 { wanted := 1024 elif^workers > 1.0: wanted := i64^(workers) }
     return^start_pool(wanted)
@@ -192,7 +193,7 @@ exportL^let^stop = p^{
 
 exportL^"f^ -> number^" let^workers = p^-> i64^{ return^lhost_workers() }
 
-let^submit = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+let^submit = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError | sys.Error {
     let^pool = lhost_pool()
     if^pool = 0 { return^TaskError.NotStarted{message = "std.task.start has not been called"} }
     if^!lhost_job_shape(job) {
@@ -208,21 +209,21 @@ let^submit = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskErro
         let^made = lhost_task_new(raw, job)
         if^made fits^ref^Task { return^made }
         lhost_raw_drop(raw)
-        return^TaskError.Failed{message = "out of memory"}
+        return^sys.Error.OutOfMemory{message = "out of memory"}
     }
     if^refusal = 1 { return^TaskError.Refused{message = "the job cannot leave its machine"} }
-    return^TaskError.Failed{message = "out of memory"}
+    return^sys.Error.OutOfMemory{message = "out of memory"}
 }
 
 # Runs a coroutine not yet started on the pool.
 exportL^"async" "p^c^{->*->*} -> std.task.Task<ARG0.ResultType>|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
-let^async_frame = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+let^async_frame = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError | sys.Error {
     return^submit(machine, job)
 }
 
 # Runs a closure taking nothing on the pool.
 exportL^"async" "p^(p^;)|(p^->any^;) -> std.task.Task<ARG0.ReturnType>|std.task.TaskError.NotStarted|std.task.TaskError.Refused|std.task.TaskError.Failed|std.sys.Error.OutOfMemory"
-let^async_call = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError {
+let^async_call = p^machine:ref^l.LhatMachine, job:l.LhatValue -> ref^Task | TaskError | sys.Error {
     return^submit(machine, job)
 }
 
