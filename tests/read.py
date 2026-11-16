@@ -781,19 +781,19 @@ var^a=D{}
 let^r:ref^read^D=ref^a
 print^(get(r))
 """, '3\n')
-    positive('pure_origin_through_closure', poly+"""let^signature=f^x:ref^Cell ->string^ {
- let^inner=f^ ->ref^Cell {x}
- return^typeof^(inner()).signature^
+    positive('pure_origin_through_nested_call', poly+"""let^signature=f^x:ref^Cell ->string^ {
+ let^inner=f^y:ref^Cell ->ref^Cell {y}
+ return^typeof^(inner(x)).signature^
 }
 print^(signature(r),signature(ref^a))
 """, 'ref^read^ Cell ref^ Cell\n')
-    # Capability inference does not relax the existing conservative capture lifetime check.
-    negative('pure_capture_return_lifetime', poly+"""let^forward=f^x:ref^Cell ->ref^Cell {
+    # Capability inference does not permit capturing a mutable outer parameter.
+    negative('pure_parameter_capture_rejected', poly+"""let^forward=f^x:ref^Cell ->ref^Cell {
  let^inner=f^ ->ref^Cell {x}
  return^inner()
 }
 forward(r)
-""", 'rooted in a local owner')
+""", 'f^ cannot capture mutable binding')
     positive('pure_origin_through_recursion', poly+"""let^forward=f^x:ref^Cell,n:i32^ ->ref^Cell {
  if^n=0 {return^x}
  return^this^(x,n-1)

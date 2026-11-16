@@ -456,7 +456,7 @@ let^ add = p^ x:f32^ {
     points.push(V{x=x * scale, y=1.0})
     count += 1
 }
-let^ total = f^ -> f32^ {
+let^ total = p^ -> f32^ {
     var^ sum:f32^ = 0.0
     for^ i from^ 0 to^ points.len - 1 { sum += points[i].x }
     return^ sum
@@ -467,7 +467,7 @@ add(1.0)
 twice(3.0)
 print^(count, points.len, total(), shadow(4))
 var^ late:i64^ = 7
-let^ read_late = f^ -> i64^ { return^ late }
+let^ read_late = p^ -> i64^ { return^ late }
 let^ label = "abc"
 let^ last = f^ -> i64^ {
     var^ n:i64^ = 0
@@ -1043,7 +1043,7 @@ print^(Small.A, Small.B, Signed.Down, Signed.Up, i32^(Signed.Down), i32^(Small.B
 import^ std.sys
 enum^ Block : u8^ { Air, Grass, Lamp = 12 }
 enum^ Sign : i16^ { Minus = -1, Zero, Plus }
-var^ cells:u8^[] = {Block.Lamp, 7, 1}
+let^ cells:u8^[] = {Block.Lamp, 7, 1}
 let^ at = f^ i:i64^ -> Block { Block(cells[i]) catch^ Block.Air }
 print^(at(0), at(1), at(2))
 print^(Sign(-1) catch^ Sign.Zero, Sign(i16^(i64^(1))) catch^ Sign.Zero, Sign(255) catch^ Sign.Zero)
@@ -1058,7 +1058,7 @@ enum^ Block : u8^ { Air, Grass, Lamp }
 let^ SLOTS:u8^[2] = {Block.Grass, Block.Lamp}
 var^ cells:u8^[] = {Block.Air repeat^ 3}
 cells[1] := Block.Lamp
-let^ at = f^ i:i64^ -> u8^ { if^ i < 0 { return^ Block.Air } return^ cells[i] }
+let^ at = p^ i:i64^ -> u8^ { if^ i < 0 { return^ Block.Air } return^ cells[i] }
 let^ solid = f^ b:u8^ -> bool^ { b != Block.Air }
 let^ next = f^ b:u8^ -> u8^ { b + 1 }
 let^ m = Block.Lamp
@@ -1204,7 +1204,7 @@ f^ obj:ref^ A ->i32^ {this^^(obj,0)}(self^)
         ('top_level_order', 'let^ show = p^ { print^(n) }\nshow()\nvar^ n:i64^ = 1', "declared later at line 3"),
         ('top_level_hidden', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\ndo^{ var^ n:i64^ = 5\nshow() }', "which a local hides here"),
         ('top_level_value', 'var^ n:i64^ = 1\nlet^ show = p^ { print^(n) }\nlet^ g = show', "cannot be a value"),
-        ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot mutate borrowed storage"),
+        ('top_level_pure', 'var^ n:i64^ = 1\nlet^ bump = f^ -> i64^ { n := n + 1\nreturn^ n }\nprint^(bump())', "f^ cannot capture mutable binding"),
         ('top_level_shrink', 'var^ q:i64^[flex^] = {1, 2}\nlet^ shrink = p^ { q.pop() }\nlet^ r = ref^ q[1]\nshrink()\nprint^(*r)', "while 'r' may refer into it"),
         ('top_level_let_write', 'let^ t:i64^[2] = {1, 2}\nlet^ w = p^ { t[0] := 5 }\nw()', "cannot modify let^ binding 't'"),
         ('top_level_let_borrow', 'let^ t:i64^[2] = {1, 2}\nlet^ h = p^ r:ref^ i64^[2] { r[0] := 5 }\nlet^ w = p^ { h(ref^ t) }\nw()', "requires var^, found let^ 't'"),

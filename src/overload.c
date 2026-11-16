@@ -56,6 +56,9 @@ Type *closure_type(Context *c, Function *f)
         Stmt *binding = mem(sizeof(*binding));
         *binding = *source->capture;
         binding->mut = e->kind == E_CAPTURE ? !v->captured_let : v->mut;
+        if (!f->procedure && binding->mut) {
+            fail(e->loc, "f^ cannot capture mutable binding '%s'", binding->name);
+        }
         binding->loc = v->declaration.file ? v->declaration : binding->loc;
         *param = *source;
         param->capture = binding;

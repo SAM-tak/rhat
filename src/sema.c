@@ -101,6 +101,13 @@ Roots root(Context *c, const void *key, int depth, bool external)
     return (Roots){v, 1};
 }
 
+Roots unknown_roots(Context *c, const void *key)
+{
+    Roots roots = root(c, key, 0, true);
+    roots.v[0]->static_storage = true;
+    return roots;
+}
+
 Roots state_roots(Program *p)
 {
     if (!p->state_root) {
@@ -638,7 +645,9 @@ static Roots lifetime_roots(Context *c, Roots storage)
     for (int j = 0; j < storage.n; j++) {
         Root *r = storage.v[j];
         Roots one = {&storage.v[j], 1};
-        out = roots_union(out, r->readonly ? root(c, r, r->depth, r->external) : one);
+        Roots lifetime = r->readonly ? root(c, r, r->depth, r->external) : one;
+        lifetime.v[0]->immutable = r->immutable;
+        out = roots_union(out, lifetime);
     }
     return out;
 }
@@ -2289,6 +2298,9 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
         deps = roots_union(deps, state);
     }
     deps = result_holds_arguments(t) ? deps : (Roots){0};
+    if (t->refs) {
+        deps = roots_union(deps, unknown_roots(c, e));
+    }
     if (!f->procedure && type_writes(t) && !read_contract(f->result)) {
         for (int j = 0; j < arguments.n; j++) {
             if (type_reads(((Value *)arguments.v[j])->type)) {
@@ -2565,6 +2577,9 @@ static Value pointer_call(Context *c, Expr *e, Expr *target, Type *signature, in
         fail(e->loc, "a C function pointer cannot return a def^ by value yet");
     }
     Value out = {.type = result, .id = -1};
+    if (result->refs) {
+        out.deps = unknown_roots(c, e);
+    }
     if (result->kind != T_VOID) {
         out.id = destination >= 0 ? destination : slot(c, result, false);
     }
@@ -3156,6 +3171,12 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
         disposable_argument(v.type, e->loc);
         writable_argument(v, param, f, e->loc);
+        if (param->capture && !f->procedure) {
+            if (param->capture->mut) {
+                fail(e->loc, "f^ cannot capture mutable binding '%s'", param->capture->name);
+            }
+            immutable_capture(v, param->capture->name, e->loc);
+        }
         if (argument_pack(v.type) && (!f->heterogeneous || strcmp(param->name, "..."))) {
             fail(e->loc, "argument packs must be forwarded to a variadic parameter");
         }
@@ -4237,6 +4258,9 @@ static Value callable_value(Context *c, Type *type, Type *expected, Loc loc)
                 if (!source.addressable) {
                     fail(loc, "capture '%s' requires a local binding", capture->capture->name);
                 }
+                if (!f->procedure) {
+                    immutable_capture(source, capture->capture->name, loc);
+                }
                 ref = value(c, capture->inferred);
                 Instr *address = emit(c, I_ADDR, loc);
                 address->dst = ref.id;
@@ -4742,13 +4766,27 @@ Value expression(Context *c, Expr *e, Type *expected)
         }
         Value out = {
             .type = state_field_type(c->p, f), .addressable = true, .storage = state_roots(c->p)};
+        if (!c->in->fn->procedure && (!f->binding || f->binding->mut)) {
+            fail(e->loc, "f^ cannot capture '%s': reachable state is not proven immutable",
+                 f->name);
+        }
+        if (!c->in->fn->procedure && !f->immutable_capture.file) {
+            // Inference may lower a method before the entry initializes its binding.
+            // Validate this requirement once all declarations have been checked.
+            f->immutable_capture = e->loc;
+        }
         if (f->binding && !f->binding->mut) {
             Roots immutable = root(c, f, 0, true);
             immutable.v[0]->readonly = f->name;
-            out.storage = roots_union(out.storage, immutable);
+            immutable.v[0]->immutable = true;
+            out.storage = immutable;
         }
         out.id = slot(c, out.type, true);
         out.deps = out.type->refs ? state_roots(c->p) : (Roots){0};
+        if (out.type->refs && (f->immutable || !c->in->fn->procedure)) {
+            out.deps = root(c, f, 0, true);
+            out.deps.v[0]->immutable = true;
+        }
         Instr *i = emit(c, I_STATE_REF, e->loc);
         i->dst = out.id;
         i->label = f->index;

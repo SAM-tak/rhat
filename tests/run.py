@@ -1665,7 +1665,7 @@ let^ bad=f^ p:ref^ i32^, n:i32^ -> ref^ i32^ {
     return^ this^(ref^ local,n-1)
 }
 """, "cannot return a reference")
-positive("anonymous_capture", "var^ outer:i32^=3; print^(f^ -> i32^ { outer }())", "3\n")
+positive("anonymous_capture", "let^ outer:i32^=3; print^(f^ -> i32^ { outer }())", "3\n")
 negative("implicit_void_return", "let^ nothing=f^ {} let^ bad=f^ { nothing() }", "cannot return a value")
 negative("no_implicit_last_statement", "let^ bad=f^ -> i32^ { let^ n:i32^=1; n+1 }", "only calls can be expression statements")
 negative("no_implicit_procedure_return", "let^ bad=p^ -> i32^ { 1 }", "only calls can be expression statements")

@@ -772,18 +772,38 @@ static void binding_name(Context *c, Stmt *s)
 
 static void publish_state(Context *c, Stmt *s, Var *v)
 {
+    // Top-level declarations do not construct lexical environments. Check their hidden
+    // captures when the original binding is initialized, including uncalled functions.
+    if (c->in->fn == c->p->entry) {
+        for (int j = 0; j < c->p->functions.n; j++) {
+            Function *f = c->p->functions.v[j];
+            for (int k = 0; !f->procedure && k < f->params.n; k++) {
+                Param *param = f->params.v[k];
+                if (param->capture == s) {
+                    if (s->mut) {
+                        fail(f->loc, "f^ cannot capture mutable binding '%s'", s->name);
+                    }
+                    immutable_capture(variable(v), s->name, f->loc);
+                }
+            }
+        }
+    }
     if (!s->state_field) {
         return;
     }
     s->state_field->type = v->type;
+    s->state_field->immutable = !v->mut && immutable_value(variable(v));
     v->root = state_roots(c->p);
-    if (v->type->refs) {
+    if (v->type->refs && !s->state_field->immutable) {
         v->deps = roots_union(v->deps, state_roots(c->p));
     }
     if (!v->mut) {
         Roots immutable = root(c, s->state_field, 0, true);
         immutable.v[0]->readonly = s->state_field->name;
-        v->root = roots_union(v->root, immutable);
+        immutable.v[0]->immutable = true;
+        // Immutable storage cannot alias a writable state slot. References held in it
+        // retain their own dependencies, including mutable task state when applicable.
+        v->root = immutable;
     }
     Instr *i = emit(c, I_STATE_BIND, s->loc);
     i->a = v->slot;
@@ -983,6 +1003,7 @@ static void statements_unchecked(Context *c, List *body, bool scope)
             store_check(c, dst, v, s->loc);
             // What a call hands back from this storage carries the root, so it cannot write either.
             var->root.v[0]->readonly = s->mut ? NULL : s->name;
+            var->root.v[0]->immutable = !s->mut;
             tool_record(c->p, s->loc, s->loc, s->state_field ? s->state_field->name : s->name, t,
                         NULL, s->state_field ? s->state_field->owner : NULL, s->mut ? 13 : 14,
                         true);
@@ -1799,6 +1820,9 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
             }
         }
         Type *t = in->params.v[j];
+        if (a->capture && !f->procedure && a->capture->mut) {
+            fail(a->loc, "f^ cannot capture mutable binding '%s'", a->capture->name);
+        }
         layout(t, a->loc);
         if (t->kind == T_VOID) {
             fail(a->loc, "parameter cannot have void type");
@@ -1827,9 +1851,11 @@ static Instance *instantiate_unchecked(Program *p, Instance *in)
         if (t->refs) {
             v->deps = root(&c, &a->name, 0, true);
             v->deps.v[0]->readonly = a->capture && !a->capture->mut ? a->capture->name : NULL;
+            v->deps.v[0]->immutable = a->capture && !a->capture->mut;
             if (t->kind == T_REF && t->elem->refs) {
                 contents = root(&c, &a->loc, 0, true);
                 contents.v[0]->readonly = NULL;
+                contents.v[0]->immutable = a->capture && !f->procedure;
                 v->deps.v[0]->inner = contents.v[0];
             }
         }

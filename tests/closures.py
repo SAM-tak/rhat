@@ -7,7 +7,8 @@ def main():
     positive, negative = suite.positive, suite.negative
     positive('captured_argument_read', '''
 let^outer=f^n:i32^ ->i32^ {
-    let^local=f^ ->i32^ {n}
+    let^snapshot=n
+    let^local=f^ ->i32^ {snapshot}
     return^local()
 }
 print^(outer(1))
@@ -99,7 +100,7 @@ let^run=p^ {
     let^r=ref^n
     let^step=p^ {*r+=2}
     step()
-    let^get=f^ {ref^n}
+    let^get=p^ {return^ref^n}
     let^view=get();
     *view+=1
     print^(n)
@@ -112,7 +113,7 @@ let^run=p^ {
     var^items=i32^[grow^]{1,2}
     let^step=p^ {items.push(3)}
     apply(step)
-    let^sum=f^ {items[0]+items[2]}
+    let^sum=p^ {return^items[0]+items[2]}
     print^(items.len,sum())
 }
 run()
@@ -189,17 +190,19 @@ print^(global)
     positive('capture_outer_this', '''
 let^count=f^n:i32^ ->i32^ {
     if^n=0 {return^0}
-    return^(f^ {this^^(n-1)+1})()
+    let^snapshot=n
+    return^(f^ {this^^(snapshot-1)+1})()
 }
 print^(count(3))
 ''', '3\n')
     positive('capture_specializations', '''
 let^run=template^p^value {
-    let^get=f^ {value}
+    let^snapshot=value
+    let^get=f^ {snapshot}
     print^(get())
 }
-run(3) run("text")
-''', '3\ntext\n')
+run(3) run(4.5)
+''', '3\n4.5\n')
     negative('capture_pure_callback_call', '''
 let^apply=f^cb:p^; {cb()}
 let^run=p^ {var^n=0 apply(p^ {n+=1})}
@@ -247,7 +250,7 @@ run()
 let^run=p^ {
     var^items=i32^[flex^]{1,2}
     let^r=ref^items[0]
-    let^read=f^ {*r}
+    let^read=p^ {return^*r}
     items.clear()
     print^(read())
 }
@@ -287,7 +290,7 @@ run()
     negative('pure_capture_write', '''
 let^run=p^ {var^n=0 let^bad=f^ {n+=1} bad()}
 run()
-''', 'f^ cannot mutate')
+''', 'f^ cannot capture mutable binding')
     negative('capture_return', '''
 let^make=p^ {
     var^n=0
@@ -297,10 +300,169 @@ let^bad=make()
 ''', 'capturing function cannot escape')
     negative('captured_parameter_return', '''
 let^make=f^x:i32^ {
-    return^f^ {x+1}
+    let^snapshot=x
+    return^f^ {snapshot+1}
 }
 let^bad=make(5)
 ''', 'capturing function cannot escape')
+    positive('immutable_owned_capture', '''
+let^run=p^ {
+    let^items=i32^[grow^]{2,3}
+    let^get=f^ {items[0]+items[1]}
+    print^(get())
+}
+run()
+''', '5\n')
+    positive('immutable_slice_capture', '''
+let^run=p^ {
+    let^items=i32^[2]{2,3}
+    let^view=items[..]
+    let^get=f^ {view[0]+view[1]}
+    print^(get())
+}
+run()
+''', '5\n')
+    positive('immutable_nested_capture', '''
+let^run=p^ {
+    let^items=i32^[2]{2,3}
+    let^view=items[..]
+    let^outer=f^ { (f^ {view[0]})() }
+    print^(outer())
+}
+run()
+''', '2\n')
+    positive('immutable_reference_field_capture', '''
+struct^ View {items:read^i32^[..]}
+let^run=p^ {
+    let^items=i32^[2]{2,3}
+    let^view=View{items=items[..]}
+    let^get=f^ {view.items[1]}
+    print^(get())
+}
+run()
+''', '3\n')
+    positive('immutable_top_slice_capture', '''
+let^items=i32^[2]{2,3}
+let^view=items[..]
+let^get=f^ {view[1]}
+print^(get())
+''', '3\n')
+    negative('mutable_local_read_capture',
+             'let^run=p^ {var^n=1 let^get=f^ {n} print^(get())} run()',
+             'f^ cannot capture mutable binding')
+    negative('mutable_parameter_capture',
+             'let^run=p^n:i32^ {let^get=f^ {n} print^(get())} run(1)',
+             'f^ cannot capture mutable binding')
+    negative('mutable_top_capture', 'var^n=1 let^get=f^ {n} print^(get())',
+             'f^ cannot capture mutable binding')
+    negative('mutable_reference_capture',
+             'let^run=p^ {var^n=1 let^r=ref^n let^get=f^ {*r} print^(get())} run()',
+             'not proven immutable')
+    negative('read_reference_mutable_capture',
+             'let^run=p^ {var^n=1 let^r:ref^read^i32^=ref^n let^get=f^ {*r} print^(get())} run()',
+             'not proven immutable')
+    negative('unknown_reference_capture',
+             'let^run=p^r:ref^read^i32^ {let^snapshot=r let^get=f^ {*snapshot} print^(get())} var^n=1 run(ref^n)',
+             'not proven immutable')
+    negative('mutable_reference_field_capture', '''
+struct^ View {r:ref^read^i32^}
+let^run=p^ {
+    var^n=1
+    let^view=View{r=ref^n}
+    let^get=f^ {*view.r}
+    print^(get())
+}
+run()
+''', 'not proven immutable')
+    negative('mutable_reference_array_capture', '''
+let^run=p^ {
+    var^n=1
+    let^items=i32^[ref^read^1]{ref^n}
+    let^get=f^ {*items[0]}
+    print^(get())
+}
+run()
+''', 'not proven immutable')
+    negative('mutable_slice_capture',
+             'let^run=p^ {var^items=i32^[2]{1,2} let^view=items[..] let^get=f^ {view[0]} print^(get())} run()',
+             'not proven immutable')
+    negative('mutable_self_capture',
+             'def^ A {self^{n=1} run=p^self^ {let^get=f^ {self^.n} print^(get())}} var^a=A{} a.run()',
+             'f^ cannot capture mutable binding')
+    negative('mutable_top_reference_capture',
+             'var^n=1 let^r=ref^n let^get=f^ {*r} print^(get())',
+             'not proven immutable')
+    negative('uncalled_mutable_top_reference_capture',
+             'var^n=1 let^r=ref^n let^get=f^ {*r}', 'not proven immutable')
+    negative('mutable_static_read_capture',
+             'def^ A {var^n=1 get=f^ {def^.n}} print^(A.get())',
+             'not proven immutable')
+    negative('mutable_method_top_read_capture',
+             'var^n=1 def^ A {get=f^ {n}} print^(A.get())',
+             'not proven immutable')
+    negative('mutable_method_top_reference_capture',
+             'var^n=1 let^r=ref^n def^ A {get=f^ {*r}} print^(A.get())',
+             'not proven immutable')
+    negative('mixed_slice_origins_capture', '''
+let^run=p^flag:bool^ {
+    let^fixed=i32^[1]{1}
+    var^changing=i32^[1]{2}
+    let^view:read^i32^[..]=if^flag: fixed[..] el^: changing[..];
+    let^get=f^ {view[0]}
+    print^(get())
+}
+run(true^)
+''', 'not proven immutable')
+    positive('immutable_read_reference_capture', '''
+let^run=p^ {
+    let^n=7
+    let^r:ref^read^i32^=ref^n
+    let^alias=r
+    let^get=f^ {*alias}
+    print^(get())
+}
+run()
+''', '7\n')
+    positive('immutable_top_method_slice_capture', '''
+let^items=i32^[2]{2,3}
+let^view=items[..]
+def^ A {get=f^ {view[1]}}
+print^(A.get())
+''', '3\n')
+    positive('immutable_nil_reference_capture', '''
+let^run=p^ {
+    let^r:ref^i32^|nil^=nil^
+    let^get=f^ {r=nil^}
+    print^(get())
+}
+run()
+''', 'true\n')
+    negative('unknown_foreign_reference_capture', '''
+externC^def^ Cell;
+externC^fetch:p^ ->ref^Cell;
+let^r=fetch()
+let^get=f^ {r}
+''', 'not proven immutable')
+    negative('unknown_stored_reference_capture', '''
+externC^def^ Cell;
+externC^fetch:p^ ->ref^Cell;
+struct^ Box {r:ref^Cell|nil^=nil^}
+let^set=p^box:ref^Box {box.r:=fetch()}
+var^box=Box{}
+set(ref^box)
+let^snapshot=box
+let^get=f^ {snapshot.r}
+''', 'not proven immutable')
+    positive('immutable_returned_top_slice_capture', '''
+let^items=i32^[2]{2,3}
+def^ A {view=f^ ->read^i32^[..] {items[..]}}
+let^run=p^ {
+    let^snapshot=A.view()
+    let^get=f^ {snapshot[1]}
+    print^(get())
+}
+run()
+''', '3\n')
     suite.finish()
 
 

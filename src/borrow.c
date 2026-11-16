@@ -10,6 +10,11 @@ typedef struct {
 
 static bool flow_site(Context *c, Root *r, int *param, int *part)
 {
+    if (r->static_storage) {
+        *param = -3;
+        *part = FLOW_WHOLE;
+        return true;
+    }
     if (r == c->p->state_root) {
         *param = -2;
         *part = FLOW_WHOLE;
@@ -27,6 +32,11 @@ static bool flow_site(Context *c, Root *r, int *param, int *part)
                 return true;
             }
         }
+    }
+    if (r->immutable && r->external && !r->depth) {
+        *param = -4;
+        *part = FLOW_WHOLE;
+        return true;
     }
     return false;
 }
@@ -145,7 +155,14 @@ static Roots flow_part(Roots target, Roots held, int part)
 
 static Roots call_part(Context *c, Roots *target, Roots *held, int index, int part)
 {
-    return index == -2 ? state_roots(c->p) : flow_part(target[index], held[index], part);
+    if (index == -4) {
+        Roots immutable = root(c, &c->p->state_root, 0, true);
+        immutable.v[0]->immutable = true;
+        return immutable;
+    }
+    return index == -3   ? unknown_roots(c, c->in)
+           : index == -2 ? state_roots(c->p)
+                         : flow_part(target[index], held[index], part);
 }
 
 Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
@@ -164,6 +181,9 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
         }
     }
     if (f->external) {
+        if (in->result->refs) {
+            all = roots_union(all, unknown_roots(c, in));
+        }
         return all;
     }
     // A callee still being lowered has no summary yet; assume it stores all it can.
@@ -211,6 +231,9 @@ Roots flow_call(Context *c, Instance *in, List *values, Loc loc)
     Roots out = {0};
     if (!known || in->returns_unknown || values->n > 64) {
         out = roots_union(out, all);
+        if (in->result->refs) {
+            out = roots_union(out, unknown_roots(c, in));
+        }
         if (c->p->state_fields.n) {
             out = roots_union(out, state_roots(c->p));
         }
@@ -302,6 +325,27 @@ bool type_writes(Type *t)
     return capability(t, true, &seen);
 }
 
+bool immutable_value(Value v)
+{
+    if (!v.type->refs) {
+        return true;
+    }
+    for (int j = 0; j < v.deps.n; j++) {
+        Root *r = v.deps.v[j];
+        if (!r->immutable || (r->inner && !r->inner->immutable)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void immutable_capture(Value v, const char *name, Loc loc)
+{
+    if (!immutable_value(v)) {
+        fail(loc, "f^ cannot capture '%s': reachable state is not proven immutable", name);
+    }
+}
+
 void mutation_check(Context *c, Roots storage, Loc loc)
 {
     for (int j = 0; j < c->pending_disposals.n; j++) {
@@ -314,6 +358,13 @@ void mutation_check(Context *c, Roots storage, Loc loc)
 
 void flow_validate(Program *p)
 {
+    for (int j = 0; j < p->state_fields.n; j++) {
+        Field *field = p->state_fields.v[j];
+        if (field->immutable_capture.file && !field->immutable) {
+            fail(field->immutable_capture,
+                 "f^ cannot capture '%s': reachable state is not proven immutable", field->name);
+        }
+    }
     bool state_changed;
     do {
         state_changed = false;
@@ -342,7 +393,13 @@ void flow_validate(Program *p)
             fail(in->fn->loc,
                  "thread entry or exported function cannot access task-owned static variables");
         }
-        if ((in->indirect || in->fn->exported) && in->flows.n && !in->invalid) {
+        bool borrowed_store = false;
+        for (int k = 0; k < in->flows.n; k++) {
+            Flow *flow = in->flows.v[k];
+            // Static sources need provenance summaries, but cannot outlive their storage.
+            borrowed_store |= flow->from >= -2;
+        }
+        if ((in->indirect || in->fn->exported) && borrowed_store && !in->invalid) {
             fail(in->fn->loc,
                  "'%s' stores a reference through an argument, so it cannot be called through "
                  "dyn^, a function value or exportC^",

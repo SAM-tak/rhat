@@ -1618,7 +1618,7 @@ def^F2 { self^{ x:f32^ } }
 
     # A syntax error inside the only caller's body hides the calls, not the captures' types.
     broken_caller=('var^pictures=i32^[grow^]{}\n'
-                   'let^hud_point=f^x:i64^ {pictures[x]}\n'
+                   'let^hud_point=p^x:i64^ {return^pictures[x]}\n'
                    'let^hud_quad=p^x:i64^ {print^(hud_point(x))}\n'
                    'let^upload=p^ {\n    var^hud=i32^[grow^]\n    hud_quad(0)\n}\n'
                    'upload()\n')
@@ -1913,7 +1913,7 @@ print^(read(point))
     entry_path = work/'entry_methods.rh'
     entry_text = ('var^count=0\nlet^fixed=7\n'
                   'def^ Counter {self^{} increment=p^ {count+=1}\n'
-                  'step=p^self^ {count+=1} read=f^self^ {count+fixed}}\n'
+                  'step=p^self^ {count+=1} read=p^self^ {return^count+fixed}}\n'
                   'var^c=Counter{}\nCounter.increment() c.step() print^(c.read())\n')
     client.open(entry_path,entry_text)
     assert client.diagnostics(entry_path,1) == []

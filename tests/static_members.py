@@ -29,8 +29,8 @@ def^ A {
     let^step:f32^=0.2
     self^{}
     change=p^self^ {def^.aaa+=1 Self^.aaa+=2}
-    read=f^self^ {def^.aaa+Self^.aaa}
-    implicit=f^self^ {aaa}
+    read=p^self^ {return^def^.aaa+Self^.aaa}
+    implicit=p^self^ {return^aaa}
     constant=f^self^ {def^.step=Self^.step}
 }
 var^a=A{}
@@ -78,7 +78,7 @@ def^ A {
     var^si=0
     increment=p^ {count+=1 def^.si+=1}
     step=p^self^ {count+=1 self^.i+=1 increment()}
-    read=f^self^ {count+self^.i}
+    read=p^self^ {return^count+self^.i}
 }
 var^a=A{}
 A.increment() a.step() increment()
@@ -100,7 +100,7 @@ print^(count)
 let^next=f^n {n+1}
 var^count=next(2)
 let^argc=....len
-def^ A {step=p^ {count+=1} get=f^ {count} args=f^ {argc}}
+def^ A {step=p^ {count+=1} get=p^ {return^count} args=f^ {argc}}
 A.step()
 print^(A.get(),A.args())
 ''', '4 0\n')
@@ -134,7 +134,7 @@ print^(n)
     negative('entry_method_indirect_flex_borrow', '''
 var^items=i32^[flex^]{1,2}
 let^view=ref^items
-def^ A {first=f^ {ref^view[0]}}
+def^ A {first=p^ {return^ref^view[0]}}
 do^{let^r=A.first() items.clear() print^(*r)}
 ''', 'may refer into it')
     negative('entry_method_stored_flex_borrow', '''
@@ -148,12 +148,12 @@ print^(*r)
 var^count=0
 def^ A {self^{} bad=f^self^ {count+=1}}
 A{}.bad()
-''', 'f^ cannot mutate')
+''', 'f^ cannot capture')
     negative('entry_static_pure_write', '''
 var^count=0
 def^ A {bad=f^ {count+=1}}
 A.bad()
-''', 'f^ cannot mutate')
+''', 'f^ cannot capture')
     negative('entry_method_let_slice', '''
 let^items=i32^[2]{1,2}
 def^ A {view=f^ {items[..]}}
@@ -189,8 +189,8 @@ print^(*r)
 ''', "while 'r' may refer into it")
     negative('entry_method_export', '''
 var^n=0
-def^ A {get=f^ {n}}
-exportC^let^get=f^ ->i32^ {A.get()}
+def^ A {get=p^ {return^n}}
+exportC^let^get=p^ ->i32^ {return^A.get()}
 ''', 'exported function cannot access task-owned static variables')
     positive('static_basic', '''
 def^ A {
@@ -199,7 +199,7 @@ def^ A {
     var^si=0
     increment=p^ {def^.si+=1}
     step=p^self^ {def^.si+=self^.i}
-    read=f^ {def^.si}
+    read=p^ {return^def^.si}
 }
 A.increment()
 var^a=A{i=3}
@@ -234,7 +234,7 @@ def^ A {
     var^items=i32^[grow^]{1,2}
     var^other=i32^[grow^]{8}
     add=p^ {def^.items.push(3)}
-    first=f^ ->ref^i32^ {ref^def^.items[0]}
+    first=p^ ->ref^i32^ {return^ref^def^.items[0]}
 }
 A.add()
 let^r=A.first();
@@ -262,7 +262,7 @@ set(ref^A.n)
 print^(*A.r)
 ''', '1\n')
     negative('static_pure_write', 'def^ A {var^n=0 bad=f^ {def^.n+=1}} A.bad()',
-             'f^ cannot mutate')
+             'f^ cannot capture')
     negative('static_private', 'def^ A {private^var^n=0} print^(A.n)',
              'private static variable')
     negative('static_duplicate', 'def^ A {var^n=0 var^n=1}', 'duplicate static variable')
@@ -276,7 +276,7 @@ let^set=p^r:ref^i32^ {A.r:=r}
 var^n=4
 set(ref^n)
 ''', 'reference would outlive its owner')
-    negative('static_export', 'def^ A {var^n=0 get=f^ {def^.n}} exportC^let^get=f^ ->i32^ {A.get()}',
+    negative('static_export', 'def^ A {var^n=0 get=p^ {return^def^.n}} exportC^let^get=p^ ->i32^ {return^A.get()}',
              'exported function cannot access task-owned static variables')
     positive('static_read_borrow', '''
 def^ A {var^n=0}

@@ -296,8 +296,10 @@ struct Function {
 };
 
 struct Field {
-    Stmt *binding;       // Original entry binding when accessed through the task context.
-    bool state_checking; // Guard recursive static-member type inference.
+    Loc immutable_capture; // An f^ access whose proof is checked after entry initialization.
+    bool immutable;        // Entry binding contents proven immutable during initialization.
+    Stmt *binding;         // Original entry binding when accessed through the task context.
+    bool state_checking;   // Guard recursive static-member type inference.
     Loc loc;
     char *name;
     Spec *spec;

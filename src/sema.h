@@ -33,6 +33,8 @@ typedef struct Var Var;
 typedef struct Root {
     int depth;
     bool external;
+    bool immutable;       // This storage cannot change, independently of access capabilities.
+    bool static_storage;  // Unknown call targets outside the argument regions live globally.
     const char *readonly; // The let^ binding a hidden reference refers to, or NULL.
     // What references held in this storage point at, when a reference parameter tells the two
     // apart. They may still be the same storage, so overlap tests treat them as one.
@@ -190,6 +192,10 @@ bool read_reference(Type *type);
 bool type_reads(Type *type);
 // Whether a value carries potentially writable reference capabilities.
 bool type_writes(Type *type);
+// Whether all reachable reference targets are proven immutable; unknown targets fail.
+bool immutable_value(Value value);
+// Reject a mutable or unproven capture by an f^.
+void immutable_capture(Value value, const char *name, Loc loc);
 
 // Reject mutations that would invalidate an owned row under construction.
 void mutation_check(Context *c, Roots storage, Loc loc);
@@ -557,6 +563,8 @@ bool dead(Value v);
 // storage from outside. The same node gives the same root, so that a loop
 // analysed again until its roots settle meets the same ones.
 Roots root(Context *c, const void *key, int depth, bool external);
+// Unknown call results may also reach static storage outside all argument regions.
+Roots unknown_roots(Context *c, const void *key);
 // Provenance of the current task's static-member storage.
 Roots state_roots(Program *p);
 // What references held in storage under these roots may point at.
