@@ -1196,7 +1196,7 @@ static Type *infer_call(Infer *c, Expr *e, Type *expected)
             }
             Type *receiver = infer_expr(c, target->a, NULL);
             bool read = (receiver && read_reference(receiver)) || infer_read_place(c, target->a);
-            add(&actual, type_wrap(c->p, T_REF, base, read));
+            add(&actual, type_wrap(c->p, T_REF, base, read || f->read_self));
         }
     }
     if (!f && target->kind != E_NAME && target->kind != E_MEMBER) {
@@ -3190,7 +3190,12 @@ Instance *instance_for(Program *p, Function *f, Def *self, List *actual, Loc at)
     }
     List arguments = {0};
     for (int j = 0; j < actual->n; j++) {
-        add(&arguments, actual->v[j]);
+        Type *t = actual->v[j];
+        if (f->read_self && j < f->params.n && ((Param *)f->params.v[j])->self && t &&
+            t->kind == T_REF) {
+            t = type_wrap(p, T_REF, t->elem, 1);
+        }
+        add(&arguments, t);
     }
     for (int j = 0; j < f->captures.n; j++) {
         Param *capture = f->captures.v[j];
@@ -3258,6 +3263,10 @@ Type *parameter_type(Program *p, Param *param)
 
 Type *function_parameter(Program *p, Function *f, Param *param, Type *actual)
 {
+    if (param->self && f->read_self) {
+        return type_wrap(p, T_REF, actual && actual->kind == T_REF ? actual->elem : f->owner->type,
+                         1);
+    }
     Type *want = parameter_type(p, param);
     if (want && actual && !f->procedure && !(f->mutable_self && param->self)) {
         return result_capabilities(p, want, actual, param->loc);
@@ -4142,8 +4151,8 @@ static bool body_function_unchecked(Program *p, Function *f)
     BodyCheck c = {.p = p, .fn = f, .scope = {.p = p, .lexical = f->lexical ? f->lexical : 1}};
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
-        Type *t =
-            a->self && f->owner ? type_wrap(p, T_REF, f->owner->type, 0) : parameter_type(p, a);
+        Type *t = a->self && f->owner ? type_wrap(p, T_REF, f->owner->type, f->read_self)
+                                      : parameter_type(p, a);
         BodyNode *n = body_node(t);
         if (!a->spec && !a->self) {
             BodyParam *bp = mem(sizeof(*bp));

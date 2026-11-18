@@ -2043,7 +2043,7 @@ DynTable *dyn_table(Program *p, Def *concrete, Def *iface, Loc loc)
         if (!dyn_unsafe(p, iface, f)) {
             Function *impl = method(concrete, f->name);
             List actual = {0};
-            add(&actual, type_wrap(p, T_REF, concrete->type, 0));
+            add(&actual, type_wrap(p, T_REF, concrete->type, impl->read_self));
             for (int j = 1; j < impl->params.n; j++) {
                 add(&actual, parameter_type(p, impl->params.v[j]));
             }
@@ -2228,7 +2228,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     if (f->params.n != e->args.n + 1) {
         fail(e->loc, "'%s' expects %d arguments", f->name, f->params.n - 1);
     }
-    if (f->procedure || f->mutable_self) {
+    if ((f->procedure && !f->read_self) || f->mutable_self) {
         // The same mutation rules as a static call to a receiver in that storage.
         store_check(c, (Value){.storage = receiver.deps, .readonly = read_reference(receiver.type)},
                     (Value){0}, e->loc);
@@ -2240,7 +2240,7 @@ static Value dyn_call(Context *c, Expr *e, Value receiver, Type *expected, int d
     Roots deps = receiver.deps;
     List writable = {0}, arguments = {0};
     add(&arguments, &receiver);
-    if ((f->procedure || f->mutable_self) && !read_reference(receiver.type)) {
+    if (((f->procedure && !f->read_self) || f->mutable_self) && !read_reference(receiver.type)) {
         add(&writable, &receiver);
     }
     for (int j = 0; j < e->args.n; j++) {
@@ -3031,13 +3031,13 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
                  f->name);
         }
         access_check(c, f->priv, f->owner, e->loc, f->name);
-        if (base.guarded_copy && (f->procedure || f->mutable_self)) {
+        if (base.guarded_copy && ((f->procedure && !f->read_self) || f->mutable_self)) {
             fail(e->loc, "mutable nil-propagating receiver requires an optional reference");
         }
-        if (f->procedure || f->mutable_self) {
+        if ((f->procedure && !f->read_self) || f->mutable_self) {
             store_check(c, base, (Value){0}, e->loc);
         }
-        Value ref = value(c, type_wrap(p, T_REF, base.type, base.readonly));
+        Value ref = value(c, type_wrap(p, T_REF, base.type, base.readonly || f->read_self));
         Instr *i = emit(c, I_ADDR, e->loc);
         i->dst = ref.id;
         i->a = base.id;
@@ -3162,7 +3162,7 @@ static Value call(Context *c, Expr *e, Type *expected, int destination)
         }
         if (!self && f->owner && param->self) {
             self = outer_receiver(f, v.type, e->loc);
-            if (f->procedure || f->mutable_self) {
+            if ((f->procedure && !f->read_self) || f->mutable_self) {
                 store_check(c, deref(c, v, e->loc), (Value){0}, e->loc);
             }
         }

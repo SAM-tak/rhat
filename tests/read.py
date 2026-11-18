@@ -5,6 +5,86 @@ from harness import Suite
 def main():
     suite = Suite('read')
     positive, negative = suite.positive, suite.negative
+    read_self = '''var^clock:i32^=10
+def^Actor {
+ self^{n:i32^=3}
+ sprite=p^self^:read^ ->i32^ {return^self^.n+clock}
+}
+'''
+    positive('read_self_procedure', read_self+'''let^a=Actor{}
+print^(a.sprite())
+clock:=20
+let^r:ref^read^Actor=ref^a
+print^(r.sprite())
+''', '13\n23\n')
+    positive('read_self_slice', read_self+'''var^actors:Actor[2]={Actor{},Actor{n=5}}
+let^draw=p^actors:read^Actor[..] {
+ for^read^a in^actors {print^(a.sprite())}
+}
+draw(actors[..])
+''', '13\n15\n')
+    positive('read_self_generic', '''def^Box<T> {
+ self^{n:T}
+ get=p^self^:read^ ->T {return^self^.n}
+}
+let^box=Box<i32^>{n=7}
+let^r:ref^read^Box<i32^>=ref^box
+print^(r.get())
+''', '7\n')
+    positive('read_self_writable_other_argument', '''def^Cell {
+ self^{n:i32^=1}
+ copy=p^self^:read^, out:ref^Cell {out.n:=self^.n}
+}
+let^a=Cell{n=7}
+var^b=Cell{}
+a.copy(ref^b)
+print^(b.n)
+''', '7\n')
+    negative('read_self_still_procedure', read_self+'''let^bad=f^a:ref^Actor {a.sprite()}
+''', 'f^ cannot call p^')
+    negative('read_self_write', '''def^Actor {
+ self^{n:i32^=3}
+ sprite=p^self^:read^ {self^.n:=4}
+}
+''', 'read^')
+    negative('read_self_calls_writer', '''def^Actor {
+ self^{n:i32^=3}
+ change=p^self^ {self^.n:=4}
+ sprite=p^self^:read^ {self^.change()}
+}
+''', 'read^')
+    negative('read_self_cannot_return_writable_reference', '''def^Actor {
+ self^{n:i32^=3}
+ sprite=p^self^:read^ ->ref^i32^ {return^ref^self^.n}
+}
+''', 'read^')
+    negative('self_arbitrary_annotation', '''def^Actor {
+ self^{}
+ sprite=p^self^:i32^ {}
+}
+''', 'read^')
+    negative('pure_self_read_redundant', '''def^Actor {
+ self^{}
+ sprite=f^self^:read^ {1}
+}
+''', 'redundant')
+    positive('read_self_dynamic', '''def^I {abstract^get:p^self^:read^ ->i32^;}
+def^Actor:I {
+ self^{n:i32^=3}
+ get=p^self^:read^ ->i32^ {return^self^.n}
+}
+var^a=Actor{}
+let^r:ref^read^dyn^I=ref^a
+print^(r.get())
+''', '3\n')
+    negative('read_self_override_cannot_require_writes', '''def^I {
+ abstract^get:p^self^:read^ ->i32^;
+}
+def^Actor:I {
+ self^{n:i32^=3}
+ get=p^self^ ->i32^ {return^self^.n}
+}
+''', 'contract')
     pre = '''def^Cell {
  self^{x:i32^=1}
  change=p^self^ {self^.x+=1}

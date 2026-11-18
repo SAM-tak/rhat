@@ -1068,6 +1068,7 @@ static void compatible(Program *p, Function *a, Function *b)
         fail(b->loc, "restating '%s' with fewer effects requires override^", a->name);
     }
     if (a->params.n != b->params.n || effects > 0 || (b->abstract && effects && !narrows) ||
+        (a->read_self && !b->read_self && (b->procedure || b->mutable_self)) ||
         a->templ != b->templ || (ar && br && ar != br) ||
         !same_origins(a, a->result, b, b->result)) {
         fail(b->loc, "override of '%s' changes its contract", a->name);

@@ -3838,9 +3838,18 @@ static Function *function(Parser *p, char *name, Def *owner, bool abstr)
                 f->right_receiver = true;
             }
             if (take(p, ":")) {
-                a->spec = spec(p);
-                if (!f->procedure) {
-                    pure_parameter_spec(a->spec);
+                if (a->self) {
+                    need(p, "read^");
+                    if (!f->procedure) {
+                        fail(a->loc, "read^ is redundant on an f^ receiver; omit it");
+                    }
+                    f->read_self = true;
+                }
+                else {
+                    a->spec = spec(p);
+                    if (!f->procedure) {
+                        pure_parameter_spec(a->spec);
+                    }
                 }
             }
             if (!strcmp(a->name, "...")) {

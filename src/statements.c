@@ -2022,7 +2022,8 @@ static void check_declaration(Program *p, Function *f, Def *owner)
     List types = {0};
     for (int j = 0; j < f->params.n; j++) {
         Param *param = f->params.v[j];
-        Type *type = param->self ? type_wrap(p, T_REF, owner->type, 0) : parameter_type(p, param);
+        Type *type =
+            param->self ? type_wrap(p, T_REF, owner->type, f->read_self) : parameter_type(p, param);
         Type *base = type->kind == T_REF ? type->elem : type;
         if ((!owner && base->kind == T_STRUCT && base->def->abstract) || callable_type(type)) {
             return;

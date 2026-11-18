@@ -132,7 +132,8 @@ Type *callable_declaration(Program *p, Function *f)
     List params = {0};
     for (int j = 0; j < f->params.n; j++) {
         Param *a = f->params.v[j];
-        add(&params, a->self ? type_wrap(p, T_REF, f->owner->type, 0) : parameter_type(p, a));
+        add(&params,
+            a->self ? type_wrap(p, T_REF, f->owner->type, f->read_self) : parameter_type(p, a));
     }
     Type *result = f->result ? type_spec(p, f->result) : f->required_result;
     bool known = !f->templ && !f->abstract && (!f->captures.n || f->environment);
@@ -484,7 +485,7 @@ static Function *named_function(Program *p, Spec *s, Def **found, List *actual)
         for (int j = 0; j < f->params.n; j++) {
             Param *param = f->params.v[j];
             if (param->self) {
-                add(actual, type_wrap(p, T_REF, owner ? owner->type : NULL, 0));
+                add(actual, type_wrap(p, T_REF, owner ? owner->type : NULL, f->read_self));
                 continue;
             }
             if (!param->spec) {
@@ -565,7 +566,8 @@ Type *overload_hint(Program *p, List *candidates, int index, Expr *arg)
     for (int j = 0; j < candidates->n; j++) {
         Function *f = candidates->v[j];
         Param *a = index < f->params.n ? f->params.v[index] : NULL;
-        Type *t = a && a->self ? type_wrap(p, T_REF, f->owner->type, 0) : parameter_hint(p, a, arg);
+        Type *t = a && a->self ? type_wrap(p, T_REF, f->owner->type, f->read_self)
+                               : parameter_hint(p, a, arg);
         if (literal && t && !kind_integer(t->kind) && !kind_float(t->kind) && t->kind != T_UNION) {
             continue;
         }

@@ -281,6 +281,7 @@ struct Function {
     char *external; // C symbol of an externC^ declaration, which has no body.
     bool intrinsic; // externLLVM^ binds an LLVM intrinsic instead of a C symbol.
     bool procedure, templ, abstract, priv, override, mutable_self;
+    bool read_self; // p^self^:read^ borrows its receiver without write permission.
     bool overload, operator_member, right_receiver; // Explicit member roles.
     bool static_member;   // A def^ member without self^, called as Type.name(...).
     bool exported;        // exportC^: callable from C under its own name.
